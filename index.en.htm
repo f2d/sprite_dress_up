@@ -1,0 +1,67 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>Dress up / sprite generator from PSD file</title>
+	<link rel="shortcut icon" type="image/png" href="index.png">
+	<link rel="stylesheet" type="text/css" href="index.css">
+	<script>
+	var	la = {
+			'hint': {
+				'project': 'Drag and drop a project file onto this page, or select here:'
+			,	'formats': 'Supported file types:'
+			,	'canvas': 'Right click to save result image.'
+			}
+		,	'example': {
+				'common': 'Example project files:'
+			,	'psd_from_sai2': 'SAI2 → PSD as is (layer masks in PSD are not working here yet)'
+			,	'ora_mockup': 'SAI2 → PSD → Krita (no clipping) → ORA (no masks) → manual fixes'
+			}
+		,	'file_name': {
+				'pretext': 'Project'
+			,	'none': 'unnamed'
+			}
+		,	'project': {
+				'bits': 'bits'
+			,	'channels': 'channels'
+			,	'pixels': 'pixels'
+			,	'layers': 'layers'
+			,	'images': 'images'
+			,	'bytes': 'bytes'
+			,	'date': 'last modified'
+			}
+		,	'buttons': {
+				'load': 'Load example'
+			,	'download': 'Download'
+			,	'save_this': 'Save this image'
+			,	'save_all': 'Save all'
+			,	'show_all': 'Show all'
+			}
+		,	'options': {
+				'autosave_on_load': 'Batch autosave all possible results when a project is loaded'
+			,	'batch': 'Mark this list for batch export.'
+			,	'preselect': 'Use only the single selected option for batch export.'
+			,	'out_of_scope': {
+					'header': 'Option branches that are not within the scope of current selection'
+				,	'hide': 'Hide from selection lists'
+				,	'allow': 'Allow to select for preview'
+				,	'autosave': 'Use for batch autosave too'
+				}
+			,	'sections': {
+					'colors': 'Select colors'
+				,	'parts': 'Select parts'
+				}
+			}
+		,	'error': {
+				'file': 'No suitable files found.'
+			,	'canvas': 'HTML5 Canvas is not supported in your web browser program.'
+			,	'project': 'Project composition error.'
+			}
+		};
+	</script>
+	<script src="index.js"></script>
+</head>
+<body>
+	Loading page...
+</body>
+</html>

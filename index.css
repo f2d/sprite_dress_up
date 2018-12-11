@@ -1,0 +1,109 @@
+html {
+	background-color: #ddd;
+}
+a {
+	color: #888;
+}
+a:hover {
+	color: #000;
+}
+b::before,
+b::after {
+	content: "\20\2014\20";
+	/* margin: 0 1em; */
+}
+body {
+	margin: 1em auto;
+	text-align: center;
+}
+button + button {
+	margin-left: 1em;
+}
+img {
+	float: left;
+}
+img,
+canvas {
+	border: 1px solid #ddd;
+	box-shadow: 3px 3px rgba(0,0,0, 0.1);
+}
+canvas {
+	position: relative;
+}
+canvas:hover {
+	border-color: #aaa;
+}
+select {
+	display: block;
+	width: 100%;
+}
+body > section > div[id] {
+	display: inline-block;
+	vertical-align: top;
+	background-color: #f5f5f5;
+	/* background-color: white; */
+	/* border: 1px solid #ddd; */
+	padding: 1em;
+	margin: 1em;
+	text-align: left;
+}
+#examples .files {
+	/* display: inline-block; */
+}
+#examples .files table {
+	border-collapse: collapse;
+}
+#examples .files td {
+	padding: 2px 4px;
+}
+#examples .files td:first-child {
+	text-align: right;
+}
+#examples .file.loading td {
+	position: relative;
+	border-color: #bdf;
+	background-color: #bdf;
+}
+#examples .file.loading td:last-child::after {
+	position: absolute;
+	top: 0;
+	left: 100%;
+	width: 1em;
+	text-align: center;
+	content: "⌛";
+}
+#options label {
+	display: block;
+	min-width: 100px;
+	padding-left: 4px;
+	white-space: normal;
+	/* white-space: nowrap; */
+	/* overflow: hidden; */
+	/* text-overflow: ellipsis; */
+}
+#options label:hover {
+	background-color: #eee;
+}
+#options input[type="checkbox"] {
+	float: right;
+}
+#container td {
+	text-align: left;
+	vertical-align: top;
+	/* padding: 1em; */
+}
+#container td div,
+#container td > * {
+	padding: 0.5em;
+	margin: 0.5em;
+}
+#container td div,
+#container td section {
+	background-color: rgba(0,0,0, 0.1);
+}
+#container td section {
+	white-space: nowrap;
+}
+#container:empty {
+	display: none;
+}
