@@ -1,22 +1,24 @@
 
-//* source data:
-//* TODO: PSD layer masks.
-//* TODO: PSD "fill" percentage -> opacity.
+//* source file data:
+//* TODO: read PSD layer masks.
 //* TODO: save as ORA.
 
 //* menu:
 //* TODO: buttons: show/save [all marked and visible options], [all marked], [all].
 //* TODO: options menu: add/remove/copy colors.
+//* TODO: N px outline, select color.
+//*	a) max alpha in +|- N px around,
+//*	b) min distance to any non-transparent px (map the 0,N:N+1,+Inf range to 255:0).
 
 //* rendering:
 //* TODO: arithmetic emulation of all blending operations, not native to JS.
 //* TODO: arithmetic emulation of all operations in 16-bit or more, until final result; to be optionally available as checkbox/selectbox.
 //*	Uint8ClampedArray: [0,255], used internally by canvas.
 //*	Int16Array: [-32768,32767], allows subprecision, user must somehow manually clamp result overflows.
-//*	Int32Array: [-2147483648,2147483647], same + more space for overflow/clamping.
+//*	Int32Array: [-2147483648,2147483647], same + more space for overflow/clamping (useless?).
 //*	Float32Array: [0,1], allows overflow/clamping too.
 //*	Float64Array: [0,1], same + more precision.
-//* TODO: decode layer data (PSD/PNG/etc) manually without using canvas, to avoid premultiplied-alpha while rendering (including result).
+//* TODO: decode layer data (PSD/PNG/etc) manually without using canvas, to avoid premultiplied-alpha (in Firefox, not needed in Chrome) while rendering (including result).
 //* TODO: img src: recompress using temporary canvas, save whichever is shorter (original vs temp) as base64 or blob.
 
 //* Config *-------------------------------------------------------------------
@@ -36,6 +38,9 @@ var	regLayerNameToSkip		= /^(skip)$/i
 	,	'if_only':	/^(if|in)$/i
 	,	'not':		/^(\!|not?)$/i
 	,	'any':		/^(\?|any|some)$/i
+	,	'outline':	/^(outline)$/i
+	,	'radius':	/^(\d+)px$/i
+
 /* examples of layer folder names with parameter syntax:
 	"[if no any parts] arm"	(render contents of this folder if "part: arm" select box value is empty)
 	"[if any colors] 1"	(render contents of this folder if "color: 1" select box value is non-empty)
@@ -288,14 +293,61 @@ var	examplesDir = 'example_project_files/'
 		},
 	]
 ,	ora, zip, PSD, PSD_JS, PSDLIB
-,	Composition
+,	CompositionModule
+,	CompositionFuncList
 	;
 
 //* Common utility functions *-------------------------------------------------
 
+function pause(msec) {
+	return new Promise(
+		(resolve, reject) => {
+			setTimeout(resolve, msec || 1000);
+		}
+	);
+}
+
 function toArray(a) {try {return TOS.slice.call(a);} catch (e) {return [];}}
 function arrayFilterNonEmptyValues(v) {return !!v;}
 function arrayFilterUniqueValues(v,i,a) {return a.indexOf(v) === i;}
+
+//* https://stackoverflow.com/a/33703102
+//* a, b = TypedArray of same type
+function concatTypedArrays(a,b,c,n) {
+var	c = new (c || a.constructor)(n || (a.length + b.length));
+	c.set(a, 0);
+	c.set(b, a.length);
+	return c;
+}
+
+function concatTypedArraysPaddedForHeap(a,b) {
+var	realSize = a.length + b.length
+,	paddedSize = nextValidHeapSize(realSize)
+	;
+
+	// console.log([realSize, paddedSize]);
+
+var	d = new ArrayBuffer(paddedSize)
+,	c = new Uint8Array(d)
+	;
+	c.set(a, 0);
+	c.set(b, a.length);
+	return c;
+}
+
+//* https://gist.github.com/wellcaffeinated/5399067#gistcomment-1364265
+function nextValidHeapSize(realSize) {
+var	SIZE_64_KB = 65536	// 0x10000
+,	SIZE_64_MB = 67108864	// 0x4000000
+	;
+	if (realSize <= SIZE_64_KB) {
+		return SIZE_64_KB;
+	} else if (realSize <= SIZE_64_MB) {
+		return 1 << (Math.ceil(Math.log(realSize)/Math.LN2)|0);
+	} else {
+		return (SIZE_64_MB*Math.ceil(realSize/SIZE_64_MB)|0)|0;
+	}
+}
 
 function gc(n,p) {try {return toArray((p || document).getElementsByClassName	(n));} catch (e) {return [];}}
 function gt(n,p) {try {return toArray((p || document).getElementsByTagName	(n));} catch (e) {return [];}}
@@ -1043,9 +1095,9 @@ async function loadProject(sourceFile) {
 						'batch',
 						'preselect',
 					]) if (params[k]) {
-						if (!projectWIP.batchDefault) {
-							projectWIP.batchParam = k;
-							projectWIP.batchDefault = getOtherBatchParam(k);
+						if (!projectWIP.batch.paramNameDefault) {
+							projectWIP.batch.paramNameMarked = k;
+							projectWIP.batch.paramNameDefault = getOtherBatchParam(k);
 						}
 						g[k] = true;
 					}
@@ -1099,9 +1151,9 @@ async function loadProject(sourceFile) {
 		var	options, k;
 			projectWIP.layers.map(processLayerInBranch);
 
-			if (!projectWIP.batchDefault) {
-				projectWIP.batchDefault = k = 'batch';
-				projectWIP.batchParam = getOtherBatchParam(k);
+			if (!projectWIP.batch.paramNameDefault) {
+				projectWIP.batch.paramNameDefault = k = 'batch';
+				projectWIP.batch.paramNameMarked = getOtherBatchParam(k);
 			}
 
 			return options;
@@ -1191,23 +1243,18 @@ async function loadProject(sourceFile) {
 	function createProjectView(projectWIP, container) {
 	var	sourceFile = projectWIP.loading.data.file || {}
 	,	sourceFileTime = sourceFile.lastModified || sourceFile.lastModifiedDate
-	,	container = delAllChildNodes(container || id('container'))
-	,	e = cre('p', container)
+	,	container = delAllChildNodes(container || id('project-container'))
+	,	header = cre('header', container)
 		;
-		e.textContent = la.file_name.pretext;
-		cre('b', e).textContent = projectWIP.fileName;
-
-	var	table = cre('table', container)
-	,	tr, td, t
-		;
-		tr = cre('tr', table);
-		td = cre('td', tr   ), td.id = 'options', td.setAttribute('rowspan', 2);
-		td = cre('td', tr   ), td.id = 'render';
-
-		tr = cre('tr', table);
-		td = cre('td', tr   ), td.id = 'render-all';
+		header.id = 'project-header';
 
 //* show overall project info:
+
+	var	e = cre('section', header)
+	,	h = cre('header', e)
+		;
+		h.id = 'project-name';
+		h.textContent = projectWIP.fileName;
 
 		if (projectWIP.channels && projectWIP.bitDepth) {
 			t = projectWIP.channels + 'x' + projectWIP.bitDepth + ' ' + la.project.bits;
@@ -1219,69 +1266,113 @@ async function loadProject(sourceFile) {
 			t = projectWIP.bitDepth + ' ' + la.project.bits;
 		} else t = '';
 
-		t = (
-			[
+		t = [
+			projectWIP.width + 'x'
+		+	projectWIP.height + ' '
+		+	la.project.pixels
+
+		,	[
 				(projectWIP.colorMode || '')
 			,	t
 			]
 			.filter(arrayFilterNonEmptyValues)
 			.join(' ')
-		);
+		];
 
 	var	i = projectWIP.loading.imagesCount
 	,	j = projectWIP.layersCount
-	,	k = ''
 		;
-		if (i == j) {
-			k = i + ' ' + la.project.layers + ' (' + la.project.images + ')';
-		} else
-		if (i && j) {
-			k = j + ' ' + la.project.layers + ', ' + i + ' ' + la.project.images;
-		} else
-		if (i) {
-			k = i + ' ' + la.project.images;
-		} else
-		if (j) {
-			k = j + ' ' + la.project.layers;
+		if (i && i == j) {
+			t.push(i + ' ' + la.project.layers + ' (' + la.project.images + ')');
+		} else {
+			if (i) t.push(i + ' ' + la.project.images);
+			if (j) t.push(j + ' ' + la.project.layers);
 		}
 
-		cre('span', e).innerHTML = (
-			[
-				projectWIP.width + 'x'
-			+	projectWIP.height + ' '
-			+	la.project.pixels
+		if (sourceFile.size) t.push(sourceFile.size + ' ' + la.project.bytes);
+		if (sourceFileTime) t.push(la.project.date + ' ' + getFormattedTime(sourceFileTime));
 
-			,	t
-			,	k
-
-			,	(sourceFile.size ?
-					sourceFile.size + ' '
-				+	la.project.bytes
-				: '')
-
-			,	(sourceFileTime ?
-					la.project.date + ': '
-				+	getFormattedTime(sourceFileTime)
-				: '')
-			]
+		cre('div', e).innerHTML = (
+			t
 			.filter(arrayFilterNonEmptyValues)
-			.join(', ')
+			.join('<br>')
 		);
 
 //* add batch controls:
 
-		e = cre('p', container, e.nextSibling);
+	var	b = la.buttons
+	,	f = la.render.from
+	,	e = cre('section', header)
+	,	h = cre('header', e)
+	,	g = cre('footer', e)
+		;
+		h.textContent = f.current + ':';
 
-		addButton(la.buttons.show_all, 'showAll()', e);
-		addButton(la.buttons.save_all, 'saveAll()', e);
-		addButton(la.buttons.save_this, 'saveImg()', e);
+		addButton(b.show, 'showImg()', g);
+		addButton(b.save, 'saveImg()', g);
+		addButton(b.reset_to_empty, 'setAllEmptyValues()', g);
 
-		// e = cre('p', container, e.nextSibling);
-		// e.style.backgroundColor = 'red';
+	var	e = cre('section', header)
+	,	h = cre('header', e)
+		;
+		h.textContent = f.batch + ': ';
+		cre('span', h).id = 'batch-count';
 
-		// addButton('save data JSON', 'saveDL(project.sourceData, "data", "json", 1, replaceJSONpartsFromPSD)', e);
-		// addButton('save tree JSON', 'saveDL(project.layers, "tree", "json", 1, replaceJSONpartsFromTree)', e);
-		// addButton('save project JSON', 'saveDL(project, "project", "json", 1, replaceJSONpartsFromPSD)', e);
+	var	b = la.render.if
+	,	f = la.render.selection
+	,	t = 'radio'
+	,	v = 'any'
+	,	m = (projectWIP.batch.paramNameDefault !== 'batch' ? 'yes' : 'no')
+	,	i,j,k,n
+	// ,	table = cre('table', cre('div', e))
+	,	table, tr, td
+		;
+		if (table)
+		for (i in f) {
+			tr = cre('tr', table);
+			td = cre('td', tr);
+			td.textContent = f[i] + ':';
+			k = 'batch-select-' + i;
+
+			for (j in b) {
+				td = cre('td', tr);
+				n = cre('label', td);
+				n.textContent = b[j];
+
+				n = cre('input', n, n.lastChild);
+				n.type = t;
+				n.name = k;
+				n.value = j;
+				n.onchange = updateBatchOptions;
+				if (
+					(i == 'visible' && j == v)
+				||	(i == 'marked'  && j == m)
+				) {
+					n.checked = true;
+					projectWIP.batch[i] = j;
+				}
+			}
+		}
+
+		b = la.buttons;
+		g = cre('footer', e);
+		addButton(b.show_all, 'showAll()', g);
+		addButton(b.save_all, 'saveAll()', g);
+
+//* project parser testing:
+
+	/*	e = cre('p', container);
+		e.style.backgroundColor = 'red';
+
+		addButton('save data JSON', 'saveDL(project.sourceData, "data", "json", 1, replaceJSONpartsFromPSD)', e);
+		addButton('save tree JSON', 'saveDL(project.layers, "tree", "json", 1, replaceJSONpartsFromTree)', e);
+		addButton('save project JSON', 'saveDL(project, "project", "json", 1, replaceJSONpartsFromPSD)', e);*/
+
+//* place for results:
+
+		tr = cre('tr', cre('table', container));
+		cre('td', tr).id = 'project-options';
+		cre('td', tr).id = 'render';
 	}
 
 	function createOptionsMenu(options, container) {
@@ -1294,12 +1385,12 @@ async function loadProject(sourceFile) {
 			}
 		}
 
-	var	container = delAllChildNodes(container || id('options'))
+	var	container = delAllChildNodes(container || id('project-options'))
 	,	sections = la.options.sections
 	,	section
 	,	optionList
-	,	b = projectWIP.batchDefault
-	,	c = projectWIP.batchParam
+	,	b = projectWIP.batch.paramNameDefault
+	,	c = projectWIP.batch.paramNameMarked
 		;
 
 //* section = type of use (fill colors, draw parts):
@@ -1384,6 +1475,7 @@ var	n = sourceFile.name
 		var	projectWIP = {
 				fileName: n
 			,	baseName: b
+			,	batch: {}
 			,	loading: {
 					startTime: +new Date
 				,	then: loadProjectOptions
@@ -1408,7 +1500,7 @@ var	n = sourceFile.name
 
 function loadProjectFinalizeDisplayFallBack(projectWIP) {
 var	e,i;
-	if (e = id('container')) {
+	if (e = id('project-container')) {
 		delAllChildNodes(e).textContent = la.error.project;
 
 		if (i = projectWIP.toPng()) {
@@ -1416,7 +1508,7 @@ var	e,i;
 			e.appendChild(i);
 		}
 	}
-	if (e = id('options')) delAllChildNodes(e);
+	if (e = id('project-options')) delAllChildNodes(e);
 }
 
 function getNextParentAfterAddingLayerToTree(layer, sourceData, name, parentGroup, isLayerFolder) {
@@ -1819,10 +1911,23 @@ var	section, optionList;
 	return true;
 }
 
+function setAllEmptyValues() {
+	gt('select', id('project-options')).map(
+		s => {
+			for (o of s.options) if (o.value === '') {
+				s.value = '';
+				return;
+			}
+		}
+	);
+
+	showImg();
+}
+
 function getAllMenuValues(checkPreselected) {
 var	values = {};
 
-	gt('select', container).map(
+	gt('select', id('project-options')).map(
 		s => {
 		var	sectionName = s.getAttribute('data-section')
 		,	listName    = s.name
@@ -1912,7 +2017,7 @@ var	values = getAllMenuValues(checkPreselected)
 function getMenuValues(updatedValues) {
 var	values = {};
 
-	gt('select', container).map(
+	gt('select', id('project-options')).map(
 		s => {
 
 //* 1) check current selected values:
@@ -2007,51 +2112,40 @@ function drawImageOrColor(ctx, img, x,y, blendMode, opacity) {
 		}
 	}
 
-	if (!ctx || !img) return;
+	function applyBlendingEmulation(a,b, blendMode) {
 
-	if (typeof opacity === 'undefined') opacity = 1;
-	if (typeof blendMode === 'undefined') blendMode = BLEND_MODE_NORMAL;
+//* try computing in asm.js:
 
-	if (opacity <= 0) return ctx.canvas;
+	var	funcName = blendMode.replace(/\W+/g, '_').toLowerCase();
 
-	ctx.globalCompositeOperation = blendMode;
+		if (
+			CompositionModule
+		&&	CompositionFuncList
+		&&	CompositionFuncList.indexOf(funcName) >= 0
+		) {
+			try {
+			var	i = a.length
+			,	uint8array = concatTypedArraysPaddedForHeap(b,a)
+			,	env = null
+			,	heap = uint8array.buffer
+			,	compute = CompositionModule(window, env, heap)
+				;
+				compute[funcName](i);
+				a.set(uint8array.slice(0, i));
 
-var	canvas = ctx.canvas
-,	x = orz(x)
-,	y = orz(y)
-,	w = canvas.width
-,	h = canvas.height
-,	m = ctx.globalCompositeOperation
-	;
+				return;
 
-	if (
-		m !== blendMode
-	&&	BLEND_MODES_EMULATED.indexOf(blendMode) >= 0
-	) {
-		// console.log('globalCompositeOperation = '+m+', blendMode = '+blendMode+', opacity = '+opacity);
+			} catch (error) {
+				console.log(error);
+			}
+		}
 
-//* get pixels of layer below (B):
-
-		ctx.globalAlpha = 1;
-		ctx.globalCompositeOperation = BLEND_MODE_NORMAL;
-
-	var	oldData = ctx.getImageData(0,0, w,h)
-	,	b = oldData.data
-		;
-
-//* get pixels of layer above (A):
-
-		ctx.clearRect(0,0, w,h);
-		ctx.globalAlpha = opacity;
-
-		drawImageOrColorInside();
-
-	var	newData = ctx.getImageData(0,0, w,h)
-	,	a = newData.data
+//* try computing in pure JS:
 
 //* default "Normal" as fallback:
-	,	RGBexpression = 'if (alphaAbove !== 1) a[i] = alphaAbove*a[i] + alphaAComp*b[i];'
-		;
+	var	RGBexpression = (
+			'if (alphaAbove !== 1) a[i] = alphaAbove*a[i] + alphaAComp*b[i];'
+		);
 
 //* blend A onto B, pixel by pixel (C):
 //* source: http://www.simplefilter.de/en/basics/mixmods.html
@@ -2074,7 +2168,7 @@ source: https://limnu.com/webgl-blending-youre-probably-wrong/
 
 Premultiplied colors are what your compositor or renderer spits out, even if you used straight-alpha images with straight-alpha blending. In order to get a straight-alpha image out, you have to add an extra step to UN-pre-multiply, or divide by alpha. And pre-multiplying is bad enough, nobody wants to post-divide.
 
-With straight alpha, your blending function is symmetric. A*x + B*(1-x). We’re used to that math, and it just feels right, it makes sense. Premultiplied blending, A + B*(1-x), looks strange, doesn’t it?
+With straight alpha, your blending function is symmetric. A*x + B*(1-x). We're used to that math, and it just feels right, it makes sense. Premultiplied blending, A + B*(1-x), looks strange, doesn't it?
 */
 		if (blendMode === 'hard-mix') {
 
@@ -2082,20 +2176,22 @@ With straight alpha, your blending function is symmetric. A*x + B*(1-x). We’re
 //* A > 1-B: C = 1;
 //* TODO: alpha multipliers
 
-			RGBexpression = 'a[i] = (a[i] + b[i] < k ? 0 : MAX);'
-
+			RGBexpression = (
+				'a[i] = (a[i] + b[i] < k ? 0 : MAX);'
+			);
 		} else
 		if (blendMode === 'linear-burn') {
 
 //* C = B + A - 1;
 //* TODO: fix alpha multipliers, still wrong if bottom layer alpha < 100%
 
-			RGBexpression =
+			RGBexpression = (
 				'if (alphaBelow !== 0) {'
 			+	'	j = alphaAbove*a[i] + alphaAComp*b[i];'
 			+	'	k = b[i] + alphaAbove*(a[i] - MAX);'
 			+	'	a[i] = alphaBComp*j + alphaBelow*k;'
-			+	'}';
+			+	'}'
+			);
 
 		} else
 		if (blendMode === 'linear-light') {
@@ -2103,35 +2199,36 @@ With straight alpha, your blending function is symmetric. A*x + B*(1-x). We’re
 //* C = B + 2*A - 1;
 //* TODO: fix alpha multipliers, still wrong if bottom layer alpha < 100%
 
-			RGBexpression =
+			RGBexpression = (
 				'if (alphaBelow !== 0) {'
 			+	'	j = alphaAbove*a[i] + alphaAComp*b[i];'
 			+	'	k = b[i] + alphaAbove*(a[i]*2 - MAX);'
 			+	'	a[i] = alphaBComp*j + alphaBelow*k;'
-			+	'}';
+			+	'}'
+			);
 		}
 
 /* target sample values in RGBA, top layer is using "linear-light" ("Shade/shine" in SAI2):
 
-	above  =   0, 170,   0, 127
-	below  = 131, 208, 255, 127
-	result =   2, 224,  85, 191
+above  =   0, 170,   0, 127
+below  = 131, 208, 255, 127
+result =   2, 224,  85, 191
 
-	above  =   0, 170,   0, 127
-	below  = 255, 128,   0, 127
-	result =  85, 170,   0, 191
+above  =   0, 170,   0, 127
+below  = 255, 128,   0, 127
+result =  85, 170,   0, 191
 
-	above  =   0, 170,   0, 127
-	below  = 172,  69,  85, 191
-	result =  38, 120,   0, 223
+above  =   0, 170,   0, 127
+below  = 172,  69,  85, 191
+result =  38, 120,   0, 223
 
-	above  =   0, 170,   0, 127
-	below  = 255,  85,   0, 191
-	result = 109, 134,   0, 223
+above  =   0, 170,   0, 127
+below  = 255,  85,   0, 191
+result = 109, 134,   0, 223
 
-	above  =   0, 170,   0, 127
-	below  = 220, 118,  73, 223
-	result =  86, 161,   0, 239
+above  =   0, 170,   0, 127
+below  = 220, 118,  73, 223
+result =  86, 161,   0, 239
 */
 
 	var	aa  = !(RGBexpression.indexOf('alphaAbove') < 0)
@@ -2186,17 +2283,65 @@ With straight alpha, your blending function is symmetric. A*x + B*(1-x). We’re
 		// console.log(codeBlock);
 
 		eval(codeBlock);
+	}
 
-//* save result:
+	if (!ctx || !img) return;
 
-		ctx.putImageData(newData, 0,0);
-	} else {
+	if (typeof opacity === 'undefined') opacity = 1;
+	if (typeof blendMode === 'undefined') blendMode = BLEND_MODE_NORMAL;
 
-//* if native JS blending is available, or emulation is not available yet:
+	if (opacity <= 0) return ctx.canvas;
 
+	ctx.globalCompositeOperation = blendMode;
+
+var	canvas = ctx.canvas
+,	x = orz(x)
+,	y = orz(y)
+,	w = canvas.width
+,	h = canvas.height
+,	m = ctx.globalCompositeOperation
+	;
+
+//* use native JS blending if available, or emulation is not available yet:
+
+	if (
+		m === blendMode
+	||	BLEND_MODES_EMULATED.indexOf(blendMode) < 0
+	) {
 		ctx.globalAlpha = opacity;
 
 		drawImageOrColorInside();
+	} else {
+
+//* otherwise, try blending emulation:
+
+		// console.log('globalCompositeOperation = '+m+', blendMode = '+blendMode+', opacity = '+opacity);
+
+//* get pixels of layer below (B):
+
+		ctx.globalAlpha = 1;
+		ctx.globalCompositeOperation = BLEND_MODE_NORMAL;
+
+	var	oldData = ctx.getImageData(0,0, w,h)
+	,	b = oldData.data
+		;
+
+//* get pixels of layer above (A):
+
+		ctx.clearRect(0,0, w,h);
+		ctx.globalAlpha = opacity;
+
+		drawImageOrColorInside();
+
+	var	newData = ctx.getImageData(0,0, w,h)
+	,	a = newData.data
+		;
+
+//* compute resulting pixels linearly into newData, and save result back onto canvas:
+
+		applyBlendingEmulation(a,b, blendMode);
+
+		ctx.putImageData(newData, 0,0);
 	}
 
 	ctx.globalAlpha = 1;
@@ -2569,6 +2714,16 @@ var	canvas = getRenderByValues(render.values);
 	return e;
 }
 
+function updateBatchOptions(e,n) {
+	if (
+		e
+	&&	(e = e.target)
+	&&	(n = e.name)
+	) {
+		project.batch[n.split('-').pop()] = e.value;
+	}
+}
+
 function updateMenuAndRender() {
 
 	if (project.loading) {
@@ -2579,13 +2734,15 @@ function updateMenuAndRender() {
 	showImg();
 }
 
-function renderAll(saveToFile, showOnPage) {
+async function renderAll(saveToFile, showOnPage) {
 	if (!(saveToFile || showOnPage)) return;
 
 var	sets = getAllValueSets(true)
+,	setsCountAtOnce = 0
 ,	setsCount = 0
-,	container = (showOnPage ? delAllChildNodes(id('render-all')) : null)
+,	container = (showOnPage ? delAllChildNodes(id('render-all') || id('render')) : null)
 ,	startTime = +new Date
+,	lastPauseTime = startTime
 	;
 	for (var fileName in sets) if (values = sets[fileName]) {
 	var	render = getOrCreateRender(
@@ -2596,7 +2753,21 @@ var	sets = getAllValueSets(true)
 		);
 		if (saveToFile) saveImg(render, getFileNameByValuesToSave(values, true));
 		if (showOnPage) showImg(render, container);
+
 		setsCount++;
+		setsCountAtOnce++;
+
+//* https://stackoverflow.com/a/53841885/8352410
+//* must wait at least 1 second between each 10 downloads in Chrome:
+
+		if (
+			(setsCountAtOnce > 9)
+		||	(+new Date - lastPauseTime > 500)
+		) {
+			await pause(saveToFile ? (100 * setsCountAtOnce) : 100);
+			lastPauseTime = +new Date;
+			setsCountAtOnce = 0;
+		}
 	}
 
 	logTime('finished rendering ' + setsCount + ' sets, total ' + (+new Date - startTime) + ' ms');
@@ -2842,7 +3013,11 @@ var	name = getFileName(url)
 //* Runtime: prepare UI *------------------------------------------------------
 
 async function init() {
-	// await loadLib({'files': [libDir + 'blending/composition.asm.js']});
+	await loadLib({'files': [libDir + 'blending/composition.asm.js']});
+
+	if (CompositionModule = AsmCompositionModule) {
+		CompositionFuncList = Object.keys(CompositionModule(window, null, new ArrayBuffer(nextValidHeapSize(0))));
+	}
 
 var	container = delAllChildNodes(document.body)
 ,	s = cre('section', container)
@@ -2951,7 +3126,7 @@ var	container = delAllChildNodes(document.body)
 
 	s = cre('section', container);
 	e = cre('div', s);
-	e.id = 'container';
+	e.id = 'project-container';
 
 	e = window;
 	a = {

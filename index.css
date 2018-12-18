@@ -9,14 +9,14 @@ a:hover {
 }
 b::before,
 b::after {
-	content: "\20\2014\20";
+	/* content: "\20\2014\20"; */
 	/* margin: 0 1em; */
 }
 body {
 	margin: 1em auto;
 	text-align: center;
 }
-button + button {
+p > button + button {
 	margin-left: 1em;
 }
 img {
@@ -47,6 +47,14 @@ body > section > div[id] {
 	margin: 1em;
 	text-align: left;
 }
+label:hover {
+	background-color: #eee;
+}
+label {
+	display: inline-block;
+	padding: 0 4px 0 0;
+	white-space: normal;
+}
 #examples .files {
 	/* display: inline-block; */
 }
@@ -72,38 +80,63 @@ body > section > div[id] {
 	text-align: center;
 	content: "⌛";
 }
-#options label {
-	display: block;
-	min-width: 100px;
-	padding-left: 4px;
-	white-space: normal;
-	/* white-space: nowrap; */
-	/* overflow: hidden; */
-	/* text-overflow: ellipsis; */
+#project-name {
+	font-weight: bold;
 }
-#options label:hover {
-	background-color: #eee;
-}
-#options input[type="checkbox"] {
-	float: right;
-}
-#container td {
+#project-header div,
+#project-header section,
+#project-container td {
 	text-align: left;
 	vertical-align: top;
 	/* padding: 1em; */
 }
-#container td div,
-#container td > * {
+#project-container td div,
+#project-container td > img,
+#project-container td > section {
 	padding: 0.5em;
 	margin: 0.5em;
 }
-#container td div,
-#container td section {
+#project-container td div,
+#project-container td section {
 	background-color: rgba(0,0,0, 0.1);
 }
-#container td section {
+#project-container td section {
 	white-space: nowrap;
 }
-#container:empty {
+#project-container:empty {
 	display: none;
+}
+#project-header section {
+	display: inline-block;
+	background-color: rgba(0,0,0, 0.1);
+	/* padding: 0.5em; */
+}
+#project-header header,
+#project-header footer {
+	text-align: center;
+}
+#project-header section,
+#project-header header,
+#project-header footer,
+#project-header div {
+	margin: 0.5em;
+}
+#project-header button + button {
+	margin-left: 0.5em;
+}
+#project-header button {
+	/* display: block; */
+	/* text-align: center; */
+	/* width: 100%; */
+}
+#project-options label {
+	display: block;
+	min-width: 100px;
+	padding: 0 0 0 4px;
+	/* white-space: nowrap; */
+	/* overflow: hidden; */
+	/* text-overflow: ellipsis; */
+}
+#project-options input[type="checkbox"] {
+	float: right;
 }
