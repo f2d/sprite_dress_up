@@ -4,22 +4,22 @@
 //* TODO: save as ORA.
 
 //* menu:
+//* TODO: progress/status panel + [stop operation] button.
 //* TODO: buttons: show/save [all marked and visible options], [all marked], [all].
-//* TODO: options menu: add/remove/copy colors.
-//* TODO: N px outline, select color.
+//* TODO: options menu: add/remove/copy colors and outlines, edit all list(s) at once in textarea - including all usable layer names, or only currently existing.
+//* TODO: N px outline, select color and method:
 //*	a) max alpha in +|- N px around,
 //*	b) min distance to any non-transparent px (map the 0,N:N+1,+Inf range to 255:0).
+//* TODO: zoom format in filenames: [x1, x1.00, x100%].
 
 //* rendering:
 //* TODO: arithmetic emulation of all blending operations, not native to JS.
-//* TODO: arithmetic emulation of all operations in 16-bit or more, until final result; to be optionally available as checkbox/selectbox.
-//*	Uint8ClampedArray: [0,255], used internally by canvas.
-//*	Int16Array: [-32768,32767], allows subprecision, user must somehow manually clamp result overflows.
-//*	Int32Array: [-2147483648,2147483647], same + more space for overflow/clamping (useless?).
-//*	Float32Array: [0,1], allows overflow/clamping too.
-//*	Float64Array: [0,1], same + more precision.
-//* TODO: decode layer data (PSD/PNG/etc) manually without using canvas, to avoid premultiplied-alpha (in Firefox, not needed in Chrome) while rendering (including result).
-//* TODO: img src: recompress using temporary canvas, save whichever is shorter (original vs temp) as base64 or blob.
+//* TODO: arithmetic emulation of all operations in 16/32-bit until final result; to be optionally available as checkbox/selectbox.
+//* TODO: decode layer data (PSD/PNG/etc) manually without using canvas, to avoid premultiplied-alpha (PMA - in Firefox, not in Chrome) while rendering.
+//* TODO: img src: recompress using temporary canvas (bad with PMA), save whichever is shorter (original vs temp) as base64 or blob.
+
+//* later when it works at all, try in spare time:
+//* TODO: split functionality into modules to reuse with drawpad, etc.
 
 //* Config *-------------------------------------------------------------------
 
@@ -27,35 +27,78 @@ var	regLayerNameToSkip		= /^(skip)$/i
 ,	regLayerNameParamOrComment	= /(?:^|[\s_]*)(?:\[([^\[\]]*)\]|\([^()]*\))(?:[\s_]*|$)/i
 ,	regLayerNameParamSplit		= /[\s,_]+/g
 ,	regLayerNameParamTrim		= /^[\s,_]+|[\s,_]+$/g
+
 //* examples of comments: "... (1) ... (copy 2) (etc)"
-//* examples of params: "... [param] ... [param,param param]"
+//* examples of params: "... [param] ... [param,param param_param]"
+
+//* TODO: make visible user manual from notes and examples.
+//* TODO: keep all parameters single-word if possible.
 
 ,	regLayerNameParamType = {
-//* TODO: keep all parameters single-word if possible.
 		'skip':		/^(skip)$/i
-	,	'colors':	/^(colou?r)s$/i
-	,	'parts':	/^(option|part|type)s$/i
+	,	'none':		/^(none)$/i
 	,	'if_only':	/^(if|in)$/i
 	,	'not':		/^(\!|not?)$/i
 	,	'any':		/^(\?|any|some)$/i
-	,	'outline':	/^(outline)$/i
-	,	'radius':	/^(\d+)px$/i
 
-/* examples of layer folder names with parameter syntax:
-	"[if no any parts] arm"	(render contents of this folder if "part: arm" select box value is empty)
-	"[if any colors] 1"	(render contents of this folder if "color: 1" select box value is non-empty)
-	"[if not colors] 1"	(render only those subfolders, which are named not as the "color: 1" select box value)
-	"[if colors] 1"		(render only those subfolders, which are named same as the "color: 1" select box value)
+	,	'colors':	/^(colou?r)s$/i
+	,	'parts':	/^(option|part|type)s$/i
 
-	Note: [parts] folder without [if] uses logical parameters just the same way.
-	Note: [colors] folder without [if] gets replaced with selected color, or skipped if empty value is selected.
-*/
-	,	'multi_select':	/^x(\d*)([+-](\d*))?$/i
-/* examples of 'multi_select' parameter value:
-	[x0-1]	(1 or none)
-	[x1+]	(1 or more)
-	[x2]	(exactly 2)
-	[x]	(any, from none to all at once)
+	,	'paddings':	/^(outline|inline)([+-]edge|box)?$/i
+	,	'radius':	/^(\d[x\d-]*)px$/i
+
+	,	'opacities':	/^(\d[\d-]*)%(\d*)$/i
+	,	'zoom':		/^x(\d[\d-]*)%(\d*)$/i
+
+	,	'multi_select':	/^(?:x(\d[\d-]*)|optional)$/i
+/*
+examples of layer folder names with parameter syntax:
+
+	"[if not any parts] body" (render contents of this folder if "parts: body" select box value is empty)
+	"[if     any parts] body" (render contents of this folder if "parts: body" select box value is non-empty)
+	"[if not colors]    hair" (render only those subfolders/layers, which are named not as the "colors: hair" select box value)
+	"[if     colors]    hair" (render only those subfolders/layers, which are named same as the "colors: hair" select box value)
+
+	Note: any amount of whitespace is ok.
+	Note: [none] discards layer name for option ID, result equals empty name; may be used for clarity in logical sets.
+	Note: [parts/colors] folder with [if/not/any] are intended for logical dependencies, and do not add options to selectable list.
+	Note: [colors] folder without [if/not/any] gets replaced with selected color, or skipped if empty value is selected. Any layer inside it is added as option regardless of nesting depth, which is intended for logical dependencies and overwriting color value under same name.
+
+examples of 'paddings', 'radius':
+
+	[outline 1-2x3-4px]	(1 to 2 x 3 to 4 px radius, rectangle area around each pixel)
+	[outline 2xpx]		(2 px radius, square area)
+	[outline 1-4px]		(1 to 4 px radius, rounded area)
+
+	Note: [outline]      fills a max-around-value mask behind all above it in the same folder.
+	Note: [outline-edge] draws outline on outer side, inner areas and transparent holes are skipped.
+	Note: [outline-box]  draws bounding rectangle edge.
+	Note: [inline]       fills inside of min-around-value mask over all below it in the same folder.
+	Note: [inline-edge]  fills outside of min-around-value mask, may be used with clipping group.
+	Note: [inline-box]   fills bounding rectangle area.
+
+examples of 'opacities':
+
+	[100-50%]	(set opacity of this layer/folder to exactly 100 or 50%)
+	[0-30-60-90%1]	(exactly 30, 60, 90%, or skip rendering at 0%, preselect format version 1)
+
+examples of 'zoom':
+
+	[x50-100-200%]	(scale to 50, 100 or 200%, default shortest format in filenames)
+	[x100-50-25%2]	(scale to 100, 50 or 25%, preselect format version 2)
+
+	Note: applied to whole result image, so if needed - put this on topmost root layer for clarity.
+	Note: first one listed is shown by default.
+	Note: 100% is rendered first regardless of selection, then scaled up/down repeatedly by up to x2, until target scale is met.
+	Note: all intermediate results are cached and reused.
+
+examples of 'multi_select':
+
+	[optional]	(1 or none)
+	[x0-1]		(1 or none)
+	[x1+]		(1 or more)
+	[x2]		(exactly 2)
+	[x]		(any, from none to all at once)
 
 	Note: [parts] cannot be selected more than 1 at once currently.
 	Note: [colors] cannot be selected more than 1 at once (they will overwrite anyway).
@@ -69,11 +112,15 @@ var	regLayerNameToSkip		= /^(skip)$/i
 	,	'preselect':	/^(batch-fix|batch-single|no-batch|pre-?select)(-last)?$/i
 
 //* for export filename - omit this list title:
+//* TODO: add prefix automatically only if option names collide?
 	,	'no_prefix':	/^(no-prefix)$/i
 	}
+,	regLayerBlendModePass	= /^pass[-through]*$/i
 ,	regLayerTypeSingleTrim	= /s+$/i
+,	regNaN			= /\D+/g
 ,	regSpace		= /\s+/g
 ,	regTrim			= /^\s+|\s+$/g
+,	regTrimNaN		= /^\D+|\D+$/g
 ,	regTrimNewLine		= /[^\S\r\n]*(\r\n|\r|\n)/g
 
 ,	regJSONstringify = {
@@ -95,7 +142,8 @@ var	regLayerNameToSkip		= /^(skip)$/i
 ,	TYPE_TP = 'text/plain'
 ,	TOS = ['object', 'string']
 ,	FALSY_STRINGS = ['', 'false', 'no', 'none', 'null', 'undefined']
-,	NAME_PARTS_ORDER = ['parts', 'colors']
+,	NAME_PARTS_FOLDERS = ['parts', 'colors']
+,	NAME_PARTS_ORDER = ['parts', 'colors', 'paddings', 'opacities', 'zoom']
 ,	SPLIT_SEC = 60
 ,	MAX_OPACITY = 255
 ,	fileNameAddParamKey = true
@@ -108,11 +156,38 @@ var	regLayerNameToSkip		= /^(skip)$/i
 ,	BLEND_MODES_REPLACE = [
 		['src', 'source']
 	,	['dst', 'destination']
-	// ,	['liner', 'linear']
+	,	['liner', 'linear']
+	,	['substruct', 'substract']
 	,	[/^.*:/g]
 	,	[/[\s\/_-]+/g, '-']
+	,	[regLayerBlendModePass, 'pass']
 	]
-//* JS-native:
+,	BLEND_MODES_REMAP = {
+		'normal':	BLEND_MODE_NORMAL
+	,	'add':		BLEND_MODE_ADD
+	,	'linear-dodge':	BLEND_MODE_ADD
+//* from SAI2, remap according to PSD.js:
+	,	'burn':		'color-burn'
+	,	'burn-dodge':	'vivid-light'
+	,	'darken-color':	'darker-color'
+	,	'dodge':	'color-dodge'
+	,	'exclude':	'exclusion'
+	,	'lighten-color':'lighter-color'
+	,	'shade':	'linear-burn'
+	,	'shade-shine':	'linear-light'
+	,	'shine':	BLEND_MODE_ADD
+	}
+,	BLEND_MODES_EMULATED = [
+		'darker-color'
+	,	'divide'
+	,	'hard-mix'
+	,	'lighter-color'
+	,	'linear-burn'
+	,	'linear-light'
+	,	'pin-light'
+	,	'substract'
+	,	'vivid-light'
+//* JS-native blending will be used automatically when available:
 /*
 	,	'color-burn'
 	,	'color-dodge'
@@ -133,40 +208,9 @@ var	regLayerNameToSkip		= /^(skip)$/i
 	,	'saturation'
 	,	'luminosity'
 */
-,	BLEND_MODES_REMAP = {
-		'normal':	BLEND_MODE_NORMAL
-	,	'clipping':	BLEND_MODE_CLIP
-	,	'add':		BLEND_MODE_ADD
-	,	'linear-dodge':	BLEND_MODE_ADD
-//* from SAI2:
-	,	'burn':		'color-burn'
-	,	'burn-dodge':	'vivid-light'
-	,	'darken-color':	'darker-color'
-	,	'dodge':	'color-dodge'
-	,	'exclude':	'exclusion'
-	,	'lighten-color':'lighter-color'
-	,	'liner-burn':	'linear-burn'
-	,	'liner-dodge':	BLEND_MODE_ADD
-	,	'liner-light':	'linear-light'
-	,	'shade':	'linear-burn'
-	,	'shade-shine':	'linear-light'
-	,	'shine':	BLEND_MODE_ADD
-	,	'substruct':	'substract'
-	}
-,	BLEND_MODES_EMULATED = [
-//* JS-native blending will be used automatically when available:
-		'darker-color'
-	,	'divide'
-	,	'hard-mix'
-	,	'lighter-color'
-	,	'linear-burn'
-	,	'linear-light'
-	,	'pin-light'
-	,	'substract'
-	,	'vivid-light'
 	]
-,	PSD_COLOR_MODES = [
 //* taken from PSDLIB.js:
+,	PSD_COLOR_MODES = [
 		'Bitmap'
 	,	'Grayscale'
 	,	'Indexed'
@@ -178,12 +222,14 @@ var	regLayerNameToSkip		= /^(skip)$/i
 	,	'Duotone'
 	,	'Lab'
 	]
+,	TESTING = false
 ,	project = {}
 	;
 
 //* Config: loaders of project files *-----------------------------------------
 
 var	examplesDir = 'example_project_files/'
+,	exampleProjectFiles = []
 ,	libDir = 'lib/'
 ,	libFormatsDir = libDir + 'formats/'
 ,	fileTypeLibs = {
@@ -218,7 +264,7 @@ var	examplesDir = 'example_project_files/'
 //* no support for ORA in CSP/SAI
 //* not enough supported features in Krita
 
-//* situation: draw in SAI2 → export PSD → import PSD in Krita (loses clipping groups) → export ORA (loses opacity masks)
+//* way: draw in SAI2 → export PSD → import PSD in Krita (loses clipping groups) → export ORA (loses opacity masks)
 //* wish: draw in SAI2 → export ORA (all layers rasterized + all blending properties and modes included as attributes)
 
 			'varName': 'ora'
@@ -307,33 +353,17 @@ function pause(msec) {
 	);
 }
 
+function getByPropChain() {
+var	a = toArray(arguments)
+,	o = a.shift()
+	;
+	while (o && a.length > 0) o = o[a.shift()];
+	return o;
+}
+
 function toArray(a) {try {return TOS.slice.call(a);} catch (e) {return [];}}
 function arrayFilterNonEmptyValues(v) {return !!v;}
 function arrayFilterUniqueValues(v,i,a) {return a.indexOf(v) === i;}
-
-//* https://stackoverflow.com/a/33703102
-//* a, b = TypedArray of same type
-function concatTypedArrays(a,b,c,n) {
-var	c = new (c || a.constructor)(n || (a.length + b.length));
-	c.set(a, 0);
-	c.set(b, a.length);
-	return c;
-}
-
-function concatTypedArraysPaddedForHeap(a,b) {
-var	realSize = a.length + b.length
-,	paddedSize = nextValidHeapSize(realSize)
-	;
-
-	// console.log([realSize, paddedSize]);
-
-var	d = new ArrayBuffer(paddedSize)
-,	c = new Uint8Array(d)
-	;
-	c.set(a, 0);
-	c.set(b, a.length);
-	return c;
-}
 
 //* https://gist.github.com/wellcaffeinated/5399067#gistcomment-1364265
 function nextValidHeapSize(realSize) {
@@ -457,6 +487,7 @@ function trim(t) {
 	);
 }
 
+function trimOrz(n,d) {return orz(n.replace(regTrimNaN, ''), d);}
 function orz(n,d) {return (isNaN(d) ? parseInt(n||0) : parseFloat(n||d))||0;}
 function orzFloat(n) {return orz(n, 4);}
 function leftPad(n, len, pad) {
@@ -465,6 +496,28 @@ function leftPad(n, len, pad) {
 	pad = '' + (pad || 0);
 	while (n.length < len) n = pad+n;
 	return n;
+}
+
+function getNumbersArray(t,n) {
+var	a = (
+		t
+		.split(regNaN)
+		.map(orz)
+	);
+	return (
+		n && n > 0
+		? a.slice(0, n)
+		: a
+	);
+}
+
+function getUniqueNumbersArray(t) {
+	return (
+		t
+		.split(regNaN)
+		.map(orz)
+		.filter(arrayFilterUniqueValues)
+	);
 }
 
 function getFileExt(n) {return n.split(/\./g).pop().toLowerCase();}
@@ -559,46 +612,6 @@ var	i,k
 	return old_dict;
 }
 
-function showProps(target, flags, spaces, keyTest, valueTest) {
-/* flags:
-	1 = return, don't alert
-	2 = skip if value evaluates to false
-	4 = only keys
-	8 = only values
-	0x10 = 16 = nested once
-	0x20 = 32 = nested recursive
-*/
-var	k,v,j = ' '
-,	output = ''
-,	sep = ': '
-	;
-	try {
-		if (flags & 16) {
-			v = (flags & 32 ? flags : flags - 16) | 1;
-			output = Object.keys(target).map(
-				function(k) {
-					return k+sep+showProps(target[k], v, spaces, keyTest, valueTest);
-				}
-			).join('\n\n');
-		} else {
-			if (!Object.keys(target)) throw new TypeError('test');
-			for (k in target) if (
-				((v = target[k]) || !(flags & 2))
-			&&	(!keyTest   || !keyTest  .test || keyTest  .test(k))
-			&&	(!valueTest || !valueTest.test || valueTest.test(v))
-			) output += (
-				(output?'\n':'')
-			+	((flags & 8)?'':k)
-			+	((flags &12)?'':' = ')
-			+	((flags & 4)?'':(spaces && v?(v+j).split(j, spaces).join(j):v))
-			);
-		}
-	} catch (error) {
-		output = (typeof target)+sep+target;
-	}
-	return (flags & 1) ? output : alert(output);
-}
-
 function logTime(k, v) {
 var	t = getLogTime();
 	if (typeof k !== 'undefined') t += ' - ' + k;
@@ -680,7 +693,7 @@ function loadLib(lib) {
 			}
 
 		var	dir = lib.dir || ''
-		,	scripts = lib.files || []
+		,	scripts = lib.files || (lib.join ? lib : toArray(arguments))
 			;
 			addNextScript();
 		}
@@ -688,9 +701,6 @@ function loadLib(lib) {
 }
 
 async function loadLibOnDemand(libName) {
-
-	async function loadLibDepends(depends) {
-	}
 
 var	lib = fileTypeLibs[libName] || {}
 ,	varName = lib.varName || ''
@@ -700,7 +710,6 @@ var	lib = fileTypeLibs[libName] || {}
 var	dir = lib.dir || ''
 ,	scripts = (lib.files || []).slice()
 	;
-
 	if (!scripts.length) return false;
 
 var	depends = lib.depends || null;
@@ -948,7 +957,7 @@ function getImgOptimized(img) {
 	return img || new Promise(
 		(resolve, reject) => {
 
-//* TODO: get array of pixels without premultiplied alpha
+//* TODO: get array of pixels without premultiplied alpha; decode PNG manually?
 
 			function checkResult(canvas, img) {
 			var	oldSrc = img.src
@@ -956,20 +965,16 @@ function getImgOptimized(img) {
 			,	isOldBetter = (newSrc.length >= oldSrc.length)
 			,	blob = dataToBlob(isOldBetter ? oldSrc : newSrc)
 				;
-				// console.log(['isOldBetter', isOldBetter, oldSrc.length, newSrc.length, img]);
 
-				// if (!isOldBetter) {
-				// var	blob = dataToBlob(isOldBetter ? oldSrc : newSrc);
-					if (blob) newSrc = blob.url; else
-					if (isOldBetter) newSrc = null;
+				if (blob) newSrc = blob.url; else
+				if (isOldBetter) newSrc = null;
 
-					if (newSrc) {
-						img.onload = () => resolve(img);
-						img.src = newSrc;
-					} else {
-						resolve(img);
-					}
-				// }
+				if (newSrc) {
+					img.onload = () => resolve(img);
+					img.src = newSrc;
+				} else {
+					resolve(img);
+				}
 			}
 
 			if (
@@ -982,27 +987,7 @@ function getImgOptimized(img) {
 			,	h = canvas.height = img.height
 			,	ctx
 				;
-			/*	if (ctx = canvas.getContext('webgl', {
-					'premultipliedAlpha': false
-				})) {
-					// ctx.pixelStorei(ctx.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
-					ctx.clearColor(0.0, 0.0, 0.0, 1.0);
-					ctx.clear(ctx.COLOR_BUFFER_BIT);
-				} else
-				if (ctx = canvas.getContext('bitmaprenderer')) {
-					createImageBitmap(img, 0,0, w,h, {
-						'premultiplyAlpha': 'none'	//* <- does not help; decode PNG manually to get real values?
-					,	'resizeQuality': 'pixelated'
-					}).then(
-						(b) => {
-							// console.log(['bmp', b]);
-
-							ctx.transferFromImageBitmap(b);
-							checkResult(canvas, img);
-						}
-					);
-				} else
-			*/	if (ctx = canvas.getContext('2d')) {
+				if (ctx = canvas.getContext('2d')) {
 					ctx.drawImage(img, 0,0);
 					checkResult(canvas, img);
 				} else {
@@ -1058,29 +1043,70 @@ async function loadProject(sourceFile) {
 		function getProjectOptions(projectWIP) {
 
 			function processLayerInBranch(layer) {
-			var	n = layer.name
-			,	params = layer.params
-			,	i,j,k,p
-				;
 
-				if (
-					params.skip
-				||	regLayerNameToSkip.test(n)
-				) {
-					return;
-				}
-
-//* add option group:
-
-				if (layer.isOptionList) {
-				var	t = layer.type
+				function getOrAddProjectOption(t,n,i,v) {
+				var	t = ''+t
+				,	n = ''+n
 				,	o = (options || (options = {}))
 				,	o = (o[t] || (o[t] = {}))
-				,	g = (o[n] || (o[n] = {
+				,	o = (o[n] || (o[n] = {
 						'params': {}
 					,	'items': {}
-					})).params
+					}))
 					;
+					if (i) {
+						o = o.items;
+						o = (o[i] || (o[i] = {
+							'layer': v.layer
+						,	'values': []
+						,	'requires': {}
+						,	'except': {}
+						}));
+						o.values.push(v);
+					}
+					return o;
+				}
+
+//* TODO: vary colors depending on layer path and logic, not just single first met layer.
+//* TODO: fix inclusion/exclusion logic, multiple [not] in paths, etc.
+
+				function addOptionRules(t,n,i,layer) {
+				var	j = (
+						!params.not === !(p ? p.params.not : false)
+						? 'requires'
+						: 'except'
+					)
+				,	rules = getLayerParentOptions(layer)
+				,	a = getOrAddProjectOption(
+						t,n,i
+					,	{
+							'layer': layer
+						,	'rules': rules
+						}
+					);
+					a[j] = mergeDictOfArrays(a[j], rules);
+				}
+
+				function checkBatchParams(globalOptionParams) {
+					for (var k of [
+						'batch',
+						'preselect',
+					]) if (params[k]) {
+						if (!projectWIP.batch.paramNameDefault) {
+							projectWIP.batch.paramNameMarked = k;
+							projectWIP.batch.paramNameDefault = getOtherBatchParam(k);
+						}
+						globalOptionParams[k] = true;
+					}
+				}
+
+				function addOptionGroup(layer) {
+				var	t = layer.type
+				,	g = getOrAddProjectOption(t,n).params
+				,	j,k,o
+					;
+					checkBatchParams(g);
+
 					if (j = params[k = 'multi_select']) {
 						if (o = g[k]) {
 							if (o.min > j.min) o.min = j.min;
@@ -1092,64 +1118,105 @@ async function loadProject(sourceFile) {
 					}
 
 					for (k of [
-						'batch',
-						'preselect',
-					]) if (params[k]) {
-						if (!projectWIP.batch.paramNameDefault) {
-							projectWIP.batch.paramNameMarked = k;
-							projectWIP.batch.paramNameDefault = getOtherBatchParam(k);
-						}
-						g[k] = true;
-					}
-
-					for (k of [
 						'last',
 						'no_prefix',
 					]) {
 						if (params[k]) g[k] = true;
 					}
-				} else
-
-//* add item to option group:
-
-				if (
-					(p = getParentLayer(layer))
-				&&	p.isOptionList
-				) {
-				var	parentOptions = getLayerParentOptions(layer)
-				,	k = p.name
-				,	t = p.type
-				,	o = options[t]
-				,	g = o[k].items
-				,	a = (g[n] || (g[n] = {
-						'layer': layer
-					,	'requires': {}
-					,	'except': {}
-					}))
-					;
-					layer.isOption = true;
-					layer.type = t.replace(regLayerTypeSingleTrim, '');
-
-//* TODO: debug all cases of inclusion/exclusion logic, [not], etc:
-
-					j = (
-						!params.not === !p.params.not
-						? 'requires'
-						: 'except'
-					);
-					a[j] = mergeDictOfArrays(a[j], parentOptions);
 				}
 
+				function addOptionGroupItem(layer, p) {
+				var	k = p.name
+				,	t = p.type
+					;
+					addOptionRules(t,k,n,layer);
+
+					layer.isOption = true;
+					layer.type = t.replace(regLayerTypeSingleTrim, '');
+				}
+
+				function addOptionItemsFromParam(t, byLayerName) {
+					if (j = params[t]) {
+					var	o = getOrAddProjectOption(t, (byLayerName ? n : t))
+					,	g = o.params
+					,	a = o.items
+						;
+						checkBatchParams(g);
+
+						if ((i = 'format') in j) g[i] = j[i];
+						if ((i = 'values') in j) {
+							j[i].map(v => {
+								v += '%';	//* <- avoid autosorting of bare numbers in <select>
+								if (byLayerName) addOptionRules(t,n,v,layer);
+								else if (!(v in a)) a[v] = v;
+							});
+						}
+					}
+				}
+
+			var	n = layer.name
+			,	params = layer.params
+			,	p = getParentLayer(layer)
+			,	a,g,i,j,k,o,t
+				;
+
+				if (
+					params.skip
+				||	regLayerNameToSkip.test(n)
+				) {
+					return;
+				}
+
+				addOptionItemsFromParam('zoom');
+				addOptionItemsFromParam('opacities', true);
+
+				if (layer.isOptionList) addOptionGroup(layer); else
+				if (p && p.isOptionList) addOptionGroupItem(layer, p);
+
 				if (a = layer.layers) {
-					a.map(processLayerInBranch);
+					layer.layers = getUnskippedProcessedLayers(a);
 				} else
 				if (layer.opacity > 0) {
 					projectWIP.loading.images.push(layer);
 				}
+
+				return layer;
+			}
+
+			function isLayerSkipped(layer) {
+				return (
+					layer.params.skip
+				||	regLayerNameToSkip.test(layer.name)
+				);
+			}
+
+			function getUnskippedProcessedLayers(layers) {
+			var	a = []
+			,	i = layers.length
+			,	skips = layers.map(isLayerSkipped)
+			,	layer
+				;
+
+				while (i--) if (
+					!skips[i]
+				&&	(layer = layers[i])
+				) {
+					if (
+						skips[i + 1]
+					&&	layer.clipping
+					) {
+						skips[i] = true;
+					} else {
+						a.push(layer);
+					}
+				}
+				a.reverse();
+
+				return a.map(processLayerInBranch);
 			}
 
 		var	options, k;
-			projectWIP.layers.map(processLayerInBranch);
+			projectWIP.layers = getUnskippedProcessedLayers(projectWIP.layers);
 
 			if (!projectWIP.batch.paramNameDefault) {
 				projectWIP.batch.paramNameDefault = k = 'batch';
@@ -1177,8 +1244,6 @@ async function loadProject(sourceFile) {
 					} catch (error) {
 						console.log(error);
 					}
-
-					// console.log([layer.name, img]);
 
 					if (img) {
 						if (
@@ -1223,8 +1288,6 @@ async function loadProject(sourceFile) {
 				}
 			} else {
 				logTime('"' + projectWIP.fileName + '" finished loading, took ' + (+new Date - projectWIP.loading.startTime) + ' ms, options not found.');
-
-				// loadProjectFinalizeDisplayFallBack(projectWIP);
 			}
 		} catch (error) {
 			console.log(error);
@@ -1233,8 +1296,6 @@ async function loadProject(sourceFile) {
 				projectWIP.options = null;
 				delete projectWIP.options;
 			}
-
-			// loadProjectFinalizeDisplayFallBack(projectWIP);
 		}
 
 		return projectWIP;
@@ -1282,15 +1343,11 @@ async function loadProject(sourceFile) {
 	var	i = projectWIP.loading.imagesCount
 	,	j = projectWIP.layersCount
 		;
-		if (i && i == j) {
-			t.push(i + ' ' + la.project.layers + ' (' + la.project.images + ')');
-		} else {
-			if (i) t.push(i + ' ' + la.project.images);
-			if (j) t.push(j + ' ' + la.project.layers);
-		}
+		if (j) t.push(j + ' ' + la.project.layers);
+		if (i) t.push(i + ' ' + la.project.images);
 
 		if (sourceFile.size) t.push(sourceFile.size + ' ' + la.project.bytes);
-		if (sourceFileTime) t.push(la.project.date + ' ' + getFormattedTime(sourceFileTime));
+		if (sourceFileTime)  t.push(la.project.date + ' ' + getFormattedTime(sourceFileTime));
 
 		cre('div', e).innerHTML = (
 			t
@@ -1324,10 +1381,9 @@ async function loadProject(sourceFile) {
 	,	v = 'any'
 	,	m = (projectWIP.batch.paramNameDefault !== 'batch' ? 'yes' : 'no')
 	,	i,j,k,n
-	// ,	table = cre('table', cre('div', e))
 	,	table, tr, td
 		;
-		if (table)
+		if (TESTING && (table = cre('table', cre('div', e))))
 		for (i in f) {
 			tr = cre('tr', table);
 			td = cre('td', tr);
@@ -1361,12 +1417,14 @@ async function loadProject(sourceFile) {
 
 //* project parser testing:
 
-	/*	e = cre('p', container);
-		e.style.backgroundColor = 'red';
+		if (TESTING) {
+			e = cre('p', container);
+			e.style.backgroundColor = 'red';
 
-		addButton('save data JSON', 'saveDL(project.sourceData, "data", "json", 1, replaceJSONpartsFromPSD)', e);
-		addButton('save tree JSON', 'saveDL(project.layers, "tree", "json", 1, replaceJSONpartsFromTree)', e);
-		addButton('save project JSON', 'saveDL(project, "project", "json", 1, replaceJSONpartsFromPSD)', e);*/
+			addButton('save data JSON', 'saveDL(project.sourceData, "data", "json", 1, replaceJSONpartsFromPSD)', e);
+			addButton('save tree JSON', 'saveDL(project.layers, "tree", "json", 1, replaceJSONpartsFromTree)', e);
+			addButton('save project JSON', 'saveDL(project, "project", "json", 1, replaceJSONpartsFromPSD)', e);
+		}
 
 //* place for results:
 
@@ -1380,8 +1438,6 @@ async function loadProject(sourceFile) {
 		function updateBatchCheckbox(params) {
 			return function(e) {
 				params.preselect = e.target.checked;
-
-				// console.log(JSON.stringify(params));
 			}
 		}
 
@@ -1427,7 +1483,7 @@ async function loadProject(sourceFile) {
 
 //* list item = each part:
 
-				for (var optionName in items) /*if (f = items[name])*/ {
+				for (var optionName in items) {
 					addOption(s, optionName || '?');
 				}
 
@@ -1542,15 +1598,40 @@ var	m,v
 				!(k in params)
 			&&	(m = param.match(regLayerNameParamType[k]))
 			) {
-				if (NAME_PARTS_ORDER.indexOf(k) >= 0) {
+				if (NAME_PARTS_FOLDERS.indexOf(k) >= 0) {
 					if (!layer.type && isLayerFolder) {
 						layer.type = k;
 					}
-				} else if (k === 'multi_select') {
-					v = orz(m[1]);
+				} else
+				if (k === 'zoom' || k === 'opacities') {
 					params[k] = {
-						'min': Math.max(0, v)
-					,	'max': Math.max(1, m[2] ? orz(m[3]) : v)
+						'values': getUniqueNumbersArray(m[1])
+					,	'format': orz(m[2])
+					};
+				} else
+				if (k === 'paddings') {
+					params[k] = {
+						'way': m[1]	//* <- inline|outline
+					,	'form': m[2]	//* <- edge|box|default
+					};
+				} else
+				if (k === 'radius') {
+					v = getNumbersArray(m[1], 2);
+					params[k] = {
+						'x': Math.max(1, v[0])
+					,	'y': Math.max(1, v[v.length > 1?1:0])
+					,	'form': (m[1].indexOf('x') < 0 ? 'round' : 'box')
+					};
+				} else
+				if (k === 'multi_select') {
+					v = (
+						m[1] == 'optional'
+						? [0,1]
+						: getNumbersArray(m[1], 2)
+					);
+					params[k] = {
+						'min': Math.max(0, v[0])
+					,	'max': Math.max(1, v[v.length > 1?1:0])
 					};
 				} else {
 					if (k == 'preselect' && param.indexOf('last') >= 0) params.last = true;
@@ -1558,10 +1639,11 @@ var	m,v
 				}
 			}
 		}
-		if (layer.type) {
+		if (k = layer.type) {
 			if (params.any) {
 				layer.isOptionIf = true;
-			} else {
+			} else
+			if (NAME_PARTS_FOLDERS.indexOf(k) >= 0) {
 				layer.isOptionList = true;
 			}
 		}
@@ -1605,8 +1687,6 @@ async function loadCommonWrapper(projectWIP, libName, fileParserFunc, treeConstr
 	}
 
 	if (sourceData) {
-		// console.log(['sourceData', sourceData]);
-
 		projectWIP.sourceData	= sourceData;
 		projectWIP.toPng	= thisToPng;
 
@@ -1634,7 +1714,10 @@ async function loadORA(projectWIP) {
 	,	function treeConstructorFunc(projectWIP, sourceData) {
 			if (!sourceData.layers) return;
 
-		var	l_i = projectWIP.layersCount = sourceData.layersCount;
+		var	l_i = projectWIP.layersCount = (
+				(sourceData.layersCount || 0)
+			+	(sourceData.stacksCount || 0)
+			);
 
 			if (!l_i) return;
 
@@ -1689,15 +1772,15 @@ async function loadPSDCommonWrapper(projectWIP, libName, varName) {
 	,	function treeConstructorFunc(projectWIP, sourceData) {
 			if (!sourceData.layers) return;
 
-		var	l_i = projectWIP.layersCount = sourceData.layers.length
-		,	m
-			;
+		var	l_i = projectWIP.layersCount = sourceData.layers.length;
 
 			if (!l_i) return;
 
+		var	m = sourceData.header.mode;
+
 			projectWIP.width	= sourceData.header.cols;
 			projectWIP.height	= sourceData.header.rows;
-			projectWIP.colorMode	= (isNaN(m = sourceData.header.mode) ? m : PSD_COLOR_MODES[m]);
+			projectWIP.colorMode	= (isNaN(m) ? m : PSD_COLOR_MODES[m]);
 			projectWIP.channels	= sourceData.header.channels;
 			projectWIP.bitDepth	= sourceData.header.depth;
 
@@ -1705,37 +1788,45 @@ async function loadPSDCommonWrapper(projectWIP, libName, varName) {
 
 			function addLayerToTree(layer, parentGroup) {
 			var	l = layer.layer || layer
+			,	i = layer.image || l.image
+			,	m = layer.mask  || l.mask
+			,	mask = null
 
 //* "fill" opacity is used by SAI2 instead of usual one for layers with certain blending modes when exporting to PSD.
 //* source: https://github.com/meltingice/psd.js/issues/153#issuecomment-436456896
 
-			,	fo = (
+			,	fillOpacity = (
 					l.fillOpacity
 					? getProperOpacity(l.fillOpacity().layer.adjustments.fillOpacity.obj.value)
 					: 1
 				)
+			,	passThru = getByPropChain(l, 'adjustments', 'sectionDivider', 'obj', 'blendMode')
+				;
 
-//* layer masks are complicated in PSD
+				if (!regLayerBlendModePass.test(passThru)) {
+					passThru = null;
+				}
 
-			/*,	i = l.image || layer.image || layer
-			,	n = l.node  || layer.node || layer
-			,	n = n.layer || n
-			,	m = n.mask  || n
-			,	mask = (
-					m
-					? {
-						top:    m.top
-					,	left:   m.left
-					,	width:  m.width
-					,	height: m.height
+				/*
+				if (
+					m && !m.disabled
+				&&	i && i.hasMask
+				&&	(m = {
+						top:    orz(m.top)
+					,	left:   orz(m.left)
+					,	width:  orz(m.width)
+					,	height: orz(m.height)
 					,	color:  m.defaultColor
 					,	data:   i.maskData
-					}
-					: null
-				)*/
+					})
+				&&	m.data.length > 0
+				) {
+					mask = m;
+				}
+				*/
 
-			,	m = l.blendMode || layer.blendMode || {}
-			,	n = layer.name || ''
+			var	m = layer.blendMode || l.blendMode || {}
+			,	n = layer.name || l.name || ''
 			,	layers = layer.hasChildren() ? layer.children() : null
 			,	isLayerFolder = (layers && layers.length > 0)
 			,	parentGroup = getNextParentAfterAddingLayerToTree(
@@ -1745,8 +1836,8 @@ async function loadPSDCommonWrapper(projectWIP, libName, varName) {
 					,	width:  orz(l.width)
 					,	height: orz(l.height)
 					,	clipping:  getTruthyValue(layer.clipped || m.clipped || m.clipping)
-					,	opacity:   getProperOpacity(l.opacity) * fo
-					,	blendMode: getProperBlendMode(m.mode || m)
+					,	opacity:   getProperOpacity(l.opacity) * fillOpacity
+					,	blendMode: getProperBlendMode(passThru || m.mode || m)
 					,	blendModeOriginal: (m.mode || m)
 					// ,	mask:      mask
 					}
@@ -1942,8 +2033,6 @@ var	values = {};
 				? [s.value]
 				: gt('option', s).map(o => o.value)
 			);
-
-			// console.log(sectionName +' '+ listName +' '+ JSON.stringify(params) +' '+ (b?'single':'batch') +' '+ JSON.stringify(o));
 		}
 	);
 
@@ -1968,12 +2057,12 @@ function getAllValueSets(checkPreselected) {
 			)
 			;
 			for (var i in optionNames) {
-			var	optionName = optionNames[i]
-//* source:
+
 //* https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/assign#Deep_Clone
 
-			,	values = JSON.parse(JSON.stringify(partialValueSet || {}))
+			var	values = JSON.parse(JSON.stringify(partialValueSet || {}))
 			,	section = (values[sectionName] || (values[sectionName] = {}))
+			,	optionName = optionNames[i]
 				;
 				section[listName] = optionName;
 
@@ -2112,7 +2201,72 @@ function drawImageOrColor(ctx, img, x,y, blendMode, opacity) {
 		}
 	}
 
-	function applyBlendingEmulation(a,b, blendMode) {
+	function tryBlendingEmulation(blendMode) {
+
+		function getOrCreateReusableHeap() {
+		var	buffer = project.renderingBuffer;
+
+			if (!buffer) {
+			var	realSize = project.width * project.height * 4 * 2
+			,	paddedSize = nextValidHeapSize(realSize)
+			,	buffer = project.renderingBuffer = new ArrayBuffer(paddedSize)
+				;
+			}
+
+			return new Uint8Array(buffer);
+		}
+
+		function tryEmulation(blendMode, callback) {
+
+//* get pixels of layer below (B):
+
+			ctx.globalAlpha = 1;
+			ctx.globalCompositeOperation = BLEND_MODE_NORMAL;
+
+		var	oldData = ctx.getImageData(0,0, w,h)
+		,	b = oldData.data
+			;
+
+//* get pixels of layer above (A):
+
+			ctx.clearRect(0,0, w,h);
+			ctx.globalAlpha = opacity;
+
+			drawImageOrColorInside();
+
+		var	newData = ctx.getImageData(0,0, w,h)
+		,	a = newData.data
+			;
+
+//* compute resulting pixels linearly into newData, and save result back onto canvas:
+
+		var	isDone = callback(a,b, blendMode);
+
+			ctx.putImageData(isDone ? newData : oldData, 0,0);
+
+			return isDone;
+		}
+
+		function usingAsmJS(a,b, blendMode) {
+			try {
+			var	i = a.length
+			,	uint8array = getOrCreateReusableHeap()
+			,	env = null
+			,	heap = uint8array.buffer
+			,	compute = CompositionModule(window, env, heap)
+				;
+				uint8array.set(b, 0);
+				uint8array.set(a, i);
+
+				compute[funcName](i);
+				a.set(uint8array.slice(0, i));
+
+				return true;
+
+			} catch (error) {
+				console.log(error);
+			}
+		}
 
 //* try computing in asm.js:
 
@@ -2122,167 +2276,10 @@ function drawImageOrColor(ctx, img, x,y, blendMode, opacity) {
 			CompositionModule
 		&&	CompositionFuncList
 		&&	CompositionFuncList.indexOf(funcName) >= 0
+		&&	tryEmulation(blendMode, usingAsmJS)
 		) {
-			try {
-			var	i = a.length
-			,	uint8array = concatTypedArraysPaddedForHeap(b,a)
-			,	env = null
-			,	heap = uint8array.buffer
-			,	compute = CompositionModule(window, env, heap)
-				;
-				compute[funcName](i);
-				a.set(uint8array.slice(0, i));
-
-				return;
-
-			} catch (error) {
-				console.log(error);
-			}
+			return true;
 		}
-
-//* try computing in pure JS:
-
-//* default "Normal" as fallback:
-	var	RGBexpression = (
-			'if (alphaAbove !== 1) a[i] = alphaAbove*a[i] + alphaAComp*b[i];'
-		);
-
-//* blend A onto B, pixel by pixel (C):
-//* source: http://www.simplefilter.de/en/basics/mixmods.html
-
-
-/* TODO:
-'darker-color'	[need formula]
-'lighter-color'	[need formula]
-'divide'
-'hard-mix'	[partly done]
-'linear-burn'	[partly done]
-'linear-light'	[partly done]
-'pin-light'
-'substract'
-'vivid-light'
-*/
-
-/*
-source: https://limnu.com/webgl-blending-youre-probably-wrong/
-
-Premultiplied colors are what your compositor or renderer spits out, even if you used straight-alpha images with straight-alpha blending. In order to get a straight-alpha image out, you have to add an extra step to UN-pre-multiply, or divide by alpha. And pre-multiplying is bad enough, nobody wants to post-divide.
-
-With straight alpha, your blending function is symmetric. A*x + B*(1-x). We're used to that math, and it just feels right, it makes sense. Premultiplied blending, A + B*(1-x), looks strange, doesn't it?
-*/
-		if (blendMode === 'hard-mix') {
-
-//* A < 1-B: C = 0;
-//* A > 1-B: C = 1;
-//* TODO: alpha multipliers
-
-			RGBexpression = (
-				'a[i] = (a[i] + b[i] < k ? 0 : MAX);'
-			);
-		} else
-		if (blendMode === 'linear-burn') {
-
-//* C = B + A - 1;
-//* TODO: fix alpha multipliers, still wrong if bottom layer alpha < 100%
-
-			RGBexpression = (
-				'if (alphaBelow !== 0) {'
-			+	'	j = alphaAbove*a[i] + alphaAComp*b[i];'
-			+	'	k = b[i] + alphaAbove*(a[i] - MAX);'
-			+	'	a[i] = alphaBComp*j + alphaBelow*k;'
-			+	'}'
-			);
-
-		} else
-		if (blendMode === 'linear-light') {
-
-//* C = B + 2*A - 1;
-//* TODO: fix alpha multipliers, still wrong if bottom layer alpha < 100%
-
-			RGBexpression = (
-				'if (alphaBelow !== 0) {'
-			+	'	j = alphaAbove*a[i] + alphaAComp*b[i];'
-			+	'	k = b[i] + alphaAbove*(a[i]*2 - MAX);'
-			+	'	a[i] = alphaBComp*j + alphaBelow*k;'
-			+	'}'
-			);
-		}
-
-/* target sample values in RGBA, top layer is using "linear-light" ("Shade/shine" in SAI2):
-
-above  =   0, 170,   0, 127
-below  = 131, 208, 255, 127
-result =   2, 224,  85, 191
-
-above  =   0, 170,   0, 127
-below  = 255, 128,   0, 127
-result =  85, 170,   0, 191
-
-above  =   0, 170,   0, 127
-below  = 172,  69,  85, 191
-result =  38, 120,   0, 223
-
-above  =   0, 170,   0, 127
-below  = 255,  85,   0, 191
-result = 109, 134,   0, 223
-
-above  =   0, 170,   0, 127
-below  = 220, 118,  73, 223
-result =  86, 161,   0, 239
-*/
-
-	var	aa  = !(RGBexpression.indexOf('alphaAbove') < 0)
-	,	ab  = !(RGBexpression.indexOf('alphaBelow') < 0)
-	,	am  = !(RGBexpression.indexOf('alphaMixed') < 0)
-	,	aac = !(RGBexpression.indexOf('alphaAComp') < 0)
-	,	abc = !(RGBexpression.indexOf('alphaBComp') < 0)
-	,	amc = !(RGBexpression.indexOf('alphaMComp') < 0)
-	,	aan = !(RGBexpression.indexOf('alphaANorm') < 0)
-	,	abn = !(RGBexpression.indexOf('alphaBNorm') < 0)
-	,	an = aan || abn
-	,	i = a.length
-	,	j,k
-	,	MAX = 255
-	,	codeBlock = (
-			[
-				'while (i--) if (i%4 === 3) {'
-//* blend alpha channel:
-			,	'	j = a[i];'
-			,	'	k = b[i];'
-			,	'var	alphaAbove = j / MAX'
-			,(ab?	',	alphaBelow = k / MAX':'')
-			,(aac?	',	alphaAComp = 1 - alphaAbove':'')
-			,(abc?	',	alphaBComp = 1 - alphaBelow':'')
-			,(an?	',	alphaSum   = alphaAbove + alphaBelow':'')
-			,(aan?	',	alphaANorm = alphaAbove / alphaSum':'')
-			,(abn?	',	alphaBNorm = alphaBelow / alphaSum':'')
-			,	'	;'
-			,	'	if (j === 0) {'
-			,	'		a[i] = k;'
-			,	'	} else'
-			,	'	if (j !== MAX) {'
-			,	'		if (k === MAX) {'
-			,	'			a[i] = k;'
-			,	'		} else {'
-			,	'			a[i] = k + alphaAbove * (MAX - k);'
-			,	'		}'
-			,	'	}'
-			,(am?	'	alphaMixed = a[i] / MAX;':'')
-			,(amc?	'	alphaMComp = 1 - alphaMixed;':'')
-			,	'} else {'
-//* blend color channels:
-			,	'	if (alphaAbove === 0) {'
-			,	'		a[i] = b[i];'
-			,	'	} else ' + RGBexpression
-			,	'}'
-			]
-			.join('\n')
-			.replace(/\bMAX\b/g, MAX)
-		);
-
-		// console.log(codeBlock);
-
-		eval(codeBlock);
 	}
 
 	if (!ctx || !img) return;
@@ -2302,46 +2299,15 @@ var	canvas = ctx.canvas
 ,	m = ctx.globalCompositeOperation
 	;
 
-//* use native JS blending if available, or emulation is not available yet:
+//* use native JS blending if available, or emulation fails/unavailable:
 
 	if (
 		m === blendMode
-	||	BLEND_MODES_EMULATED.indexOf(blendMode) < 0
+	||	!tryBlendingEmulation(blendMode)
 	) {
 		ctx.globalAlpha = opacity;
 
 		drawImageOrColorInside();
-	} else {
-
-//* otherwise, try blending emulation:
-
-		// console.log('globalCompositeOperation = '+m+', blendMode = '+blendMode+', opacity = '+opacity);
-
-//* get pixels of layer below (B):
-
-		ctx.globalAlpha = 1;
-		ctx.globalCompositeOperation = BLEND_MODE_NORMAL;
-
-	var	oldData = ctx.getImageData(0,0, w,h)
-	,	b = oldData.data
-		;
-
-//* get pixels of layer above (A):
-
-		ctx.clearRect(0,0, w,h);
-		ctx.globalAlpha = opacity;
-
-		drawImageOrColorInside();
-
-	var	newData = ctx.getImageData(0,0, w,h)
-	,	a = newData.data
-		;
-
-//* compute resulting pixels linearly into newData, and save result back onto canvas:
-
-		applyBlendingEmulation(a,b, blendMode);
-
-		ctx.putImageData(newData, 0,0);
 	}
 
 	ctx.globalAlpha = 1;
@@ -2364,7 +2330,7 @@ var	canvas = cre('canvas')
 	;
 	canvas.getContext('2d').putImageData(img, 0,0);
 
-	while (i--) if (i%4 === 3) d[i] = 255;
+	while (i) d[i|3] = 255, i -= 4;
 
 	ctx.putImageData(img, x,y);
 
@@ -2402,19 +2368,13 @@ function getImageDataColored(optionName, selectedColors, img) {
 			(optionName in optionalColors)
 		&&	(optionName in selectedColors)
 		) {
-		var	o = optionalColors[optionName].items[selectedColors[optionName]];
+		var	t,o = optionalColors[optionName].items[selectedColors[optionName]];
 			if (o) {
-				o = o.color || (
-					o.layer
-					? o.layer.img
-					: o.img
-				);
+				while (t = o.color || o.img || o.layer) o = t;
 				img = getImageDataBlended(
 					(img || o)
 				,	(img ? o : null)
 				);
-			} else {
-				// console.log([optionName, optionalColors, selectedColors, o]);
 			}
 		}
 
@@ -2504,7 +2464,9 @@ var	canvas = cre('canvas');
 				layer.isOptionList
 			||	layer.isOptionIf
 			) {
-				if (!params.not === !values[t][n]) continue;
+				if (!params.not === !values[t][n]) {
+					continue;
+				}
 			}
 
 			if (layer.isOption) {
@@ -2518,7 +2480,9 @@ var	canvas = cre('canvas');
 
 //* skip fully transparent:
 
-			if (layer.opacity <= 0) continue;
+			if (layer.opacity <= 0) {
+				continue;
+			}
 
 //* skip by explicit name or param:
 
@@ -2544,6 +2508,12 @@ var	canvas = cre('canvas');
 						) {
 							skipColoring = true;
 							i = getImageDataColored(n, colors);
+						} else
+						if (layer.blendMode == 'pass') {
+							l_a = l_a.slice(0, l_i).concat(j);
+							l_i = l_a.length;
+
+							continue;
 						} else {
 							i = getRenderByValues(values, j);
 						}
@@ -2680,7 +2650,6 @@ function getOrCreateRender(render) {
 var	values   = render.values   || (render.values   = getMenuValues())
 ,	fileName = render.fileName || (render.fileName = getFileNameByValuesToSave(values))
 ,	img      = render.img      || (render.img      = getOrCreateRenderedImg(render))
-// ,	imgData  = render.imgData  || (render.imgData  = img.src)
 	;
 	return render;
 }
@@ -2702,8 +2671,7 @@ var	canvas = getRenderByValues(render.values);
 	,	blob = dataToBlob(data)
 	,	e = cre('img')
 		;
-		e.title = //la.hint.canvas;
-		e.alt = fileName;
+		e.title = e.alt = fileName;
 		e.width = project.width;
 		e.height = project.height;
 		e.src = (blob ? blob.url : data);
@@ -2737,15 +2705,21 @@ function updateMenuAndRender() {
 async function renderAll(saveToFile, showOnPage) {
 	if (!(saveToFile || showOnPage)) return;
 
+var	logLabel = 'Render all: ' + project.fileName;
+
+	console.time(logLabel);
+	console.group(logLabel);
+
 var	sets = getAllValueSets(true)
-,	setsCountAtOnce = 0
+,	setsCountWithoutPause = 0
 ,	setsCount = 0
+,	totalTime = 0
 ,	container = (showOnPage ? delAllChildNodes(id('render-all') || id('render')) : null)
-,	startTime = +new Date
-,	lastPauseTime = startTime
+,	lastPauseTime = +new Date
 	;
 	for (var fileName in sets) if (values = sets[fileName]) {
-	var	render = getOrCreateRender(
+	var	startTime = +new Date
+	,	render = getOrCreateRender(
 			{
 				'values': values
 			,	'fileName': fileName
@@ -2754,23 +2728,29 @@ var	sets = getAllValueSets(true)
 		if (saveToFile) saveImg(render, getFileNameByValuesToSave(values, true));
 		if (showOnPage) showImg(render, container);
 
+	var	endTime = +new Date;
+
+		totalTime += (endTime - startTime);
 		setsCount++;
-		setsCountAtOnce++;
+		setsCountWithoutPause++;
 
 //* https://stackoverflow.com/a/53841885/8352410
 //* must wait at least 1 second between each 10 downloads in Chrome:
 
 		if (
-			(setsCountAtOnce > 9)
-		||	(+new Date - lastPauseTime > 500)
+			(setsCountWithoutPause > 9)
+		||	(endTime - lastPauseTime > 500)
 		) {
-			await pause(saveToFile ? (100 * setsCountAtOnce) : 100);
+			await pause(saveToFile ? (100 * setsCountWithoutPause) : 100);
 			lastPauseTime = +new Date;
-			setsCountAtOnce = 0;
+			setsCountWithoutPause = 0;
 		}
 	}
 
-	logTime('finished rendering ' + setsCount + ' sets, total ' + (+new Date - startTime) + ' ms');
+	logTime('finished rendering ' + setsCount + ' sets, total ' + totalTime + ' ms (excluding pauses)');
+
+	console.groupEnd(logLabel);
+	console.timeEnd(logLabel);
 }
 
 function dataToBlob(data) {
@@ -2895,6 +2875,8 @@ function showAll() {renderAll(0,1);}
 function showImg(render, container) {
 
 //* prepare before container cleanup to avoid flicker:
+//* (does not really help)
+
 var	img = getOrCreateRenderedImg(render);
 
 	(
@@ -2924,7 +2906,7 @@ async function onPageDrop(e) {
 	if (!window.FileReader) return;
 
 var	e = eventStop(e,0,1)
-,	totalFiles = 0
+,	tryFiles = []
 ,	files, name, ext, projectRenderFallBack
 	;
 
@@ -2933,37 +2915,39 @@ var	e = eventStop(e,0,1)
 	&&	(files = batch.files)
 	&&	files.length
 	) {
-		// if (batch.types) console.log(batch.types);
-
 		for (var file of files) if (
 			file
 		&&	(name = file.name).length > 0
 		&&	(ext = getFileExt(name)).length > 0
 		) {
-			totalFiles += 1;
-
-		var	projectWIP = await loadProject(
-				{
-					evt: e
-				,	file: file
-				,	name: name
-				,	ext: ext
-				}
-			);
-
-			if (projectWIP) {
-				if (projectWIP.options) return true;
-
-				if (!projectRenderFallBack) projectRenderFallBack = projectWIP;
-			}
+			tryFiles.push({
+				evt: e
+			,	file: file
+			,	name: name
+			,	ext: ext
+			});
 		}
 	}
 
-	if (projectRenderFallBack) {
-		loadProjectFinalizeDisplayFallBack(projectRenderFallBack);
-	} else {
-		alert(la.error.file + ' / ' + totalFiles);
+var	logLabel = 'Load project from event: ' + tryFiles.map(v => v.name).join(', ');
+
+	console.time(logLabel);
+	console.group(logLabel);
+
+	for (var file of tryFiles) {
+	var	projectWIP = await loadProject(file);
+
+		if (projectWIP) {
+			if (projectWIP.options) break;
+			if (!projectRenderFallBack) projectRenderFallBack = projectWIP;
+		}
 	}
+
+	if (!projectWIP) alert(la.error.file + ' / ' + tryFiles.length);
+	if (projectRenderFallBack) loadProjectFinalizeDisplayFallBack(projectRenderFallBack);
+
+	console.groupEnd(logLabel);
+	console.timeEnd(logLabel);
 }
 
 async function loadFromURL(e, url) {
@@ -2984,7 +2968,12 @@ var	p = getParentBeforeClass(e, 'file').parentNode
 
 var	name = getFileName(url)
 ,	ext = getFileExt(name)
-,	projectWIP = await loadProject(
+,	logLabel = 'Load project from url: ' + url
+	;
+	console.time(logLabel);
+	console.group(logLabel);
+
+var	projectWIP = await loadProject(
 		{
 			url: url
 		,	name: name
@@ -3001,19 +2990,20 @@ var	name = getFileName(url)
 
 //* finish the job:
 
-	if (projectWIP) {
-		if (projectWIP.options) return true;
+	if (!projectWIP) alert(la.error.file + ' : ' + url); else
+	if (!projectWIP.options) loadProjectFinalizeDisplayFallBack(projectWIP);
 
-		loadProjectFinalizeDisplayFallBack(projectWIP);
-	} else {
-		alert(la.error.file + ' : ' + url);
-	}
+	console.groupEnd(logLabel);
+	console.timeEnd(logLabel);
 }
 
 //* Runtime: prepare UI *------------------------------------------------------
 
 async function init() {
-	await loadLib({'files': [libDir + 'blending/composition.asm.js']});
+	await loadLib(
+		'config.js',
+		libDir + 'composition.asm.js',
+	);
 
 	if (CompositionModule = AsmCompositionModule) {
 		CompositionFuncList = Object.keys(CompositionModule(window, null, new ArrayBuffer(nextValidHeapSize(0))));
@@ -3053,76 +3043,64 @@ var	container = delAllChildNodes(document.body)
 	+	'\n' + a + '.'
 	);
 
-	e = cre('div', s);
-	e.id = 'examples';
+	if (
+		exampleProjectFiles
+	&&	exampleProjectFiles.length > 0
+	) {
+		e = cre('div', s);
+		e.id = 'examples';
 
-	cre('p', e).textContent = la.example.common;
+		cre('p', e).textContent = la.example.common;
 
-	[
-		{
-			'example': 'ora_mockup'
-		,	'files': [
-				['icon.ora'	, '128x128, 70 K'],
-			//	['unit_base.ora', '768x768, 1.6 M'],
-			]
-		},
-		{
-			'example': 'psd_from_sai2'
-		,	'files': [
-				['icon.psd'	, '128x128, 153 K'],
-			//	['portrait.psd'	, '256x256, 1.3 M'],
-			//	['unit.psd'	, '256x256, 2.1 M'],
-			//	['unit_base.psd', '768x768, 5.2 M'],
-			]
-		},
-	].map(
-		v => {
-			cre('p', e).innerHTML = (
-				'<header>'
-			+		(la.example[v.example] || v.example)
-			+		':'
-			+	'</header>'
-			+	'<div class="files">'
-			+		'<table>'
-			+	v.files.map(
-					file => {
-					var	fileName = (file.join ? file[0] : file)
-					,	comment  = (file.join ? file[1] : '')
-					,	filePath = examplesDir + fileName
-					,	fileAttr = encodeTagAttr(fileName)
-					,	pathAttr = encodeTagAttr(filePath)
-						;
-						return (
-							'<tr class="file"><td>'
-						+	[
-								fileName
-							// +	':'
+		exampleProjectFiles.map(
+			v => {
+				cre('p', e).innerHTML = (
+					'<header>'
+				+		(la.example[v.example] || v.example)
+				+		':'
+				+	'</header>'
+				+	'<div class="files">'
+				+		'<table>'
+				+	v.files.map(
+						file => {
+						var	fileName = (file.join ? file[0] : file)
+						,	comment  = (file.join ? file[1] : '')
+						,	filePath = examplesDir + (v.dir || '') + fileName
+						,	fileAttr = encodeTagAttr(fileName)
+						,	pathAttr = encodeTagAttr(filePath)
+							;
+							return (
+								'<tr class="file"><td>'
+							+	[
+									fileName
+								// +	':'
 
-							,	(comment ? '(' + comment + ')' : '')
+								,	(comment ? '(' + comment + ')' : '')
 
-							,	'<a href="'
-							+		pathAttr
-							+	'" download="'
-							+		fileAttr
-							+	'">'
-							+		la.buttons.download
-							+	'</a>'
+								,	'<a href="'
+								+		pathAttr
+								+	'" download="'
+								+		fileAttr
+								+	'">'
+								+		la.buttons.download
+								+	'</a>'
 
-							,	'<button onclick="loadFromURL(this, \''
-							+		pathAttr
-							+	'\')">'
-							+		la.buttons.load
-							+	'</button>'
-							].join('</td><td>')
-						+	'</td></tr>'
-						);
-					}
-				).join('')
-			+		'</table>'
-			+	'</div>'
-			);
-		}
-	);
+								,	'<button onclick="loadFromURL(this, \''
+								+		pathAttr
+								+	'\')">'
+								+		la.buttons.load
+								+	'</button>'
+								].join('</td><td>')
+							+	'</td></tr>'
+							);
+						}
+					).join('')
+				+		'</table>'
+				+	'</div>'
+				);
+			}
+		);
+	}
 
 	s = cre('section', container);
 	e = cre('div', s);
