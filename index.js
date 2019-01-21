@@ -825,6 +825,29 @@ function replaceJSONpartsFromTree(key, value) {
 	return value;
 }
 
+function replaceJSONpartsFromNameToCache(key, value) {
+	if (
+		key === 'zoom'
+	&&	value.substr
+	) {
+	var	z = orz(value);
+
+		if (z <= 0 || z == 100) return;
+
+	var	x = 100;
+
+		while (z < x && x > 0) {
+		var	d = Math.floor(x / 2);
+			if (z >= d) break;
+			x = d;
+		}
+		if (x <= 0 || x == 100) return;
+
+		return ''+x+'%';
+	}
+	return value;
+}
+
 function clearFill(ctx) {
 	ctx.fillStyle = 'white';
 	ctx.fillRect(0,0, ctx.canvas.width, ctx.canvas.height);
@@ -1435,9 +1458,9 @@ async function loadProject(sourceFile) {
 
 	function createOptionsMenu(options, container) {
 
-		function updateBatchCheckbox(params) {
+		function getBatchCheckboxUpdateFunc(params) {
 			return function(e) {
-				params.preselect = e.target.checked;
+				params.batch = !(params.preselect = !!e.target.checked);
 			}
 		}
 
@@ -1460,6 +1483,7 @@ async function loadProject(sourceFile) {
 			for (var listName in section) if (optionList = section[listName]) {
 			var	items = optionList.items
 			,	params = optionList.params
+			,	hasEmptyOption = false
 				;
 				params[c] = !(params[b] = (typeof params[c] === 'undefined'));
 
@@ -1473,7 +1497,7 @@ async function loadProject(sourceFile) {
 				i.type = 'checkbox';
 				i.title = la.options.preselect;
 				i.checked = params.preselect;
-				i.addEventListener('change', updateBatchCheckbox(params), false);
+				i.addEventListener('change', getBatchCheckboxUpdateFunc(params), false);
 
 			var	s = cre('select', optionBox);
 				s.name = listName;
@@ -1484,15 +1508,20 @@ async function loadProject(sourceFile) {
 //* list item = each part:
 
 				for (var optionName in items) {
-					addOption(s, optionName || '?');
+				var	n = optionName || '?';
+					if (n == '0%') {
+						n = '';
+						hasEmptyOption = true;
+					}
+					addOption(s, n);
 				}
 
 				if (
-					params.multi_select
+					!hasEmptyOption
+				&&	params.multi_select
 				&&	params.multi_select.min <= 0
 				) {
 					addOption(s, '');
-					// n.innerHTML = '&mdash;';
 				}
 
 				if (params.last) {
@@ -2584,7 +2613,7 @@ var	canvas = cre('canvas');
 	}
 }
 
-function getFileNameByValues(values, checkPreselected) {
+function getFileNameByValues(values, checkPreselected, skipDefaultPercent) {
 	return (
 		NAME_PARTS_ORDER
 		.map(
@@ -2604,11 +2633,22 @@ function getFileNameByValues(values, checkPreselected) {
 					&&	(optionName = section[listName]).length > 0
 					) {
 						if (params = project.options[sectionName][listName].params) {
-							if (
-								checkPreselected
-							&&	!params.batch
-							) {
-								continue;
+							if (checkPreselected) {
+								if (
+									params.preselect
+								||	!params.batch
+								) {
+									continue;
+								}
+							}
+
+							if (skipDefaultPercent) {
+								if (
+									(sectionName == 'zoom'      && orz(optionName) == 100)
+								||	(sectionName == 'opacities' && orz(optionName) == 0)
+								) {
+									continue;
+								}
 							}
 
 							if (
@@ -2634,52 +2674,90 @@ function getFileNameByValues(values, checkPreselected) {
 	);
 }
 
-function getFileNameByValuesToSave(values, checkPreselected) {
+function getFileNameByValuesToSave(values, checkPreselected, skipDefaultPercent) {
 	return (
 		[
 			project.baseName
-		,	getFileNameByValues(values || getMenuValues(), checkPreselected)
+		,	getFileNameByValues(values || getMenuValues(), checkPreselected, skipDefaultPercent)
 		]
 		.filter(arrayFilterNonEmptyValues)
 		.join('_')
 	);
 }
 
-function getOrCreateRender(render) {
+async function getOrCreateRender(render) {
 	if (!render) render = {};
 var	values   = render.values   || (render.values   = getMenuValues())
+,	refName  = render.refName  || (render.refName  = getFileNameByValuesToSave(JSON.parse(JSON.stringify(values, replaceJSONpartsFromNameToCache))))
 ,	fileName = render.fileName || (render.fileName = getFileNameByValuesToSave(values))
-,	img      = render.img      || (render.img      = getOrCreateRenderedImg(render))
+,	img      = render.img      || (render.img      = await getOrCreateRenderedImg(render))
 	;
+
+	// console.log([refName, fileName, values, img]);
+
 	return render;
 }
 
-function getOrCreateRenderedImg(render) {
-	if (!render) render = getOrCreateRender();
+async function getOrCreateRenderedImg(render) {
 
-	if (e = render.img) return e;
+	function getAndCacheRenderedImgElement(canvas, fileName, w,h) {
+		if (!canvas) return;
 
-var	fileName = render.fileName
-,	prerenders = (project.renders || (project.renders = {}))
-	;
+		return new Promise(
+			(resolve, reject) => {
+			var	data = canvas.toDataURL()
+			,	blob = dataToBlob(data)
+			,	img = cre('img')
+				;
+				img.width  = w || project.width;
+				img.height = h || project.height;
+				img.title = img.alt = fileName;
+				img.onload = () => resolve(img);
+				img.src = (blob ? blob.url : data);
 
-	if (e = prerenders[fileName]) return e;
-
-var	canvas = getRenderByValues(render.values);
-	if (canvas) {
-	var	data = canvas.toDataURL()
-	,	blob = dataToBlob(data)
-	,	e = cre('img')
-		;
-		e.title = e.alt = fileName;
-		e.width = project.width;
-		e.height = project.height;
-		e.src = (blob ? blob.url : data);
-
-		prerenders[fileName] = e;
+				prerenders[fileName] = img;
+			}
+		);
 	}
 
-	return e;
+	if (!render) render = await getOrCreateRender();
+
+	if (img = render.img) return img;
+
+var	prerenders = (project.renders || (project.renders = {}))
+,	fileName   = render.fileName
+,	refName    = render.refName
+,	values     = render.values
+	;
+
+	if (img = prerenders[fileName]) return img;
+
+var	img = prerenders[refName] || await getAndCacheRenderedImgElement(getRenderByValues(values), refName)
+,	z = values.zoom
+	;
+
+	if (img && z) {
+		while (x = z.zoom) z = x;
+
+		z = orz(z);
+
+		if (
+			z > 0
+		&&	z != 100
+		) {
+		var	x = z / 100
+		,	canvas = cre('canvas')
+		,	w = canvas.width  = Math.max(1, Math.round(x * project.width))
+		,	h = canvas.height = Math.max(1, Math.round(x * project.height))
+		,	ctx = canvas.getContext('2d')
+			;
+			ctx.drawImage(img, 0,0, w,h);
+
+			img = await getAndCacheRenderedImgElement(canvas, fileName, w,h);
+		}
+	}
+
+	return img;
 }
 
 function updateBatchOptions(e,n) {
@@ -2719,14 +2797,14 @@ var	sets = getAllValueSets(true)
 	;
 	for (var fileName in sets) if (values = sets[fileName]) {
 	var	startTime = +new Date
-	,	render = getOrCreateRender(
+	,	render = await getOrCreateRender(
 			{
 				'values': values
 			,	'fileName': fileName
 			}
 		);
-		if (saveToFile) saveImg(render, getFileNameByValuesToSave(values, true));
-		if (showOnPage) showImg(render, container);
+		if (saveToFile) await saveImg(render, getFileNameByValuesToSave(values, true, true));
+		if (showOnPage) await showImg(render, container);
 
 	var	endTime = +new Date;
 
@@ -2872,23 +2950,18 @@ var	size = dataURI.length
 function saveAll() {renderAll(1,0);}
 function showAll() {renderAll(0,1);}
 
-function showImg(render, container) {
+async function showImg(render, container) {
 
 //* prepare before container cleanup to avoid flicker:
-//* (does not really help)
 
-var	img = getOrCreateRenderedImg(render);
-
-	(
-		container
-	||	delAllChildNodes(id('render'))
-	).appendChild(
-		img
-	);
+var	img = await getOrCreateRenderedImg(render)
+,	parent = container || delAllChildNodes(id('render'))
+	;
+	parent.appendChild(img);
 }
 
-function saveImg(render, fileName) {
-	render = getOrCreateRender(render);
+async function saveImg(render, fileName) {
+	render = await getOrCreateRender(render);
 
 	saveDL(render.img.src, fileName || render.fileName, 'png');
 }
