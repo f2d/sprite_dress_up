@@ -2687,14 +2687,12 @@ function getFileNameByValuesToSave(values, checkPreselected, skipDefaultPercent)
 
 async function getOrCreateRender(render) {
 	if (!render) render = {};
-var	values   = render.values   || (render.values   = getMenuValues())
-,	refName  = render.refName  || (render.refName  = getFileNameByValuesToSave(JSON.parse(JSON.stringify(values, replaceJSONpartsFromNameToCache))))
-,	fileName = render.fileName || (render.fileName = getFileNameByValuesToSave(values))
-,	img      = render.img      || (render.img      = await getOrCreateRenderedImg(render))
+var	values    = render.values    || (render.values    = getMenuValues())
+,	refValues = render.refValues || (render.refValues = JSON.parse(JSON.stringify(values, replaceJSONpartsFromNameToCache)))
+,	refName   = render.refName   || (render.refName   = getFileNameByValuesToSave(refValues))
+,	fileName  = render.fileName  || (render.fileName  = getFileNameByValuesToSave(values))
+,	img       = render.img       || (render.img       = await getOrCreateRenderedImg(render))
 	;
-
-	// console.log([refName, fileName, values, img]);
-
 	return render;
 }
 
@@ -2732,9 +2730,17 @@ var	prerenders = (project.renders || (project.renders = {}))
 
 	if (img = prerenders[fileName]) return img;
 
-var	img = prerenders[refName] || await getAndCacheRenderedImgElement(getRenderByValues(values), refName)
+var	img = prerenders[refName]
 ,	z = values.zoom
 	;
+
+	if (!img) {
+		if (fileName == refName) {
+			img = await getAndCacheRenderedImgElement(getRenderByValues(values), refName);
+		} else {
+			img = (await getOrCreateRender({values: render.refValues})).img;
+		}
+	}
 
 	if (img && z) {
 		while (x = z.zoom) z = x;
