@@ -44,13 +44,13 @@ var	regLayerNameToSkip		= /^(skip)$/i
 	,	'colors':	/^(colou?r)s$/i
 	,	'parts':	/^(option|part|type)s$/i
 
-	,	'paddings':	/^(outline|inline)([+-]edge|box)?$/i
-	,	'radius':	/^(\d[x\d-]*)px$/i
+	,	'paddings':	/^(outline|inline)(?:\W*(box|edge|max|min))?$/i
+	,	'radius':	/^(.+?\d.+)px$/i
 
-	,	'opacities':	/^(\d[\d-]*)%(\d*)$/i
-	,	'zoom':		/^x(\d[\d-]*)%(\d*)$/i
+	,	'opacities':	/^(\d[\d\W]*)%(\d*)$/i
+	,	'zoom':		/^x(\d[\d\W]*)%(\d*)$/i
 
-	,	'multi_select':	/^(?:x(\d[\d-]*)|optional)$/i
+	,	'multi_select':	/^(?:x(\d[\d\W]*)|optional)$/i
 /*
 examples of layer folder names with parameter syntax:
 
@@ -66,26 +66,26 @@ examples of layer folder names with parameter syntax:
 
 examples of 'paddings', 'radius':
 
-	[outline 1-2x3-4px]	(1 to 2 x 3 to 4 px radius, rectangle area around each pixel)
-	[outline 2xpx]		(2 px radius, square area)
-	[outline 1-4px]		(1 to 4 px radius, rounded area)
+	[outline (1:2x3:4)px]	([1 to 2] width x [3 to 4] height px radius, rectangle area around each pixel)
+	[outline (1x/2x/3x)px]	((1 or 2 or 3) px radius, square area)
+	[outline (-1:4)px]	([1 to 4] px radius, rounded area)
 
-	Note: [outline]      fills a max-around-value mask behind all above it in the same folder.
-	Note: [outline-edge] draws outline on outer side, inner areas and transparent holes are skipped.
-	Note: [outline-box]  draws bounding rectangle edge.
-	Note: [inline]       fills inside of min-around-value mask over all below it in the same folder.
-	Note: [inline-edge]  fills outside of min-around-value mask, may be used with clipping group.
-	Note: [inline-box]   fills bounding rectangle area.
+	Note: [inline]		fills a padded mask over layers below it in the same folder.
+	Note: [outline]		fills a padded mask behind layers above it in the same folder.
+	Note: [outline-edge]	draws outline on outer side, inner areas and transparent holes are skipped.
+	Note: [outline-box]	draws or fills a padded bounding rectangle.
+	Note: [outline-max]	max-around-value mask.
+	Note: [outline-min]	min-around-value mask.
 
 examples of 'opacities':
 
 	[100-50%]	(set opacity of this layer/folder to exactly 100 or 50%)
-	[0-30-60-90%1]	(exactly 30, 60, 90%, or skip rendering at 0%, preselect format version 1)
+	[0/30/60/90%1]	(exactly (none or 30 or 60 or 90)%, preselect format version 1)
 
 examples of 'zoom':
 
-	[x50-100-200%]	(scale to 50, 100 or 200%, default shortest format in filenames)
-	[x100-50-25%2]	(scale to 100, 50 or 25%, preselect format version 2)
+	[x50/100/200%]	(scale to (50 or 100 or 200)%, default shortest format in filenames)
+	[x100-50-25%2]	(scale to (100 or 50 or 25)%, preselect format version 2)
 
 	Note: applied to whole result image, so if needed - put this on topmost root layer for clarity.
 	Note: first one listed is shown by default.
@@ -117,10 +117,12 @@ examples of 'multi_select':
 	}
 ,	regLayerBlendModePass	= /^pass[-through]*$/i
 ,	regLayerTypeSingleTrim	= /s+$/i
+,	regHasDigit		= /\d/
 ,	regNaN			= /\D+/g
 ,	regSpace		= /\s+/g
 ,	regTrim			= /^\s+|\s+$/g
 ,	regTrimNaN		= /^\D+|\D+$/g
+,	regTrimNaNorSign	= /^[^\d+-]+|[^\d+-]+$/g
 ,	regTrimNewLine		= /[^\S\r\n]*(\r\n|\r|\n)/g
 
 ,	regJSONstringify = {
@@ -345,6 +347,9 @@ var	examplesDir = 'example_project_files/'
 
 //* Common utility functions *-------------------------------------------------
 
+function dist(x,y) {return Math.sqrt(x*x + y*y)};
+function getAlphaDataIndex(x,y,w) {return ((y*w + x) << 2) | 3;}
+
 function pause(msec) {
 	return new Promise(
 		(resolve, reject) => {
@@ -357,7 +362,10 @@ function getByPropChain() {
 var	a = toArray(arguments)
 ,	o = a.shift()
 	;
-	while (o && a.length > 0) o = o[a.shift()];
+	while (a.length > 0) {
+		if (typeof o !== 'object') return null;
+		o = o[a.shift()];
+	}
 	return o;
 }
 
@@ -498,16 +506,11 @@ function leftPad(n, len, pad) {
 	return n;
 }
 
-function getNumbersArray(t,n) {
-var	a = (
-		t
-		.split(regNaN)
-		.map(orz)
-	);
+function getNumbersArray(t,n,s,f) {
 	return (
-		n && n > 0
-		? a.slice(0, n)
-		: a
+		t
+		.split(s || regNaN, orz(n) || -1)
+		.map(f || orz)
 	);
 }
 
@@ -903,9 +906,10 @@ var	e = cre('button', parent);
 	return e;
 }
 
-function addOption(parent, text) {
+function addOption(parent, text, value) {
 var	e = cre('option', parent);
-	e.textContent = e.value = text || '';
+	e.value = (typeof value !== 'undefined' ? value : text) || '';
+	e.textContent = text || '';
 	return e;
 }
 
@@ -1158,9 +1162,9 @@ async function loadProject(sourceFile) {
 					layer.type = t.replace(regLayerTypeSingleTrim, '');
 				}
 
-				function addOptionItemsFromParam(t, byLayerName) {
+				function addOptionItemsFromParam(t, n) {
 					if (j = params[t]) {
-					var	o = getOrAddProjectOption(t, (byLayerName ? n : t))
+					var	o = getOrAddProjectOption(t, n || t)
 					,	g = o.params
 					,	a = o.items
 						;
@@ -1169,10 +1173,27 @@ async function loadProject(sourceFile) {
 						if ((i = 'format') in j) g[i] = j[i];
 						if ((i = 'values') in j) {
 							j[i].map(v => {
-								v += '%';	//* <- avoid autosorting of bare numbers in <select>
-								if (byLayerName) addOptionRules(t,n,v,layer);
-								else if (!(v in a)) a[v] = v;
+							var	k = v + '%';	//* <- avoid autosorting of bare numbers in <select>
+								if (t == 'opacities') v = (orz(v) / 100);
+								a[k] = v;
 							});
+						}
+						if (t == 'paddings') {
+							if (j = params['radius']) {
+								j.map(v => {
+								var	k = (
+										'x' in v
+										? [v.x, v.y]
+										: [v.radius]
+									).map(x => (
+										'in' in x
+										? x.in + ':' + x.out
+										: x.out
+									)).join('x') + 'px';
+									a[k] = v;
+								});
+							}
+							layer.isMaskGenerated = true;
 						}
 					}
 				}
@@ -1191,7 +1212,8 @@ async function loadProject(sourceFile) {
 				}
 
 				addOptionItemsFromParam('zoom');
-				addOptionItemsFromParam('opacities', true);
+				addOptionItemsFromParam('opacities', n);
+				addOptionItemsFromParam('paddings', n);
 
 				if (layer.isOptionList) addOptionGroup(layer); else
 				if (p && p.isOptionList) addOptionGroupItem(layer, p);
@@ -1513,7 +1535,7 @@ async function loadProject(sourceFile) {
 						n = '';
 						hasEmptyOption = true;
 					}
-					addOption(s, n);
+					addOption(s, n, optionName);
 				}
 
 				if (
@@ -1641,16 +1663,44 @@ var	m,v
 				if (k === 'paddings') {
 					params[k] = {
 						'way': m[1]	//* <- inline|outline
-					,	'form': m[2]	//* <- edge|box|default
+					,	'form': m[2]	//* <- default|box|edge|etc
 					};
 				} else
 				if (k === 'radius') {
-					v = getNumbersArray(m[1], 2);
-					params[k] = {
-						'x': Math.max(1, v[0])
-					,	'y': Math.max(1, v[v.length > 1?1:0])
-					,	'form': (m[1].indexOf('x') < 0 ? 'round' : 'box')
-					};
+					params[k] = (
+						m[1]
+						.split('/')
+						.filter(v => regHasDigit.test(v))
+						.map(
+							x => {
+								x = x.split('x', 2).map(
+									y => {
+										if (y.length == 0) return null;
+										y = y.split(':', 2).map(
+											z => orz(
+												z.replace(regTrimNaNorSign, '')
+											)
+										);
+										if (y.length == 0) return {'out': 1};
+										if (y.length == 1) return {'out': y[0]};
+										return {
+											'in': Math.min(...y)
+										,	'out': Math.max(...y)
+										};
+									}
+								);
+								if (x.length == 0) return {'radius': 1};
+								if (x.length == 1) return {'radius': x[0]};
+								if (x[0] === null) x[0] = x[1];
+								if (x[1] === null) x[1] = x[0];
+								if (x[1] === null) x[1] = x[0] = 1;
+								return {
+									'x': x[0]
+								,	'y': x[1]
+								};
+							}
+						)
+					);
 				} else
 				if (k === 'multi_select') {
 					v = (
@@ -1669,8 +1719,8 @@ var	m,v
 			}
 		}
 		if (k = layer.type) {
-			if (params.any) {
-				layer.isOptionIf = true;
+			if (params.if_only && params.any) {
+				layer.isOptionIfAny = true;
 			} else
 			if (NAME_PARTS_FOLDERS.indexOf(k) >= 0) {
 				layer.isOptionList = true;
@@ -1757,6 +1807,7 @@ async function loadORA(projectWIP) {
 
 			function addLayerToTree(layer, parentGroup) {
 			var	n = layer.name || ''
+			,	mask = layer.mask || null
 			,	layers = layer.layers || null
 			,	isLayerFolder = (layers && layers.length > 0)
 			,	parentGroup = getNextParentAfterAddingLayerToTree(
@@ -1768,6 +1819,7 @@ async function loadORA(projectWIP) {
 					,	clipping:  getTruthyValue(layer.clipping)
 					,	opacity:   orzFloat(layer.opacity)
 					,	blendMode: getProperBlendMode(layer.composite)
+					,	mask: mask
 					}
 				,	layer
 				,	n
@@ -1777,7 +1829,7 @@ async function loadORA(projectWIP) {
 				if (isLayerFolder) layers.map(v => addLayerToTree(v, parentGroup));
 			}
 
-//* note: layer masks are emulated via compositing modes in ORA
+//* note: layer masks may be emulated via compositing modes in ORA
 
 		var	parentGroup = projectWIP.layers = [];
 
@@ -2189,13 +2241,13 @@ var	values = {};
 //* 3) get new values after update:
 
 		var	section = (values[sectionName] || (values[sectionName] = {}));
-			if (
+			section[listName] = (
 				!hide
 			&&	trim(listName = s.name).length > 0
 			&&	trim(selectedValue = s.value).length > 0
-			) {
-				section[listName] = selectedValue;
-			}
+				? selectedValue
+				: ''
+			);
 		}
 	);
 
@@ -2385,11 +2437,7 @@ var	x = (mask ? orz(mask.top ) : 0) - (img ? orz(img.top ) : 0)
 }
 
 function getImageDataColored(optionName, selectedColors, img) {
-	if (
-		(o = project)
-	&&	(o = o.options)
-	&&	(o = o.colors)
-	) {
+	if (o = getByPropChain(project, 'options', 'colors')) {
 	var	optionalColors = o
 	,	selectedColors = selectedColors || optionalColors
 		;
@@ -2406,13 +2454,20 @@ function getImageDataColored(optionName, selectedColors, img) {
 				);
 			}
 		}
-
 	}
 
 	return img;
 }
 
-function getRenderByValues(values, layersBatch, clippingGroupWIP) {
+function getProjectOptionItemValue(sectionName, listName, optionName, fallBack) {
+	if (typeof optionName === 'undefined') {
+		return fallBack;
+	}
+
+	return getByPropChain(project, 'options', sectionName, listName, 'items', optionName);
+}
+
+function getRenderByValues(values, layersBatch, renderParam) {
 
 	if (!project || !project.layers) {
 		return;
@@ -2435,182 +2490,251 @@ function getRenderByValues(values, layersBatch, clippingGroupWIP) {
 	}
 
 var	canvas = cre('canvas');
-	if (canvas.getContext) {
-	var	ctx = canvas.getContext('2d')
-	,	w = canvas.width  = project.width
-	,	h = canvas.height = project.height
-	,	l_a = layersBatch || project.layers
-	,	l_i = l_a.length
-	,	l_k = l_i
-	,	l_bottom = l_a[l_i - 1]
-	,	l_clipping_mask
-	,	colors = values.colors || {}
-	,	parts = values.parts || {}
-	,	layer
-	,	i,j,k,l,m,n,o,p,t
-		;
 
-		while (l_i-- > 0) if (layer = l_a[l_i]) {
-		var	params = layer.params
-		,	n = layer.name
-		,	t = layer.type
-		,	x = layer.left
-		,	y = layer.top
-		,	skipColoring = !!layer.isOptionIf
-		,	clippingGroupResult = false
-			;
+	if (!canvas.getContext) return;
+
+var	ctx = canvas.getContext('2d')
+,	w = canvas.width  = project.width
+,	h = canvas.height = project.height
+,	l_a = layersBatch || project.layers
+,	l_i = l_a.length
+,	l_k = l_i
+,	l_bottom = l_a[l_i - 1]
+,	l_clipping_mask
+,	renderParam = renderParam || {}
+,	opacities = values.opacities || {}
+,	paddings = values.paddings || {}
+,	colors = values.colors || {}
+,	parts = values.parts || {}
+,	layer
+,	i,j,k,l,m,n,o,p,t
+	;
+
+	while (l_i-- > 0) if (layer = l_a[l_i]) {
+	var	params = layer.params
+	,	n = layer.name
+	,	t = layer.type
+	,	x = layer.left
+	,	y = layer.top
+	,	skipColoring = !!params.if_only
+		;
 
 //* render clipping group as separate batch:
 
-			if (!clippingGroupWIP) {
-			var	g_a = [layer]
-			,	g_i = l_i
-			,	g_l
-				;
-				while (
-					(g_i-- > 0)
-				&&	(g_l = l_a[g_i])
-				&&	g_l.clipping
-				) {
-					g_a.push(g_l);
-				}
-
-			var	g_k = g_a.length
-				;
-				if (g_k > 1) {
-					if (g_k < l_k) {
-						l_i = g_i + 1;
-						clippingGroupResult = true;
-					} else {
-						clippingGroupWIP = true;
-					}
-				}
-			}
-
-//* skip not selected parts:
-
-			if (
-				layer.isOptionList
-			||	layer.isOptionIf
+		if (!renderParam.clippingGroupWIP) {
+		var	g_a = [layer]
+		,	g_i = l_i
+		,	g_l
+			;
+			while (
+				(g_i-- > 0)
+			&&	(g_l = l_a[g_i])
+			&&	g_l.clipping
 			) {
-				if (!params.not === !values[t][n]) {
-					continue;
+				g_a.push(g_l);
+			}
+
+		var	g_k = g_a.length
+			;
+			if (g_k > 1) {
+				if (g_k < l_k) {
+					l_i = g_i + 1;
+					renderParam.clippingGroupResult = true;
+				} else {
+					renderParam.clippingGroupWIP = true;
 				}
 			}
-
-			if (layer.isOption) {
-				if (
-					(p = getParentLayer(layer))
-				&&	(n !== values[p.type][p.name]) === (!params.not === !p.params.not)
-				) {
-					continue;
-				}
-			}
-
-//* skip fully transparent:
-
-			if (layer.opacity <= 0) {
-				continue;
-			}
+		}
 
 //* skip by explicit name or param:
 
+		if (
+			params.skip
+		||	regLayerNameToSkip.test(n)
+		) {
+			continue;
+		}
+
+//* skip not selected parts:
+
+		if (
+			layer.isOptionList
+		||	layer.isOptionIfAny
+		) {
+			if (!params.not === !values[t][n]) {
+				continue;
+			}
+		}
+
+		if (layer.isOption) {
 			if (
-				params.skip
-			||	regLayerNameToSkip.test(n)
+				(p = getParentLayer(layer))
+			&&	(n !== values[p.type][p.name]) === (!params.not === !p.params.not)
 			) {
 				continue;
 			}
+		}
+
+//* skip fully transparent:
+
+	var	opacity = getProjectOptionItemValue('opacities', n, opacities[n], layer.opacity);
+
+		if (opacity <= 0) {
+			continue;
+		}
 
 //* get layer/folder/batch as flat image:
 
-			i = null;
+	var	blendMode = (renderParam.ignoreBlendModes ? '' : layer.blendMode);
+		i = null;
 
-			if (clippingGroupResult) {
-				i = getRenderByValues(values, g_a.reverse(), true);
-			} else {
-				if (j = layer.layers) {
-					if (j.length > 0) {
-						if (
-							t === 'colors'
-						&&	!params.if_only
-						) {
-							skipColoring = true;
-							i = getImageDataColored(n, colors);
-						} else
-						if (layer.blendMode == 'pass') {
-							l_a = l_a.slice(0, l_i).concat(j);
-							l_i = l_a.length;
+		if (renderParam.clippingGroupResult) {
+			i = getRenderByValues(values, g_a.reverse(), {clippingGroupWIP: true});
+		} else
+		if (j = layer.layers) {
+			if (j.length > 0) {
+				if (
+					t === 'colors'
+				&&	!skipColoring
+				) {
+					i = getImageDataColored(n, colors);
+				} else
+				if (blendMode == 'pass') {
+					l_a = l_a.slice(0, l_i).concat(j);
+					l_i = l_a.length;
 
-							continue;
-						} else {
-							i = getRenderByValues(values, j);
-						}
-					}
+					continue;
 				} else {
-					i = layer.img;
+					i = getRenderByValues(values, j);
 				}
 			}
+		} else {
+			i = layer.img;
+		}
 
-			if (i) {
-				if (clippingGroupResult) {
-					x = y = 0;
-				} else {
+		if (i) {
+			if (renderParam.clippingGroupResult) {
+				x = y = 0;
+			} else {
 
 //* apply color:
 
-					if (!skipColoring) {
-						i.left = x;
-						i.top  = y;
-						i = getImageDataColored(n, colors, i);
-					}
+				if (!skipColoring) {
+					i.left = x;
+					i.top  = y;
+					i = getImageDataColored(n, colors, i);
 				}
+			}
+
+//* apply mask:
+
+			if (layer.isMaskGenerated) {
+			var	padding = getProjectOptionItemValue('paddings', n, paddings[n]);
+				if (padding) {
+				var	mask = getRenderByValues(
+						values
+					,	l_a.slice(0, l_i)
+					,	{
+							ignoreBlendModes: true
+						,	padding: padding
+						}
+					);
+				}
+			} else {
+				mask = layer.mask;
+			}
+
+			if (mask) {
+				i = getImageDataBlended(mask.img || mask, i);
+			}
 
 //* add content to current buffer canvas:
 
-				drawImageOrColor(ctx, i, x,y, layer.blendMode, layer.opacity);
+			drawImageOrColor(ctx, i, x,y, blendMode, opacity);
 
-				k = ++project.rendering.layersApplyCount;
+			k = ++project.rendering.layersApplyCount;
 
 //* store the mask of the clipping group:
 
-				if (
-					clippingGroupWIP
-				&&	layer === l_bottom
-				) {
-					l_clipping_mask = getMaskAndStripSourceAlpha(ctx, x,y, i.width, i.height);
-				}
-
-				clearCanvasForGC(i);
+			if (
+				renderParam.clippingGroupWIP
+			&&	layer === l_bottom
+			) {
+				l_clipping_mask = getMaskAndStripSourceAlpha(ctx, x,y, i.width, i.height);
 			}
-		}
-
-//* apply stored mask to the blended clipping group content:
-
-		if (i = l_clipping_mask) {
-			drawImageOrColor(ctx, i, i.left, i.top, BLEND_MODE_MASK);
 
 			clearCanvasForGC(i);
 		}
-
-//* end of layer batch:
-
-		if (!layersBatch) {
-			logTime(
-				'rendered in '
-			+	[	project.rendering.layersBatchCount + ' canvas elements'
-				,	project.rendering.layersApplyCount + ' blending steps'
-				,	(+new Date - project.rendering.startTime) + ' ms'
-				,	'subtitle'
-				].join(', ')
-			,	getFileNameByValues(values)
-			);
-
-			project.rendering = null;
-		}
-
-		return canvas;
 	}
+
+//* end of layer batch iteration.
+//* apply stored mask to the blended clipping group content:
+
+	if (i = l_clipping_mask) {
+		drawImageOrColor(ctx, i, i.left, i.top, BLEND_MODE_MASK);
+
+		clearCanvasForGC(i);
+	}
+
+//* apply padding:
+
+	if (padding = renderParam.padding) {
+	var	r = padding.radius;
+		if (r) {
+		var	threshold = r.threshold || 16
+		,	r0 = r.in
+		,	r1 = r.out
+		,	ref = ctx.getImageData(0,0, w,h)
+		,	res = ctx.getImageData(0,0, w,h)
+		,	referencePixels = ref.data
+		,	resultPixels    = res.data
+			;
+			for (var y = h; y--;) next_result_pixel:
+			for (var x = w; x--;) {
+			var	pos = getAlphaDataIndex(x,y,w)
+			,	distMin = +Infinity
+				;
+				look_around:
+				for (var ydy, dy = -r1; dy <= r1; dy++) if ((ydy = y + dy) >= 0 && ydy < h)
+				for (var xdx, dx = -r1; dx <= r1; dx++) if ((xdx = x + dx) >= 0 && xdx < w) {
+					if (referencePixels[getAlphaDataIndex(xdx, ydy, w)] > threshold) {
+					var	d = dist(dx, dy);
+						if (d <= r1) {
+							resultPixels[pos] = 255;
+							continue next_result_pixel;
+						}
+						if (distMin > d) distMin = d;
+					}
+				}
+
+			var	distFloor = Math.floor(distMin);
+				if (distFloor <= r1) {
+					resultPixels[pos] = 255 * (1 + distFloor - distMin);
+				} else {
+					resultPixels[pos] = 0;
+				}
+			}
+			ctx.putImageData(res, 0,0);
+		}
+	}
+
+//* end of layer tree:
+
+	if (!layersBatch) {
+		logTime(
+			'rendered in '
+		+	[	project.rendering.layersBatchCount + ' canvas elements'
+			,	project.rendering.layersApplyCount + ' blending steps'
+			,	(+new Date - project.rendering.startTime) + ' ms'
+			,	'subtitle'
+			].join(', ')
+		,	getFileNameByValues(values)
+		);
+
+		project.rendering = null;
+	}
+
+	return canvas;
 }
 
 function getFileNameByValues(values, checkPreselected, skipDefaultPercent) {
@@ -2854,7 +2978,7 @@ function dataToBlob(data) {
 				if (meta.slice(k+1) == 'base64') data = atob(data);
 			}
 		}
-	var	data = Uint8Array.from(TOS.map.call(data, v => v.charCodeAt(0)))
+	var	data = Uint8Array.from(TOS.map.call(data, (v => v.charCodeAt(0))))
 	,	size = data.length
 	,	url = URL_API.createObjectURL(new Blob([data], {'type': type}))
 		;
