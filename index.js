@@ -2724,7 +2724,7 @@ var	ctx = canvas.getContext('2d')
 				var	alpha = referencePixels[getAlphaDataIndex(xdx, ydy, w)];
 					if (threshold) {
 						if (alpha > threshold) {
-						var	d = dist(dx, dy);
+						var	d = dist(dx, dy) + 1 - alpha/255;
 							if (d > r1) {
 								if (distMin > d) distMin = d;
 							} else {
