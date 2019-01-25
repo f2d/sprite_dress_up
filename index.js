@@ -26,7 +26,7 @@
 var	regLayerNameToSkip		= /^(skip)$/i
 ,	regLayerNameParamOrComment	= /(?:^|[\s_]*)(?:\[([^\[\]]*)\]|\([^()]*\))(?:[\s_]*|$)/i
 ,	regLayerNameParamSplit		= /[\s,_]+/g
-,	regLayerNameParamTrim		= /^[\s,_]+|[\s,_]+$/g
+,	regLayerNameParamTrim		= getTrimReg('\\s,_')
 
 //* examples of comments: "... (1) ... (copy 2) (etc)"
 //* examples of params: "... [param] ... [param,param param_param]"
@@ -44,8 +44,8 @@ var	regLayerNameToSkip		= /^(skip)$/i
 	,	'colors':	/^(colou?r)s$/i
 	,	'parts':	/^(option|part|type)s$/i
 
-	,	'paddings':	/^(outline|inline)(?:\W*(box|edge|max|min))?$/i
-	,	'radius':	/^(.+?\d.+)px$/i
+	,	'paddings':	/^(outline|inline)(?:\W+(box|out))?$/i
+	,	'radius':	/^(.*?\d.*)px(?:\W+(max|min|\d+))?$/i
 
 	,	'opacities':	/^(\d[\d\W]*)%(\d*)$/i
 	,	'zoom':		/^x(\d[\d\W]*)%(\d*)$/i
@@ -54,10 +54,10 @@ var	regLayerNameToSkip		= /^(skip)$/i
 /*
 examples of layer folder names with parameter syntax:
 
-	"[if not any parts] body" (render contents of this folder if "parts: body" select box value is empty)
-	"[if     any parts] body" (render contents of this folder if "parts: body" select box value is non-empty)
-	"[if not colors]    hair" (render only those subfolders/layers, which are named not as the "colors: hair" select box value)
-	"[if     colors]    hair" (render only those subfolders/layers, which are named same as the "colors: hair" select box value)
+	"[if not any parts] body" = render contents of this folder if "parts: body" select box value is empty.
+	"[if     any parts] body" = render contents of this folder if "parts: body" select box value is non-empty.
+	"[if not colors]    hair" = render only those subfolders/layers, which are named not as the "colors: hair" select box value.
+	"[if     colors]    hair" = render only those subfolders/layers, which are named same as the "colors: hair" select box value.
 
 	Note: any amount of whitespace is ok.
 	Note: [none] discards layer name for option ID, result equals empty name; may be used for clarity in logical sets.
@@ -66,16 +66,17 @@ examples of layer folder names with parameter syntax:
 
 examples of 'paddings', 'radius':
 
-	[outline (1:2x3:4)px]	([1 to 2] width x [3 to 4] height px radius, rectangle area around each pixel)
-	[outline (1x/2x/3x)px]	((1 or 2 or 3) px radius, square area)
-	[outline (-1:4)px]	([1 to 4] px radius, rounded area)
+	"[outline (1:2x3:4)px]  name" = [1 to 2] width x [3 to 4] height px radius, rectangle area around each pixel.
+	"[outline (1x/2x/3x)px] name" = (1 or 2 or 3) px radius, square area.
+	"[outline (-4:5)px-max] name" = [-4 to 5] px radius, rounded area, use max value around.
 
-	Note: [inline]		fills a padded mask over layers below it in the same folder.
-	Note: [outline]		fills a padded mask behind layers above it in the same folder.
-	Note: [outline-edge]	draws outline on outer side, inner areas and transparent holes are skipped.
-	Note: [outline-box]	draws or fills a padded bounding rectangle.
-	Note: [outline-max]	max-around-value mask.
-	Note: [outline-min]	min-around-value mask.
+	Note: [inline]          fills a padded mask over layers below it in the same folder.
+	Note: [outline]         fills a padded mask behind layers above it in the same folder.
+	Note: [outline-out]     use a mask enclosed from outer side, fill inner areas and holes.
+	Note: [outline-box]     use bounding rectangle as a mask.
+	Note: [outline 5px-min] for each pixel use min value found inside 5px radius of source alpha.
+	Note: [outline 5px-max] for each pixel use max value found inside 5px radius.
+	Note: [outline 5px-16]  for each pixel use 100% alpha if any value inside 5px radius is above threshold 16 of 255.
 
 examples of 'opacities':
 
@@ -120,9 +121,9 @@ examples of 'multi_select':
 ,	regHasDigit		= /\d/
 ,	regNaN			= /\D+/g
 ,	regSpace		= /\s+/g
-,	regTrim			= /^\s+|\s+$/g
-,	regTrimNaN		= /^\D+|\D+$/g
-,	regTrimNaNorSign	= /^[^\d+-]+|[^\d+-]+$/g
+,	regTrim			= getTrimReg('\\s+')
+,	regTrimNaN		= getTrimReg('\\D+')
+,	regTrimNaNorSign	= getTrimReg('^\\d+-')
 ,	regTrimNewLine		= /[^\S\r\n]*(\r\n|\r|\n)/g
 
 ,	regJSONstringify = {
@@ -1172,7 +1173,7 @@ async function loadProject(sourceFile) {
 
 						if ((i = 'format') in j) g[i] = j[i];
 						if ((i = 'values') in j) {
-							j[i].map(v => {
+							j[i].forEach(v => {
 							var	k = v + '%';	//* <- avoid autosorting of bare numbers in <select>
 								if (t == 'opacities') v = (orz(v) / 100);
 								a[k] = v;
@@ -1180,16 +1181,21 @@ async function loadProject(sourceFile) {
 						}
 						if (t == 'paddings') {
 							if (j = params['radius']) {
-								j.map(v => {
-								var	k = (
-										'x' in v
-										? [v.x, v.y]
-										: [v.radius]
-									).map(x => (
-										'in' in x
-										? x.in + ':' + x.out
-										: x.out
-									)).join('x') + 'px';
+								j.forEach(v => {
+								var	t = v.threshold
+								,	k = (
+										(
+											typeof v.x !== 'undefined'
+											? [v.x, v.y]
+											: [v.radius]
+										).map(x => (
+											typeof x.in !== 'undefined'
+											? x.in + ':' + x.out
+											: x.out
+										)).join('x')
+									+	'px'
+									+	(t?'-'+t:'')
+									);
 									a[k] = v;
 								});
 							}
@@ -1557,7 +1563,7 @@ async function loadProject(sourceFile) {
 		createProjectView(projectWIP);
 		createOptionsMenu(projectWIP.options);
 
-		['loading', 'toPng', 'sourceData'].map(
+		['loading', 'toPng', 'sourceData'].forEach(
 			v => {
 				projectWIP[v] = null;
 				delete projectWIP[v];
@@ -1635,7 +1641,7 @@ var	m,v
 			.split(regLayerNameParamSplit)
 			.map(trimParam)
 			.filter(arrayFilterNonEmptyValues)
-			.map(v => paramList.push(v));
+			.forEach(v => paramList.push(v));
 		}
 		name = trim(name.replace(regLayerNameParamOrComment, ''));
 	}
@@ -1645,10 +1651,7 @@ var	m,v
 		paramList.sort();
 
 		for (var param of paramList) {
-			for (var k in regLayerNameParamType) if (
-				!(k in params)
-			&&	(m = param.match(regLayerNameParamType[k]))
-			) {
+			for (var k in regLayerNameParamType) if (m = param.match(regLayerNameParamType[k])) {
 				if (NAME_PARTS_FOLDERS.indexOf(k) >= 0) {
 					if (!layer.type && isLayerFolder) {
 						layer.type = k;
@@ -1663,11 +1666,11 @@ var	m,v
 				if (k === 'paddings') {
 					params[k] = {
 						'way': m[1]	//* <- inline|outline
-					,	'form': m[2]	//* <- default|box|edge|etc
+					,	'form': m[2]	//* <- box|enclosed|etc
 					};
 				} else
 				if (k === 'radius') {
-					params[k] = (
+					v = (
 						m[1]
 						.split('/')
 						.filter(v => regHasDigit.test(v))
@@ -1699,8 +1702,14 @@ var	m,v
 								,	'y': x[1]
 								};
 							}
+						).map(
+							v => {
+								v.threshold = m[2];
+								return v;
+							}
 						)
 					);
+					params[k] = v.concat(params[k] || []);
 				} else
 				if (k === 'multi_select') {
 					v = (
@@ -1826,14 +1835,14 @@ async function loadORA(projectWIP) {
 				,	parentGroup
 				,	isLayerFolder
 				);
-				if (isLayerFolder) layers.map(v => addLayerToTree(v, parentGroup));
+				if (isLayerFolder) layers.forEach(v => addLayerToTree(v, parentGroup));
 			}
 
 //* note: layer masks may be emulated via compositing modes in ORA
 
 		var	parentGroup = projectWIP.layers = [];
 
-			sourceData.layers.map(v => addLayerToTree(v, parentGroup));
+			sourceData.layers.forEach(v => addLayerToTree(v, parentGroup));
 
 			return true;
 		}
@@ -1927,12 +1936,12 @@ async function loadPSDCommonWrapper(projectWIP, libName, varName) {
 				,	parentGroup
 				,	isLayerFolder
 				);
-				if (isLayerFolder) layers.map(v => addLayerToTree(v, parentGroup));
+				if (isLayerFolder) layers.forEach(v => addLayerToTree(v, parentGroup));
 			}
 
 		var	parentGroup = projectWIP.layers = [];
 
-			sourceData.tree().children().map(v => addLayerToTree(v, parentGroup));
+			sourceData.tree().children().forEach(v => addLayerToTree(v, parentGroup));
 
 			return true;
 		}
@@ -2084,10 +2093,14 @@ var	section, optionList;
 }
 
 function setAllEmptyValues() {
-	gt('select', id('project-options')).map(
+	gt('select', id('project-options')).forEach(
 		s => {
-			for (o of s.options) if (o.value === '') {
-				s.value = '';
+			for (o of s.options) if ('' === o.value) {
+				s.value = o.value;
+				return;
+			}
+			for (o of s.options) if ('' === o.textContent.replace(regTrim, '')) {
+				s.value = o.value;
 				return;
 			}
 		}
@@ -2099,7 +2112,7 @@ function setAllEmptyValues() {
 function getAllMenuValues(checkPreselected) {
 var	values = {};
 
-	gt('select', id('project-options')).map(
+	gt('select', id('project-options')).forEach(
 		s => {
 		var	sectionName = s.getAttribute('data-section')
 		,	listName    = s.name
@@ -2187,7 +2200,7 @@ var	values = getAllMenuValues(checkPreselected)
 function getMenuValues(updatedValues) {
 var	values = {};
 
-	gt('select', id('project-options')).map(
+	gt('select', id('project-options')).forEach(
 		s => {
 
 //* 1) check current selected values:
@@ -2205,7 +2218,7 @@ var	values = {};
 			,	selectedValueHidden = false
 			,	allHidden = true
 				;
-				gt('option', s).map(
+				gt('option', s).forEach(
 					o => {
 					var	optionName = o.value
 					,	hide = !isOptionRelevant(updatedValues, sectionName, listName, optionName)
@@ -2679,39 +2692,64 @@ var	ctx = canvas.getContext('2d')
 //* apply padding:
 
 	if (padding = renderParam.padding) {
-	var	r = padding.radius;
+	var	r = padding.radius
+	,	t = padding.threshold
+	,	t_min = (t === 'min')
+	,	t_max = (t === 'max')
+	,	threshold = (
+			!(t_min || t_max)
+			? (orz(t) || 16)
+			: 0
+		);
 		if (r) {
-		var	threshold = r.threshold || 16
-		,	r0 = r.in
+		var	r0 = r.in
 		,	r1 = r.out
 		,	ref = ctx.getImageData(0,0, w,h)
 		,	res = ctx.getImageData(0,0, w,h)
 		,	referencePixels = ref.data
 		,	resultPixels    = res.data
+		,	resultValue, distMin
 			;
 			for (var y = h; y--;) next_result_pixel:
 			for (var x = w; x--;) {
-			var	pos = getAlphaDataIndex(x,y,w)
-			,	distMin = +Infinity
-				;
+			var	pos = getAlphaDataIndex(x,y,w);
+
+				if (t_min) resultValue = 255; else
+				if (t_max) resultValue = 0; else
+				if (threshold) distMin = +Infinity;
+
 				look_around:
 				for (var ydy, dy = -r1; dy <= r1; dy++) if ((ydy = y + dy) >= 0 && ydy < h)
 				for (var xdx, dx = -r1; dx <= r1; dx++) if ((xdx = x + dx) >= 0 && xdx < w) {
-					if (referencePixels[getAlphaDataIndex(xdx, ydy, w)] > threshold) {
-					var	d = dist(dx, dy);
-						if (d <= r1) {
-							resultPixels[pos] = 255;
-							continue next_result_pixel;
+				var	alpha = referencePixels[getAlphaDataIndex(xdx, ydy, w)];
+					if (threshold) {
+						if (alpha > threshold) {
+						var	d = dist(dx, dy);
+							if (d > r1) {
+								if (distMin > d) distMin = d;
+							} else {
+								resultPixels[pos] = 255;
+								continue next_result_pixel;
+							}
 						}
-						if (distMin > d) distMin = d;
+					} if (t_min) {
+						if (resultValue > alpha) resultValue = alpha;
+						if (resultValue == 0) break look_around;
+					} else {
+						if (resultValue < alpha) resultValue = alpha;
+						if (resultValue == 255) break look_around;
 					}
 				}
 
-			var	distFloor = Math.floor(distMin);
-				if (distFloor <= r1) {
-					resultPixels[pos] = 255 * (1 + distFloor - distMin);
+				if (threshold) {
+				var	distFloor = Math.floor(distMin);
+					resultPixels[pos] = (
+						distFloor > r1
+						? 0
+						: (255 * (1 + distFloor - distMin))
+					);
 				} else {
-					resultPixels[pos] = 0;
+					resultPixels[pos] = resultValue;
 				}
 			}
 			ctx.putImageData(res, 0,0);
@@ -3255,7 +3293,7 @@ var	container = delAllChildNodes(document.body)
 
 		cre('p', e).textContent = la.example.common;
 
-		exampleProjectFiles.map(
+		exampleProjectFiles.forEach(
 			v => {
 				cre('p', e).innerHTML = (
 					'<header>'
