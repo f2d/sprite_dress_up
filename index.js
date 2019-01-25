@@ -50,7 +50,7 @@ var	regLayerNameToSkip		= /^(skip)$/i
 	,	'opacities':	/^(\d[\d\W]*)%(\d*)$/i
 	,	'zoom':		/^x(\d[\d\W]*)%(\d*)$/i
 
-	,	'multi_select':	/^(?:x(\d[\d\W]*)|optional)$/i
+	,	'multi_select':	/^(x(\d[\d+-]*)|optional)$/i
 /*
 examples of layer folder names with parameter syntax:
 
@@ -117,6 +117,7 @@ examples of 'multi_select':
 	,	'no_prefix':	/^(no-prefix)$/i
 	}
 ,	regLayerBlendModePass	= /^pass[-through]*$/i
+,	regLayerBlendModeAlpha	= /^(source|destination)-(\w+)$/i
 ,	regLayerTypeSingleTrim	= /s+$/i
 ,	regHasDigit		= /\d/
 ,	regNaN			= /\D+/g
@@ -1715,7 +1716,7 @@ var	m,v
 					v = (
 						m[1] == 'optional'
 						? [0,1]
-						: getNumbersArray(m[1], 2)
+						: getNumbersArray(m[2], 2)
 					);
 					params[k] = {
 						'min': Math.max(0, v[0])
@@ -2530,11 +2531,16 @@ var	ctx = canvas.getContext('2d')
 	,	x = layer.left
 	,	y = layer.top
 	,	skipColoring = !!params.if_only
+	,	clippingGroupWIP = !!renderParam.clippingGroupWIP
+	,	clippingGroupResult = false
 		;
 
 //* render clipping group as separate batch:
 
-		if (!renderParam.clippingGroupWIP) {
+		if (
+			!clippingGroupWIP
+		&&	!renderParam.ignoreColors
+		) {
 		var	g_a = [layer]
 		,	g_i = l_i
 		,	g_l
@@ -2552,9 +2558,9 @@ var	ctx = canvas.getContext('2d')
 			if (g_k > 1) {
 				if (g_k < l_k) {
 					l_i = g_i + 1;
-					renderParam.clippingGroupResult = true;
+					clippingGroupResult = true;
 				} else {
-					renderParam.clippingGroupWIP = true;
+					clippingGroupWIP = true;
 				}
 			}
 		}
@@ -2596,13 +2602,36 @@ var	ctx = canvas.getContext('2d')
 			continue;
 		}
 
+//* skip unrelated to alpha composition:
+
+	var	blendMode = layer.blendMode;
+
+		if (renderParam.ignoreColors) {
+			if (!regLayerBlendModeAlpha.test(blendMode)) {
+				blendMode = BLEND_MODE_NORMAL;
+			}
+
+			if (
+				layer.clipping
+			&&	blendMode === BLEND_MODE_NORMAL
+			) {
+				continue;
+			}
+		}
+
 //* get layer/folder/batch as flat image:
 
-	var	blendMode = (renderParam.ignoreBlendModes ? '' : layer.blendMode);
 		i = null;
 
-		if (renderParam.clippingGroupResult) {
-			i = getRenderByValues(values, g_a.reverse(), {clippingGroupWIP: true});
+		if (clippingGroupResult) {
+			i = getRenderByValues(
+				values
+			,	g_a.reverse()
+			,	{
+					ignoreColors: renderParam.ignoreColors
+				,	clippingGroupWIP: true
+				}
+			);
 		} else
 		if (j = layer.layers) {
 			if (j.length > 0) {
@@ -2618,7 +2647,13 @@ var	ctx = canvas.getContext('2d')
 
 					continue;
 				} else {
-					i = getRenderByValues(values, j);
+					i = getRenderByValues(
+						values
+					,	j
+					,	{
+							ignoreColors: renderParam.ignoreColors
+						}
+					);
 				}
 			}
 		} else {
@@ -2626,39 +2661,42 @@ var	ctx = canvas.getContext('2d')
 		}
 
 		if (i) {
-			if (renderParam.clippingGroupResult) {
+			if (clippingGroupResult) {
 				x = y = 0;
 			} else {
 
 //* apply color:
 
-				if (!skipColoring) {
+				if (
+					!skipColoring
+				&&	!renderParam.ignoreColors
+				) {
 					i.left = x;
 					i.top  = y;
 					i = getImageDataColored(n, colors, i);
 				}
-			}
 
 //* apply mask:
 
-			if (layer.isMaskGenerated) {
-			var	padding = getProjectOptionItemValue('paddings', n, paddings[n]);
-				if (padding) {
-				var	mask = getRenderByValues(
-						values
-					,	l_a.slice(0, l_i)
-					,	{
-							ignoreBlendModes: true
-						,	padding: padding
-						}
-					);
+				if (layer.isMaskGenerated) {
+				var	padding = getProjectOptionItemValue('paddings', n, paddings[n]);
+					if (padding) {
+					var	mask = getRenderByValues(
+							values
+						,	l_a.slice(0, l_i)
+						,	{
+								ignoreColors: true
+							,	padding: padding
+							}
+						);
+					}
+				} else {
+					mask = layer.mask;
 				}
-			} else {
-				mask = layer.mask;
-			}
 
-			if (mask) {
-				i = getImageDataBlended(mask.img || mask, i);
+				if (mask) {
+					i = getImageDataBlended(mask.img || mask, i);
+				}
 			}
 
 //* add content to current buffer canvas:
@@ -2670,7 +2708,7 @@ var	ctx = canvas.getContext('2d')
 //* store the mask of the clipping group:
 
 			if (
-				renderParam.clippingGroupWIP
+				clippingGroupWIP
 			&&	layer === l_bottom
 			) {
 				l_clipping_mask = getMaskAndStripSourceAlpha(ctx, x,y, i.width, i.height);
