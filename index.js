@@ -50,6 +50,7 @@ var	regLayerNameToSkip		= /^(skip)$/i
 	,	'opacities':	/^(\d[\d\W]*)%(\d*)$/i
 	,	'zoom':		/^x(\d[\d\W]*)%(\d*)$/i
 
+	,	'side':		/^(front|back|reverse)$/i
 	,	'multi_select':	/^(x(\d[\d+-]*)|optional)$/i
 /*
 examples of layer folder names with parameter syntax:
@@ -92,6 +93,20 @@ examples of 'zoom':
 	Note: first one listed is shown by default.
 	Note: 100% is rendered first regardless of selection, then scaled up/down repeatedly by up to x2, until target scale is met.
 	Note: all intermediate results are cached and reused.
+
+examples of 'side':
+
+	[reverse]	(when back side is selected, this folder content will be rendered in reverse order)
+
+	[if reverse]
+	[back]
+	[not front]	(when back side is selected, this layer/folder will be drawn; may be used for different color masks)
+
+	[if not reverse]
+	[front]
+	[not back]	(when back side is selected, this layer/folder will be skipped)
+
+	Note: any of these will add one global select for all to the menu, with 2 options: front and back.
 
 examples of 'multi_select':
 
@@ -146,8 +161,9 @@ examples of 'multi_select':
 ,	TYPE_TP = 'text/plain'
 ,	TOS = ['object', 'string']
 ,	FALSY_STRINGS = ['', 'false', 'no', 'none', 'null', 'undefined']
+,	VIEW_SIDES = ['front', 'back']
 ,	NAME_PARTS_FOLDERS = ['parts', 'colors']
-,	NAME_PARTS_ORDER = ['parts', 'colors', 'paddings', 'opacities', 'zoom']
+,	NAME_PARTS_ORDER = ['parts', 'colors', 'paddings', 'opacities', 'side', 'zoom']
 ,	SPLIT_SEC = 60
 ,	MAX_OPACITY = 255
 ,	fileNameAddParamKey = true
@@ -360,7 +376,7 @@ function pause(msec) {
 	);
 }
 
-function getByPropChain() {
+function getPropByNameChain() {
 var	a = toArray(arguments)
 ,	o = a.shift()
 	;
@@ -368,6 +384,11 @@ var	a = toArray(arguments)
 		if (typeof o !== 'object') return null;
 		o = o[a.shift()];
 	}
+	return o;
+}
+
+function getPropBySameNameChain(o,n,p) {
+	while (o && (p = o[n])) o = p;
 	return o;
 }
 
@@ -982,6 +1003,13 @@ function getParentLayer(layer) {
 	return layer;
 }
 
+function isLayerSkipped(layer) {
+	return (
+		layer.params.skip
+	||	regLayerNameToSkip.test(layer.name)
+	);
+}
+
 function getImgOptimized(img) {
 	return img || new Promise(
 		(resolve, reject) => {
@@ -1172,15 +1200,26 @@ async function loadProject(sourceFile) {
 						;
 						checkBatchParams(g);
 
-						if ((i = 'format') in j) g[i] = j[i];
-						if ((i = 'values') in j) {
-							j[i].forEach(v => {
-							var	k = v + '%';	//* <- avoid autosorting of bare numbers in <select>
-								if (t == 'opacities') v = (orz(v) / 100);
-								a[k] = v;
-							});
-						}
-						if (t == 'paddings') {
+						if (t === 'side') {
+							for (k in (v = la.render.side)) {
+								a[k] = v[k];
+							}
+
+							if (
+								(v = VIEW_SIDES.indexOf(j)) >= 0
+							||	params.if_only
+							) {
+								params[t] = (
+									params.if_only
+									? VIEW_SIDES[params.not ? 0 : 1]
+									: (params.not ? VIEW_SIDES[1-v] : j)
+								);
+								layer.isOneSide = true;
+							} else {
+								layer.isSideOrder = true;
+							}
+						} else
+						if (t === 'paddings') {
 							if (j = params['radius']) {
 								j.forEach(v => {
 								var	t = v.threshold
@@ -1201,8 +1240,23 @@ async function loadProject(sourceFile) {
 								});
 							}
 							layer.isMaskGenerated = true;
+						} else {
+							if ((i = 'format') in j) {
+								g[i] = j[i];
+							}
+							if ((i = 'values') in j) {
+								j[i].forEach(v => {
+								var	k = v + '%';	//* <- avoid autosorting of bare numbers in <select>
+									if (t == 'opacities') v = (orz(v) / 100);
+									a[k] = v;
+								});
+							}
 						}
 					}
+				}
+
+				if (isLayerSkipped(layer)) {
+					return;
 				}
 
 			var	n = layer.name
@@ -1211,14 +1265,8 @@ async function loadProject(sourceFile) {
 			,	a,g,i,j,k,o,t
 				;
 
-				if (
-					params.skip
-				||	regLayerNameToSkip.test(n)
-				) {
-					return;
-				}
-
 				addOptionItemsFromParam('zoom');
+				addOptionItemsFromParam('side');
 				addOptionItemsFromParam('opacities', n);
 				addOptionItemsFromParam('paddings', n);
 
@@ -1233,13 +1281,6 @@ async function loadProject(sourceFile) {
 				}
 
 				return layer;
-			}
-
-			function isLayerSkipped(layer) {
-				return (
-					layer.params.skip
-				||	regLayerNameToSkip.test(layer.name)
-				);
 			}
 
 			function getUnskippedProcessedLayers(layers) {
@@ -1538,6 +1579,9 @@ async function loadProject(sourceFile) {
 
 				for (var optionName in items) {
 				var	n = optionName || '?';
+					if (sectionName == 'side') {
+						n = la.render.side[n] || n;
+					} else
 					if (n == '0%') {
 						n = '';
 						hasEmptyOption = true;
@@ -1724,7 +1768,7 @@ var	m,v
 					};
 				} else {
 					if (k == 'preselect' && param.indexOf('last') >= 0) params.last = true;
-					params[k] = k;
+					params[k] = param || k;
 				}
 			}
 		}
@@ -1891,7 +1935,7 @@ async function loadPSDCommonWrapper(projectWIP, libName, varName) {
 					? getProperOpacity(l.fillOpacity().layer.adjustments.fillOpacity.obj.value)
 					: 1
 				)
-			,	passThru = getByPropChain(l, 'adjustments', 'sectionDivider', 'obj', 'blendMode')
+			,	passThru = getPropByNameChain(l, 'adjustments', 'sectionDivider', 'obj', 'blendMode')
 				;
 
 				if (!regLayerBlendModePass.test(passThru)) {
@@ -2451,7 +2495,7 @@ var	x = (mask ? orz(mask.top ) : 0) - (img ? orz(img.top ) : 0)
 }
 
 function getImageDataColored(optionName, selectedColors, img) {
-	if (o = getByPropChain(project, 'options', 'colors')) {
+	if (o = getPropByNameChain(project, 'options', 'colors')) {
 	var	optionalColors = o
 	,	selectedColors = selectedColors || optionalColors
 		;
@@ -2478,7 +2522,7 @@ function getProjectOptionItemValue(sectionName, listName, optionName, fallBack) 
 		return fallBack;
 	}
 
-	return getByPropChain(project, 'options', sectionName, listName, 'items', optionName);
+	return getPropByNameChain(project, 'options', sectionName, listName, 'items', optionName);
 }
 
 function getRenderByValues(values, layersBatch, renderParam) {
@@ -2520,6 +2564,7 @@ var	ctx = canvas.getContext('2d')
 ,	paddings = values.paddings || {}
 ,	colors = values.colors || {}
 ,	parts = values.parts || {}
+,	side = getPropBySameNameChain(values, 'side')
 ,	layer
 ,	i,j,k,l,m,n,o,p,t
 	;
@@ -2567,10 +2612,7 @@ var	ctx = canvas.getContext('2d')
 
 //* skip by explicit name or param:
 
-		if (
-			params.skip
-		||	regLayerNameToSkip.test(n)
-		) {
+		if (isLayerSkipped(layer)) {
 			continue;
 		}
 
@@ -2590,6 +2632,12 @@ var	ctx = canvas.getContext('2d')
 				(p = getParentLayer(layer))
 			&&	(n !== values[p.type][p.name]) === (!params.not === !p.params.not)
 			) {
+				continue;
+			}
+		}
+
+		if (layer.isOneSide) {
+			if (params.side !== side) {
 				continue;
 			}
 		}
@@ -2647,6 +2695,14 @@ var	ctx = canvas.getContext('2d')
 
 					continue;
 				} else {
+					if (
+						layer.isSideOrder
+					&&	side === 'back'
+					) {
+						j = j.slice();
+						j = j.reverse();
+					}
+
 					i = getRenderByValues(
 						values
 					,	j
@@ -2930,9 +2986,7 @@ var	prerenders = (project.renders || (project.renders = {}))
 
 	if (img = prerenders[fileName]) return img;
 
-var	img = prerenders[refName]
-,	z = values.zoom
-	;
+var	img = prerenders[refName];
 
 	if (!img) {
 		if (fileName == refName) {
@@ -2942,25 +2996,23 @@ var	img = prerenders[refName]
 		}
 	}
 
-	if (img && z) {
-		while (x = z.zoom) z = x;
+	if (
+		img
+	&&	(z = getPropBySameNameChain(values, 'zoom'))
+	&&	(z = orz(z))
+	&&	z > 0
+	&&	z != 100
+	) {
+	var	z
+	,	x = z / 100
+	,	canvas = cre('canvas')
+	,	w = canvas.width  = Math.max(1, Math.round(x * project.width))
+	,	h = canvas.height = Math.max(1, Math.round(x * project.height))
+	,	ctx = canvas.getContext('2d')
+		;
+		ctx.drawImage(img, 0,0, w,h);
 
-		z = orz(z);
-
-		if (
-			z > 0
-		&&	z != 100
-		) {
-		var	x = z / 100
-		,	canvas = cre('canvas')
-		,	w = canvas.width  = Math.max(1, Math.round(x * project.width))
-		,	h = canvas.height = Math.max(1, Math.round(x * project.height))
-		,	ctx = canvas.getContext('2d')
-			;
-			ctx.drawImage(img, 0,0, w,h);
-
-			img = await getAndCacheRenderedImgElement(canvas, fileName, w,h);
-		}
+		img = await getAndCacheRenderedImgElement(canvas, fileName, w,h);
 	}
 
 	return img;
