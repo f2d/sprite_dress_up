@@ -50,7 +50,7 @@ var	regLayerNameToSkip		= /^(skip)$/i
 	,	'opacities':	/^(\d[\d\W]*)%(\d*)$/i
 	,	'zoom':		/^x(\d[\d\W]*)%(\d*)$/i
 
-	,	'side':		/^(front|back|reverse)$/i
+	,	'side':		/^(front|back|reverse(?:\W+(hor|ver))?)$/i
 	,	'multi_select':	/^(x(\d[\d+-]*)|optional)$/i
 /*
 examples of layer folder names with parameter syntax:
@@ -97,6 +97,8 @@ examples of 'zoom':
 examples of 'side':
 
 	[reverse]	(when back side is selected, this folder content will be rendered in reverse order)
+	[reverse-hor]	(rendered in reverse order and then flipped horizontally)
+	[reverse-ver]	(rendered in reverse order and then flipped vertically)
 
 	[if reverse]
 	[back]
@@ -162,6 +164,7 @@ examples of 'multi_select':
 ,	TOS = ['object', 'string']
 ,	FALSY_STRINGS = ['', 'false', 'no', 'none', 'null', 'undefined']
 ,	VIEW_SIDES = ['front', 'back']
+,	VIEW_FLIPS = ['hor', 'ver']
 ,	NAME_PARTS_FOLDERS = ['parts', 'colors']
 ,	NAME_PARTS_ORDER = ['parts', 'colors', 'paddings', 'opacities', 'side', 'zoom']
 ,	SPLIT_SEC = 60
@@ -1214,9 +1217,9 @@ async function loadProject(sourceFile) {
 									? VIEW_SIDES[params.not ? 0 : 1]
 									: (params.not ? VIEW_SIDES[1-v] : j)
 								);
-								layer.isOneSide = true;
+								layer.isOnlyForOneSide = true;
 							} else {
-								layer.isSideOrder = true;
+								layer.isOrderedBySide = true;
 							}
 						} else
 						if (t === 'paddings') {
@@ -1767,8 +1770,14 @@ var	m,v
 					,	'max': Math.max(1, v[v.length > 1?1:0])
 					};
 				} else {
-					if (k == 'preselect' && param.indexOf('last') >= 0) params.last = true;
-					params[k] = param || k;
+					if (k === 'preselect' && param.indexOf('last') >= 0) {
+						params.last = true;
+					}
+					if (k === 'side' && m[2]) {
+						params[k] = m[2];
+					} else {
+						params[k] = param || k;
+					}
 				}
 			}
 		}
@@ -1861,7 +1870,6 @@ async function loadORA(projectWIP) {
 
 			function addLayerToTree(layer, parentGroup) {
 			var	n = layer.name || ''
-			,	mask = layer.mask || null
 			,	layers = layer.layers || null
 			,	isLayerFolder = (layers && layers.length > 0)
 			,	parentGroup = getNextParentAfterAddingLayerToTree(
@@ -1873,7 +1881,7 @@ async function loadORA(projectWIP) {
 					,	clipping:  getTruthyValue(layer.clipping)
 					,	opacity:   orzFloat(layer.opacity)
 					,	blendMode: getProperBlendMode(layer.composite)
-					,	mask: mask
+					,	mask:      layer.mask || null
 					}
 				,	layer
 				,	n
@@ -2455,7 +2463,77 @@ var	canvas = ctx.canvas
 	return canvas;
 }
 
-function getMaskAndStripSourceAlpha(ctx, x,y, w,h) {
+function padCanvas(ctx, padding) {
+
+	if (!ctx || !padding) return;
+
+var	w = ctx.canvas.width
+,	h = ctx.canvas.height
+,	r = padding.radius
+,	t = padding.threshold
+,	t_min = (t === 'min')
+,	t_max = (t === 'max')
+,	threshold = (
+		!(t_min || t_max)
+		? (orz(t) || 16)
+		: 0
+	);
+	if (r) {
+	var	r0 = r.in
+	,	r1 = r.out
+	,	ref = ctx.getImageData(0,0, w,h)
+	,	res = ctx.getImageData(0,0, w,h)
+	,	referencePixels = ref.data
+	,	resultPixels    = res.data
+	,	resultValue, distMin
+		;
+		for (var y = h; y--;) next_result_pixel:
+		for (var x = w; x--;) {
+		var	pos = getAlphaDataIndex(x,y,w);
+
+			if (t_min) resultValue = 255; else
+			if (t_max) resultValue = 0; else
+			if (threshold) distMin = +Infinity;
+
+			look_around:
+			for (var ydy, dy = -r1; dy <= r1; dy++) if ((ydy = y + dy) >= 0 && ydy < h)
+			for (var xdx, dx = -r1; dx <= r1; dx++) if ((xdx = x + dx) >= 0 && xdx < w) {
+			var	alpha = referencePixels[getAlphaDataIndex(xdx, ydy, w)];
+				if (threshold) {
+					if (alpha > threshold) {
+					var	d = dist(dx, dy) + 1 - alpha/255;
+						if (d > r1) {
+							if (distMin > d) distMin = d;
+						} else {
+							resultPixels[pos] = 255;
+							continue next_result_pixel;
+						}
+					}
+				} if (t_min) {
+					if (resultValue > alpha) resultValue = alpha;
+					if (resultValue == 0) break look_around;
+				} else {
+					if (resultValue < alpha) resultValue = alpha;
+					if (resultValue == 255) break look_around;
+				}
+			}
+
+			if (threshold) {
+			var	distFloor = Math.floor(distMin);
+				resultPixels[pos] = (
+					distFloor > r1
+					? 0
+					: (255 * (1 + distFloor - distMin))
+				);
+			} else {
+				resultPixels[pos] = resultValue;
+			}
+		}
+		ctx.putImageData(res, 0,0);
+	}
+}
+
+function getCanvasMaskAndRemoveFromSource(ctx, x,y, w,h) {
 	project.rendering.layersBatchCount++;
 
 var	canvas = cre('canvas')
@@ -2476,7 +2554,31 @@ var	canvas = cre('canvas')
 	return canvas;
 }
 
-function getImageDataBlended(img, mask, mode, maskOpacity) {
+function getCanvasFlipped(img, isVerticalFlip) {
+	project.rendering.layersBatchCount++;
+
+var	canvas = cre('canvas')
+,	ctx = canvas.getContext('2d')
+,	w = canvas.width  = orz(img.width)  || project.width
+,	h = canvas.height = orz(img.height) || project.height
+,	x = canvas.left   = orz(img.left)
+,	y = canvas.top    = orz(img.top)
+	;
+
+//* https://stackoverflow.com/a/3129152
+	if (isVerticalFlip) {
+		ctx.translate(0, h);
+		ctx.scale(1, -1);
+	} else {
+		ctx.translate(w, 0);
+		ctx.scale(-1, 1);
+	}
+	ctx.drawImage(img, 0,0);
+
+	return canvas;
+}
+
+function getCanvasBlended(img, mask, mode, maskOpacity) {
 	project.rendering.layersBatchCount++;
 
 var	canvas = cre('canvas')
@@ -2494,27 +2596,27 @@ var	x = (mask ? orz(mask.top ) : 0) - (img ? orz(img.top ) : 0)
 	return canvas;
 }
 
-function getImageDataColored(optionName, selectedColors, img) {
+function getCanvasColored(optionName, selectedColors, img) {
 	if (o = getPropByNameChain(project, 'options', 'colors')) {
 	var	optionalColors = o
 	,	selectedColors = selectedColors || optionalColors
+	,	o,t
 		;
 		if (
 			(optionName in optionalColors)
 		&&	(optionName in selectedColors)
+		&&	(o = optionalColors[optionName].items[selectedColors[optionName]])
 		) {
-		var	t,o = optionalColors[optionName].items[selectedColors[optionName]];
-			if (o) {
-				while (t = o.color || o.img || o.layer) o = t;
-				img = getImageDataBlended(
-					(img || o)
-				,	(img ? o : null)
-				);
-			}
+			while (t = o.color || o.img || o.layer) o = t;
+
+		var	canvas = getCanvasBlended(
+				(img || o)
+			,	(img ? o : null)
+			);
 		}
 	}
 
-	return img;
+	return canvas || img;
 }
 
 function getProjectOptionItemValue(sectionName, listName, optionName, fallBack) {
@@ -2578,9 +2680,12 @@ var	ctx = canvas.getContext('2d')
 	,	skipColoring = !!params.if_only
 	,	clippingGroupWIP = !!renderParam.clippingGroupWIP
 	,	clippingGroupResult = false
-		;
+	,	backward = (
+			layer.isOrderedBySide
+		&&	side === 'back'
+		);
 
-//* render clipping group as separate batch:
+//* step over clipping group to render or skip at once:
 
 		if (
 			!clippingGroupWIP
@@ -2598,15 +2703,10 @@ var	ctx = canvas.getContext('2d')
 				g_a.push(g_l);
 			}
 
-		var	g_k = g_a.length
-			;
-			if (g_k > 1) {
-				if (g_k < l_k) {
-					l_i = g_i + 1;
-					clippingGroupResult = true;
-				} else {
-					clippingGroupWIP = true;
-				}
+			if (g_a.length > 1) {
+				l_i = g_i + 1;
+				g_a.reverse();
+				clippingGroupResult = true;
 			}
 		}
 
@@ -2636,7 +2736,7 @@ var	ctx = canvas.getContext('2d')
 			}
 		}
 
-		if (layer.isOneSide) {
+		if (layer.isOnlyForOneSide) {
 			if (params.side !== side) {
 				continue;
 			}
@@ -2661,33 +2761,37 @@ var	ctx = canvas.getContext('2d')
 
 			if (
 				layer.clipping
+			&&	layer !== l_bottom
 			&&	blendMode === BLEND_MODE_NORMAL
 			) {
 				continue;
 			}
 		}
 
-//* get layer/folder/batch as flat image:
-
 		i = null;
+
+//* render clipping group as separate batch:
 
 		if (clippingGroupResult) {
 			i = getRenderByValues(
 				values
-			,	g_a.reverse()
+			,	g_a
 			,	{
 					ignoreColors: renderParam.ignoreColors
 				,	clippingGroupWIP: true
 				}
 			);
 		} else
+
+//* get layer/folder/batch as flat image:
+
 		if (j = layer.layers) {
 			if (j.length > 0) {
 				if (
 					t === 'colors'
 				&&	!skipColoring
 				) {
-					i = getImageDataColored(n, colors);
+					i = getCanvasColored(n, colors);
 				} else
 				if (blendMode == 'pass') {
 					l_a = l_a.slice(0, l_i).concat(j);
@@ -2695,10 +2799,7 @@ var	ctx = canvas.getContext('2d')
 
 					continue;
 				} else {
-					if (
-						layer.isSideOrder
-					&&	side === 'back'
-					) {
+					if (backward) {
 						j = j.slice();
 						j = j.reverse();
 					}
@@ -2729,7 +2830,7 @@ var	ctx = canvas.getContext('2d')
 				) {
 					i.left = x;
 					i.top  = y;
-					i = getImageDataColored(n, colors, i);
+					i = getCanvasColored(n, colors, i);
 				}
 
 //* apply mask:
@@ -2751,7 +2852,16 @@ var	ctx = canvas.getContext('2d')
 				}
 
 				if (mask) {
-					i = getImageDataBlended(mask.img || mask, i);
+					i = getCanvasBlended(mask.img || mask, i);
+				}
+
+//* flip:
+
+				if (
+					backward
+				&&	(k = VIEW_FLIPS.indexOf(params.side)) >= 0
+				) {
+					i = getCanvasFlipped(i, k);
 				}
 			}
 
@@ -2767,7 +2877,7 @@ var	ctx = canvas.getContext('2d')
 				clippingGroupWIP
 			&&	layer === l_bottom
 			) {
-				l_clipping_mask = getMaskAndStripSourceAlpha(ctx, x,y, i.width, i.height);
+				l_clipping_mask = getCanvasMaskAndRemoveFromSource(ctx, x,y, i.width, i.height);
 			}
 
 			clearCanvasForGC(i);
@@ -2786,68 +2896,7 @@ var	ctx = canvas.getContext('2d')
 //* apply padding:
 
 	if (padding = renderParam.padding) {
-	var	r = padding.radius
-	,	t = padding.threshold
-	,	t_min = (t === 'min')
-	,	t_max = (t === 'max')
-	,	threshold = (
-			!(t_min || t_max)
-			? (orz(t) || 16)
-			: 0
-		);
-		if (r) {
-		var	r0 = r.in
-		,	r1 = r.out
-		,	ref = ctx.getImageData(0,0, w,h)
-		,	res = ctx.getImageData(0,0, w,h)
-		,	referencePixels = ref.data
-		,	resultPixels    = res.data
-		,	resultValue, distMin
-			;
-			for (var y = h; y--;) next_result_pixel:
-			for (var x = w; x--;) {
-			var	pos = getAlphaDataIndex(x,y,w);
-
-				if (t_min) resultValue = 255; else
-				if (t_max) resultValue = 0; else
-				if (threshold) distMin = +Infinity;
-
-				look_around:
-				for (var ydy, dy = -r1; dy <= r1; dy++) if ((ydy = y + dy) >= 0 && ydy < h)
-				for (var xdx, dx = -r1; dx <= r1; dx++) if ((xdx = x + dx) >= 0 && xdx < w) {
-				var	alpha = referencePixels[getAlphaDataIndex(xdx, ydy, w)];
-					if (threshold) {
-						if (alpha > threshold) {
-						var	d = dist(dx, dy) + 1 - alpha/255;
-							if (d > r1) {
-								if (distMin > d) distMin = d;
-							} else {
-								resultPixels[pos] = 255;
-								continue next_result_pixel;
-							}
-						}
-					} if (t_min) {
-						if (resultValue > alpha) resultValue = alpha;
-						if (resultValue == 0) break look_around;
-					} else {
-						if (resultValue < alpha) resultValue = alpha;
-						if (resultValue == 255) break look_around;
-					}
-				}
-
-				if (threshold) {
-				var	distFloor = Math.floor(distMin);
-					resultPixels[pos] = (
-						distFloor > r1
-						? 0
-						: (255 * (1 + distFloor - distMin))
-					);
-				} else {
-					resultPixels[pos] = resultValue;
-				}
-			}
-			ctx.putImageData(res, 0,0);
-		}
+		padCanvas(ctx, padding);
 	}
 
 //* end of layer tree:
