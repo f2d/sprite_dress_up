@@ -36,6 +36,7 @@ var	regLayerNameToSkip		= /^(skip)$/i
 
 ,	regLayerNameParamType = {
 		'skip':		/^(skip)$/i
+	,	'skip_render':	/^(skip|no)\W+(render)$/i
 	,	'none':		/^(none)$/i
 	,	'if_only':	/^(if|in)$/i
 	,	'not':		/^(\!|not?)$/i
@@ -51,7 +52,7 @@ var	regLayerNameToSkip		= /^(skip)$/i
 	,	'zoom':		/^x(\d[\d\W]*)%(\d*)$/i
 
 	,	'side':		/^(front|back|reverse(?:\W+(hor|ver))?)$/i
-	,	'multi_select':	/^(x(\d[\d+-]*)|optional)$/i
+	,	'multi_select':	/^(x(\d[\d\W]*)|optional)$/i
 /*
 examples of layer folder names with parameter syntax:
 
@@ -165,6 +166,7 @@ examples of 'multi_select':
 ,	FALSY_STRINGS = ['', 'false', 'no', 'none', 'null', 'undefined']
 ,	VIEW_SIDES = ['front', 'back']
 ,	VIEW_FLIPS = ['hor', 'ver']
+,	NAME_PARTS_PERCENTAGES = ['zoom', 'opacities']
 ,	NAME_PARTS_FOLDERS = ['parts', 'colors']
 ,	NAME_PARTS_ORDER = ['parts', 'colors', 'paddings', 'opacities', 'side', 'zoom']
 ,	SPLIT_SEC = 60
@@ -384,8 +386,30 @@ var	a = toArray(arguments)
 ,	o = a.shift()
 	;
 	while (a.length > 0) {
-		if (typeof o !== 'object') return null;
-		o = o[a.shift()];
+	var	k = a.shift();
+
+		if (
+			typeof k === 'undefined'
+		||	typeof o !== 'object'
+		) {
+			return null;
+		}
+
+		o = o[k];
+	}
+	return o;
+}
+
+function getPropByAnyOfNamesChain() {
+var	a = toArray(arguments)
+,	o = a.shift()
+	;
+	deeper: while (typeof o === 'object') {
+		prop_names: for (var k of a) if (k in o) {
+			o = o[k];
+			continue deeper;
+		}
+		break;
 	}
 	return o;
 }
@@ -894,8 +918,6 @@ var	canvas = ctx.canvas || ctx
 
 	canvas.width = 1;
 	canvas.height = 1;
-
-	// return canvas;
 }
 
 function isImgElement(e) {
@@ -975,22 +997,6 @@ var	r,b = ('' + b).toLowerCase();
 	);
 }
 
-function getLayerParentOptions(layer) {
-var	a,k,n,o = {};
-
-	if (layer) do {
-		if (k = layer.name) {
-			if (n && layer.isOptionList) {
-				a = (o[k] || (o[k] = []));
-				if (a.indexOf(n) < 0) a.push(n);
-			}
-			n = k;
-		}
-	} while (layer = layer.parent);
-
-	return o;
-}
-
 function getLayerPath(layer) {
 var	n, path = [];
 
@@ -1001,8 +1007,18 @@ var	n, path = [];
 	return path;
 }
 
-function getParentLayer(layer) {
-	while (layer = layer.parent) if (layer.params) break;
+function getParentLayer(layer, propName, isTrue) {
+	while (layer = layer.parent) {
+		if (
+			layer.params
+		&&	(
+				!propName
+			||	(!layer[propName] === !isTrue)
+			)
+		) {
+			break;
+		}
+	}
 	return layer;
 }
 
@@ -1104,47 +1120,17 @@ async function loadProject(sourceFile) {
 
 			function processLayerInBranch(layer) {
 
-				function getOrAddProjectOption(t,n,i,v) {
-				var	t = ''+t
-				,	n = ''+n
+				function getOrAddOptionGroup(sectionName, listName) {
+				var	sectionName = ''+sectionName
+				,	listName    = ''+listName
 				,	o = (options || (options = {}))
-				,	o = (o[t] || (o[t] = {}))
-				,	o = (o[n] || (o[n] = {
+				,	o = (o[sectionName] || (o[sectionName] = {}))
+				,	o = (o[listName] || (o[listName] = {
 						'params': {}
 					,	'items': {}
 					}))
 					;
-					if (i) {
-						o = o.items;
-						o = (o[i] || (o[i] = {
-							'layer': v.layer
-						,	'values': []
-						,	'requires': {}
-						,	'except': {}
-						}));
-						o.values.push(v);
-					}
 					return o;
-				}
-
-//* TODO: vary colors depending on layer path and logic, not just single first met layer.
-//* TODO: fix inclusion/exclusion logic, multiple [not] in paths, etc.
-
-				function addOptionRules(t,n,i,layer) {
-				var	j = (
-						!params.not === !(p ? p.params.not : false)
-						? 'requires'
-						: 'except'
-					)
-				,	rules = getLayerParentOptions(layer)
-				,	a = getOrAddProjectOption(
-						t,n,i
-					,	{
-							'layer': layer
-						,	'rules': rules
-						}
-					);
-					a[j] = mergeDictOfArrays(a[j], rules);
 				}
 
 				function checkBatchParams(globalOptionParams) {
@@ -1161,18 +1147,17 @@ async function loadProject(sourceFile) {
 				}
 
 				function addOptionGroup(layer) {
-				var	t = layer.type
-				,	g = getOrAddProjectOption(t,n).params
-				,	j,k,o
+				var	optionParams = getOrAddOptionGroup(layer.type, layer.name).params
+				,	i,j,k,o
 					;
-					checkBatchParams(g);
+					checkBatchParams(optionParams);
 
 					if (j = params[k = 'multi_select']) {
-						if (o = g[k]) {
+						if (o = optionParams[k]) {
 							if (o.min > j.min) o.min = j.min;
 							if (o.max < j.max) o.max = j.max;
 						} else {
-							o = g[k] = {};
+							o = optionParams[k] = {};
 							for (i in j) o[i] = j[i];
 						}
 					}
@@ -1181,79 +1166,87 @@ async function loadProject(sourceFile) {
 						'last',
 						'no_prefix',
 					]) {
-						if (params[k]) g[k] = true;
+						if (params[k]) optionParams[k] = true;
 					}
 				}
 
-				function addOptionGroupItem(layer, p) {
-				var	k = p.name
-				,	t = p.type
+				function addOptionItem(layer, parent) {
+				var	sectionName = parent.type
+				,	listName    = parent.name
+				,	optionName  = layer.name
 					;
-					addOptionRules(t,k,n,layer);
-
 					layer.isOption = true;
-					layer.type = t.replace(regLayerTypeSingleTrim, '');
+					layer.type = sectionName.replace(regLayerTypeSingleTrim, '');
+
+				var	optionItems = getOrAddOptionGroup(sectionName, listName).items
+				,	optionItemLayers = (optionItems[optionName] || (optionItems[optionName] = []))
+					;
+					if (optionName !== '') {
+						optionItemLayers.push(layer);
+					}
 				}
 
-				function addOptionItemsFromParam(t, n) {
-					if (j = params[t]) {
-					var	o = getOrAddProjectOption(t, n || t)
-					,	g = o.params
-					,	a = o.items
-						;
-						checkBatchParams(g);
+				function addOptionsFromParam(sectionName, listName) {
+				var	param = params[sectionName];
+					if (!param) return;
 
-						if (t === 'side') {
-							for (k in (v = la.render.side)) {
-								a[k] = v[k];
-							}
+				var	o = getOrAddOptionGroup(sectionName, listName || sectionName)
+				,	optionParams = o.params
+				,	optionItems = o.items
+				,	i,j,k
+					;
+					checkBatchParams(optionParams);
 
-							if (
-								(v = VIEW_SIDES.indexOf(j)) >= 0
-							||	params.if_only
-							) {
-								params[t] = (
-									params.if_only
-									? VIEW_SIDES[params.not ? 0 : 1]
-									: (params.not ? VIEW_SIDES[1-v] : j)
-								);
-								layer.isOnlyForOneSide = true;
-							} else {
-								layer.isOrderedBySide = true;
-							}
-						} else
-						if (t === 'paddings') {
-							if (j = params['radius']) {
-								j.forEach(v => {
-								var	t = v.threshold
-								,	k = (
-										(
-											typeof v.x !== 'undefined'
-											? [v.x, v.y]
-											: [v.radius]
-										).map(x => (
-											typeof x.in !== 'undefined'
-											? x.in + ':' + x.out
-											: x.out
-										)).join('x')
-									+	'px'
-									+	(t?'-'+t:'')
-									);
-									a[k] = v;
-								});
-							}
-							layer.isMaskGenerated = true;
+					if (sectionName === 'side') {
+						for (k in (j = la.render.side)) {
+							optionItems[k] = j[k];
+						}
+
+						if (
+							(j = VIEW_SIDES.indexOf(param)) >= 0
+						||	params.if_only
+						) {
+							params[sectionName] = (
+								params.if_only
+								? VIEW_SIDES[params.not ? 0 : 1]
+								: (params.not ? VIEW_SIDES[j ? 0 : 1] : param)
+							);
+							layer.isOnlyForOneSide = true;
 						} else {
-							if ((i = 'format') in j) {
-								g[i] = j[i];
-							}
-							if ((i = 'values') in j) {
-								j[i].forEach(v => {
-								var	k = v + '%';	//* <- avoid autosorting of bare numbers in <select>
-									if (t == 'opacities') v = (orz(v) / 100);
-									a[k] = v;
-								});
-							}
+							layer.isOrderedBySide = true;
+						}
+					} else
+					if (sectionName === 'paddings') {
+						if (param = params['radius']) {
+							param.forEach(v => {
+							var	j = v.threshold
+							,	k = (
+									(
+										typeof v.x !== 'undefined'
+										? [v.x, v.y]
+										: [v.radius]
+									).map(x => (
+										typeof x.in !== 'undefined'
+										? x.in + ':' + x.out
+										: x.out
+									)).join('x')
+								+	'px'
+								+	(j?'-'+j:'')
+								);
+								optionItems[k] = v;
+							});
+						}
+						layer.isMaskGenerated = true;
+					} else {
+						if ((i = 'format') in param) {
+							optionParams[i] = param[i];
+						}
+						if ((i = 'values') in param) {
+							param[i].forEach(v => {
+							var	k = v + '%';	//* <- pad bare numbers to avoid autosorting in <select>
+								if (sectionName == 'opacities') v = (orz(v) / 100);
+								optionItems[k] = v;
+							});
 						}
 					}
 				}
@@ -1262,22 +1255,46 @@ async function loadProject(sourceFile) {
 					return;
 				}
 
-			var	n = layer.name
-			,	params = layer.params
-			,	p = getParentLayer(layer)
-			,	a,g,i,j,k,o,t
+			var	params = layer.params
+			,	layersInside = layer.layers
 				;
 
-				addOptionItemsFromParam('zoom');
-				addOptionItemsFromParam('side');
-				addOptionItemsFromParam('opacities', n);
-				addOptionItemsFromParam('paddings', n);
+				if (params.none) {
+					layer.name = '';
+				}
 
-				if (layer.isOptionList) addOptionGroup(layer); else
-				if (p && p.isOptionList) addOptionGroupItem(layer, p);
+			var	n = layer.name;
 
-				if (a = layer.layers) {
-					layer.layers = getUnskippedProcessedLayers(a);
+				addOptionsFromParam('zoom');
+				addOptionsFromParam('side');
+				addOptionsFromParam('opacities', n);
+				addOptionsFromParam('paddings', n);
+
+				if (layer.isOptionList) {
+					addOptionGroup(layer);
+				} else {
+					layer.isColor = (
+						layer.isInsideColorList
+					&&	!layersInside
+					);
+
+				var	parent = (
+						layer.isColor
+						? getParentLayer(layer, 'isInsideColorList', false)
+						: getParentLayer(layer)
+					);
+
+					if (parent && parent.isOptionList) {
+						addOptionItem(layer, parent);
+					}
+				}
+
+				if (layersInside) {
+					layer.layers = getUnskippedProcessedLayers(
+						layersInside
+					,	layer.isColorList
+					||	layer.isInsideColorList
+					);
 				} else
 				if (layer.opacity > 0) {
 					projectWIP.loading.images.push(layer);
@@ -1286,29 +1303,36 @@ async function loadProject(sourceFile) {
 				return layer;
 			}
 
-			function getUnskippedProcessedLayers(layers) {
-			var	a = []
-			,	i = layers.length
-			,	skips = layers.map(isLayerSkipped)
-			,	layer
+			function getUnskippedProcessedLayers(layers, isInsideColorList) {
+			var	i = layers.length
+			,	layer, clippingLayer
 				;
 
-				while (i--) if (
-					!skips[i]
-				&&	(layer = layers[i])
-				) {
-					if (
-						skips[i + 1]
-					&&	layer.clipping
-					) {
-						skips[i] = true;
+				while (i--) if (layer = layers[i]) {
+					if (clippingLayer && layer.clipping) {
+						layer.clippingLayer = clippingLayer;
 					} else {
-						a.push(layer);
+						clippingLayer = layer;
 					}
 				}
-				a.reverse();
 
-				return a.map(processLayerInBranch);
+				return (
+					layers
+					.filter(layer => {
+						if (
+							isLayerSkipped(layer)
+						||	(layer.clippingLayer && isLayerSkipped(layer.clippingLayer))
+						) {
+							return false;
+						} else {
+							if (isInsideColorList) {
+								layer.isInsideColorList = true;
+							}
+							return true;
+						}
+					})
+					.map(processLayerInBranch)
+				);
 			}
 
 		var	options, k;
@@ -1556,7 +1580,7 @@ async function loadProject(sourceFile) {
 			for (var listName in section) if (optionList = section[listName]) {
 			var	items = optionList.items
 			,	params = optionList.params
-			,	hasEmptyOption = false
+			,	hasEmptyOption = ('' in items)
 				;
 				params[c] = !(params[b] = (typeof params[c] === 'undefined'));
 
@@ -1581,13 +1605,15 @@ async function loadProject(sourceFile) {
 //* list item = each part:
 
 				for (var optionName in items) {
-				var	n = optionName || '?';
-					if (sectionName == 'side') {
+				var	n = optionName;
+					if (sectionName === 'side') {
 						n = la.render.side[n] || n;
 					} else
-					if (n == '0%') {
-						n = '';
-						hasEmptyOption = true;
+					if (NAME_PARTS_PERCENTAGES.indexOf(sectionName) >= 0) {
+						if (n === '0%') {
+							n = '';
+							hasEmptyOption = true;
+						}
 					}
 					addOption(s, n, optionName);
 				}
@@ -1787,6 +1813,10 @@ var	m,v
 			} else
 			if (NAME_PARTS_FOLDERS.indexOf(k) >= 0) {
 				layer.isOptionList = true;
+
+				if (k === 'colors') {
+					layer.isColorList = true;
+				}
 			}
 		}
 	}
@@ -2090,48 +2120,27 @@ async function loadPSDLIB(projectWIP) {
 //* Page-specific functions: internal, rendering *-----------------------------
 
 function isOptionRelevant(values, sectionName, listName, optionName) {
+var	o = getProjectOptionValue(sectionName, listName, optionName);
 
-	function isOptionNotRelevant(rules, values, listName, inclusionRules) {
-		for (var rListName in rules) {
-			if (rListName === listName) continue;
+	if (
+		o
+	&&	o.map
+	&&	o.length > 0
+	) {
+	var	refValues = JSON.stringify(values)
+	,	testValues = JSON.parse(refValues)
+		;
+		testValues[sectionName][listName] = optionName;
 
-		var	selectedValue = values[sectionName][rListName]
-		,	rNames
-			;
-			if (
-				inclusionRules ? (
-					!selectedValue || (
-						(rNames = rules[rListName])
-					&&	rNames.indexOf(selectedValue) < 0
-					)
-				) : (
-					selectedValue || (
-						(rNames = rules[rListName])
-					&&	rNames.indexOf(selectedValue) >= 0
-					)
-				)
-			) {
+		for (var layer of o) {
+			if (getLayerPathVisibilityByValues(layer, testValues)) {
 				return true;
 			}
 		}
-		return false;
+	} else {
+		return true;
 	}
-
-	if (optionName) {
-	var	items = project.options[sectionName][listName].items;
-		if (optionName in items) {
-		var	i = items[optionName]
-		,	rIncludeIfAll = i.requires
-		,	rExcludeIfAny = i.except
-			;
-			return !(
-				isOptionNotRelevant(rExcludeIfAny, values, listName)
-			||	isOptionNotRelevant(rIncludeIfAll, values, listName, true)
-			);
-		}
-		return false;
-	}
-	return true;
+	return false;
 }
 
 function isSetOfValuesOK(values) {
@@ -2277,7 +2286,7 @@ var	values = {};
 					,	hide = !isOptionRelevant(updatedValues, sectionName, listName, optionName)
 						;
 						if (hide) {
-							if (optionName == selectedValue) {
+							if (optionName === selectedValue) {
 								selectedValueHidden = true;
 							}
 						} else {
@@ -2288,7 +2297,7 @@ var	values = {};
 						if (!hide && optionName) {
 							allHidden = false;
 						}
-						if (!o.hidden !== !hide) {
+						if (!o.hidden === hide) {
 							o.hidden = hide;
 						}
 					}
@@ -2596,35 +2605,114 @@ var	x = (mask ? orz(mask.top ) : 0) - (img ? orz(img.top ) : 0)
 	return canvas;
 }
 
-function getCanvasColored(optionName, selectedColors, img) {
-	if (o = getPropByNameChain(project, 'options', 'colors')) {
-	var	optionalColors = o
-	,	selectedColors = selectedColors || optionalColors
-	,	o,t
-		;
-		if (
-			(optionName in optionalColors)
-		&&	(optionName in selectedColors)
-		&&	(o = optionalColors[optionName].items[selectedColors[optionName]])
-		) {
-			while (t = o.color || o.img || o.layer) o = t;
+function getCanvasColored(values, listName, img) {
+var	color
+,	optionalColors
+,	selectedColors = project.rendering.colors
+	;
+	if (selectedColors) {
+		if (listName in selectedColors) {
+			color = selectedColors[listName];
+		} else
+		if (optionalColors = getSelectedOptionValue(values, 'colors', listName)) {
+			for (var layer of optionalColors) if (
+				layer.isColor
+			&&	getLayerPathVisibilityByValues(layer, values)
+			) {
+				color = selectedColors[listName] = getPropByAnyOfNamesChain(layer, 'color', 'img', 'layer');
 
-		var	canvas = getCanvasBlended(
-				(img || o)
-			,	(img ? o : null)
-			);
+				break;
+			}
 		}
+	}
+
+	if (color) {
+	var	canvas = getCanvasBlended(
+			(img || color)
+		,	(img ? color : null)
+		);
 	}
 
 	return canvas || img;
 }
 
-function getProjectOptionItemValue(sectionName, listName, optionName, fallBack) {
-	if (typeof optionName === 'undefined') {
-		return fallBack;
+function getProjectOptionValue(sectionName, listName, optionName, fallback) {
+var	v = getPropByNameChain(project, 'options', sectionName, listName, 'items', optionName);
+
+	return (
+		v === null
+		? fallback
+		: v
+	);
+}
+
+function getSelectedOptionValue(values, sectionName, listName, fallback) {
+var	selectedName = getPropByNameChain(values, sectionName, listName);
+	return getProjectOptionValue(sectionName, listName, selectedName, fallback);
+}
+
+function getLayerPathVisibilityByValues(layer, values) {
+	do {
+		if (!getLayerVisibilityByValues(layer, values)) {
+			return false;
+		}
+	} while (layer = layer.clippingLayer || getParentLayer(layer));
+
+	return true;
+}
+
+function getLayerVisibilityByValues(layer, values) {
+
+//* skip by explicit name or param:
+
+	if (isLayerSkipped(layer)) {
+		return;
 	}
 
-	return getPropByNameChain(project, 'options', sectionName, listName, 'items', optionName);
+//* skip not selected parts:
+
+	if (
+		layer.isOptionList
+	||	layer.isOptionIfAny
+	) {
+	var	selectedName = getPropByNameChain(values, layer.type, layer.name) || ''
+		;
+		if (!layer.params.not === !selectedName) {
+			return;
+		}
+	}
+
+	if (layer.isOption) {
+	var	parent = (
+			layer.isColor
+			? getParentLayer(layer, 'isInsideColorList', false)
+			: getParentLayer(layer)
+		)
+	,	selectedName = getPropByNameChain(values, parent.type, parent.name) || ''
+		;
+		if (
+			(layer.name === selectedName)
+			!==
+			(!layer.params.not === !parent.params.not)
+		) {
+			return;
+		}
+	}
+
+	if (layer.isOnlyForOneSide) {
+	var	selectedName = getPropBySameNameChain(values, 'side')
+		;
+		if (layer.params.side !== selectedName) {
+			return;
+		}
+	}
+
+//* skip fully transparent:
+
+var	opacity = getSelectedOptionValue(values, 'opacities', layer.name, layer.opacity);
+	if (opacity > 0) {
+		return opacity;
+	}
 }
 
 function getRenderByValues(values, layersBatch, renderParam) {
@@ -2643,6 +2731,7 @@ function getRenderByValues(values, layersBatch, renderParam) {
 			startTime: +new Date
 		,	layersApplyCount: 0
 		,	layersBatchCount: 1
+		,	colors: {}
 		};
 	} else
 	if (layersBatch) {
@@ -2667,14 +2756,13 @@ var	ctx = canvas.getContext('2d')
 ,	colors = values.colors || {}
 ,	parts = values.parts || {}
 ,	side = getPropBySameNameChain(values, 'side')
-,	layer
+,	layer, opacity
 ,	i,j,k,l,m,n,o,p,t
 	;
 
 	while (l_i-- > 0) if (layer = l_a[l_i]) {
 	var	params = layer.params
 	,	n = layer.name
-	,	t = layer.type
 	,	x = layer.left
 	,	y = layer.top
 	,	skipColoring = !!params.if_only
@@ -2710,47 +2798,16 @@ var	ctx = canvas.getContext('2d')
 			}
 		}
 
-//* skip by explicit name or param:
-
-		if (isLayerSkipped(layer)) {
-			continue;
-		}
-
-//* skip not selected parts:
+//* skip not visible, not selected, etc:
 
 		if (
-			layer.isOptionList
-		||	layer.isOptionIfAny
+			params.skip_render
+		||	!(opacity = getLayerVisibilityByValues(layer, values))
 		) {
-			if (!params.not === !values[t][n]) {
-				continue;
-			}
-		}
-
-		if (layer.isOption) {
-			if (
-				(p = getParentLayer(layer))
-			&&	(n !== values[p.type][p.name]) === (!params.not === !p.params.not)
-			) {
-				continue;
-			}
-		}
-
-		if (layer.isOnlyForOneSide) {
-			if (params.side !== side) {
-				continue;
-			}
-		}
-
-//* skip fully transparent:
-
-	var	opacity = getProjectOptionItemValue('opacities', n, opacities[n], layer.opacity);
-
-		if (opacity <= 0) {
 			continue;
 		}
 
-//* skip unrelated to alpha composition:
+//* skip unrelated to alpha composition when getting mask for padding:
 
 	var	blendMode = layer.blendMode;
 
@@ -2788,10 +2845,10 @@ var	ctx = canvas.getContext('2d')
 		if (j = layer.layers) {
 			if (j.length > 0) {
 				if (
-					t === 'colors'
-				&&	!skipColoring
+					!skipColoring
+				&&	layer.isColorList
 				) {
-					i = getCanvasColored(n, colors);
+					i = getCanvasColored(values, n);
 				} else
 				if (blendMode == 'pass') {
 					l_a = l_a.slice(0, l_i).concat(j);
@@ -2830,13 +2887,13 @@ var	ctx = canvas.getContext('2d')
 				) {
 					i.left = x;
 					i.top  = y;
-					i = getCanvasColored(n, colors, i);
+					i = getCanvasColored(values, n, i);
 				}
 
 //* apply mask:
 
 				if (layer.isMaskGenerated) {
-				var	padding = getProjectOptionItemValue('paddings', n, paddings[n]);
+				var	padding = getSelectedOptionValue(values, 'paddings', n);
 					if (padding) {
 					var	mask = getRenderByValues(
 							values
