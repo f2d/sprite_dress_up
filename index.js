@@ -907,7 +907,7 @@ function clearFill(ctx) {
 	return ctx;
 }
 
-function clearCanvasForGC(ctx) {
+function clearCanvasBeforeGC(ctx) {
 	if (!ctx) return;
 
 var	canvas = ctx.canvas || ctx
@@ -1350,11 +1350,13 @@ async function loadProject(sourceFile) {
 			return new Promise(
 				(resolve, reject) => {
 				var	img, onImgLoad = async function(e) {
-						layer.img = await (
+					var	i = layer.img = await (
 							layer.type === 'color'
 							? getFirstPixelRGBA(img)
 							: getImgOptimized(img)
 						);
+						i.top  = layer.top;
+						i.left = layer.left;
 
 						resolve(true);
 					}
@@ -1634,17 +1636,34 @@ async function loadProject(sourceFile) {
 	}
 
 	function loadProjectFinalizeDisplayMenu(projectWIP) {
+
+		function cleanupLoading(layer) {
+			toDelete.forEach(
+				v => {
+					if (v in layer) {
+						layer[v] = null;
+						delete layer[v];
+					}
+				}
+			);
+
+			if (layer.layers) {
+				layer.layers.forEach(cleanupLoading);
+			}
+
+			return layer;
+		}
+
 		createProjectView(projectWIP);
 		createOptionsMenu(projectWIP.options);
 
-		['loading', 'toPng', 'sourceData'].forEach(
-			v => {
-				projectWIP[v] = null;
-				delete projectWIP[v];
-			}
-		);
+	var	toDelete = ['loading', 'toPng'];
 
-		project = projectWIP;
+		if (!TESTING) {
+			toDelete = toDelete.concat(['blendModeOriginal', 'nameOriginal', 'sourceData']);
+		}
+
+		project = cleanupLoading(projectWIP);
 
 		updateMenuAndRender();
 	}
@@ -1703,8 +1722,10 @@ var	m,v
 ,	paramList = []
 ,	params = {}
 	;
+
 	layer.sourceData = sourceData;
-	layer.nameOriginal = name = trim(name);
+	layer.nameOriginal = name;
+	name = trim(name);
 
 	while (m = name.match(regLayerNameParamOrComment)) {
 		if (
@@ -1900,25 +1921,40 @@ async function loadORA(projectWIP) {
 
 			function addLayerToTree(layer, parentGroup) {
 			var	n = layer.name || ''
+			,	mode = layer.composite || ''
+			,	mask = layer.mask || null
 			,	layers = layer.layers || null
 			,	isLayerFolder = (layers && layers.length > 0)
-			,	parentGroup = getNextParentAfterAddingLayerToTree(
-					{
-						top:    orz(layer.top  || layer.x)
-					,	left:   orz(layer.left || layer.x)
-					,	width:  orz(layer.width)
-					,	height: orz(layer.height)
-					,	clipping:  getTruthyValue(layer.clipping)
-					,	opacity:   orzFloat(layer.opacity)
-					,	blendMode: getProperBlendMode(layer.composite)
-					,	mask:      layer.mask || null
-					}
+			,	layerWIP = {
+					top:    orz(layer.top    || layer.y)
+				,	left:   orz(layer.left   || layer.x)
+				,	width:  orz(layer.width  || layer.w)
+				,	height: orz(layer.height || layer.h)
+				,	clipping:  getTruthyValue(layer.clipping)
+				,	opacity:   orzFloat(layer.opacity)
+				,	blendMode: getProperBlendMode(mode)
+				,	blendModeOriginal: mode
+				};
+
+				if (mask) {
+					m = layerWIP.mask = getPropByAnyOfNamesChain(mask, 'img', 'image');
+					m.top    = orz(mask.top  || mask.y);
+					m.left   = orz(mask.left || mask.x);
+					m.width  = orz(m.width   || mask.width);
+					m.height = orz(m.height  || mask.height);
+				}
+
+				parentGroup = getNextParentAfterAddingLayerToTree(
+					layerWIP
 				,	layer
 				,	n
 				,	parentGroup
 				,	isLayerFolder
 				);
-				if (isLayerFolder) layers.forEach(v => addLayerToTree(v, parentGroup));
+
+				if (isLayerFolder) {
+					layers.forEach(v => addLayerToTree(v, parentGroup));
+				}
 			}
 
 //* note: layer masks may be emulated via compositing modes in ORA
@@ -1960,10 +1996,12 @@ async function loadPSDCommonWrapper(projectWIP, libName, varName) {
 //* gather layers into a tree object:
 
 			function addLayerToTree(layer, parentGroup) {
-			var	l = layer.layer || layer
-			,	i = layer.image || l.image
-			,	m = layer.mask  || l.mask
-			,	mask = null
+			var	l   = layer.layer || layer
+			,	n   = layer.name  || l.name  || ''
+			,	img = layer.image || l.image || null
+			,	mode = getPropByAnyOfNamesChain(l, 'blendMode', 'mode')
+			,	clipping = getPropByAnyOfNamesChain(l, 'blendMode', 'clipped', 'clipping')
+			,	modePass = getPropByNameChain(l, 'adjustments', 'sectionDivider', 'obj', 'blendMode')
 
 //* "fill" opacity is used by SAI2 instead of usual one for layers with certain blending modes when exporting to PSD.
 //* source: https://github.com/meltingice/psd.js/issues/153#issuecomment-436456896
@@ -1973,53 +2011,40 @@ async function loadPSDCommonWrapper(projectWIP, libName, varName) {
 					? getProperOpacity(l.fillOpacity().layer.adjustments.fillOpacity.obj.value)
 					: 1
 				)
-			,	passThru = getPropByNameChain(l, 'adjustments', 'sectionDivider', 'obj', 'blendMode')
-				;
-
-				if (!regLayerBlendModePass.test(passThru)) {
-					passThru = null;
-				}
-
-				/*
-				if (
-					m && !m.disabled
-				&&	i && i.hasMask
-				&&	(m = {
-						top:    orz(m.top)
-					,	left:   orz(m.left)
-					,	width:  orz(m.width)
-					,	height: orz(m.height)
-					,	color:  m.defaultColor
-					,	data:   i.maskData
-					})
-				&&	m.data.length > 0
-				) {
-					mask = m;
-				}
-				*/
-
-			var	m = layer.blendMode || l.blendMode || {}
-			,	n = layer.name || l.name || ''
-			,	layers = layer.hasChildren() ? layer.children() : null
+			,	layers = (
+					layer.hasChildren()
+					? layer.children()
+					: null
+				)
 			,	isLayerFolder = (layers && layers.length > 0)
-			,	parentGroup = getNextParentAfterAddingLayerToTree(
-					{
-						top:    orz(l.top)
-					,	left:   orz(l.left)
-					,	width:  orz(l.width)
-					,	height: orz(l.height)
-					,	clipping:  getTruthyValue(layer.clipped || m.clipped || m.clipping)
-					,	opacity:   getProperOpacity(l.opacity) * fillOpacity
-					,	blendMode: getProperBlendMode(passThru || m.mode || m)
-					,	blendModeOriginal: (m.mode || m)
-					// ,	mask:      mask
-					}
+			,	layerWIP = {
+					top:    orz(l.top)
+				,	left:   orz(l.left)
+				,	width:  orz(l.width)
+				,	height: orz(l.height)
+				,	clipping:  getTruthyValue(clipping)
+				,	opacity:   getProperOpacity(l.opacity) * fillOpacity
+				,	blendMode: getProperBlendMode(
+						regLayerBlendModePass.test(modePass)
+						? modePass
+						: mode
+					)
+				,	blendModeOriginal: mode
+				};
+
+//* TODO: mask
+
+				parentGroup = getNextParentAfterAddingLayerToTree(
+					layerWIP
 				,	layer
 				,	n
 				,	parentGroup
 				,	isLayerFolder
 				);
-				if (isLayerFolder) layers.forEach(v => addLayerToTree(v, parentGroup));
+
+				if (isLayerFolder) {
+					layers.forEach(v => addLayerToTree(v, parentGroup));
+				}
 			}
 
 		var	parentGroup = projectWIP.layers = [];
@@ -2094,16 +2119,20 @@ async function loadPSDLIB(projectWIP) {
 
 //* layer masks are not supported here yet
 
+				var	mode = layer.blendMode || ''
+				,	layerWIP = {
+						top:    orz(layer.top)
+					,	left:   orz(layer.left)
+					,	width:  orz(layer.width)
+					,	height: orz(layer.height)
+					,	clipping:  getTruthyValue(layer.clipping)
+					,	opacity:   getProperOpacity(layer.opacity)
+					,	blendMode: getProperBlendMode(mode)
+					,	blendModeOriginal: mode
+					};
+
 					parentGroup = getNextParentAfterAddingLayerToTree(
-						{
-							top:    orz(layer.top)
-						,	left:   orz(layer.left)
-						,	width:  orz(layer.width)
-						,	height: orz(layer.height)
-						,	clipping:  getTruthyValue(layer.clipping)
-						,	opacity:   getProperOpacity(layer.opacity)
-						,	blendMode: getProperBlendMode(layer.blendMode)
-						}
+						layerWIP
 					,	layer
 					,	n
 					,	parentGroup
@@ -2212,13 +2241,12 @@ function getAllValueSets(checkPreselected) {
 				: null
 			)
 			;
-			for (var i in optionNames) {
+			for (var optionName of optionNames) {
 
 //* https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/assign#Deep_Clone
 
 			var	values = JSON.parse(JSON.stringify(partialValueSet || {}))
 			,	section = (values[sectionName] || (values[sectionName] = {}))
-			,	optionName = optionNames[i]
 				;
 				section[listName] = optionName;
 
@@ -2333,7 +2361,7 @@ var	values = {};
 	);
 }
 
-function drawImageOrColor(ctx, img, x,y, blendMode, opacity) {
+function drawImageOrColor(ctx, img, blendMode, opacity) {
 
 	function drawImageOrColorInside() {
 		if (
@@ -2443,31 +2471,32 @@ function drawImageOrColor(ctx, img, x,y, blendMode, opacity) {
 	if (typeof opacity === 'undefined') opacity = 1;
 	if (typeof blendMode === 'undefined') blendMode = BLEND_MODE_NORMAL;
 
-	if (opacity <= 0) return ctx.canvas;
+var	canvas = ctx.canvas;
 
-	ctx.globalCompositeOperation = blendMode;
+	if (canvas && opacity > 0) {
+		ctx.globalCompositeOperation = blendMode;
 
-var	canvas = ctx.canvas
-,	x = orz(x)
-,	y = orz(y)
-,	w = canvas.width
-,	h = canvas.height
-,	m = ctx.globalCompositeOperation
-	;
+	var	x = orz(img.left)
+	,	y = orz(img.top)
+	,	w = canvas.width
+	,	h = canvas.height
+	,	m = ctx.globalCompositeOperation
+		;
 
 //* use native JS blending if available, or emulation fails/unavailable:
 
-	if (
-		m === blendMode
-	||	!tryBlendingEmulation(blendMode)
-	) {
-		ctx.globalAlpha = opacity;
+		if (
+			m === blendMode
+		||	!tryBlendingEmulation(blendMode)
+		) {
+			ctx.globalAlpha = opacity;
 
-		drawImageOrColorInside();
+			drawImageOrColorInside();
+		}
+
+		ctx.globalAlpha = 1;
+		ctx.globalCompositeOperation = BLEND_MODE_NORMAL;
 	}
-
-	ctx.globalAlpha = 1;
-	ctx.globalCompositeOperation = BLEND_MODE_NORMAL;
 
 	return canvas;
 }
@@ -2542,15 +2571,13 @@ var	w = ctx.canvas.width
 	}
 }
 
-function getCanvasMaskAndRemoveFromSource(ctx, x,y, w,h) {
+function getCanvasMaskAndRemoveFromSource(ctx) {
 	project.rendering.layersBatchCount++;
 
 var	canvas = cre('canvas')
-,	w = canvas.width  = orz(w || ctx.canvas.width)
-,	h = canvas.height = orz(h || ctx.canvas.height)
-,	x = canvas.left   = orz(x)
-,	y = canvas.top    = orz(y)
-,	img = ctx.getImageData(x,y, w,h)
+,	w = canvas.width  = ctx.canvas.width
+,	h = canvas.height = ctx.canvas.height
+,	img = ctx.getImageData(0,0, w,h)
 ,	d = img.data
 ,	i = d.length
 	;
@@ -2558,12 +2585,16 @@ var	canvas = cre('canvas')
 
 	while (i) d[i|3] = 255, i -= 4;
 
-	ctx.putImageData(img, x,y);
+	ctx.putImageData(img, 0,0);
 
 	return canvas;
 }
 
 function getCanvasFlipped(img, isVerticalFlip) {
+	if (isVerticalFlip < 0) {
+		return img;
+	}
+
 	project.rendering.layersBatchCount++;
 
 var	canvas = cre('canvas')
@@ -2587,20 +2618,17 @@ var	canvas = cre('canvas')
 	return canvas;
 }
 
-function getCanvasBlended(img, mask, mode, maskOpacity) {
+function getCanvasBlended(imgBelow, imgAbove, mode, maskOpacity) {
 	project.rendering.layersBatchCount++;
 
 var	canvas = cre('canvas')
 ,	ctx = canvas.getContext('2d')
-,	w = canvas.width  = (img ? img.width  : 0) || project.width
-,	h = canvas.height = (img ? img.height : 0) || project.height
 	;
-	drawImageOrColor(ctx, img);
+	canvas.width  = project.width;
+	canvas.height = project.height;
 
-var	x = (mask ? orz(mask.top ) : 0) - (img ? orz(img.top ) : 0)
-,	y = (mask ? orz(mask.left) : 0) - (img ? orz(img.left) : 0)
-	;
-	drawImageOrColor(ctx, mask, x,y, mode || BLEND_MODE_CLIP, maskOpacity);
+	if (imgBelow) drawImageOrColor(ctx, imgBelow);
+	if (imgAbove) drawImageOrColor(ctx, imgAbove, mode || BLEND_MODE_CLIP, maskOpacity);
 
 	return canvas;
 }
@@ -2738,33 +2766,21 @@ function getRenderByValues(values, layersBatch, renderParam) {
 		project.rendering.layersBatchCount++;
 	}
 
-var	canvas = cre('canvas');
-
-	if (!canvas.getContext) return;
-
-var	ctx = canvas.getContext('2d')
-,	w = canvas.width  = project.width
-,	h = canvas.height = project.height
+var	canvas = cre('canvas')
+,	ctx = canvas.getContext('2d')
 ,	l_a = layersBatch || project.layers
 ,	l_i = l_a.length
-,	l_k = l_i
-,	l_bottom = l_a[l_i - 1]
-,	l_clipping_mask
+,	bottomLayer = l_a[l_i - 1]
 ,	renderParam = renderParam || {}
-,	opacities = values.opacities || {}
-,	paddings = values.paddings || {}
-,	colors = values.colors || {}
-,	parts = values.parts || {}
 ,	side = getPropBySameNameChain(values, 'side')
-,	layer, opacity
-,	i,j,k,l,m,n,o,p,t
+,	layers, layer, opacity, clippingMask
 	;
+	canvas.width  = project.width;
+	canvas.height = project.height;
 
 	while (l_i-- > 0) if (layer = l_a[l_i]) {
-	var	params = layer.params
-	,	n = layer.name
-	,	x = layer.left
-	,	y = layer.top
+	var	n = layer.name
+	,	params = layer.params
 	,	skipColoring = !!params.if_only
 	,	clippingGroupWIP = !!renderParam.clippingGroupWIP
 	,	clippingGroupResult = false
@@ -2818,19 +2834,19 @@ var	ctx = canvas.getContext('2d')
 
 			if (
 				layer.clipping
-			&&	layer !== l_bottom
+			&&	layer !== bottomLayer
 			&&	blendMode === BLEND_MODE_NORMAL
 			) {
 				continue;
 			}
 		}
 
-		i = null;
+	var	img = null;
 
 //* render clipping group as separate batch:
 
 		if (clippingGroupResult) {
-			i = getRenderByValues(
+			img = getRenderByValues(
 				values
 			,	g_a
 			,	{
@@ -2842,28 +2858,27 @@ var	ctx = canvas.getContext('2d')
 
 //* get layer/folder/batch as flat image:
 
-		if (j = layer.layers) {
-			if (j.length > 0) {
-				if (
-					!skipColoring
-				&&	layer.isColorList
-				) {
-					i = getCanvasColored(values, n);
-				} else
+		if (layers = layer.layers) {
+			if (
+				!skipColoring
+			&&	layer.isColorList
+			) {
+				img = getCanvasColored(values, n);
+			} else
+			if (layers.length > 0) {
 				if (blendMode == 'pass') {
-					l_a = l_a.slice(0, l_i).concat(j);
+					l_a = l_a.slice(0, l_i).concat(layers);
 					l_i = l_a.length;
 
 					continue;
 				} else {
-					if (backward) {
-						j = j.slice();
-						j = j.reverse();
-					}
-
-					i = getRenderByValues(
+					img = getRenderByValues(
 						values
-					,	j
+					,	(
+							backward
+							? layers.slice().reverse()
+							: layers
+						)
 					,	{
 							ignoreColors: renderParam.ignoreColors
 						}
@@ -2871,31 +2886,20 @@ var	ctx = canvas.getContext('2d')
 				}
 			}
 		} else {
-			i = layer.img;
+			img = layer.img;
 		}
 
-		if (i) {
-			if (clippingGroupResult) {
-				x = y = 0;
-			} else {
-
-//* apply color:
-
-				if (
-					!skipColoring
-				&&	!renderParam.ignoreColors
-				) {
-					i.left = x;
-					i.top  = y;
-					i = getCanvasColored(values, n, i);
-				}
+		if (img) {
+			if (!clippingGroupResult) {
 
 //* apply mask:
+
+			var	mask = null;
 
 				if (layer.isMaskGenerated) {
 				var	padding = getSelectedOptionValue(values, 'paddings', n);
 					if (padding) {
-					var	mask = getRenderByValues(
+						mask = getRenderByValues(
 							values
 						,	l_a.slice(0, l_i)
 						,	{
@@ -2909,45 +2913,54 @@ var	ctx = canvas.getContext('2d')
 				}
 
 				if (mask) {
-					i = getCanvasBlended(mask.img || mask, i);
+					img = getCanvasBlended(img, mask, BLEND_MODE_MASK);
+
+					clearCanvasBeforeGC(mask);
+				}
+
+//* apply color:
+
+				if (
+					!skipColoring
+				&&	!layer.isColorList
+				&&	!renderParam.ignoreColors
+				) {
+					img = getCanvasColored(values, n, img);
 				}
 
 //* flip:
 
-				if (
-					backward
-				&&	(k = VIEW_FLIPS.indexOf(params.side)) >= 0
-				) {
-					i = getCanvasFlipped(i, k);
+				if (backward) {
+					img = getCanvasFlipped(img, VIEW_FLIPS.indexOf(params.side));
 				}
 			}
 
 //* add content to current buffer canvas:
 
-			drawImageOrColor(ctx, i, x,y, blendMode, opacity);
+			drawImageOrColor(ctx, img, blendMode, opacity);
 
-			k = ++project.rendering.layersApplyCount;
+			++project.rendering.layersApplyCount;
 
 //* store the mask of the clipping group:
 
 			if (
 				clippingGroupWIP
-			&&	layer === l_bottom
+			&&	layer === bottomLayer
 			) {
-				l_clipping_mask = getCanvasMaskAndRemoveFromSource(ctx, x,y, i.width, i.height);
+				clippingMask = getCanvasMaskAndRemoveFromSource(ctx);
 			}
 
-			clearCanvasForGC(i);
+			clearCanvasBeforeGC(img);
 		}
 	}
 
 //* end of layer batch iteration.
 //* apply stored mask to the blended clipping group content:
 
-	if (i = l_clipping_mask) {
-		drawImageOrColor(ctx, i, i.left, i.top, BLEND_MODE_MASK);
+	if (mask = clippingMask) {
+		drawImageOrColor(ctx, mask, BLEND_MODE_MASK);
 
-		clearCanvasForGC(i);
+		clearCanvasBeforeGC(mask);
 	}
 
 //* apply padding:
