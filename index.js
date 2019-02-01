@@ -1600,10 +1600,12 @@ async function loadProject(sourceFile) {
 
 			var	s = cre('select', optionBox);
 				s.name = listName;
-				s.title = JSON.stringify(params);
 				s.setAttribute('data-section', sectionName);
 				s.addEventListener('change', updateMenuAndRender, false);
 
+				if (TESTING) {
+					s.title = JSON.stringify(params);
+				}
 //* list item = each part:
 
 				for (var optionName in items) {
@@ -2169,18 +2171,38 @@ var	o = getProjectOptionValue(sectionName, listName, optionName);
 	} else {
 		return true;
 	}
+
 	return false;
 }
 
 function isSetOfValuesOK(values) {
-var	section, optionList;
+var	section, optionName;
+
 	for (var sectionName in values) if (section = values[sectionName])
 	for (var listName in section) if (optionName = section[listName]) {
 		if (!isOptionRelevant(values, sectionName, listName, optionName)) {
 			return false;
 		}
 	}
+
 	return true;
+}
+
+function getSetOfRelevantValues(values) {
+var	section, optionName, o, resultSet;
+
+	for (var sectionName in values) if (section = values[sectionName])
+	for (var listName in section) if (optionName = section[listName]) {
+		o = resultSet || (resultSet = {});
+		o = o[sectionName] || (o[sectionName] = {});
+		o[listName] = (
+			isOptionRelevant(values, sectionName, listName, optionName)
+			? optionName
+			: ''
+		);
+	}
+
+	return resultSet;
 }
 
 function setAllEmptyValues() {
@@ -2207,14 +2229,13 @@ var	values = {};
 		s => {
 		var	sectionName = s.getAttribute('data-section')
 		,	listName    = s.name
-		,	params      = project.options[sectionName][listName].params
 		,	optionLists = (values[sectionName] || (values[sectionName] = {}))
-		,	b = (
-				checkPreselected
-			&&	params.preselect
-			)
-		,	o = optionLists[listName] = (
-				b
+			;
+			optionLists[listName] = (
+				(
+					checkPreselected
+				&&	getPropByNameChain(project, 'options', sectionName, listName, 'params', 'preselect')
+				)
 				? [s.value]
 				: gt('option', s).map(o => o.value)
 			);
@@ -2226,7 +2247,7 @@ var	values = {};
 
 function getAllValueSets(checkPreselected) {
 
-	function getDeeper(optionLists, partialValueSet) {
+	function goDeeper(optionLists, partialValueSet) {
 		if (
 			optionLists
 		&&	optionLists.length > 0
@@ -2239,8 +2260,8 @@ function getAllValueSets(checkPreselected) {
 				optionLists.length > 1
 				? optionLists.slice(1)
 				: null
-			)
-			;
+			);
+
 			for (var optionName of optionNames) {
 
 //* https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/assign#Deep_Clone
@@ -2251,9 +2272,9 @@ function getAllValueSets(checkPreselected) {
 				section[listName] = optionName;
 
 				if (optionsLeft) {
-					getDeeper(optionsLeft, values);
+					goDeeper(optionsLeft, values);
 				} else
-				if (isSetOfValuesOK(values)) {
+				if (isSetOfValuesOK(values = getSetOfRelevantValues(values))) {
 				var	fileName = getFileNameByValuesToSave(values);
 
 					if (!(fileName in resultSets)) {
@@ -2269,20 +2290,20 @@ var	values = getAllMenuValues(checkPreselected)
 ,	optionLists = []
 ,	section
 ,	sectionName
-,	optionList
+,	optionNames
 ,	listName
 	;
 
 	for (var sectionName in values) if (section = values[sectionName])
-	for (var listName in section) if (optionList = section[listName]) {
+	for (var listName in section) if (optionNames = section[listName]) {
 		optionLists.push({
 			'sectionName': sectionName
 		,	'listName'   : listName
-		,	'optionNames': optionList
+		,	'optionNames': optionNames
 		});
 	}
 
-	getDeeper(optionLists);
+	goDeeper(optionLists);
 
 	return resultSets;
 }
@@ -2571,7 +2592,7 @@ var	w = ctx.canvas.width
 	}
 }
 
-function getCanvasMaskAndRemoveFromSource(ctx) {
+function makeCanvasOpaqueAndGetItsMask(ctx) {
 	project.rendering.layersBatchCount++;
 
 var	canvas = cre('canvas')
@@ -2947,7 +2968,7 @@ var	canvas = cre('canvas')
 				clippingGroupWIP
 			&&	layer === bottomLayer
 			) {
-				clippingMask = getCanvasMaskAndRemoveFromSource(ctx);
+				clippingMask = makeCanvasOpaqueAndGetItsMask(ctx);
 			}
 
 			clearCanvasBeforeGC(img);
