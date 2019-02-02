@@ -42,6 +42,8 @@ var	regLayerNameToSkip		= /^(skip)$/i
 	,	'not':		/^(\!|not?)$/i
 	,	'any':		/^(\?|any|some)$/i
 
+	,	'color_code':	/^(?:rgba?\W*(\w.+)|(?:hex\W*|#)(\w+))$/i
+
 	,	'colors':	/^(colou?r)s$/i
 	,	'parts':	/^(option|part|type)s$/i
 
@@ -140,10 +142,13 @@ examples of 'multi_select':
 ,	regHasDigit		= /\d/
 ,	regNaN			= /\D+/g
 ,	regSpace		= /\s+/g
+,	regCommaSpace		= /,\s*/g
 ,	regTrim			= getTrimReg('\\s+')
 ,	regTrimNaN		= getTrimReg('\\D+')
 ,	regTrimNaNorSign	= getTrimReg('^\\d+-')
 ,	regTrimNewLine		= /[^\S\r\n]*(\r\n|\r|\n)/g
+,	regHex3			= /^#?([0-9a-f])([0-9a-f])([0-9a-f])$/i
+,	regHex68		= /^#?([0-9a-f]{6}|[0-9a-f]{8})$/i
 
 ,	regJSONstringify = {
 		asFlatLine	: /^(data)$/i
@@ -370,15 +375,26 @@ var	examplesDir = 'example_project_files/'
 
 //* Common utility functions *-------------------------------------------------
 
-function dist(x,y) {return Math.sqrt(x*x + y*y)};
-function getAlphaDataIndex(x,y,w) {return ((y*w + x) << 2) | 3;}
-
 function pause(msec) {
 	return new Promise(
 		(resolve, reject) => {
 			setTimeout(resolve, msec || 1000);
 		}
 	);
+}
+
+function dist(x,y) {return Math.sqrt(x*x + y*y)};
+function getAlphaDataIndex(x,y,w) {return ((y*w + x) << 2) | 3;}
+
+function hex2rgbArray(v) {
+	if (v.length === 1) v += repeat(v, 5); else
+	if (v.length === 3) v = v.replace(regHex3, '$1$1$2$2$3$3');
+var	a = [];
+	while (v.length > 1) {
+		a.push(parseInt(v.substr(0,2), 16));
+		v = v.substr(2);
+	}
+	return a;
 }
 
 function getPropByNameChain() {
@@ -1273,18 +1289,28 @@ async function loadProject(sourceFile) {
 				if (layer.isOptionList) {
 					addOptionGroup(layer);
 				} else {
-					layer.isColor = (
+				var	parent = getParentLayer(layer);
+
+					if (
+						parent
+					&&	parent.isOptionIfList
+					) {
+						layer.isOptionIf = true;
+					}
+
+					if (
 						layer.isInsideColorList
 					&&	!layersInside
-					);
+					) {
+						layer.isColor = true;
+						parent = getParentLayer(layer, 'isInsideColorList', false);
+					}
 
-				var	parent = (
-						layer.isColor
-						? getParentLayer(layer, 'isInsideColorList', false)
-						: getParentLayer(layer)
-					);
-
-					if (parent && parent.isOptionList) {
+					if (
+						parent
+					&&	parent.isOptionList
+					&&	(layer.isColor || !layer.isInsideColorList)
+					) {
 						addOptionItem(layer, parent);
 					}
 				}
@@ -1309,7 +1335,7 @@ async function loadProject(sourceFile) {
 				;
 
 				while (i--) if (layer = layers[i]) {
-					if (clippingLayer && layer.clipping) {
+					if (clippingLayer && layer.isClipped) {
 						layer.clippingLayer = clippingLayer;
 					} else {
 						clippingLayer = layer;
@@ -1349,14 +1375,20 @@ async function loadProject(sourceFile) {
 		function getLayerImgLoadPromise(layer) {
 			return new Promise(
 				(resolve, reject) => {
+					if (layer.img = getPropByNameChain(layer, 'params', 'color_code')) {
+						resolve(true);
+
+						return;
+					}
+
 				var	img, onImgLoad = async function(e) {
-					var	i = layer.img = await (
-							layer.type === 'color'
-							? getFirstPixelRGBA(img)
-							: getImgOptimized(img)
-						);
-						i.top  = layer.top;
-						i.left = layer.left;
+						if (layer.isColor) {
+							layer.img = getFirstPixelRGBA(img);
+						} else {
+						var	i = layer.img = await getImgOptimized(img);
+							i.top  = layer.top;
+							i.left = layer.left;
+						}
 
 						resolve(true);
 					}
@@ -1808,9 +1840,30 @@ var	m,v
 					);
 					params[k] = v.concat(params[k] || []);
 				} else
+				if (k === 'color_code') {
+					v = [0,0,0,255];
+
+//* RGB(A):
+
+					if (m[1]) {
+						getNumbersArray(m[1], 4).forEach(
+							(n,i) => (v[i] = n)
+						);
+					} else
+
+//* hex:
+
+					if (m[2]) {
+						hex2rgbArray(m[2]).forEach(
+							(n,i) => (v[i] = n)
+						);
+					}
+
+					params[k] = v;
+				} else
 				if (k === 'multi_select') {
 					v = (
-						m[1] == 'optional'
+						m[1] === 'optional'
 						? [0,1]
 						: getNumbersArray(m[2], 2)
 					);
@@ -1828,11 +1881,17 @@ var	m,v
 						params[k] = param || k;
 					}
 				}
+				break;
 			}
 		}
+
 		if (k = layer.type) {
-			if (params.if_only && params.any) {
-				layer.isOptionIfAny = true;
+			if (params.if_only) {
+				if (params.any) {
+					layer.isOptionIfAny = true;
+				} else {
+					layer.isOptionIfList = true;
+				}
 			} else
 			if (NAME_PARTS_FOLDERS.indexOf(k) >= 0) {
 				layer.isOptionList = true;
@@ -1932,7 +1991,7 @@ async function loadORA(projectWIP) {
 				,	left:   orz(layer.left   || layer.x)
 				,	width:  orz(layer.width  || layer.w)
 				,	height: orz(layer.height || layer.h)
-				,	clipping:  getTruthyValue(layer.clipping)
+				,	isClipped: getTruthyValue(layer.clipping)
 				,	opacity:   orzFloat(layer.opacity)
 				,	blendMode: getProperBlendMode(mode)
 				,	blendModeOriginal: mode
@@ -2024,7 +2083,7 @@ async function loadPSDCommonWrapper(projectWIP, libName, varName) {
 				,	left:   orz(l.left)
 				,	width:  orz(l.width)
 				,	height: orz(l.height)
-				,	clipping:  getTruthyValue(clipping)
+				,	isClipped: getTruthyValue(clipping)
 				,	opacity:   getProperOpacity(l.opacity) * fillOpacity
 				,	blendMode: getProperBlendMode(
 						regLayerBlendModePass.test(modePass)
@@ -2127,7 +2186,7 @@ async function loadPSDLIB(projectWIP) {
 					,	left:   orz(layer.left)
 					,	width:  orz(layer.width)
 					,	height: orz(layer.height)
-					,	clipping:  getTruthyValue(layer.clipping)
+					,	isClipped: getTruthyValue(layer.clipping)
 					,	opacity:   getProperOpacity(layer.opacity)
 					,	blendMode: getProperBlendMode(mode)
 					,	blendModeOriginal: mode
@@ -2720,10 +2779,7 @@ function getLayerVisibilityByValues(layer, values) {
 
 //* skip not selected parts:
 
-	if (
-		layer.isOptionList
-	||	layer.isOptionIfAny
-	) {
+	if (layer.isOptionIfAny) {
 	var	selectedName = getPropByNameChain(values, layer.type, layer.name) || ''
 		;
 		if (!layer.params.not === !selectedName) {
@@ -2731,7 +2787,10 @@ function getLayerVisibilityByValues(layer, values) {
 		}
 	}
 
-	if (layer.isOption) {
+	if (
+		layer.isOption
+	||	layer.isOptionIf
+	) {
 	var	parent = (
 			layer.isColor
 			? getParentLayer(layer, 'isInsideColorList', false)
@@ -2823,7 +2882,7 @@ var	canvas = cre('canvas')
 			while (
 				(g_i-- > 0)
 			&&	(g_l = l_a[g_i])
-			&&	g_l.clipping
+			&&	g_l.isClipped
 			) {
 				g_a.push(g_l);
 			}
@@ -2854,7 +2913,7 @@ var	canvas = cre('canvas')
 			}
 
 			if (
-				layer.clipping
+				layer.isClipped
 			&&	layer !== bottomLayer
 			&&	blendMode === BLEND_MODE_NORMAL
 			) {
