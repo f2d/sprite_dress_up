@@ -35,50 +35,47 @@
 		,	'buttons': {
 				'load': 'Load example'
 			,	'download': 'Download'
-			,	'save_this': 'Save this image'
-			,	'save_all': 'Save all'
-			,	'show_all': 'Show all'
-			,	'show': 'Show'
-			,	'save': 'Save'
-			,	'reset_to_empty': 'Reset options to empty'
 			}
-		,	'render': {
-				'from': {
-					'current': 'Current selection'
-				,	'batch': 'Multiple sets at once'
+		,	'selection': {
+				'current': {
+					'title': 'Current selection'
+				,	'buttons': {
+						'show': 'Show'
+					,	'save': 'Save'
+					}
 				}
-			,	'selection': {
-					'visible': 'Visible'
-				,	'marked': 'Marked'
+			,	'batch': {
+					'title': 'Multiple sets'
+				,	'buttons': {
+						'show_all': 'Show all'
+					,	'save_all': 'Save all'
+					}
 				}
-			,	'if': {
-					'yes': 'Yes'
-				,	'no': 'No'
-				,	'any': 'Any'
-				}
-			,	'side': {
-					'front': 'Front'
-				,	'back': 'Back'
+			,	'reset': {
+					'title': 'Reset selection'
+				,	'buttons': {
+						'reset_to_init':  'All to initial'
+					,	'reset_to_top':   'All to top'
+					,	'reset_to_empty': 'All to empty'
+					}
 				}
 			}
 		,	'options': {
 				'autosave_on_load': 'Batch autosave all possible results when a project is loaded'
 			,	'batch': 'Mark this list for batch export.'
 			,	'preselect': 'Use only the single selected option for batch export.'
-			,	'out_of_scope': {
-					'header': 'Option branches that are not within the scope of current selection'
-				,	'hide': 'Hide from selection lists'
-				,	'allow': 'Allow to select for preview'
-				,	'autosave': 'Use for batch autosave too'
-				}
-			,	'sections': {
-					'zoom': 'Select zoom'
-				,	'side': 'Select side'
-				,	'paddings': 'Select paddings'
-				,	'opacities': 'Select opacities'
-				,	'colors': 'Select colors'
-				,	'parts': 'Select parts'
-				}
+			}
+		,	'sections': {
+				'zoom': 'Select zoom'
+			,	'side': 'Select side'
+			,	'paddings': 'Select paddings'
+			,	'opacities': 'Select opacities'
+			,	'colors': 'Select colors'
+			,	'parts': 'Select parts'
+			}
+		,	'side': {
+				'front': 'Front'
+			,	'back': 'Back'
 			}
 		,	'error': {
 				'file': 'No suitable files found.'

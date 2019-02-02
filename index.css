@@ -111,6 +111,7 @@ label {
 	background-color: rgba(0,0,0, 0.1);
 	/* padding: 0.5em; */
 }
+#project-header section,
 #project-header header,
 #project-header footer {
 	text-align: center;
@@ -124,10 +125,12 @@ label {
 #project-header button + button {
 	margin-left: 0.5em;
 }
-#project-header button {
-	/* display: block; */
-	/* text-align: center; */
+#project-header section > button {
+	margin: 0.5em;
+	display: block;
+	text-align: center;
 	/* width: 100%; */
+	/* margin-left: 0; */
 }
 #project-options label {
 	display: block;

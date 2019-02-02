@@ -68,6 +68,19 @@ examples of layer folder names with parameter syntax:
 	Note: [parts/colors] folder with [if/not/any] are intended for logical dependencies, and do not add options to selectable list.
 	Note: [colors] folder without [if/not/any] gets replaced with selected color, or skipped if empty value is selected. Any layer inside it is added as option regardless of nesting depth, which is intended for logical dependencies and overwriting color value under same name.
 
+examples of 'color_code':
+
+	[#1]
+	[#123]
+	[#112233]
+	[#11223344]
+	[hex-1F2F3F4F]
+	[rgb-255-123-0]
+	[rgba-10-20-30-40]
+
+	Note: missing RGB values are set to 0.
+	Note: missing Alpha value is set to 255 (FF).
+
 examples of 'paddings', 'radius':
 
 	"[outline (1:2x3:4)px]  name" = [1 to 2] width x [3 to 4] height px radius, rectangle area around each pixel.
@@ -1193,7 +1206,7 @@ async function loadProject(sourceFile) {
 					checkBatchParams(optionParams);
 
 					if (sectionName === 'side') {
-						for (k in (j = la.render.side)) {
+						for (k in (j = la.side)) {
 							optionItems[k] = j[k];
 						}
 
@@ -1501,68 +1514,34 @@ async function loadProject(sourceFile) {
 
 //* add batch controls:
 
-	var	b = la.buttons
-	,	f = la.render.from
-	,	e = cre('section', header)
-	,	h = cre('header', e)
-	,	g = cre('footer', e)
-		;
-		h.textContent = f.current + ':';
+	var	a = {
+			'show': 'showImg()'
+		,	'save': 'saveImg()'
+		,	'show_all': 'showAll()'
+		,	'save_all': 'saveAll()'
+		,	'reset_to_init':  'setAllValues(-1)'
+		,	'reset_to_top':   'setAllValues(1)'
+		,	'reset_to_empty': 'setAllValues()'
+		};
 
-		addButton(b.show, 'showImg()', g);
-		addButton(b.save, 'saveImg()', g);
-		addButton(b.reset_to_empty, 'setAllEmptyValues()', g);
+		for (var i in la.selection) {
+		var	j = la.selection[i]
+		,	b = j.buttons
+		,	e = cre('section', header)
+		,	h = cre('header', e)
+		,	f = cre('footer', e)
+			;
+			h.textContent = j.title + ':';
 
-	var	e = cre('section', header)
-	,	h = cre('header', e)
-		;
-		h.textContent = f.batch + ': ';
-		cre('span', h).id = 'batch-count';
-
-	var	b = la.render.if
-	,	f = la.render.selection
-	,	t = 'radio'
-	,	v = 'any'
-	,	m = (projectWIP.batch.paramNameDefault !== 'batch' ? 'yes' : 'no')
-	,	i,j,k,n
-	,	table, tr, td
-		;
-		if (TESTING && (table = cre('table', cre('div', e))))
-		for (i in f) {
-			tr = cre('tr', table);
-			td = cre('td', tr);
-			td.textContent = f[i] + ':';
-			k = 'batch-select-' + i;
-
-			for (j in b) {
-				td = cre('td', tr);
-				n = cre('label', td);
-				n.textContent = b[j];
-
-				n = cre('input', n, n.lastChild);
-				n.type = t;
-				n.name = k;
-				n.value = j;
-				n.onchange = updateBatchOptions;
-				if (
-					(i == 'visible' && j == v)
-				||	(i == 'marked'  && j == m)
-				) {
-					n.checked = true;
-					projectWIP.batch[i] = j;
-				}
+			for (var k in b) if (t = a[k]) {
+				addButton(b[k], t, f);
 			}
 		}
-
-		b = la.buttons;
-		g = cre('footer', e);
-		addButton(b.show_all, 'showAll()', g);
-		addButton(b.save_all, 'saveAll()', g);
 
 //* project parser testing:
 
 		if (TESTING) {
-			e = cre('p', container);
+			e = cre('section', header);
 			e.style.backgroundColor = 'red';
 
 			addButton('save data JSON', 'saveDL(project.sourceData, "data", "json", 1, replaceJSONpartsFromPSD)', e);
@@ -1586,7 +1565,7 @@ async function loadProject(sourceFile) {
 		}
 
 	var	container = delAllChildNodes(container || id('project-options'))
-	,	sections = la.options.sections
+	,	sections = la.sections
 	,	section
 	,	optionList
 	,	b = projectWIP.batch.paramNameDefault
@@ -1633,7 +1612,7 @@ async function loadProject(sourceFile) {
 				for (var optionName in items) {
 				var	n = optionName;
 					if (sectionName === 'side') {
-						n = la.render.side[n] || n;
+						n = la.side[n] || n;
 					} else
 					if (NAME_PARTS_PERCENTAGES.indexOf(sectionName) >= 0) {
 						if (n === '0%') {
@@ -1655,6 +1634,8 @@ async function loadProject(sourceFile) {
 				if (params.last) {
 					s.value = s.options[s.options.length - 1].value;
 				}
+
+				s.initialValue = s.value;
 			}
 		}
 	}
@@ -2254,14 +2235,25 @@ var	section, optionName, o, resultSet;
 	return resultSet;
 }
 
-function setAllEmptyValues() {
+function setAllValues(toFirst) {
 	gt('select', id('project-options')).forEach(
 		s => {
+			if (toFirst > 0) {
+				s.value = s.options[0].value;
+				return;
+			}
+
+			if (toFirst < 0) {
+				s.value = s.initialValue;
+				return;
+			}
+
 			for (o of s.options) if ('' === o.value) {
 				s.value = o.value;
 				return;
 			}
-			for (o of s.options) if ('' === o.textContent.replace(regTrim, '')) {
+
+			for (o of s.options) if ('' === trim(o.textContent)) {
 				s.value = o.value;
 				return;
 			}
@@ -2676,6 +2668,7 @@ var	canvas = cre('canvas')
 	;
 
 //* https://stackoverflow.com/a/3129152
+
 	if (isVerticalFlip) {
 		ctx.translate(0, h);
 		ctx.scale(1, -1);
@@ -3263,16 +3256,6 @@ var	img = prerenders[refName];
 	}
 
 	return img;
-}
-
-function updateBatchOptions(e,n) {
-	if (
-		e
-	&&	(e = e.target)
-	&&	(n = e.name)
-	) {
-		project.batch[n.split('-').pop()] = e.value;
-	}
 }
 
 function updateMenuAndRender() {
