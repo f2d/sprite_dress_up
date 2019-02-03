@@ -5,8 +5,7 @@
 
 //* menu:
 //* TODO: progress/status panel + [stop operation] button.
-//* TODO: buttons: show/save [all marked and visible options], [all marked], [all].
-//* TODO: options menu: add/remove/copy colors and outlines, edit all list(s) at once in textarea - including all usable layer names, or only currently existing.
+//* TODO: options menu: add/remove/copy/edit colors and outlines, or all list(s), maybe in textarea.
 //* TODO: N px outline, select color and method:
 //*	a) max alpha in +|- N px around,
 //*	b) min distance to any non-transparent px (map the 0,N:N+1,+Inf range to 255:0).
@@ -1964,9 +1963,15 @@ async function loadORA(projectWIP) {
 				,	height: orz(layer.height || layer.h)
 				,	isClipped: getTruthyValue(layer.clipping)
 				,	opacity:   orzFloat(layer.opacity)
-				,	blendMode: getProperBlendMode(mode)
+				,	blendMode: getProperBlendMode(
+						layer.isolation === 'auto'
+						? 'pass'
+						: mode
+					)
 				,	blendModeOriginal: mode
 				};
+
+//* note: layer masks also may be emulated via compositing modes in ORA
 
 				if (mask) {
 					m = layerWIP.mask = getPropByAnyOfNamesChain(mask, 'img', 'image');
@@ -1988,8 +1993,6 @@ async function loadORA(projectWIP) {
 					layers.forEach(v => addLayerToTree(v, parentGroup));
 				}
 			}
-
-//* note: layer masks may be emulated via compositing modes in ORA
 
 		var	parentGroup = projectWIP.layers = [];
 
