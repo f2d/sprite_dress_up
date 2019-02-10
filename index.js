@@ -162,6 +162,7 @@ examples of 'multi_select':
 ,	regTrimNewLine		= /[^\S\r\n]*(\r\n|\r|\n)/g
 ,	regHex3			= /^#?([0-9a-f])([0-9a-f])([0-9a-f])$/i
 ,	regHex68		= /^#?([0-9a-f]{6}|[0-9a-f]{8})$/i
+,	regClassExampleFiles	= getClassReg('example-files|files')
 ,	regClassExampleFile	= getClassReg('example-file|file')
 ,	regClassLoadedFile	= getClassReg('loaded-file|file')
 ,	regClassMenuBar		= getClassReg('menu-bar')
@@ -3793,44 +3794,68 @@ var	isProjectLoaded = await addProjectView(
 	return isProjectLoaded;
 }
 
-async function loadFromButton(e) {
+async function loadFromButton(e, action) {
 	if (e.disabled) {
 		return;
 	}
 
-//* show loading status:
-
 	e.disabled = true;
 
-var	c = 'loading'
-,	p = getParentByClass(e, regClassExampleFile)
-	;
+	if (action) {
+	var	p = getParentByClass(e, regClassExampleFiles);
 
-	if (p && p.className) {
-		if (p.className.indexOf(c) < 0) {
-			toggleClass(p,c,1);
-		} else {
-			return;
+		if (action === 'download_all') {
+		var	count = 0;
+
+			for (var a of gt('a', p)) if (a.download) {
+				a.click();
+
+				if (++count >= 10) {
+					await pause(1000);
+					count = 0;
+				}
+			}
+		} else
+		if (action === 'load_all') {
+			for (var b of gt('button', p)) if (b.getAttribute('data-url')) {
+				await loadFromButton(b);
+			}
 		}
-	}
+	} else {
+
+//* show loading status:
+
+	var	c = 'loading'
+	,	p = getParentByClass(e, regClassExampleFile)
+		;
+
+		if (p && p.className) {
+			if (p.className.indexOf(c) < 0) {
+				toggleClass(p,c,1);
+			} else {
+				return;
+			}
+		}
 
 //* process the file:
 
-var	url = e.getAttribute('data-url')
-,	isProjectLoaded = await loadFromURL(url)
-	;
+	var	url = e.getAttribute('data-url')
+	,	isProjectLoaded = await loadFromURL(url)
+		;
 
-	if (!isProjectLoaded) alert(
-		la.error.file
-	+	'\n'
-	+	url
-	);
+		if (!isProjectLoaded) alert(
+			la.error.file
+		+	'\n'
+		+	url
+		);
 
 //* remove loading status:
 
-	if (p && p.className) {
-		toggleClass(p,c,-1);
+		if (p && p.className) {
+			toggleClass(p,c,-1);
+		}
 	}
+
 	e.disabled = false;
 }
 
@@ -3918,20 +3943,21 @@ var	supportedFileTypesText = (
 						,	filePath = examplesDir + (v.dir || '') + fileName
 						,	fileAttr = encodeTagAttr(fileName)
 						,	pathAttr = encodeTagAttr(filePath)
+						,	dict = la.menu.examples.buttons
 						,	downloadLink = (
 								'<a href="'
 							+		pathAttr
 							+	'" download="'
 							+		fileAttr
 							+	'">'
-							+		la.menu.examples.download
+							+		dict.download
 							+	'</a>'
 							)
 						,	loadButton = (
 								'<button onclick="loadFromButton(this)" data-url="'
 							+		pathAttr
 							+	'">'
-							+		la.menu.examples.load
+							+		dict.load
 							+	'</button>'
 							)
 						,	tabs = [
@@ -3949,7 +3975,29 @@ var	supportedFileTypesText = (
 							);
 						}
 					).join('')
-				);
+				)
+			,	batchButtons = []
+			,	dict = la.menu.examples.batch_buttons
+				;
+
+				for (var i in dict) {
+					batchButtons.push(
+						'<td colspan="2"><button onclick="loadFromButton(this, \''
+					+		encodeTagAttr(i)
+					+	'\')">'
+					+		dict[i]
+					+	'</button></td>'
+					);
+				}
+
+				if (batchButtons.length > 0) {
+					fileListHTML += (
+						'<tr class="example-file">'
+					+		batchButtons.join('')
+					+	'</tr>'
+					);
+				}
+
 				return (
 					'<p>'
 				+		'<header>'

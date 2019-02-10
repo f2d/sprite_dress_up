@@ -88,7 +88,7 @@ label {
 	left: inherit;
 	right: 0;
 }
-.example-files table {
+.example-files {
 	border-collapse: collapse;
 }
 .example-files td {
@@ -109,6 +109,9 @@ label {
 	width: 1em;
 	text-align: center;
 	content: "⌛";
+}
+.example-file button {
+	width: 100%;
 }
 .button {
 	background-color: rgba(0,0,0, 0.1);
