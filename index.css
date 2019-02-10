@@ -7,20 +7,12 @@ a {
 a:hover {
 	color: #000;
 }
-b::before,
-b::after {
-	/* content: "\20\2014\20"; */
-	/* margin: 0 1em; */
-}
 body {
 	margin: 1em auto;
 	text-align: center;
 }
 p > button + button {
 	margin-left: 1em;
-}
-img {
-	float: left;
 }
 img,
 canvas {
@@ -37,42 +29,80 @@ select {
 	display: block;
 	width: 100%;
 }
-body > section > div[id] {
-	display: inline-block;
-	vertical-align: top;
-	background-color: #f5f5f5;
-	/* background-color: white; */
-	/* border: 1px solid #ddd; */
-	padding: 1em;
-	margin: 1em;
-	text-align: left;
-}
 label:hover {
 	background-color: #eee;
 }
 label {
 	display: inline-block;
 	padding: 0 4px 0 0;
-	white-space: normal;
+	/* white-space: normal; */
 }
-#examples .files {
-	/* display: inline-block; */
+.menu-head {
+	display: inline-block;
+	position: relative;
+	/* margin: 1em; */
 }
-#examples .files table {
-	border-collapse: collapse;
+.menu-head > :first-child {
+	background-color: #f5f5f5;
+	padding: 0.5em 1em;
+	text-align: left;
 }
-#examples .files td {
-	padding: 2px 4px;
+.menu-head > :first-child::before {
+	line-height: 50%;
+	content: "\25BE\A0";
 }
-#examples .files td:first-child {
+.menu-drop {
+	display: none;
+	position: relative;
+}
+.menu-head > .show + .menu-drop,
+.menu-head:hover .menu-drop,
+.menu-drop:hover {
+	display: block;
+	z-index: 99;
+}
+.menu-head:hover .menu-drop,
+.menu-drop:hover {
+	z-index: 999;
+}
+.menu-hid {
+	display: block;
+	position: absolute;
+	top: 0;
+	left: 0;
+	min-width: 100%;
+}
+.menu-list {
+	display: block;
+	padding: 0 1em;
+	border: 1px solid #aaa;
+	background-color: #f5f5f5;
+	text-align: left;
+	white-space: nowrap;
+}
+.r .menu-list {
 	text-align: right;
 }
-#examples .file.loading td {
+.r .menu-head > :first-child::before,
+.r .menu-hid {
+	left: inherit;
+	right: 0;
+}
+.example-files table {
+	border-collapse: collapse;
+}
+.example-files td {
+	padding: 2px 4px;
+}
+.example-files td:first-child {
+	text-align: right;
+}
+.example-file.loading td {
 	position: relative;
 	border-color: #bdf;
 	background-color: #bdf;
 }
-#examples .file.loading td:last-child::after {
+.example-file.loading td:last-child::after {
 	position: absolute;
 	top: 0;
 	left: 100%;
@@ -80,66 +110,112 @@ label {
 	text-align: center;
 	content: "⌛";
 }
-#project-name {
-	font-weight: bold;
+.button {
+	background-color: rgba(0,0,0, 0.1);
 }
-#project-header div,
-#project-header section,
-#project-container td {
+.button.show {
+	background-color: #ace;
+}
+.button:hover {
+	background-color: #fff;
+}
+.button:hover.show {
+	background-color: #bdf;
+}
+.button.loading {
+	background-color: #eda;
+}
+.button button {
+	padding: 0.5em 1em;
+	border: none;
+	background: transparent;
+}
+.close-button:hover {
+	color: white;
+	background-color: #f88;
+}
+#loaded-files-selection .button {
+	display: inline-block;
+	margin: 0.5em;
+}
+#loaded-files-selection,
+#loaded-files-view {
+	margin: 1em;
+	padding: 1em;
 	text-align: left;
 	vertical-align: top;
-	/* padding: 1em; */
+	background-color: #f5f5f5;
 }
-#project-container td div,
-#project-container td > img,
-#project-container td > section {
+#loaded-files-selection {
+	padding: 0.5em 1em;
+}
+#loaded-files-selection:empty,
+#loaded-files-view:empty,
+#loaded-files-view > :not(.show),
+.loaded-file:empty {
+	display: none;
+}
+.loaded-file td div,
+.loaded-file td > img,
+.loaded-file td > section {
 	padding: 0.5em;
 	margin: 0.5em;
 }
-#project-container td div,
-#project-container td section {
+.loaded-file td div,
+.loaded-file td section {
 	background-color: rgba(0,0,0, 0.1);
 }
-#project-container td section {
+.loaded-file td section {
 	white-space: nowrap;
 }
-#project-container:empty {
-	display: none;
+.loaded-file td,
+.project-header div,
+.project-header section {
+	text-align: left;
+	vertical-align: top;
 }
-#project-header section {
+.project-header section {
 	display: inline-block;
 	background-color: rgba(0,0,0, 0.1);
-	/* padding: 0.5em; */
 }
-#project-header section,
-#project-header header,
-#project-header footer {
+.project-header section,
+.project-header header,
+.project-header footer {
 	text-align: center;
 }
-#project-header section,
-#project-header header,
-#project-header footer,
-#project-header div {
+.project-header section,
+.project-header header,
+.project-header footer,
+.project-header div {
 	margin: 0.5em;
 }
-#project-header button + button {
+.project-header button + button {
 	margin-left: 0.5em;
 }
-#project-header section > button {
+.project-header section > button {
 	margin: 0.5em;
 	display: block;
 	text-align: center;
-	/* width: 100%; */
-	/* margin-left: 0; */
 }
-#project-options label {
+.project-options label {
 	display: block;
 	min-width: 100px;
 	padding: 0 0 0 4px;
-	/* white-space: nowrap; */
-	/* overflow: hidden; */
-	/* text-overflow: ellipsis; */
 }
-#project-options input[type="checkbox"] {
+.project-options input[type="checkbox"] {
 	float: right;
+}
+.preview {
+	padding-right: 6px;
+}
+.preview img {
+	max-width: 100%;
+	height: auto;
+}
+.filename {
+	font-weight: bold;
+}
+*[onclick],
+input[type="file"] {
+	cursor: pointer;
 }

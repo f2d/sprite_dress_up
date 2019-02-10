@@ -16,6 +16,7 @@
 //* TODO: arithmetic emulation of all operations in 16/32-bit until final result; to be optionally available as checkbox/selectbox.
 //* TODO: decode layer data (PSD/PNG/etc) manually without using canvas, to avoid premultiplied-alpha (PMA - in Firefox, not in Chrome) while rendering.
 //* TODO: img src: recompress using temporary canvas (bad with PMA), save whichever is shorter (original vs temp) as base64 or blob.
+//* TODO: for files without merged image data - render ignoring options, but respecting layer visibility properties.
 
 //* later when it works at all, try in spare time:
 //* TODO: split functionality into modules to reuse with drawpad, etc.
@@ -161,6 +162,11 @@ examples of 'multi_select':
 ,	regTrimNewLine		= /[^\S\r\n]*(\r\n|\r|\n)/g
 ,	regHex3			= /^#?([0-9a-f])([0-9a-f])([0-9a-f])$/i
 ,	regHex68		= /^#?([0-9a-f]{6}|[0-9a-f]{8})$/i
+,	regClassExampleFile	= getClassReg('example-file|file')
+,	regClassLoadedFile	= getClassReg('loaded-file|file')
+,	regClassMenuBar		= getClassReg('menu-bar')
+,	regClassButton		= getClassReg('button')
+,	regClassShow		= getClassReg('show')
 
 ,	regJSONstringify = {
 		asFlatLine	: /^(data)$/i
@@ -265,7 +271,6 @@ examples of 'multi_select':
 	,	'Lab'
 	]
 ,	TESTING = false
-,	project = {}
 	;
 
 //* Config: loaders of project files *-----------------------------------------
@@ -447,7 +452,35 @@ function getPropBySameNameChain(o,n,p) {
 	return o;
 }
 
-function arrayFilterNonEmptyValues(v) {return !!v;}
+function cleanupObjectTree(obj, childKeys, keysToRemove) {
+	if (obj) {
+		Array.from(keysToRemove).forEach(
+			k => {
+				if (k in obj) {
+					obj[k] = null;
+					delete obj[k];
+				}
+			}
+		);
+
+		Array.from(childKeys).forEach(
+			k => {
+			var	v = obj[k];
+				if (v) {
+					if (v.forEach) {
+						v.forEach(v => cleanupObjectTree(v, childKeys, keysToRemove));
+					} else {
+						cleanupObjectTree(v, childKeys, keysToRemove);
+					}
+				}
+			}
+		);
+	}
+
+	return obj;
+}
+
+function arrayFilterNonEmptyValues(v) {return (typeof v === 'string' ? (v.length > 0) : !!v);}
 function arrayFilterUniqueValues(v,i,a) {return a.indexOf(v) === i;}
 
 //* https://gist.github.com/wellcaffeinated/5399067#gistcomment-1364265
@@ -467,7 +500,7 @@ var	SIZE_64_KB = 65536	// 0x10000
 function gc(n,p) {try {return Array.from((p || document).getElementsByClassName	(n));} catch (e) {return [];}}
 function gt(n,p) {try {return Array.from((p || document).getElementsByTagName	(n));} catch (e) {return [];}}
 function gn(n,p) {try {return Array.from((p || document).getElementsByName		(n));} catch (e) {return [];}}
-function gi(n,p) {try {return Array.from((p || document).getElementsById		(n));} catch (e) {return [];}}
+function gi(n,p) {try {return Array.from((p || document).querySelectorAll('*[id="'+n+'"]'));} catch (e) {return [];}}
 function id(i) {return document.getElementById(i);}
 function cre(e,p,b) {
 	e = document.createElement(e);
@@ -553,12 +586,77 @@ var	j = orz(keep)
 function getClassReg(c) {return new RegExp('(^|\\s)('+c+')($|\\s)', 'i');}
 function getTrimReg(c) {return new RegExp('^['+c+']+|['+c+']+$', 'gi');}
 
-function getParentBeforeClass(e,c) {
-var	p = e
-,	r = (c.test ? c : getClassReg(c))
+function getParentByClass(e,c) {
+var	r = (c.test ? c : getClassReg(c));
+	while (e) {
+		if (e.className && r.test(e.className)) break;
+		e = e.parentNode;
+	}
+	return e;
+}
+
+function getTargetParentByClass(e, c) {
+	if (e && e.target) {
+		e = e.target;
+	}
+
+	e = getParentByClass(e, c);
+
+	if (e && e.tagName) {
+		return e;
+	}
+}
+
+function getTagAttrIfNotEmpty(name, values, delim) {
+	if (name) {
+	var	a = (values.filter ? values : [values]).filter(arrayFilterNonEmptyValues);
+		if (a.length) return ' '+name+'="'+encodeTagAttr(a.join(delim || ' '))+'"';
+	}
+	return '';
+}
+
+function getDropdownMenuHTML(head, list, id, tagName) {
+	if (head && head.map) {
+		[head, list, id, tagName] = head;
+	}
+var	t = tagName || 'div'
+,	a = '<'+t+' class="'
+,	b = '</'+t+'>'
+,	head = ''+head
 	;
-	while (e && (e = e.parentNode) && !(e.className && r.test(e.className))) p = e;
-	return p;
+	return	a+'menu-head"'
+	+	getTagAttrIfNotEmpty('id', id || '')
+	+	'>'
+	+	(
+			head[0] === '<'
+		&&	head.slice(-1) === '>'
+			? head
+			: (
+				'<header class="button" onclick="toggleDropdownMenu(this)">'
+			+		head
+			+	'</header>'
+			)
+		)
+	+	a+'menu-drop">'
+	+	a+'menu-hid">'
+	+	a+'menu-list">'
+	+		(list || '')
+	+	b+b+b+b;
+}
+
+function toggleDropdownMenu(e) {
+var	p = getParentByClass(e, regClassMenuBar);
+	if (p) {
+		gc('menu-head', p).forEach(
+			v => {
+			var	h = gt('header', v)[0];
+				if (h && h !== e) {
+					toggleClass(h, 'show', -1);
+				}
+			}
+		);
+	}
+	toggleClass(e, 'show');
 }
 
 function trim(t) {
@@ -736,6 +834,120 @@ function readFilePromiseFromURL(url, responseType) {
 			r.send();
 		}
 	);
+}
+
+function dataToBlob(data) {
+	if (URL_API && URL_API.createObjectURL) {
+	var	type = TYPE_TP;
+		if (data.slice(0, k = DATA_PREFIX.length) == DATA_PREFIX) {
+		var	i = data.indexOf(',')
+		,	meta = data.slice(k,i)
+		,	data = data.slice(i+1)
+		,	k = meta.indexOf(';')
+			;
+			if (k < 0) {
+				type = meta;
+				data = decodeURIComponent(data);
+			} else {
+				type = meta.slice(0,k);
+				if (meta.slice(k+1) == 'base64') data = atob(data);
+			}
+		}
+	var	data = Uint8Array.from(TOS.map.call(data, (v => v.charCodeAt(0))))
+	,	size = data.length
+	,	url = URL_API.createObjectURL(new Blob([data], {'type': type}))
+		;
+		if (url) {
+			return {
+				size: size
+			,	type: type
+			,	url: url
+			};
+		}
+	}
+}
+
+function saveDL(data, fileName, ext, addTime, jsonReplacerFunc) {
+var	type = TYPE_TP
+,	data = (
+		typeof data === 'object'
+		? JSON.stringify(
+			data,
+			jsonReplacerFunc || null
+			, '\t')
+		: ''+data
+	);
+
+	if (data.slice(0, BLOB_PREFIX.length) == BLOB_PREFIX) {
+	var	dataURI = data
+	,	blob = true
+		;
+	} else
+	if (data.slice(0, DATA_PREFIX.length) == DATA_PREFIX) {
+		dataURI = data;
+	} else {
+		dataURI = DATA_PREFIX + type + ',' + encodeURIComponent(data);
+	}
+
+var	size = dataURI.length
+,	a = cre('a', document.body)
+	;
+	logTime('saving "' + fileName + '", data = ' + data.length + ' bytes, dataURI = ' + size + ' bytes');
+
+	if ('download' in a) {
+		try {
+			if (!blob) {
+				if (blob = dataToBlob(data)) {
+					size = blob.size;
+					type = blob.type;
+					dataURI = blob.url;
+				} else {
+					type = dataURI.split(';', 1)[0].split(':', 2)[1];
+				}
+				if (!ext) {
+					ext = type.split('/').slice(-1)[0];
+				}
+			}
+			if (ext == 'plain') ext = 'txt';
+
+		var	time = (
+				!fileName || addTime
+				? getFormattedTime(0,1)
+				: ''
+			)
+		,	baseName = (
+				function() {
+					if (!fileName) return time;
+					if (addTime > 0) return fileName + '_' + time;
+					if (addTime < 0) return time + '_' + fileName;
+					return fileName;
+				}
+			)()
+		,	fileName = baseName + (ext ? '.' + ext : '')
+			;
+			a.href = ''+dataURI;
+			a.download = fileName;
+			a.click();
+
+			logTime('saving "' + fileName + '"');
+		} catch (error) {
+			console.log(error);
+		}
+	} else {
+		window.open(dataURI, '_blank');
+
+		logTime('opened file to save');
+	}
+
+	setTimeout(
+		function() {
+			if (blob) URL_API.revokeObjectURL(blob.url);
+			del(a);
+		}
+	,	Math.max(Math.ceil(size / 1000), 12345)
+	);
+
+	return size;
 }
 
 function loadLib(lib) {
@@ -954,10 +1166,13 @@ function getFirstPixelRGBA(img) {
 	);
 }
 
-function addButton(text, func, parent) {
+function getProjectContainer(e) {return getTargetParentByClass(e, regClassLoadedFile);}
+function getProjectButton(e) {return getTargetParentByClass(e, regClassButton);}
+
+function addButton(parent, text, func) {
 var	e = cre('button', parent);
 	e.textContent = text || e.tagName;
-	e.setAttribute('onclick', func || ('alert(' + e.textContent + ')'));
+	if (func) e.setAttribute('onclick', func);
 	return e;
 }
 
@@ -984,11 +1199,11 @@ function getTruthyValue(v) {
 	);
 }
 
-function getProperOpacity(a) {
+function getNormalizedOpacity(a) {
 	return Math.max(0, Math.min(1, orz(a) / MAX_OPACITY));
 }
 
-function getProperBlendMode(b) {
+function getNormalizedBlendMode(b) {
 var	r,b = ('' + b).toLowerCase();
 
 	return (
@@ -1120,311 +1335,154 @@ function thisToPng(targetLayer) {
 
 //* Page-specific functions: internal, loading *-------------------------------
 
-async function loadProject(sourceFile) {
+async function removeProjectView(fileID) {
+var	countDeleted = gi(fileID).reduce(
+		(count, e) => (del(e) ? ++count : count)
+	,	0
+	);
 
-	async function loadProjectOptions(projectWIP) {
+	if (countDeleted) {
+		logTime('"' + fileID + '" closed');
+	}
+}
 
-		function getProjectOptions(projectWIP) {
+async function addProjectView(sourceFile) {
 
-			function processLayerInBranch(layer) {
+	if (!window.FileReader) {
+		return false;
+	}
 
-				function getOrAddOptionGroup(sectionName, listName) {
-				var	sectionName = ''+sectionName
-				,	listName    = ''+listName
-				,	o = (options || (options = {}))
-				,	o = (o[sectionName] || (o[sectionName] = {}))
-				,	o = (o[listName] || (o[listName] = {
-						'params': {}
-					,	'items': {}
-					}))
-					;
-					return o;
-				}
+var	buttonTab = cre('div', id('loaded-files-selection'));
+	buttonTab.className = 'button loading';
 
-				function checkBatchParams(globalOptionParams) {
-					for (var k of [
-						'batch',
-						'preselect',
-					]) if (params[k]) {
-						if (!projectWIP.batch.paramNameDefault) {
-							projectWIP.batch.paramNameMarked = k;
-							projectWIP.batch.paramNameDefault = getOtherBatchParam(k);
-						}
-						globalOptionParams[k] = true;
-					}
-				}
+var	button = cre('button', buttonTab);
+	button.textContent = sourceFile.name;
 
-				function addOptionGroup(sectionName, listName) {
-				var	optionParams = getOrAddOptionGroup(sectionName, listName).params
-				,	i,j,k,o
-					;
-					checkBatchParams(optionParams);
+	try {
+	var	project = await getNormalizedProjectData(sourceFile)
+	,	container = (
+			await getProjectViewMenu(project)
+		||	await getProjectViewImage(project)
+		);
+		if (container) {
+		var	fileID = 'loaded-file: ' + sourceFile.name;
 
-					if (j = params[k = 'multi_select']) {
-						if (o = optionParams[k]) {
-							if (o.min > j.min) o.min = j.min;
-							if (o.max < j.max) o.max = j.max;
-						} else {
-							o = optionParams[k] = {};
-							for (i in j) o[i] = j[i];
-						}
-					}
+			removeProjectView(fileID);
 
-					for (k of [
-						'last',
-						'no_prefix',
-					]) {
-						if (params[k]) optionParams[k] = true;
-					}
-				}
+		var	childKeys = ['layers']
+		,	keysToRemove = ['loading', 'toPng']
+			;
+			if (!TESTING) {
+				keysToRemove = keysToRemove.concat(['blendModeOriginal', 'nameOriginal', 'sourceData']);
+			}
+			cleanupObjectTree(project, childKeys, keysToRemove);
 
-				function addOptionItem(layer, sectionName, listName, optionName) {
-					layer.isOption = true;
+			container.id = buttonTab.id = fileID;
+			container.className = 'loaded-file';
 
-					if (!layer.type) {
-						layer.type = sectionName.replace(regLayerTypeSingleTrim, '');
-					}
-
-				var	optionItems = getOrAddOptionGroup(sectionName, listName).items
-				,	optionItemLayers = (optionItems[optionName] || (optionItems[optionName] = []))
-					;
-					if (optionName !== '') {
-						optionItemLayers.push(layer);
-					}
-				}
-
-				function addOptionsFromParam(sectionName, listName) {
-				var	param = params[sectionName];
-					if (!param) return;
-
-				var	o = getOrAddOptionGroup(sectionName, listName || sectionName)
-				,	optionParams = o.params
-				,	optionItems = o.items
-				,	i,j,k
-					;
-					checkBatchParams(optionParams);
-
-					if (sectionName === 'side') {
-						for (k in (j = la.side)) {
-							optionItems[k] = j[k];
-						}
-
-						if (
-							(j = VIEW_SIDES.indexOf(param)) >= 0
-						||	params.if_only
-						) {
-							params[sectionName] = (
-								params.if_only
-								? VIEW_SIDES[params.not ? 0 : 1]
-								: (params.not ? VIEW_SIDES[j ? 0 : 1] : param)
-							);
-							layer.isOnlyForOneSide = true;
-						} else {
-							layer.isOrderedBySide = true;
-						}
-					} else
-					if (sectionName === 'paddings') {
-						if (param = params['radius']) {
-							param.forEach(v => {
-							var	j = v.threshold
-							,	k = (
-									(
-										typeof v.x !== 'undefined'
-										? [v.x, v.y]
-										: [v.radius]
-									).map(x => (
-										typeof x.in !== 'undefined'
-										? x.in + ':' + x.out
-										: x.out
-									)).join('x')
-								+	'px'
-								+	(j?'-'+j:'')
-								);
-								optionItems[k] = v;
-							});
-						}
-						layer.isMaskGenerated = true;
-					} else {
-						if ((i = 'format') in param) {
-							optionParams[i] = param[i];
-						}
-						if ((i = 'values') in param) {
-							param[i].forEach(v => {
-							var	k = v + '%';	//* <- pad bare numbers to avoid autosorting in <select>
-								if (sectionName == 'opacities') v = (orz(v) / 100);
-								optionItems[k] = v;
-							});
-						}
-					}
-				}
-
-			var	n = layer.name
-			,	m = layer.names = (
-					n
-					.split(regCommaSpace)
-					.filter(arrayFilterUniqueValues)
-				);
-
-				if (isLayerSkipped(layer)) {
-					return;
-				}
-
-			var	params = layer.params
-			,	layersInside = layer.layers
-				;
-
-				addOptionsFromParam('zoom');
-				addOptionsFromParam('side');
-				m.forEach(
-					listName => {
-						addOptionsFromParam('opacities', listName);
-						addOptionsFromParam('paddings', listName);
-					}
-				);
-
-				if (layer.isOptionList) {
-					m.forEach(
-						listName => addOptionGroup(layer.type, listName)
-					);
-				} else {
-				var	parent = getParentLayer(layer);
-
-					if (
-						parent
-					&&	parent.isOptionIfList
-					) {
-						layer.isOptionIf = true;
-					}
-
-					if (
-						layer.isInsideColorList
-					&&	!layersInside
-					) {
-						layer.isColor = true;
-						parent = getParentLayer(layer, 'isInsideColorList', false);
-					}
-
-					if (
-						parent
-					&&	parent.isOptionList
-					&&	(layer.isColor || !layer.isInsideColorList)
-					) {
-						parent.names.forEach(
-							listName => m.forEach(
-								optionName => addOptionItem(layer, parent.type, listName, optionName)
-							)
-						);
-					}
-				}
-
-				if (layersInside) {
-					layer.layers = getUnskippedProcessedLayers(
-						layersInside
-					,	layer.isColorList
-					||	layer.isInsideColorList
-					);
-				} else
-				if (layer.opacity > 0) {
-					projectWIP.loading.images.push(layer);
-				}
-
-				return layer;
+			if (project.options || TESTING) {
+				container.project = project;
+				project.container = container;
 			}
 
-			function getUnskippedProcessedLayers(layers, isInsideColorList) {
-			var	i = layers.length
-			,	layer, clippingLayer
-				;
-
-				while (i--) if (layer = layers[i]) {
-					if (clippingLayer && layer.isClipped) {
-						layer.clippingLayer = clippingLayer;
-					} else {
-						clippingLayer = layer;
-					}
-				}
-
-				return (
-					layers
-					.filter(layer => {
-						if (
-							isLayerSkipped(layer)
-						||	(layer.clippingLayer && isLayerSkipped(layer.clippingLayer))
-						) {
-							return false;
-						} else {
-							if (isInsideColorList) {
-								layer.isInsideColorList = true;
-							}
-							return true;
-						}
-					})
-					.map(processLayerInBranch)
-				);
+			if (project.options) {
+				updateMenuAndRender(project);
 			}
 
-		var	options, k;
-			projectWIP.layers = getUnskippedProcessedLayers(projectWIP.layers);
+			id('loaded-files-view').appendChild(container);
 
-			if (!projectWIP.batch.paramNameDefault) {
-				projectWIP.batch.paramNameDefault = k = 'batch';
-				projectWIP.batch.paramNameMarked = getOtherBatchParam(k);
-			}
+			buttonTab.className = 'button';
 
-			return options;
+		var	buttonX = cre('button', buttonTab);
+			buttonX.className = 'close-button';
+			buttonX.textContent = 'X';
+
+			buttonX.setAttribute('onclick', 'closeProject(this)');
+			button.setAttribute('onclick', 'selectProject(this)');
+			button.click();
+
+			return true;
+		}
+	} catch (error) {
+		console.log(error);
+
+		del(button);
+	}
+
+	return false;
+}
+
+async function getNormalizedProjectData(sourceFile) {
+
+	async function tryFileParserFunc(f, project) {
+		try {
+			return await f(project);
+		} catch (error) {
+			console.log(error);
 		}
 
-		function getLayerImgLoadPromise(layer) {
-			return new Promise(
-				(resolve, reject) => {
-					if (layer.img = getPropByNameChain(layer, 'params', 'color_code')) {
-						resolve(true);
+		return null;
+	}
 
-						return;
-					}
+	if (!sourceFile) {
+		return null;
+	}
 
-				var	img, onImgLoad = async function(e) {
-						if (layer.isColor) {
-							layer.img = getFirstPixelRGBA(img);
-						} else {
-						var	i = layer.img = await getImgOptimized(img);
-							i.top  = layer.top;
-							i.left = layer.left;
-						}
+var	startTime = +new Date
+,	n = sourceFile.name
+,	i = n.lastIndexOf('.')
+,	b = (i < 0 ? n : n.substr(0, i))
+,	ext = sourceFile.ext || getFileExt(n)
+	;
+	logTime('"' + n + '" started trying to parse');
 
-						resolve(true);
-					}
+	try_loaders:
+	for (var ftl of fileTypeLoaders) if (ftl.dropFileExts.indexOf(ext) >= 0)
+	for (var f of ftl.handlerFuncs) {
+	var	project = {
+			fileName: n
+		,	baseName: b
+		,	batch: {}
+		,	loading: {
+				startTime: +new Date
+			,	data: sourceFile
+			,	images: []
+			}
+		};
 
-					try {
-						img = projectWIP.toPng(layer);
-					} catch (error) {
-						console.log(error);
-					}
-
-					if (img) {
-						if (
-							isImgElement(img)
-						&&	!img.onload
-						) {
-							img.onload = onImgLoad;
-						} else {
-							onImgLoad();
-						}
-					} else {
-						resolve(false);
-					}
-				}
-			);
+		if (await tryFileParserFunc(f, project)) {
+			break try_loaders;
+		} else {
+			project = null;
 		}
+	}
+
+	logTime(
+		'"' + n + '"'
+	+	(
+			project
+			? ' finished trying to parse, took '
+			: ' failed trying to parse after '
+		)
+	+	(+new Date - startTime)
+	+	' ms total'
+	);
+
+	return project;
+}
+
+async function getProjectViewMenu(project) {
+
+	async function getProjectOptionsContainer(project) {
 
 //* render default set when everything is ready:
 
 		try {
-		var	options = getProjectOptions(projectWIP);
+		var	options = getProjectOptions(project);
 			if (options) {
 			var	result = true
-			,	l_a = projectWIP.loading.images
-			,	l_i = projectWIP.loading.imagesCount = l_a.length
+			,	l_a = project.loading.images
+			,	l_i = project.loading.imagesCount = l_a.length
 				;
 
 				logTime(l_i + ' images to preload.');
@@ -1436,68 +1494,364 @@ async function loadProject(sourceFile) {
 				}
 
 				if (result) {
-					logTime('"' + projectWIP.fileName + '" finished loading, took ' + (+new Date - projectWIP.loading.startTime) + ' ms');
+					logTime('"' + project.fileName + '" finished loading, took ' + (+new Date - project.loading.startTime) + ' ms');
 
-					projectWIP.options = options;
+					project.options = options;
 
-					loadProjectFinalizeDisplayMenu(projectWIP);
+				var	container = createProjectView(project);
+					createOptionsMenu(project.options, gc('options', container)[0]);
+
+					return container;
 				}
 			} else {
-				logTime('"' + projectWIP.fileName + '" finished loading, took ' + (+new Date - projectWIP.loading.startTime) + ' ms, options not found.');
+				logTime('"' + project.fileName + '" finished loading, took ' + (+new Date - project.loading.startTime) + ' ms, options not found.');
 			}
 		} catch (error) {
 			console.log(error);
 
-			if (projectWIP.options) {
-				projectWIP.options = null;
-				delete projectWIP.options;
+			if (project.options) {
+				project.options = null;
+				delete project.options;
 			}
 		}
 
-		return projectWIP;
+		return null;
 	}
 
-	function createProjectView(projectWIP, container) {
-	var	sourceFile = projectWIP.loading.data.file || {}
+	function getProjectOptions(project) {
+
+		function getProcessedLayerInBranch(layer) {
+
+			function getOrAddOptionGroup(sectionName, listName) {
+			var	sectionName = ''+sectionName
+			,	listName    = ''+listName
+			,	o = (options || (options = {}))
+			,	o = (o[sectionName] || (o[sectionName] = {}))
+			,	o = (o[listName] || (o[listName] = {
+					'params': {}
+				,	'items': {}
+				}))
+				;
+				return o;
+			}
+
+			function checkBatchParams(globalOptionParams) {
+				for (var k of [
+					'batch',
+					'preselect',
+				]) if (params[k]) {
+					if (!project.batch.paramNameDefault) {
+						project.batch.paramNameMarked = k;
+						project.batch.paramNameDefault = getOtherBatchParam(k);
+					}
+					globalOptionParams[k] = true;
+				}
+			}
+
+			function addOptionGroup(sectionName, listName) {
+			var	optionParams = getOrAddOptionGroup(sectionName, listName).params
+			,	i,j,k,o
+				;
+				checkBatchParams(optionParams);
+
+				if (j = params[k = 'multi_select']) {
+					if (o = optionParams[k]) {
+						if (o.min > j.min) o.min = j.min;
+						if (o.max < j.max) o.max = j.max;
+					} else {
+						o = optionParams[k] = {};
+						for (i in j) o[i] = j[i];
+					}
+				}
+
+				for (k of [
+					'last',
+					'no_prefix',
+				]) {
+					if (params[k]) optionParams[k] = true;
+				}
+			}
+
+			function addOptionItem(layer, sectionName, listName, optionName) {
+				layer.isOption = true;
+
+				if (!layer.type) {
+					layer.type = sectionName.replace(regLayerTypeSingleTrim, '');
+				}
+
+			var	optionItems = getOrAddOptionGroup(sectionName, listName).items
+			,	optionItemLayers = (optionItems[optionName] || (optionItems[optionName] = []))
+				;
+				if (optionName !== '') {
+					optionItemLayers.push(layer);
+				}
+			}
+
+			function addOptionsFromParam(sectionName, listName) {
+			var	param = params[sectionName];
+				if (!param) return;
+
+			var	o = getOrAddOptionGroup(sectionName, listName || sectionName)
+			,	optionParams = o.params
+			,	optionItems = o.items
+			,	i,j,k
+				;
+				checkBatchParams(optionParams);
+
+				if (sectionName === 'side') {
+					for (k in (j = la.side)) {
+						optionItems[k] = j[k];
+					}
+
+					if (
+						(j = VIEW_SIDES.indexOf(param)) >= 0
+					||	params.if_only
+					) {
+						params[sectionName] = (
+							params.if_only
+							? VIEW_SIDES[params.not ? 0 : 1]
+							: (params.not ? VIEW_SIDES[j ? 0 : 1] : param)
+						);
+						layer.isOnlyForOneSide = true;
+					} else {
+						layer.isOrderedBySide = true;
+					}
+				} else
+				if (sectionName === 'paddings') {
+					if (param = params['radius']) {
+						param.forEach(v => {
+						var	j = v.threshold
+						,	k = (
+								(
+									typeof v.x !== 'undefined'
+									? [v.x, v.y]
+									: [v.radius]
+								).map(x => (
+									typeof x.in !== 'undefined'
+									? x.in + ':' + x.out
+									: x.out
+								)).join('x')
+							+	'px'
+							+	(j?'-'+j:'')
+							);
+							optionItems[k] = v;
+						});
+					}
+					layer.isMaskGenerated = true;
+				} else {
+					if ((i = 'format') in param) {
+						optionParams[i] = param[i];
+					}
+					if ((i = 'values') in param) {
+						param[i].forEach(v => {
+						var	k = v + '%';	//* <- pad bare numbers to avoid autosorting in <select>
+							if (sectionName == 'opacities') v = (orz(v) / 100);
+							optionItems[k] = v;
+						});
+					}
+				}
+			}
+
+		var	n = layer.name
+		,	m = layer.names = (
+				n
+				.split(regCommaSpace)
+				.filter(arrayFilterUniqueValues)
+			);
+
+			if (isLayerSkipped(layer)) {
+				return;
+			}
+
+		var	params = layer.params
+		,	layersInside = layer.layers
+			;
+
+			addOptionsFromParam('zoom');
+			addOptionsFromParam('side');
+			m.forEach(
+				listName => {
+					addOptionsFromParam('opacities', listName);
+					addOptionsFromParam('paddings', listName);
+				}
+			);
+
+			if (layer.isOptionList) {
+				m.forEach(
+					listName => addOptionGroup(layer.type, listName)
+				);
+			} else {
+			var	parent = getParentLayer(layer);
+
+				if (
+					parent
+				&&	parent.isOptionIfList
+				) {
+					layer.isOptionIf = true;
+				}
+
+				if (
+					layer.isInsideColorList
+				&&	!layersInside
+				) {
+					layer.isColor = true;
+					parent = getParentLayer(layer, 'isInsideColorList', false);
+				}
+
+				if (
+					parent
+				&&	parent.isOptionList
+				&&	(layer.isColor || !layer.isInsideColorList)
+				) {
+					parent.names.forEach(
+						listName => m.forEach(
+							optionName => addOptionItem(layer, parent.type, listName, optionName)
+						)
+					);
+				}
+			}
+
+			if (layersInside) {
+				layer.layers = getUnskippedProcessedLayers(
+					layersInside
+				,	layer.isColorList
+				||	layer.isInsideColorList
+				);
+			} else
+			if (layer.opacity > 0) {
+				project.loading.images.push(layer);
+			}
+
+			return layer;
+		}
+
+		function getUnskippedProcessedLayers(layers, isInsideColorList) {
+		var	i = layers.length
+		,	layer, clippingLayer
+			;
+
+			while (i--) if (layer = layers[i]) {
+				if (clippingLayer && layer.isClipped) {
+					layer.clippingLayer = clippingLayer;
+				} else {
+					clippingLayer = layer;
+				}
+			}
+
+			return (
+				layers
+				.filter(layer => {
+					if (
+						isLayerSkipped(layer)
+					||	(layer.clippingLayer && isLayerSkipped(layer.clippingLayer))
+					) {
+						return false;
+					} else {
+						if (isInsideColorList) {
+							layer.isInsideColorList = true;
+						}
+						return true;
+					}
+				})
+				.map(getProcessedLayerInBranch)
+			);
+		}
+
+	var	options, k;
+		project.layers = getUnskippedProcessedLayers(project.layers);
+
+		if (!project.batch.paramNameDefault) {
+			project.batch.paramNameDefault = k = 'batch';
+			project.batch.paramNameMarked = getOtherBatchParam(k);
+		}
+
+		return options;
+	}
+
+	function getLayerImgLoadPromise(layer) {
+		return new Promise(
+			(resolve, reject) => {
+				if (layer.img = getPropByNameChain(layer, 'params', 'color_code')) {
+					resolve(true);
+
+					return;
+				}
+
+			var	img, onImgLoad = async function(e) {
+					if (layer.isColor) {
+						layer.img = getFirstPixelRGBA(img);
+					} else {
+					var	i = layer.img = await getImgOptimized(img);
+						i.top  = layer.top;
+						i.left = layer.left;
+					}
+
+					resolve(true);
+				}
+
+				try {
+					img = project.toPng(layer);
+				} catch (error) {
+					console.log(error);
+				}
+
+				if (img) {
+					if (
+						isImgElement(img)
+					&&	!img.onload
+					) {
+						img.onload = onImgLoad;
+					} else {
+						onImgLoad();
+					}
+				} else {
+					resolve(false);
+				}
+			}
+		);
+	}
+
+	function createProjectView(project) {
+	var	sourceFile = project.loading.data.file || {}
 	,	sourceFileTime = sourceFile.lastModified || sourceFile.lastModifiedDate
-	,	container = delAllChildNodes(container || id('project-container'))
+	,	container = cre('div')
 	,	header = cre('header', container)
 		;
-		header.id = 'project-header';
+		header.className = 'project-header';
 
 //* show overall project info:
 
 	var	e = cre('section', header)
 	,	h = cre('header', e)
 		;
-		h.id = 'project-name';
-		h.textContent = projectWIP.fileName;
+		h.className = 'filename';
+		h.textContent = project.fileName;
 
-		if (projectWIP.channels && projectWIP.bitDepth) {
-			t = projectWIP.channels + 'x' + projectWIP.bitDepth + ' ' + la.project.bits;
+		if (project.channels && project.bitDepth) {
+			t = project.channels + 'x' + project.bitDepth + ' ' + la.project.bits;
 		} else
-		if (projectWIP.channels) {
-			t = projectWIP.channels + ' ' + la.project.channels;
+		if (project.channels) {
+			t = project.channels + ' ' + la.project.channels;
 		} else
-		if (projectWIP.bitDepth) {
-			t = projectWIP.bitDepth + ' ' + la.project.bits;
+		if (project.bitDepth) {
+			t = project.bitDepth + ' ' + la.project.bits;
 		} else t = '';
 
 		t = [
-			projectWIP.width + 'x'
-		+	projectWIP.height + ' '
+			project.width + 'x'
+		+	project.height + ' '
 		+	la.project.pixels
 
 		,	[
-				(projectWIP.colorMode || '')
+				(project.colorMode || '')
 			,	t
 			]
 			.filter(arrayFilterNonEmptyValues)
 			.join(' ')
 		];
 
-	var	i = projectWIP.loading.imagesCount
-	,	j = projectWIP.layersCount
+	var	i = project.loading.imagesCount
+	,	j = project.layersCount
 		;
 		if (j) t.push(j + ' ' + la.project.layers);
 		if (i) t.push(i + ' ' + la.project.images);
@@ -1513,16 +1867,6 @@ async function loadProject(sourceFile) {
 
 //* add batch controls:
 
-	var	a = {
-			'show': 'showImg()'
-		,	'save': 'saveImg()'
-		,	'show_all': 'showAll()'
-		,	'save_all': 'saveAll()'
-		,	'reset_to_init':  'setAllValues(-1)'
-		,	'reset_to_top':   'setAllValues(1)'
-		,	'reset_to_empty': 'setAllValues()'
-		};
-
 		for (var i in la.selection) {
 		var	j = la.selection[i]
 		,	b = j.buttons
@@ -1532,43 +1876,28 @@ async function loadProject(sourceFile) {
 			;
 			h.textContent = j.title + ':';
 
-			for (var k in b) if (t = a[k]) {
-				addButton(b[k], t, f);
-			}
+			for (var k in b) addButton(f, b[k]).name = k;
 		}
 
-//* project parser testing:
-
-		if (TESTING) {
-			e = cre('section', header);
-			e.style.backgroundColor = 'red';
-
-			addButton('save data JSON', 'saveDL(project.sourceData, "data", "json", 1, replaceJSONpartsFromPSD)', e);
-			addButton('save tree JSON', 'saveDL(project.layers, "tree", "json", 1, replaceJSONpartsFromTree)', e);
-			addButton('save project JSON', 'saveDL(project, "project", "json", 1, replaceJSONpartsFromPSD)', e);
-		}
+		container.addEventListener('click', onProjectButtonClick, false);
+		container.addEventListener('change', onProjectMenuUpdate, false);
 
 //* place for results:
 
 		tr = cre('tr', cre('table', container));
-		cre('td', tr).id = 'project-options';
-		cre('td', tr).id = 'render';
+		cre('td', tr).className = 'options';
+		cre('td', tr).className = 'render';
+
+		return container;
 	}
 
 	function createOptionsMenu(options, container) {
-
-		function getBatchCheckboxUpdateFunc(params) {
-			return function(e) {
-				params.batch = !(params.preselect = !!e.target.checked);
-			}
-		}
-
 	var	container = delAllChildNodes(container || id('project-options'))
 	,	sections = la.sections
 	,	section
 	,	optionList
-	,	b = projectWIP.batch.paramNameDefault
-	,	c = projectWIP.batch.paramNameMarked
+	,	b = project.batch.paramNameDefault
+	,	c = project.batch.paramNameMarked
 		;
 
 //* section = type of use (fill colors, draw parts):
@@ -1596,16 +1925,12 @@ async function loadProject(sourceFile) {
 				i.type = 'checkbox';
 				i.title = la.options.preselect;
 				i.checked = params.preselect;
-				i.addEventListener('change', getBatchCheckboxUpdateFunc(params), false);
+				i.params = params;
 
 			var	s = cre('select', optionBox);
 				s.name = listName;
 				s.setAttribute('data-section', sectionName);
-				s.addEventListener('change', updateMenuAndRender, false);
 
-				if (TESTING) {
-					s.title = JSON.stringify(params);
-				}
 //* list item = each part:
 
 				for (var optionName in items) {
@@ -1639,86 +1964,28 @@ async function loadProject(sourceFile) {
 		}
 	}
 
-	function loadProjectFinalizeDisplayMenu(projectWIP) {
+	return await getProjectOptionsContainer(project);
+}
 
-		function cleanupLoading(layer) {
-			toDelete.forEach(
-				v => {
-					if (v in layer) {
-						layer[v] = null;
-						delete layer[v];
-					}
-				}
-			);
+function getProjectViewImage(project) {
+	if (
+		project
+	&&	project.toPng
+	&&	(img = project.toPng())
+	) {
+	var	img
+	,	e = cre('div')
+	,	t = cre('header', e)
+	,	d = cre('div', e)
+		;
+		t.textContent = la.error.options;
+		d.className = 'preview';
+		d.appendChild(img);
 
-			if (layer.layers) {
-				layer.layers.forEach(cleanupLoading);
-			}
-
-			return layer;
-		}
-
-		createProjectView(projectWIP);
-		createOptionsMenu(projectWIP.options);
-
-	var	toDelete = ['loading', 'toPng'];
-
-		if (!TESTING) {
-			toDelete = toDelete.concat(['blendModeOriginal', 'nameOriginal', 'sourceData']);
-		}
-
-		project = cleanupLoading(projectWIP);
-
-		updateMenuAndRender();
-	}
-
-var	n = sourceFile.name
-,	i = n.lastIndexOf('.')
-,	b = (i < 0 ? n : n.substr(0, i))
-,	ext = sourceFile.ext || getFileExt(n)
-	;
-	logTime('"' + n + '" started loading');
-
-	for (var ftl of fileTypeLoaders) if (ftl.dropFileExts.indexOf(ext) >= 0)
-	for (var fileParserFunc of ftl.handlerFuncs) {
-		try {
-		var	projectWIP = {
-				fileName: n
-			,	baseName: b
-			,	batch: {}
-			,	loading: {
-					startTime: +new Date
-				,	then: loadProjectOptions
-				,	data: sourceFile
-				,	images: []
-				}
-			}
-		,	result = await fileParserFunc(projectWIP)
-			;
-			if (result) {
-				// console.log(['projectWIP', projectWIP]);
-
-				return projectWIP;
-			}
-		} catch (error) {
-			console.log(error);
-		}
+		return e;
 	}
 
 	return null;
-}
-
-function loadProjectFinalizeDisplayFallBack(projectWIP) {
-var	e,i;
-	if (e = id('project-container')) {
-		delAllChildNodes(e).textContent = la.error.project;
-
-		if (i = projectWIP.toPng()) {
-			cre('br', e);
-			e.appendChild(i);
-		}
-	}
-	if (e = id('project-options')) delAllChildNodes(e);
 }
 
 function getNextParentAfterAddingLayerToTree(layer, sourceData, name, parentGroup, isLayerFolder) {
@@ -1888,41 +2155,54 @@ var	m,v
 
 //* Page-specific functions: internal, loading from file *---------------------
 
-async function loadCommonWrapper(projectWIP, libName, fileParserFunc, treeConstructorFunc) {
+async function loadCommonWrapper(project, libName, fileParserFunc, treeConstructorFunc) {
 	if (!(await loadLibOnDemand(libName))) return;
 
-	logTime('"' + projectWIP.fileName + '" started parsing with ' + libName);
+	logTime('"' + project.fileName + '" started parsing with ' + libName);
 
-	projectWIP.loading.startParsingTime = +new Date;
+	project.loading.startParsingTime = +new Date;
 
 	try {
-	var	d = projectWIP.loading.data
+	var	d = project.loading.data
 	,	sourceData = await fileParserFunc(
 			d.url
 			? (d.file = await readFilePromiseFromURL(d.url, 'blob'))
 			: d.file
 		);
-
-		logTime('"' + projectWIP.fileName + '" finished parsing, took ' + (+new Date - projectWIP.loading.startParsingTime) + ' ms');
 	} catch (error) {
 		console.log(error);
-
-		logTime('"' + projectWIP.fileName + '" failed parsing after ' + (+new Date - projectWIP.loading.startParsingTime) + ' ms');
 	}
 
-	if (sourceData) {
-		projectWIP.sourceData	= sourceData;
-		projectWIP.toPng	= thisToPng;
+	logTime(
+		'"' + project.fileName + '"'
+	+	(
+			sourceData
+			? ' finished parsing, took '
+			: ' failed parsing after '
+		)
+	+	(+new Date - project.loading.startParsingTime)
+	+	' ms'
+	);
 
-		if (treeConstructorFunc(projectWIP, sourceData)) {
-			return await projectWIP.loading.then(projectWIP);
+	if (sourceData) {
+		if (TESTING) {
+			project.sourceData = sourceData;
+		}
+		project.toPng = thisToPng;
+
+		if (treeConstructorFunc(project, sourceData)) {
+			return (
+				project.loading.then
+				? await project.loading.then(project)
+				: project
+			);
 		}
 	}
 }
 
-async function loadORA(projectWIP) {
+async function loadORA(project) {
 	return await loadCommonWrapper(
-		projectWIP
+		project
 	,	'ora.js'
 	,	async function fileParserFunc(file) {
 			return await new Promise(
@@ -1935,26 +2215,26 @@ async function loadORA(projectWIP) {
 				}
 			);
 		}
-	,	function treeConstructorFunc(projectWIP, sourceData) {
+	,	function treeConstructorFunc(project, sourceData) {
 			if (!sourceData.layers) return;
 
-		var	l_i = projectWIP.layersCount = (
+		var	l_i = project.layersCount = (
 				(sourceData.layersCount || 0)
 			+	(sourceData.stacksCount || 0)
 			);
 
 			if (!l_i) return;
 
-			projectWIP.width	= sourceData.width;
-			projectWIP.height	= sourceData.height;
+			project.width	= sourceData.width;
+			project.height	= sourceData.height;
 
 //* gather layers into a tree object:
 
 			function addLayerToTree(layer, parentGroup) {
-			var	n = layer.name || ''
-			,	mode = layer.composite || ''
-			,	mask = layer.mask || null
-			,	layers = layer.layers || null
+			var	n	= layer.name || ''
+			,	mode	= layer.composite || ''
+			,	mask	= layer.mask || null
+			,	layers	= layer.layers || null
 			,	isLayerFolder = (layers && layers.length > 0)
 			,	layerWIP = {
 					top:    orz(layer.top    || layer.y)
@@ -1963,7 +2243,7 @@ async function loadORA(projectWIP) {
 				,	height: orz(layer.height || layer.h)
 				,	isClipped: getTruthyValue(layer.clipping)
 				,	opacity:   orzFloat(layer.opacity)
-				,	blendMode: getProperBlendMode(
+				,	blendMode: getNormalizedBlendMode(
 						layer.isolation === 'auto'
 						? 'pass'
 						: mode
@@ -1994,7 +2274,7 @@ async function loadORA(projectWIP) {
 				}
 			}
 
-		var	parentGroup = projectWIP.layers = [];
+		var	parentGroup = project.layers = [];
 
 			sourceData.layers.forEach(v => addLayerToTree(v, parentGroup));
 
@@ -2003,38 +2283,38 @@ async function loadORA(projectWIP) {
 	);
 }
 
-async function loadPSD       (projectWIP) {return await loadPSDCommonWrapper(projectWIP, 'psd.js', 'PSD_JS');}
-async function loadPSDBrowser(projectWIP) {return await loadPSDCommonWrapper(projectWIP, 'psd.browser.js', 'PSD');}
+async function loadPSD       (project) {return await loadPSDCommonWrapper(project, 'psd.js', 'PSD_JS');}
+async function loadPSDBrowser(project) {return await loadPSDCommonWrapper(project, 'psd.browser.js', 'PSD');}
 
-async function loadPSDCommonWrapper(projectWIP, libName, varName) {
+async function loadPSDCommonWrapper(project, libName, varName) {
 	return await loadCommonWrapper(
-		projectWIP
+		project
 	,	libName
 	,	async function fileParserFunc(file) {
 			return await window[varName].fromDroppedFile(file);
 		}
-	,	function treeConstructorFunc(projectWIP, sourceData) {
+	,	function treeConstructorFunc(project, sourceData) {
 			if (!sourceData.layers) return;
 
-		var	l_i = projectWIP.layersCount = sourceData.layers.length;
+		var	l_i = project.layersCount = sourceData.layers.length;
 
 			if (!l_i) return;
 
 		var	m = sourceData.header.mode;
 
-			projectWIP.width	= sourceData.header.cols;
-			projectWIP.height	= sourceData.header.rows;
-			projectWIP.colorMode	= (isNaN(m) ? m : PSD_COLOR_MODES[m]);
-			projectWIP.channels	= sourceData.header.channels;
-			projectWIP.bitDepth	= sourceData.header.depth;
+			project.width	= sourceData.header.cols;
+			project.height	= sourceData.header.rows;
+			project.colorMode	= (isNaN(m) ? m : PSD_COLOR_MODES[m]);
+			project.channels	= sourceData.header.channels;
+			project.bitDepth	= sourceData.header.depth;
 
 //* gather layers into a tree object:
 
 			function addLayerToTree(layer, parentGroup) {
-			var	l   = layer.layer || layer
-			,	n   = layer.name  || l.name  || ''
-			,	img = layer.image || l.image || null
-			,	mode = getPropByAnyOfNamesChain(l, 'blendMode', 'mode')
+			var	l	= layer.layer || layer
+			,	n	= layer.name  || l.name  || ''
+			,	img	= layer.image || l.image || null
+			,	mode	= getPropByAnyOfNamesChain(l, 'blendMode', 'mode')
 			,	clipping = getPropByAnyOfNamesChain(l, 'blendMode', 'clipped', 'clipping')
 			,	modePass = getPropByNameChain(l, 'adjustments', 'sectionDivider', 'obj', 'blendMode')
 
@@ -2043,7 +2323,7 @@ async function loadPSDCommonWrapper(projectWIP, libName, varName) {
 
 			,	fillOpacity = (
 					l.fillOpacity
-					? getProperOpacity(l.fillOpacity().layer.adjustments.fillOpacity.obj.value)
+					? getNormalizedOpacity(l.fillOpacity().layer.adjustments.fillOpacity.obj.value)
 					: 1
 				)
 			,	layers = (
@@ -2058,8 +2338,8 @@ async function loadPSDCommonWrapper(projectWIP, libName, varName) {
 				,	width:  orz(l.width)
 				,	height: orz(l.height)
 				,	isClipped: getTruthyValue(clipping)
-				,	opacity:   getProperOpacity(l.opacity) * fillOpacity
-				,	blendMode: getProperBlendMode(
+				,	opacity:   getNormalizedOpacity(l.opacity) * fillOpacity
+				,	blendMode: getNormalizedBlendMode(
 						regLayerBlendModePass.test(modePass)
 						? modePass
 						: mode
@@ -2082,7 +2362,7 @@ async function loadPSDCommonWrapper(projectWIP, libName, varName) {
 				}
 			}
 
-		var	parentGroup = projectWIP.layers = [];
+		var	parentGroup = project.layers = [];
 
 			sourceData.tree().children().forEach(v => addLayerToTree(v, parentGroup));
 
@@ -2091,31 +2371,31 @@ async function loadPSDCommonWrapper(projectWIP, libName, varName) {
 	);
 }
 
-async function loadPSDLIB(projectWIP) {
+async function loadPSDLIB(project) {
 	return await loadCommonWrapper(
-		projectWIP
+		project
 	,	'PSDLIB.js'
 	,	async function fileParserFunc(file) {
 			return PSDLIB.parse(file);
 		}
-	,	function treeConstructorFunc(projectWIP, sourceData) {
+	,	function treeConstructorFunc(project, sourceData) {
 			if (!sourceData.layers) return;
 
 		var	l_a = sourceData.layers
-		,	l_i = projectWIP.layersCount = l_a.length
+		,	l_i = project.layersCount = l_a.length
 			;
 
 			if (!l_i) return;
 
-			projectWIP.width	= sourceData.width;
-			projectWIP.height	= sourceData.height;
-			projectWIP.colorMode	= sourceData.colormode;
-			projectWIP.channels	= sourceData.channels;
-			projectWIP.bitDepth	= sourceData.depth;
+			project.width	= sourceData.width;
+			project.height	= sourceData.height;
+			project.colorMode	= sourceData.colormode;
+			project.channels	= sourceData.channels;
+			project.bitDepth	= sourceData.depth;
 
 //* gather layers into a tree object:
 
-		var	parentGroup = projectWIP.layers = []
+		var	parentGroup = project.layers = []
 		,	layer
 		,	d,k,n,t
 			;
@@ -2123,7 +2403,7 @@ async function loadPSDLIB(projectWIP) {
 				n = layer.name || '';
 				if (regPSD.layerNameEndOfFolder.test(n)) {
 					while (
-						(parentGroup = parentGroup.parent || projectWIP.layers)
+						(parentGroup = parentGroup.parent || project.layers)
 					&&	typeof parentGroup.length === 'undefined'
 					);
 
@@ -2161,8 +2441,8 @@ async function loadPSDLIB(projectWIP) {
 					,	width:  orz(layer.width)
 					,	height: orz(layer.height)
 					,	isClipped: getTruthyValue(layer.clipping)
-					,	opacity:   getProperOpacity(layer.opacity)
-					,	blendMode: getProperBlendMode(mode)
+					,	opacity:   getNormalizedOpacity(layer.opacity)
+					,	blendMode: getNormalizedBlendMode(mode)
 					,	blendModeOriginal: mode
 					};
 
@@ -2183,21 +2463,23 @@ async function loadPSDLIB(projectWIP) {
 
 //* Page-specific functions: internal, rendering *-----------------------------
 
-function isOptionRelevant(values, sectionName, listName, optionName) {
-var	o = getProjectOptionValue(sectionName, listName, optionName);
+function isOptionRelevant(project, values, sectionName, listName, optionName) {
+var	o = getProjectOptionValue(project, sectionName, listName, optionName);
 
 	if (
 		o
 	&&	o.map
 	&&	o.length > 0
 	) {
-	var	refValues = JSON.stringify(values)
-	,	testValues = JSON.parse(refValues)
-		;
+
+//* https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/assign#Deep_Clone
+
+	var	testValues = JSON.parse(JSON.stringify(values));
+
 		testValues[sectionName][listName] = optionName;
 
 		for (var layer of o) {
-			if (getLayerPathVisibilityByValues(layer, testValues)) {
+			if (getLayerPathVisibilityByValues(project, layer, testValues)) {
 				return true;
 			}
 		}
@@ -2208,12 +2490,12 @@ var	o = getProjectOptionValue(sectionName, listName, optionName);
 	return false;
 }
 
-function isSetOfValuesOK(values) {
+function isSetOfValuesOK(project, values) {
 var	section, optionName;
 
 	for (var sectionName in values) if (section = values[sectionName])
 	for (var listName in section) if (optionName = section[listName]) {
-		if (!isOptionRelevant(values, sectionName, listName, optionName)) {
+		if (!isOptionRelevant(project, values, sectionName, listName, optionName)) {
 			return false;
 		}
 	}
@@ -2221,7 +2503,7 @@ var	section, optionName;
 	return true;
 }
 
-function getSetOfRelevantValues(values) {
+function getSetOfRelevantValues(project, values) {
 var	section, optionName, o, resultSet;
 
 	for (var sectionName in values) if (section = values[sectionName])
@@ -2229,7 +2511,7 @@ var	section, optionName, o, resultSet;
 		o = resultSet || (resultSet = {});
 		o = o[sectionName] || (o[sectionName] = {});
 		o[listName] = (
-			isOptionRelevant(values, sectionName, listName, optionName)
+			isOptionRelevant(project, values, sectionName, listName, optionName)
 			? optionName
 			: ''
 		);
@@ -2238,8 +2520,8 @@ var	section, optionName, o, resultSet;
 	return resultSet;
 }
 
-function setAllValues(toFirst) {
-	gt('select', id('project-options')).forEach(
+function setAllValues(project, toFirst) {
+	gt('select', project.container).forEach(
 		s => {
 			if (toFirst > 0) {
 				s.value = s.options[0].value;
@@ -2263,13 +2545,13 @@ function setAllValues(toFirst) {
 		}
 	);
 
-	showImg();
+	showImg(project);
 }
 
-function getAllMenuValues(checkPreselected) {
+function getAllMenuValues(project, checkPreselected) {
 var	values = {};
 
-	gt('select', id('project-options')).forEach(
+	gt('select', project.container).forEach(
 		s => {
 		var	sectionName = s.getAttribute('data-section')
 		,	listName    = s.name
@@ -2289,7 +2571,7 @@ var	values = {};
 	return values;
 }
 
-function getAllValueSets(checkPreselected) {
+function getAllValueSets(project, checkPreselected) {
 
 	function goDeeper(optionLists, partialValueSet) {
 		if (
@@ -2307,9 +2589,6 @@ function getAllValueSets(checkPreselected) {
 			);
 
 			for (var optionName of optionNames) {
-
-//* https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/assign#Deep_Clone
-
 			var	values = JSON.parse(JSON.stringify(partialValueSet || {}))
 			,	section = (values[sectionName] || (values[sectionName] = {}))
 				;
@@ -2318,8 +2597,8 @@ function getAllValueSets(checkPreselected) {
 				if (optionsLeft) {
 					goDeeper(optionsLeft, values);
 				} else
-				if (isSetOfValuesOK(values = getSetOfRelevantValues(values))) {
-				var	fileName = getFileNameByValuesToSave(values);
+				if (isSetOfValuesOK(project, values = getSetOfRelevantValues(project, values))) {
+				var	fileName = getFileNameByValuesToSave(project, values);
 
 					if (!(fileName in resultSets)) {
 						resultSets[fileName] = values;
@@ -2329,7 +2608,7 @@ function getAllValueSets(checkPreselected) {
 		}
 	}
 
-var	values = getAllMenuValues(checkPreselected)
+var	values = getAllMenuValues(project, checkPreselected)
 ,	resultSets = {}
 ,	optionLists = []
 ,	section
@@ -2352,10 +2631,10 @@ var	values = getAllMenuValues(checkPreselected)
 	return resultSets;
 }
 
-function getMenuValues(updatedValues) {
+function getMenuValues(project, updatedValues) {
 var	values = {};
 
-	gt('select', id('project-options')).forEach(
+	gt('select', project.container).forEach(
 		s => {
 
 //* 1) check current selected values:
@@ -2376,7 +2655,7 @@ var	values = {};
 				gt('option', s).forEach(
 					o => {
 					var	optionName = o.value
-					,	hide = !isOptionRelevant(updatedValues, sectionName, listName, optionName)
+					,	hide = !isOptionRelevant(project, updatedValues, sectionName, listName, optionName)
 						;
 						if (hide) {
 							if (optionName === selectedValue) {
@@ -2422,11 +2701,24 @@ var	values = {};
 	return (
 		updatedValues
 		? values
-		: getMenuValues(values)
+		: getMenuValues(project, values)
 	);
 }
 
-function drawImageOrColor(ctx, img, blendMode, opacity) {
+function getOrCreateReusableHeap(project) {
+var	buffer = project.renderingBuffer;
+
+	if (!buffer) {
+	var	realSize = project.width * project.height * 4 * 2
+	,	paddedSize = nextValidHeapSize(realSize)
+	,	buffer = project.renderingBuffer = new ArrayBuffer(paddedSize)
+		;
+	}
+
+	return new Uint8Array(buffer);
+}
+
+function drawImageOrColor(project, ctx, img, blendMode, opacity) {
 
 	function drawImageOrColorInside() {
 		if (
@@ -2451,19 +2743,6 @@ function drawImageOrColor(ctx, img, blendMode, opacity) {
 	}
 
 	function tryBlendingEmulation(blendMode) {
-
-		function getOrCreateReusableHeap() {
-		var	buffer = project.renderingBuffer;
-
-			if (!buffer) {
-			var	realSize = project.width * project.height * 4 * 2
-			,	paddedSize = nextValidHeapSize(realSize)
-			,	buffer = project.renderingBuffer = new ArrayBuffer(paddedSize)
-				;
-			}
-
-			return new Uint8Array(buffer);
-		}
 
 		function tryEmulation(blendMode, callback) {
 
@@ -2499,7 +2778,7 @@ function drawImageOrColor(ctx, img, blendMode, opacity) {
 		function usingAsmJS(a,b, blendMode) {
 			try {
 			var	i = a.length
-			,	uint8array = getOrCreateReusableHeap()
+			,	uint8array = getOrCreateReusableHeap(project)
 			,	env = null
 			,	heap = uint8array.buffer
 			,	compute = CompositionModule(window, env, heap)
@@ -2636,7 +2915,7 @@ var	w = ctx.canvas.width
 	}
 }
 
-function makeCanvasOpaqueAndGetItsMask(ctx) {
+function makeCanvasOpaqueAndGetItsMask(project, ctx) {
 	project.rendering.layersBatchCount++;
 
 var	canvas = cre('canvas')
@@ -2655,7 +2934,7 @@ var	canvas = cre('canvas')
 	return canvas;
 }
 
-function getCanvasFlipped(img, isVerticalFlip) {
+function getCanvasFlipped(project, img, isVerticalFlip) {
 	if (isVerticalFlip < 0) {
 		return img;
 	}
@@ -2684,7 +2963,7 @@ var	canvas = cre('canvas')
 	return canvas;
 }
 
-function getCanvasBlended(imgBelow, imgAbove, mode, maskOpacity) {
+function getCanvasBlended(project, imgBelow, imgAbove, mode, maskOpacity) {
 	project.rendering.layersBatchCount++;
 
 var	canvas = cre('canvas')
@@ -2693,13 +2972,13 @@ var	canvas = cre('canvas')
 	canvas.width  = project.width;
 	canvas.height = project.height;
 
-	if (imgBelow) drawImageOrColor(ctx, imgBelow);
-	if (imgAbove) drawImageOrColor(ctx, imgAbove, mode || BLEND_MODE_CLIP, maskOpacity);
+	if (imgBelow) drawImageOrColor(project, ctx, imgBelow);
+	if (imgAbove) drawImageOrColor(project, ctx, imgAbove, mode || BLEND_MODE_CLIP, maskOpacity);
 
 	return canvas;
 }
 
-function getCanvasColored(values, listName, img) {
+function getCanvasColored(project, values, listName, img) {
 var	color
 ,	optionalColors
 ,	selectedColors = project.rendering.colors
@@ -2708,10 +2987,10 @@ var	color
 		if (listName in selectedColors) {
 			color = selectedColors[listName];
 		} else
-		if (optionalColors = getSelectedOptionValue(values, 'colors', listName)) {
+		if (optionalColors = getSelectedOptionValue(project, values, 'colors', listName)) {
 			for (var layer of optionalColors) if (
 				layer.isColor
-			&&	getLayerPathVisibilityByValues(layer, values)
+			&&	getLayerPathVisibilityByValues(project, layer, values)
 			) {
 				color = selectedColors[listName] = getPropByAnyOfNamesChain(layer, 'color', 'img', 'layer');
 
@@ -2722,7 +3001,8 @@ var	color
 
 	if (color) {
 	var	canvas = getCanvasBlended(
-			(img || color)
+			project
+		,	(img || color)
 		,	(img ? color : null)
 		);
 	}
@@ -2730,18 +3010,18 @@ var	color
 	return canvas || img;
 }
 
-function getProjectOptionValue(sectionName, listName, optionName) {
+function getProjectOptionValue(project, sectionName, listName, optionName) {
 	return getPropByNameChain(project, 'options', sectionName, listName, 'items', optionName);
 }
 
-function getSelectedOptionValue(values, sectionName, listName) {
+function getSelectedOptionValue(project, values, sectionName, listName) {
 var	selectedName = getPropByNameChain(values, sectionName, listName);
-	return getProjectOptionValue(sectionName, listName, selectedName);
+	return getProjectOptionValue(project, sectionName, listName, selectedName);
 }
 
-function getLayerPathVisibilityByValues(layer, values) {
+function getLayerPathVisibilityByValues(project, layer, values) {
 	do {
-		if (!getLayerVisibilityByValues(layer, values)) {
+		if (!getLayerVisibilityByValues(project, layer, values)) {
 			return false;
 		}
 	} while (layer = layer.clippingLayer || getParentLayer(layer));
@@ -2749,7 +3029,7 @@ function getLayerPathVisibilityByValues(layer, values) {
 	return true;
 }
 
-function getLayerVisibilityByValues(layer, values) {
+function getLayerVisibilityByValues(project, layer, values) {
 
 	function skipByFunc(layer, callback) {
 		if (
@@ -2838,7 +3118,7 @@ var	opacity = layer.opacity;
 
 	layer.names.find(
 		listName => {
-		var	v = getSelectedOptionValue(values, 'opacities', listName);
+		var	v = getSelectedOptionValue(project, values, 'opacities', listName);
 
 			if (v !== null) {
 				opacity = v;
@@ -2852,7 +3132,7 @@ var	opacity = layer.opacity;
 	}
 }
 
-function getRenderByValues(values, layersBatch, renderParam) {
+function getRenderByValues(project, values, layersBatch, renderParam) {
 
 	if (!project || !project.layers) {
 		return;
@@ -2927,7 +3207,7 @@ var	canvas = cre('canvas')
 
 		if (
 			params.skip_render
-		||	!(opacity = getLayerVisibilityByValues(layer, values))
+		||	!(opacity = getLayerVisibilityByValues(project, layer, values))
 		) {
 			continue;
 		}
@@ -2956,7 +3236,8 @@ var	canvas = cre('canvas')
 
 		if (clippingGroupResult) {
 			img = getRenderByValues(
-				values
+				project
+			,	values
 			,	g_a
 			,	{
 					ignoreColors: renderParam.ignoreColors
@@ -2974,7 +3255,7 @@ var	canvas = cre('canvas')
 			) {
 				names.find(
 					listName => !!(
-						img = getCanvasColored(values, listName)
+						img = getCanvasColored(project, values, listName)
 					)
 				);
 			} else
@@ -2986,7 +3267,8 @@ var	canvas = cre('canvas')
 					continue;
 				} else {
 					img = getRenderByValues(
-						values
+						project
+					,	values
 					,	(
 							backward
 							? Array.from(layers).reverse()
@@ -3014,13 +3296,14 @@ var	canvas = cre('canvas')
 
 					names.find(
 						listName => !!(
-							padding = getSelectedOptionValue(values, 'paddings', listName)
+							padding = getSelectedOptionValue(project, values, 'paddings', listName)
 						)
 					);
 
 					if (padding) {
 						mask = getRenderByValues(
-							values
+							project
+						,	values
 						,	l_a.slice(0, l_i)
 						,	{
 								ignoreColors: true
@@ -3033,7 +3316,7 @@ var	canvas = cre('canvas')
 				}
 
 				if (mask) {
-					img = getCanvasBlended(img, mask, BLEND_MODE_MASK);
+					img = getCanvasBlended(project, img, mask, BLEND_MODE_MASK);
 
 					clearCanvasBeforeGC(mask);
 				}
@@ -3047,7 +3330,7 @@ var	canvas = cre('canvas')
 				) {
 					names.forEach(
 						listName => {
-							img = getCanvasColored(values, listName, img);
+							img = getCanvasColored(project, values, listName, img);
 						}
 					);
 				}
@@ -3055,13 +3338,13 @@ var	canvas = cre('canvas')
 //* flip:
 
 				if (backward) {
-					img = getCanvasFlipped(img, VIEW_FLIPS.indexOf(params.side));
+					img = getCanvasFlipped(project, img, VIEW_FLIPS.indexOf(params.side));
 				}
 			}
 
 //* add content to current buffer canvas:
 
-			drawImageOrColor(ctx, img, blendMode, opacity);
+			drawImageOrColor(project, ctx, img, blendMode, opacity);
 
 			++project.rendering.layersApplyCount;
 
@@ -3071,7 +3354,7 @@ var	canvas = cre('canvas')
 				clippingGroupWIP
 			&&	layer === bottomLayer
 			) {
-				clippingMask = makeCanvasOpaqueAndGetItsMask(ctx);
+				clippingMask = makeCanvasOpaqueAndGetItsMask(project, ctx);
 			}
 
 			clearCanvasBeforeGC(img);
@@ -3082,7 +3365,7 @@ var	canvas = cre('canvas')
 //* apply stored mask to the blended clipping group content:
 
 	if (mask = clippingMask) {
-		drawImageOrColor(ctx, mask, BLEND_MODE_MASK);
+		drawImageOrColor(project, ctx, mask, BLEND_MODE_MASK);
 
 		clearCanvasBeforeGC(mask);
 	}
@@ -3103,7 +3386,7 @@ var	canvas = cre('canvas')
 			,	(+new Date - project.rendering.startTime) + ' ms'
 			,	'subtitle'
 			].join(', ')
-		,	getFileNameByValues(values)
+		,	getFileNameByValues(project, values)
 		);
 
 		project.rendering = null;
@@ -3112,90 +3395,100 @@ var	canvas = cre('canvas')
 	return canvas;
 }
 
-function getFileNameByValues(values, checkPreselected, skipDefaultPercent) {
-	return (
-		NAME_PARTS_ORDER
-		.map(
-			function(sectionName) {
-			var	section = values[sectionName]
-			,	resultNameParts = []
-				;
-				if (section) {
-				var	listName
-				,	optionName
-				,	params
-				,	a = Object.keys(section)
-					;
-					a.sort();
-					for (var i = 0, k = a.length; i < k; i++) if (
-						(listName   = a[i]             ).length > 0
-					&&	(optionName = section[listName]).length > 0
+function getFileNameByValues(project, values, checkPreselected, skipDefaultPercent) {
+
+	function getProcessedSectionName(sectionName) {
+
+		function getProcessedListName(listName) {
+		var	optionName = section[listName];
+
+			if (!optionName.length) {
+				return;
+			}
+
+		var	params = getPropByNameChain(project, 'options', sectionName, listName, 'params');
+			if (params) {
+				if (checkPreselected) {
+					if (
+						params.preselect
+					||	!params.batch
 					) {
-						if (params = project.options[sectionName][listName].params) {
-							if (checkPreselected) {
-								if (
-									params.preselect
-								||	!params.batch
-								) {
-									continue;
-								}
-							}
-
-							if (skipDefaultPercent) {
-								if (
-									(sectionName == 'zoom'      && orz(optionName) == 100)
-								||	(sectionName == 'opacities' && orz(optionName) == 0)
-								) {
-									continue;
-								}
-							}
-
-							if (
-								fileNameAddParamKey
-							&&	!params.no_prefix
-							) {
-								optionName = listName + '=' + optionName;
-							}
-						}
-
-						resultNameParts.push(optionName);
+						return;
 					}
 				}
-				return (
-					resultNameParts
-					.filter(arrayFilterNonEmptyValues)
-					.join('_')
-				);
+
+				if (skipDefaultPercent) {
+					if (
+						(sectionName == 'zoom'      && orz(optionName) == 100)
+					||	(sectionName == 'opacities' && orz(optionName) == 0)
+					) {
+						return;
+					}
+				}
+
+				if (
+					fileNameAddParamKey
+				&&	!params.no_prefix
+				) {
+					optionName = listName + '=' + optionName;
+				}
 			}
-		)
+
+			return optionName;
+		}
+
+	var	section = values[sectionName];
+
+		if (!section) {
+			return;
+		}
+
+	var	listNames = Object.keys(section).filter(arrayFilterNonEmptyValues);
+		listNames.sort();
+
+		return (
+			listNames
+			.map(getProcessedListName)
+			.filter(arrayFilterNonEmptyValues)
+			.join('_')
+		);
+	}
+
+	if (!values) {
+		values = getMenuValues(project);
+	}
+
+	return (
+		NAME_PARTS_ORDER
+		.map(getProcessedSectionName)
 		.filter(arrayFilterNonEmptyValues)
 		.join('_')
 	);
 }
 
-function getFileNameByValuesToSave(values, checkPreselected, skipDefaultPercent) {
+function getFileNameByValuesToSave(project, values, checkPreselected, skipDefaultPercent) {
 	return (
 		[
 			project.baseName
-		,	getFileNameByValues(values || getMenuValues(), checkPreselected, skipDefaultPercent)
+		,	getFileNameByValues(project, values, checkPreselected, skipDefaultPercent)
 		]
 		.filter(arrayFilterNonEmptyValues)
 		.join('_')
 	);
 }
 
-async function getOrCreateRender(render) {
+async function getOrCreateRender(project, render) {
 	if (!render) render = {};
-var	values    = render.values    || (render.values    = getMenuValues())
+var	values    = render.values    || (render.values    = getMenuValues(project))
 ,	refValues = render.refValues || (render.refValues = JSON.parse(JSON.stringify(values, replaceJSONpartsFromNameToCache)))
-,	refName   = render.refName   || (render.refName   = getFileNameByValuesToSave(refValues))
-,	fileName  = render.fileName  || (render.fileName  = getFileNameByValuesToSave(values))
-,	img       = render.img       || (render.img       = await getOrCreateRenderedImg(render))
+,	refName   = render.refName   || (render.refName   = getFileNameByValuesToSave(project, refValues))
+,	fileName  = render.fileName  || (render.fileName  = getFileNameByValuesToSave(project, values))
+,	img       = render.img       || (render.img       = await getOrCreateRenderedImg(project, render))
 	;
 	return render;
 }
 
-async function getOrCreateRenderedImg(render) {
+async function getOrCreateRenderedImg(project, render) {
 
 	function getAndCacheRenderedImgElement(canvas, fileName, w,h) {
 		if (!canvas) return;
@@ -3217,7 +3510,7 @@ async function getOrCreateRenderedImg(render) {
 		);
 	}
 
-	if (!render) render = await getOrCreateRender();
+	if (!render) render = await getOrCreateRender(project);
 
 	if (img = render.img) return img;
 
@@ -3233,9 +3526,12 @@ var	img = prerenders[refName];
 
 	if (!img) {
 		if (fileName == refName) {
-			img = await getAndCacheRenderedImgElement(getRenderByValues(values), refName);
+			canvas = getRenderByValues(project, values);
+			img = await getAndCacheRenderedImgElement(canvas, refName);
 		} else {
-			img = (await getOrCreateRender({values: render.refValues})).img;
+			render = {values: render.refValues};
+			render = await getOrCreateRender(project, render);
+			img = render.img;
 		}
 	}
 
@@ -3261,17 +3557,20 @@ var	img = prerenders[refName];
 	return img;
 }
 
-function updateMenuAndRender() {
+function updateMenuAndRender(project) {
+	if (!project) {
+		return;
+	}
 
 	if (project.loading) {
 		logTime('updateMenuAndRender - skipped while loading project.');
 		return;
 	}
 
-	showImg();
+	showImg(project);
 }
 
-async function renderAll(saveToFile, showOnPage) {
+async function renderAll(project, saveToFile, showOnPage) {
 	if (!(saveToFile || showOnPage)) return;
 
 var	logLabel = 'Render all: ' + project.fileName;
@@ -3279,23 +3578,23 @@ var	logLabel = 'Render all: ' + project.fileName;
 	console.time(logLabel);
 	console.group(logLabel);
 
-var	sets = getAllValueSets(true)
+var	sets = getAllValueSets(project, true)
 ,	setsCountWithoutPause = 0
 ,	setsCount = 0
 ,	totalTime = 0
-,	container = (showOnPage ? delAllChildNodes(id('render-all') || id('render')) : null)
 ,	lastPauseTime = +new Date
 	;
 	for (var fileName in sets) if (values = sets[fileName]) {
 	var	startTime = +new Date
 	,	render = await getOrCreateRender(
-			{
+			project
+		,	{
 				'values': values
 			,	'fileName': fileName
 			}
 		);
-		if (saveToFile) await saveImg(render, getFileNameByValuesToSave(values, true, true));
-		if (showOnPage) await showImg(render, container);
+		if (saveToFile) await saveImg(project, render, getFileNameByValuesToSave(values, true, true));
+		if (showOnPage) await showImg(project, render, true);
 
 	var	endTime = +new Date;
 
@@ -3322,139 +3621,88 @@ var	sets = getAllValueSets(true)
 	console.timeEnd(logLabel);
 }
 
-function dataToBlob(data) {
-	if (URL_API && URL_API.createObjectURL) {
-	var	type = TYPE_TP;
-		if (data.slice(0, k = DATA_PREFIX.length) == DATA_PREFIX) {
-		var	i = data.indexOf(',')
-		,	meta = data.slice(k,i)
-		,	data = data.slice(i+1)
-		,	k = meta.indexOf(';')
-			;
-			if (k < 0) {
-				type = meta;
-				data = decodeURIComponent(data);
-			} else {
-				type = meta.slice(0,k);
-				if (meta.slice(k+1) == 'base64') data = atob(data);
-			}
-		}
-	var	data = Uint8Array.from(TOS.map.call(data, (v => v.charCodeAt(0))))
-	,	size = data.length
-	,	url = URL_API.createObjectURL(new Blob([data], {'type': type}))
+function saveAll(project) {renderAll(project,1,0);}
+function showAll(project) {renderAll(project,0,1);}
+
+async function showImg(project, render, inBatch) {
+	try {
+	var	container = project.container
+	,	imgContainer = gc('render', container)[0] || container
+	,	img = await getOrCreateRenderedImg(project, render)
 		;
-		if (url) {
-			return {
-				size: size
-			,	type: type
-			,	url: url
-			};
+
+//* prepare image before container cleanup to avoid flicker:
+
+		if (!inBatch) {
+			delAllChildNodes(imgContainer);
 		}
+
+		imgContainer.appendChild(img);
+
+	} catch (error) {
+		console.log(error);
 	}
 }
 
-function saveDL(data, fileName, ext, addTime, jsonReplacerFunc) {
-var	type = TYPE_TP
-,	data = (
-		typeof data === 'object'
-		? JSON.stringify(
-			data,
-			jsonReplacerFunc || null
-			, '\t')
-		: ''+data
-	);
-
-	if (data.slice(0, BLOB_PREFIX.length) == BLOB_PREFIX) {
-	var	dataURI = data
-	,	blob = true
-		;
-	} else
-	if (data.slice(0, DATA_PREFIX.length) == DATA_PREFIX) {
-		dataURI = data;
-	} else {
-		dataURI = DATA_PREFIX + type + ',' + encodeURIComponent(data);
+async function saveImg(project, render, fileName) {
+	try {
+		render = await getOrCreateRender(project, render);
+		saveDL(render.img.src, fileName || render.fileName, 'png');
+	} catch (error) {
+		console.log(error);
 	}
-
-var	size = dataURI.length
-,	a = cre('a', document.body)
-	;
-	logTime('saving "' + fileName + '", data = ' + data.length + ' bytes, dataURI = ' + size + ' bytes');
-
-	if ('download' in a) {
-		try {
-			if (!blob) {
-				if (blob = dataToBlob(data)) {
-					size = blob.size;
-					type = blob.type;
-					dataURI = blob.url;
-				} else {
-					type = dataURI.split(';', 1)[0].split(':', 2)[1];
-				}
-				if (!ext) {
-					ext = type.split('/').slice(-1)[0];
-				}
-			}
-			if (ext == 'plain') ext = 'txt';
-
-		var	time = (
-				!fileName || addTime
-				? getFormattedTime(0,1)
-				: ''
-			)
-		,	baseName = (
-				function() {
-					if (!fileName) return time;
-					if (addTime > 0) return fileName + '_' + time;
-					if (addTime < 0) return time + '_' + fileName;
-					return fileName;
-				}
-			)()
-		,	fileName = baseName + (ext ? '.' + ext : '')
-			;
-			a.href = ''+dataURI;
-			a.download = fileName;
-			a.click();
-
-			logTime('saving "' + fileName + '"');
-		} catch (error) {
-			console.log(error);
-		}
-	} else {
-		window.open(dataURI, '_blank');
-
-		logTime('opened file to save');
-	}
-
-	setTimeout(
-		function() {
-			if (blob) URL_API.revokeObjectURL(blob.url);
-			del(a);
-		}
-	,	Math.max(Math.ceil(size / 1000), 12345)
-	);
-
-	return size;
 }
 
 //* Page-specific functions: UI-side *-----------------------------------------
 
-function saveAll() {renderAll(1,0);}
-function showAll() {renderAll(0,1);}
+function onProjectButtonClick(e) {
+	if (
+		!e
+	||	e.type !== 'click'
+	||	e.target.tagName.toLowerCase() !== 'button'
+	) {
+		return;
+	}
 
-async function showImg(render, container) {
-
-//* prepare before container cleanup to avoid flicker:
-
-var	img = await getOrCreateRenderedImg(render)
-,	parent = container || delAllChildNodes(id('render'))
+var	container = getProjectContainer(e)
+,	project = container.project
+,	action = e.target.name
 	;
-	parent.appendChild(img);
+
+	if (action === 'show') showImg(project); else
+	if (action === 'save') saveImg(project); else
+	if (action === 'show_all') showAll(project); else
+	if (action === 'save_all') saveAll(project); else
+	if (action === 'reset_to_init' ) setAllValues(project, -1); else
+	if (action === 'reset_to_top'  ) setAllValues(project, 1); else
+	if (action === 'reset_to_empty') setAllValues(project);
+	else {
+		console.log([e, container, project, 'Unknown action: ' + action]);
+	}
 }
 
-async function saveImg(render, fileName) {
-	render = await getOrCreateRender(render);
+function onProjectMenuUpdate(e, params) {
+	if (
+		!e
+	||	e.type !== 'change'
+	) {
+		return;
+	}
 
-	saveDL(render.img.src, fileName || render.fileName, 'png');
+//* batch checkbox:
+
+	if (params || (params = e.target.params)) {
+		params.batch = !(params.preselect = !!e.target.checked);
+	} else
+
+//* select option:
+
+	if (e.target.getAttribute('data-section')) {
+	var	container = getProjectContainer(e)
+	,	project = container.project
+		;
+		updateMenuAndRender(project);
+	}
 }
 
 function onPageDragOver(e) {
@@ -3467,14 +3715,14 @@ var	d = e.dataTransfer.files
 }
 
 async function onPageDrop(e) {
-	if (!window.FileReader) return;
-
 var	e = eventStop(e,0,1)
 ,	tryFiles = []
 ,	files, name, ext, projectRenderFallBack
 	;
 
-	for (var batch of [e.dataTransfer, e.target]) if (
+//* get list of files to process:
+
+	for (var batch of [e.dataTransfer, e.target, e.value, e]) if (
 		batch
 	&&	(files = batch.files)
 	&&	files.length
@@ -3493,56 +3741,89 @@ var	e = eventStop(e,0,1)
 		}
 	}
 
-var	logLabel = 'Load project from event: ' + tryFiles.map(v => v.name).join(', ');
+var	logLabel = 'Load project from event: ' + tryFiles.map(v => v.name).join(', ')
+,	loadedProjectsCount = 0
+	;
 
 	console.time(logLabel);
 	console.group(logLabel);
 
 	for (var file of tryFiles) {
-	var	projectWIP = await loadProject(file);
-
-		if (projectWIP) {
-			if (projectWIP.options) break;
-			if (!projectRenderFallBack) projectRenderFallBack = projectWIP;
+		if (await addProjectView(file)) {
+			++loadedProjectsCount;
 		}
 	}
 
-	if (!projectWIP) alert(la.error.file + ' / ' + tryFiles.length);
-	if (projectRenderFallBack) loadProjectFinalizeDisplayFallBack(projectRenderFallBack);
-
 	console.groupEnd(logLabel);
 	console.timeEnd(logLabel);
+
+	if (!loadedProjectsCount) alert(
+		la.error.file
+	+	'\n'
+	+	loadedProjectsCount
+	+	' / '
+	+	tryFiles.length
+	);
 }
 
-async function loadFromURL(e, url) {
-
-//* show loading status:
-
-	e.disabled = true;
-var	p = getParentBeforeClass(e, 'file').parentNode
-,	c = 'loading'
-	;
-	if (p && p.className) {
-		if (p.className.indexOf(c) < 0) {
-			toggleClass(p,c,1);
-		} else return;
+async function loadFromURL(url) {
+	if (!url) {
+		return;
 	}
-
-//* start the job:
 
 var	name = getFileName(url)
 ,	ext = getFileExt(name)
 ,	logLabel = 'Load project from url: ' + url
 	;
+
 	console.time(logLabel);
 	console.group(logLabel);
 
-var	projectWIP = await loadProject(
+var	isProjectLoaded = await addProjectView(
 		{
 			url: url
 		,	name: name
 		,	ext: ext
 		}
+	);
+
+	console.groupEnd(logLabel);
+	console.timeEnd(logLabel);
+
+	return isProjectLoaded;
+}
+
+async function loadFromButton(e) {
+	if (e.disabled) {
+		return;
+	}
+
+//* show loading status:
+
+	e.disabled = true;
+
+var	c = 'loading'
+,	p = getParentByClass(e, regClassExampleFile)
+	;
+
+	if (p && p.className) {
+		if (p.className.indexOf(c) < 0) {
+			toggleClass(p,c,1);
+		} else {
+			return;
+		}
+	}
+
+//* process the file:
+
+var	url = e.getAttribute('data-url')
+,	isProjectLoaded = await loadFromURL(url)
+	;
+
+	if (!isProjectLoaded) alert(
+		la.error.file
+	+	'\n'
+	+	url
 	);
 
 //* remove loading status:
@@ -3551,14 +3832,33 @@ var	projectWIP = await loadProject(
 		toggleClass(p,c,-1);
 	}
 	e.disabled = false;
+}
 
-//* finish the job:
+function selectProject(e) {
+	if (e = getProjectButton(e)) {
+	var	button = e.parentNode.firstElementChild;
 
-	if (!projectWIP) alert(la.error.file + ' : ' + url); else
-	if (!projectWIP.options) loadProjectFinalizeDisplayFallBack(projectWIP);
+		while (button) {
+		var	state = (button === e ? 1 : -1);
 
-	console.groupEnd(logLabel);
-	console.timeEnd(logLabel);
+			gi(button.id).forEach(
+				e => toggleClass(e, 'show', state)
+			);
+
+			button = button.nextElementSibling;
+		}
+	}
+}
+
+function closeProject(e) {
+	if (e = getProjectButton(e)) {
+	var	c = e.className;
+		if (c && regClassShow.test(c)) {
+		var	selectNext = e.nextElementSibling || e.previousElementSibling;
+			selectProject(selectNext);
+		}
+		removeProjectView(e.id);
+	}
 }
 
 //* Runtime: prepare UI *------------------------------------------------------
@@ -3573,26 +3873,10 @@ async function init() {
 		CompositionFuncList = Object.keys(CompositionModule(window, null, new ArrayBuffer(nextValidHeapSize(0))));
 	}
 
-var	container = delAllChildNodes(document.body)
-,	s = cre('section', container)
-,	a,e,i
-	;
-
-	e = cre('div', s);
-	e.id = 'loader';
-
-	cre('p', e).textContent = la.hint.project;
-
-	i = cre('input', cre('p', e));
-	i.type = 'file';
-	i.onchange = onPageDrop;
-
-	a = (
+var	supportedFileTypesText = (
 		fileTypeLoaders
 		.reduce(
-			function(result, v,i,a) {
-				return result.concat(v.dropFileExts);
-			}
+			(result, v,i,a) => result.concat(v.dropFileExts)
 		,	[]
 		)
 		.filter(arrayFilterUniqueValues)
@@ -3600,83 +3884,127 @@ var	container = delAllChildNodes(document.body)
 		.map(v => v.toUpperCase())
 		.sort()
 		.join(', ')
+	)
+,	topMenuEntries = []
+,	HTMLparts = {}
+	;
+
+	HTMLparts.file = (
+		'<p>'
+	+		la.menu.file.project
+	+	'</p>'
+	+	'<input type="file" onchange="onPageDrop(this)">'
+	+	'<p>'
+	+		la.menu.file.formats
+	+		'\n'
+	+		supportedFileTypesText
+	+		'.'
+	+	'</p>'
 	);
 
-	cre('p', e).textContent = (
-		la.hint.formats
-	+	'\n' + a + '.'
-	);
-
-	if (
-		exampleProjectFiles
-	&&	exampleProjectFiles.length > 0
-	) {
-		e = cre('div', s);
-		e.id = 'examples';
-
-		cre('p', e).textContent = la.example.common;
-
-		exampleProjectFiles.forEach(
+	HTMLparts.examples = (
+		exampleProjectFiles.map(
 			v => {
-				cre('p', e).innerHTML = (
-					'<header>'
-				+		(la.example[v.example] || v.example)
-				+		':'
-				+	'</header>'
-				+	'<div class="files">'
-				+		'<table>'
-				+	v.files.map(
+			var	fileListHTML = (
+					v.files.map(
 						file => {
 						var	fileName = (file.join ? file[0] : file)
-						,	comment  = (file.join ? file[1] : '')
+						,	fileInfo = (
+								file.join
+							&&	file[1]
+								? '(' + file[1] + ')'
+								: ''
+							)
 						,	filePath = examplesDir + (v.dir || '') + fileName
 						,	fileAttr = encodeTagAttr(fileName)
 						,	pathAttr = encodeTagAttr(filePath)
-							;
+						,	downloadLink = (
+								'<a href="'
+							+		pathAttr
+							+	'" download="'
+							+		fileAttr
+							+	'">'
+							+		la.menu.examples.download
+							+	'</a>'
+							)
+						,	loadButton = (
+								'<button onclick="loadFromButton(this)" data-url="'
+							+		pathAttr
+							+	'">'
+							+		la.menu.examples.load
+							+	'</button>'
+							)
+						,	tabs = [
+								fileName
+							,	fileInfo
+							,	downloadLink
+							,	loadButton
+							];
 							return (
-								'<tr class="file"><td>'
-							+	[
-									fileName
-								// +	':'
-
-								,	(comment ? '(' + comment + ')' : '')
-
-								,	'<a href="'
-								+		pathAttr
-								+	'" download="'
-								+		fileAttr
-								+	'">'
-								+		la.buttons.download
-								+	'</a>'
-
-								,	'<button onclick="loadFromURL(this, \''
-								+		pathAttr
-								+	'\')">'
-								+		la.buttons.load
-								+	'</button>'
-								].join('</td><td>')
-							+	'</td></tr>'
+								'<tr class="example-file">'
+							+		'<td>'
+							+		tabs.join('</td><td>')
+							+		'</td>'
+							+	'</tr>'
 							);
 						}
 					).join('')
+				);
+				return (
+					'<p>'
+				+		'<header>'
+				+			(la.menu.examples[v.example] || v.example)
+				+			':'
+				+		'</header>'
+				+		'<table class="example-files">'
+				+			fileListHTML
 				+		'</table>'
-				+	'</div>'
+				+	'</p>'
 				);
 			}
-		);
+		).join('')
+	);
+
+	HTMLparts.help = (
+		'<p>TODO</p>'
+	);
+
+	HTMLparts.about = (
+		'<p>'
+	+		'<a href="https://github.com/f2d/sprite_dress_up">'
+	+			la.menu.about.source
+	+		'</a>'
+	+	'</p>'
+	);
+
+	for (var i in la.menu) {
+		topMenuEntries.push([
+			la.menu[i].header || 'TODO'
+		,	HTMLparts[i] || 'TODO'
+		]);
 	}
 
-	s = cre('section', container);
-	e = cre('div', s);
-	e.id = 'project-container';
+var	topMenuHTML = (
+		topMenuEntries
+		.map(getDropdownMenuHTML)
+		.join('')
+	);
 
-	e = window;
-	a = {
-//* 'drop' event may not work without 'dragover'
+	document.body.innerHTML = (
+		'<div class="menu-bar">'
+	+		topMenuHTML
+	+	'</div>'
+	+	'<div id="loaded-files-selection"></div>'
+	+	'<div id="loaded-files-view"></div>'
+	);
+
+//* drop event may not work without dragover:
+
+var	a = {
 		'dragover':	onPageDragOver
 	,	'drop':		onPageDrop
 	};
-	for (i in a) e.addEventListener(i, a[i], false);
+	for (var i in a) window.addEventListener(i, a[i], false);
 
 	logTime('ready to work');
 }

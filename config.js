@@ -2,7 +2,7 @@ var exampleProjectFiles = [
 	{
 		'example': 'ora_mockup'
 	,	'files': [
-			['icon.ora'	, '128x128, 70 K'],
+			['icon.ora'	, '128x128, 57 K'],
 		]
 	},
 	{

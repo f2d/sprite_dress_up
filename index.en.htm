@@ -10,78 +10,85 @@
 	<script>
 	var	la = {
 			'hint': {
-				'project': 'Drag and drop a project file onto this page, or select here:'
-			,	'formats': 'Supported file types:'
-			,	'canvas': 'Right click to save result image.'
-			}
-		,	'example': {
-				'common': 'Example project files:'
-			,	'psd_from_sai2': 'SAI2 → PSD as is (layer masks in PSD are not working here yet)'
-			,	'ora_mockup': 'SAI2 → PSD → Krita (no clipping) → ORA (no masks) → manual fixes'
-			}
-		,	'file_name': {
-				'pretext': 'Project'
-			,	'none': 'unnamed'
-			}
-		,	'project': {
-				'bits': 'bits'
-			,	'channels': 'channels'
-			,	'pixels': 'pixels'
-			,	'layers': 'layers and folders'
-			,	'images': 'images'
-			,	'bytes': 'bytes'
-			,	'date': 'last modified'
-			}
-		,	'buttons': {
-				'load': 'Load example'
-			,	'download': 'Download'
-			}
-		,	'selection': {
+				'canvas': 'Right click to save result image.',
+			},
+			'menu': {
+				'file': {
+					'header': 'File',
+					'project': 'Drag and drop a project file onto this page, or select here:',
+					'formats': 'Supported file types:',
+				},
+				'examples': {
+					'header': 'Examples',
+					'load': 'Load example',
+					'download': 'Download',
+					'psd_from_sai2': 'SAI2 → PSD as is (layer masks in PSD are not working here yet)',
+					'ora_mockup': 'SAI2 → PSD → Krita (no clipping) → ORA (no masks) → manual fixes',
+				},
+				'help': {
+					'header': 'Manual',
+				},
+				'about': {
+					'header': 'About',
+					'source': 'Project on GitHub',
+				},
+			},
+			'project': {
+				'bits': 'bits',
+				'channels': 'channels',
+				'pixels': 'pixels',
+				'layers': 'layers and folders',
+				'images': 'images',
+				'bytes': 'bytes',
+				'date': 'last modified',
+			},
+			'selection': {
 				'current': {
-					'title': 'Current selection'
-				,	'buttons': {
-						'show': 'Show'
-					,	'save': 'Save'
-					}
-				}
-			,	'batch': {
-					'title': 'Multiple sets'
-				,	'buttons': {
-						'show_all': 'Show all'
-					,	'save_all': 'Save all'
-					}
-				}
-			,	'reset': {
-					'title': 'Reset selection'
-				,	'buttons': {
-						'reset_to_init':  'All to initial'
-					,	'reset_to_top':   'All to top'
-					,	'reset_to_empty': 'All to empty'
-					}
-				}
-			}
-		,	'options': {
-				'autosave_on_load': 'Batch autosave all possible results when a project is loaded'
-			,	'batch': 'Mark this list for batch export.'
-			,	'preselect': 'Use only the single selected option for batch export.'
-			}
-		,	'sections': {
-				'zoom': 'Select zoom'
-			,	'side': 'Select side'
-			,	'paddings': 'Select paddings'
-			,	'opacities': 'Select opacities'
-			,	'colors': 'Select colors'
-			,	'parts': 'Select parts'
-			}
-		,	'side': {
-				'front': 'Front'
-			,	'back': 'Back'
-			}
-		,	'error': {
-				'file': 'No suitable files found.'
-			,	'canvas': 'HTML5 Canvas is not supported in your web browser program.'
-			,	'project': 'Project composition error.'
-			}
+					'title': 'Current selection',
+					'buttons': {
+						'show': 'Show',
+						'save': 'Save',
+					},
+				},
+				'batch': {
+					'title': 'Multiple sets',
+					'buttons': {
+						'show_all': 'Show all',
+						'save_all': 'Save all',
+					},
+				},
+				'reset': {
+					'title': 'Reset selection',
+					'buttons': {
+						'reset_to_init':  'All to initial',
+						'reset_to_top':   'All to top',
+						'reset_to_empty': 'All to empty',
+					},
+				},
+			},
+			'options': {
+				'autosave_on_load': 'Batch autosave all possible results when a project is loaded',
+				'batch': 'Mark this list for batch export.',
+				'preselect': 'Use only the single selected option for batch export.',
+			},
+			'sections': {
+				'zoom': 'Select zoom',
+				'side': 'Select side',
+				'paddings': 'Select paddings',
+				'opacities': 'Select opacities',
+				'colors': 'Select colors',
+				'parts': 'Select parts',
+			},
+			'side': {
+				'front': 'Front',
+				'back': 'Back',
+			},
+			'error': {
+				'file': 'No suitable files found.',
+				'canvas': 'HTML5 Canvas is not supported in your web browser program.',
+				'project': 'Project composition error.',
+				'options': 'Project without options.',
+			},
 		};
 	</script>
 	<script src="index.js"></script>
