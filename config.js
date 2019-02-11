@@ -8,7 +8,7 @@ var exampleProjectFiles = [
 	{
 		'example': 'psd_from_sai2'
 	,	'files': [
-			['icon.psd'	, '128x128, 153 K'],
+			['icon.psd'	, '128x128, 149 K'],
 		]
 	},
 ];

@@ -113,6 +113,7 @@ label {
 .example-file button {
 	width: 100%;
 }
+.close-button:not(:hover),
 .button {
 	background-color: rgba(0,0,0, 0.1);
 }

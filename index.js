@@ -195,6 +195,8 @@ examples of 'multi_select':
 ,	NAME_PARTS_ORDER = ['parts', 'colors', 'paddings', 'opacities', 'side', 'zoom']
 ,	SPLIT_SEC = 60
 ,	MAX_OPACITY = 255
+,	TESTING = false
+,	cancelBatchWIP = false
 ,	fileNameAddParamKey = true
 
 ,	BLEND_MODE_NORMAL = 'source-over'
@@ -270,9 +272,7 @@ examples of 'multi_select':
 	,	'Multichannel'
 	,	'Duotone'
 	,	'Lab'
-	]
-,	TESTING = false
-	;
+	];
 
 //* Config: loaders of project files *-----------------------------------------
 
@@ -500,8 +500,8 @@ var	SIZE_64_KB = 65536	// 0x10000
 
 function gc(n,p) {try {return Array.from((p || document).getElementsByClassName	(n));} catch (e) {return [];}}
 function gt(n,p) {try {return Array.from((p || document).getElementsByTagName	(n));} catch (e) {return [];}}
-function gn(n,p) {try {return Array.from((p || document).getElementsByName		(n));} catch (e) {return [];}}
-function gi(n,p) {try {return Array.from((p || document).querySelectorAll('*[id="'+n+'"]'));} catch (e) {return [];}}
+function gn(n,p) {try {return Array.from((p || document).querySelectorAll('*[name="'+n+'"]'));} catch (e) {return [];}}
+function gi(n,p) {try {return Array.from((p || document).querySelectorAll('*[id="'  +n+'"]'));} catch (e) {return [];}}
 function id(i) {return document.getElementById(i);}
 function cre(e,p,b) {
 	e = document.createElement(e);
@@ -1032,7 +1032,7 @@ var	depends = lib.depends || null;
 //* otherwise, cleanup and report fail:
 
 					del(
-						gn('script', document.head)
+						gt('script', document.head)
 						.filter(
 							function(e) {
 								return e.getAttribute('data-lib-name') === libName;
@@ -1429,13 +1429,15 @@ async function getNormalizedProjectData(sourceFile) {
 		return null;
 	}
 
-var	startTime = +new Date
-,	n = sourceFile.name
+var	n = sourceFile.name
 ,	i = n.lastIndexOf('.')
 ,	b = (i < 0 ? n : n.substr(0, i))
 ,	ext = sourceFile.ext || getFileExt(n)
+,	actionLabel = 'parsing file structure';
 	;
-	logTime('"' + n + '" started trying to parse');
+	logTime('"' + n + '" started ' + actionLabel);
+
+var	startTime = +new Date;
 
 	try_loaders:
 	for (var ftl of fileTypeLoaders) if (ftl.dropFileExts.indexOf(ext) >= 0)
@@ -1458,14 +1460,16 @@ var	startTime = +new Date
 		}
 	}
 
+var	tookTime = +new Date - startTime;
+
 	logTime(
 		'"' + n + '"'
 	+	(
 			project
-			? ' finished trying to parse, took '
-			: ' failed trying to parse after '
+			? ' finished ' + actionLabel + ', took '
+			: ' failed ' + actionLabel + ' after '
 		)
-	+	(+new Date - startTime)
+	+	tookTime
 	+	' ms total'
 	);
 
@@ -1479,24 +1483,41 @@ async function getProjectViewMenu(project) {
 //* render default set when everything is ready:
 
 		try {
-		var	options = getProjectOptions(project);
+		var	options = getProjectOptions(project)
+		,	n = project.fileName
+			;
 			if (options) {
-			var	result = true
-			,	l_a = project.loading.images
+			var	l_a = project.loading.images
 			,	l_i = project.loading.imagesCount = l_a.length
+			,	actionLabel = 'preloading ' + l_i + ' images'
+			,	result
 				;
 
-				logTime(l_i + ' images to preload.');
+				logTime('"' + n + '" started ' + actionLabel);
 
 //* try loading one by one to avoid flood of errors:
 
-				while (result && l_a.length > 0) {
-					result = await getLayerImgLoadPromise(l_a.pop());
-				}
+			var	startTime = +new Date;
+
+				while (
+					l_a.length > 0
+				&&	(result = await getLayerImgLoadPromise(l_a.pop()))
+				);
+
+			var	tookTime = +new Date - startTime;
+
+				logTime(
+					'"' + n + '"'
+				+	(
+						result
+						? ' finished ' + actionLabel + ', took '
+						: ' failed ' + actionLabel + ' after '
+					)
+				+	tookTime
+				+	' ms'
+				);
 
 				if (result) {
-					logTime('"' + project.fileName + '" finished loading, took ' + (+new Date - project.loading.startTime) + ' ms');
-
 					project.options = options;
 
 				var	container = createProjectView(project);
@@ -1505,7 +1526,7 @@ async function getProjectViewMenu(project) {
 					return container;
 				}
 			} else {
-				logTime('"' + project.fileName + '" finished loading, took ' + (+new Date - project.loading.startTime) + ' ms, options not found.');
+				logTime('"' + n + '" has no options.');
 			}
 		} catch (error) {
 			console.log(error);
@@ -2159,7 +2180,9 @@ var	m,v
 async function loadCommonWrapper(project, libName, fileParserFunc, treeConstructorFunc) {
 	if (!(await loadLibOnDemand(libName))) return;
 
-	logTime('"' + project.fileName + '" started parsing with ' + libName);
+var	actionLabel = 'parsing with ' + libName;
+
+	logTime('"' + project.fileName + '" started ' + actionLabel);
 
 	project.loading.startParsingTime = +new Date;
 
@@ -2178,8 +2201,8 @@ async function loadCommonWrapper(project, libName, fileParserFunc, treeConstruct
 		'"' + project.fileName + '"'
 	+	(
 			sourceData
-			? ' finished parsing, took '
-			: ' failed parsing after '
+			? ' finished ' + actionLabel + ', took '
+			: ' failed ' + actionLabel + ' after '
 		)
 	+	(+new Date - project.loading.startParsingTime)
 	+	' ms'
@@ -3381,7 +3404,7 @@ var	canvas = cre('canvas')
 
 	if (!layersBatch) {
 		logTime(
-			'rendered in '
+			'"' + project.fileName + '" rendered in '
 		+	[	project.rendering.layersBatchCount + ' canvas elements'
 			,	project.rendering.layersApplyCount + ' blending steps'
 			,	(+new Date - project.rendering.startTime) + ' ms'
@@ -3559,20 +3582,48 @@ var	img = prerenders[refName];
 }
 
 function updateMenuAndRender(project) {
-	if (!project) {
-		return;
-	}
+	if (
+		!project
+	||	project.isWIP
+	||	project.rendering
+	||	project.loading
+	) {
+		if (project.isWIP) logTime('updateMenuAndRender - skipped while other work is in progress.');
+		if (project.rendering) logTime('updateMenuAndRender - skipped while already rendering.');
+		if (project.loading) logTime('updateMenuAndRender - skipped while loading project.');
 
-	if (project.loading) {
-		logTime('updateMenuAndRender - skipped while loading project.');
 		return;
 	}
 
 	showImg(project);
 }
 
+function setProjectWIPstate(project, isWIP) {
+
+	['button', 'select', 'input'].forEach(
+		tagName => gt(tagName, project.container).forEach(
+			e => (
+				e.disabled = (
+					tagName === 'button'
+				&&	e.name === 'stop'
+					? !isWIP
+					: !!isWIP
+				)
+			)
+		)
+	);
+
+	return project.isWIP = !!isWIP;
+}
+
+function getEmptyRenderContainer(project) {return delAllChildNodes(gc('render', project.container)[0]);}
+
 async function renderAll(project, saveToFile, showOnPage) {
-	if (!(saveToFile || showOnPage)) return;
+	if (!(saveToFile || showOnPage)) {
+		return;
+	}
+
+	setProjectWIPstate(project, true);
 
 var	logLabel = 'Render all: ' + project.fileName;
 
@@ -3584,6 +3635,7 @@ var	sets = getAllValueSets(project, true)
 ,	setsCount = 0
 ,	totalTime = 0
 ,	lastPauseTime = +new Date
+,	batchContainer = (showOnPage ? getEmptyRenderContainer(project) : null)
 	;
 	for (var fileName in sets) if (values = sets[fileName]) {
 	var	startTime = +new Date
@@ -3595,7 +3647,7 @@ var	sets = getAllValueSets(project, true)
 			}
 		);
 		if (saveToFile) await saveImg(project, render, getFileNameByValuesToSave(values, true, true));
-		if (showOnPage) await showImg(project, render, true);
+		if (showOnPage) await showImg(project, render, batchContainer);
 
 	var	endTime = +new Date;
 
@@ -3614,44 +3666,56 @@ var	sets = getAllValueSets(project, true)
 			lastPauseTime = +new Date;
 			setsCountWithoutPause = 0;
 		}
+
+		if (cancelBatchWIP || project.cancelBatchWIP) {
+			project.cancelBatchWIP = false;
+
+			break;
+		}
 	}
 
 	logTime('finished rendering ' + setsCount + ' sets, total ' + totalTime + ' ms (excluding pauses)');
 
 	console.groupEnd(logLabel);
 	console.timeEnd(logLabel);
+
+	setProjectWIPstate(project, false);
 }
 
 function saveAll(project) {renderAll(project,1,0);}
 function showAll(project) {renderAll(project,0,1);}
 
-async function showImg(project, render, inBatch) {
+async function showImg(project, render, container) {
+	if (!render) var isWIP = setProjectWIPstate(project, true);
+
 	try {
-	var	container = project.container
-	,	imgContainer = gc('render', container)[0] || container
-	,	img = await getOrCreateRenderedImg(project, render)
-		;
 
 //* prepare image before container cleanup to avoid flicker:
 
-		if (!inBatch) {
-			delAllChildNodes(imgContainer);
-		}
+//* TODO: resize img to thumbnail on button
 
+	var	img = await getOrCreateRenderedImg(project, render)
+	,	imgContainer = container || getEmptyRenderContainer(project)
+		;
 		imgContainer.appendChild(img);
-
 	} catch (error) {
 		console.log(error);
 	}
+
+	if (isWIP) setProjectWIPstate(project, false);
 }
 
 async function saveImg(project, render, fileName) {
+	if (!render) var isWIP = setProjectWIPstate(project, true);
+
 	try {
 		render = await getOrCreateRender(project, render);
 		saveDL(render.img.src, fileName || render.fileName, 'png');
 	} catch (error) {
 		console.log(error);
 	}
+
+	if (isWIP) setProjectWIPstate(project, false);
 }
 
 //* Page-specific functions: UI-side *-----------------------------------------
@@ -3675,9 +3739,11 @@ var	container = getProjectContainer(e)
 	if (action === 'show_all') showAll(project); else
 	if (action === 'save_all') saveAll(project); else
 	if (action === 'reset_to_init' ) setAllValues(project, -1); else
-	if (action === 'reset_to_top'  ) setAllValues(project, 1); else
-	if (action === 'reset_to_empty') setAllValues(project);
-	else {
+	if (action === 'reset_to_top'  ) setAllValues(project,  1); else
+	if (action === 'reset_to_empty') setAllValues(project    ); else
+	if (action === 'stop') {
+		project.cancelBatchWIP = true;
+	} else {
 		console.log([e, container, project, 'Unknown action: ' + action]);
 	}
 }
@@ -3801,24 +3867,27 @@ async function loadFromButton(e, action) {
 
 	e.disabled = true;
 
-	if (action) {
+	if (
+		action
+	||	(action = e.getAttribute('data-action'))
+	) {
 	var	p = getParentByClass(e, regClassExampleFiles);
 
 		if (action === 'download_all') {
-		var	count = 0;
+		var	countWithoutPause = 0;
 
 			for (var a of gt('a', p)) if (a.download) {
 				a.click();
 
-				if (++count >= 10) {
+				if (++countWithoutPause >= 10) {
 					await pause(1000);
-					count = 0;
+					countWithoutPause = 0;
 				}
 			}
 		} else
 		if (action === 'load_all') {
 			for (var b of gt('button', p)) if (b.getAttribute('data-url')) {
-				await loadFromButton(b);
+				await b.onclick();
 			}
 		}
 	} else {
@@ -3910,7 +3979,6 @@ var	supportedFileTypesText = (
 		.sort()
 		.join(', ')
 	)
-,	topMenuEntries = []
 ,	HTMLparts = {}
 	;
 
@@ -3954,7 +4022,7 @@ var	supportedFileTypesText = (
 							+	'</a>'
 							)
 						,	loadButton = (
-								'<button onclick="loadFromButton(this)" data-url="'
+								'<button onclick="return loadFromButton(this)" data-url="'
 							+		pathAttr
 							+	'">'
 							+		dict.load
@@ -3976,24 +4044,23 @@ var	supportedFileTypesText = (
 						}
 					).join('')
 				)
-			,	batchButtons = []
-			,	dict = la.menu.examples.batch_buttons
-				;
-
-				for (var i in dict) {
-					batchButtons.push(
-						'<td colspan="2"><button onclick="loadFromButton(this, \''
-					+		encodeTagAttr(i)
-					+	'\')">'
-					+		dict[i]
-					+	'</button></td>'
-					);
-				}
+			,	batchButtons = (
+					Object.entries(la.menu.examples.batch_buttons)
+					.map(
+						([k, v]) => (
+							'<td colspan="2"><button onclick="return loadFromButton(this)" data-action="'
+						+		encodeTagAttr(k)
+						+	'">'
+						+		v
+						+	'</button></td>'
+						)
+					).join('')
+				);
 
 				if (batchButtons.length > 0) {
 					fileListHTML += (
 						'<tr class="example-file">'
-					+		batchButtons.join('')
+					+		batchButtons
 					+	'</tr>'
 					);
 				}
@@ -4025,17 +4092,14 @@ var	supportedFileTypesText = (
 	+	'</p>'
 	);
 
-	for (var i in la.menu) {
-		topMenuEntries.push([
-			la.menu[i].header || 'TODO'
-		,	HTMLparts[i] || 'TODO'
-		]);
-	}
-
 var	topMenuHTML = (
-		topMenuEntries
-		.map(getDropdownMenuHTML)
-		.join('')
+		Object.entries(la.menu)
+		.map(
+			([k, v]) => getDropdownMenuHTML(
+				v.header || 'TODO'
+			,	HTMLparts[k] || 'TODO'
+			)
+		).join('')
 	);
 
 	document.body.innerHTML = (
@@ -4048,11 +4112,12 @@ var	topMenuHTML = (
 
 //* drop event may not work without dragover:
 
-var	a = {
-		'dragover':	onPageDragOver
-	,	'drop':		onPageDrop
-	};
-	for (var i in a) window.addEventListener(i, a[i], false);
+	[
+		['dragover',	onPageDragOver]
+	,	['drop',	onPageDrop]
+	].forEach(
+		([k, v]) => window.addEventListener(k, v, false)
+	);
 
 	logTime('ready to work');
 }
