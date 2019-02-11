@@ -974,23 +974,33 @@ function loadLib(lib) {
 }
 
 async function loadLibOnDemand(libName) {
+	if (!libName) {
+		return false;
+	}
 
-var	lib = fileTypeLibs[libName] || {}
-,	varName = lib.varName || ''
-	;
-	if (window[varName]) return true;
+var	lib = fileTypeLibs[libName] || {};
+	if (!lib) {
+		return false;
+	}
+
+var	varName = lib.varName || '';
+	if (window[varName]) {
+		return true;
+	}
 
 var	dir = lib.dir || ''
 ,	scripts = Array.from(lib.files || [])
 	;
-	if (!scripts.length) return false;
+	if (!scripts.length) {
+		return false;
+	}
 
 var	depends = lib.depends || null;
 	if (depends) {
-		if (depends.map) {
-			for (var name of depends) await loadLibOnDemand(name);
-		} else {
-			await loadLibOnDemand(depends);
+		for (var name of Array.from(depends)) if (name) {
+			if (!(await loadLibOnDemand(name))) {
+				return false;
+			}
 		}
 	}
 
@@ -1026,6 +1036,8 @@ var	depends = lib.depends || null;
 //* then check whether the required object is present:
 
 				if (window[varName]) {
+					logTime('"' + libName + '" library finished loading');
+
 					resolve(true);
 				} else {
 
@@ -1039,6 +1051,9 @@ var	depends = lib.depends || null;
 							}
 						)
 					);
+
+					logTime('"' + libName + '" library failed loading');
+
 					resolve(false);
 				}
 			}
@@ -1360,11 +1375,15 @@ var	button = cre('button', buttonTab);
 	button.textContent = sourceFile.name;
 
 	try {
-	var	project = await getNormalizedProjectData(sourceFile)
-	,	container = (
-			await getProjectViewMenu(project)
-		||	await getProjectViewImage(project)
-		);
+	var	project = await getNormalizedProjectData(sourceFile);
+
+		if (project) {
+		var	container = (
+				await getProjectViewMenu(project)
+			||	await getProjectViewImage(project)
+			);
+		}
+
 		if (container) {
 		var	fileID = 'loaded-file: ' + sourceFile.name;
 
@@ -2622,7 +2641,13 @@ function getAllValueSets(project, checkPreselected) {
 					goDeeper(optionsLeft, values);
 				} else
 				if (isSetOfValuesOK(project, values = getSetOfRelevantValues(project, values))) {
-				var	fileName = getFileNameByValuesToSave(project, values);
+				var	fileName = getFileNameByValuesToSave(
+						project,
+						values,
+						{
+							addAllListNames: true,
+						}
+					);
 
 					if (!(fileName in resultSets)) {
 						resultSets[fileName] = values;
@@ -3419,7 +3444,7 @@ var	canvas = cre('canvas')
 	return canvas;
 }
 
-function getFileNameByValues(project, values, checkPreselected, skipDefaultPercent) {
+function getFileNameByValues(project, values, namingParam) {
 
 	function getProcessedSectionName(sectionName) {
 
@@ -3432,7 +3457,7 @@ function getFileNameByValues(project, values, checkPreselected, skipDefaultPerce
 
 		var	params = getPropByNameChain(project, 'options', sectionName, listName, 'params');
 			if (params) {
-				if (checkPreselected) {
+				if (namingParam.checkPreselected) {
 					if (
 						params.preselect
 					||	!params.batch
@@ -3441,7 +3466,7 @@ function getFileNameByValues(project, values, checkPreselected, skipDefaultPerce
 					}
 				}
 
-				if (skipDefaultPercent) {
+				if (namingParam.skipDefaultPercent) {
 					if (
 						(sectionName == 'zoom'      && orz(optionName) == 100)
 					||	(sectionName == 'opacities' && orz(optionName) == 0)
@@ -3451,8 +3476,11 @@ function getFileNameByValues(project, values, checkPreselected, skipDefaultPerce
 				}
 
 				if (
-					fileNameAddParamKey
-				&&	!params.no_prefix
+					namingParam.addAllListNames
+				||	(
+						fileNameAddParamKey
+					&&	!params.no_prefix
+					)
 				) {
 					optionName = listName + '=' + optionName;
 				}
@@ -3478,9 +3506,8 @@ function getFileNameByValues(project, values, checkPreselected, skipDefaultPerce
 		);
 	}
 
-	if (!values) {
-		values = getMenuValues(project);
-	}
+	if (!namingParam) namingParam = {};
+	if (!values) values = getMenuValues(project);
 
 	return (
 		NAME_PARTS_ORDER
@@ -3490,11 +3517,11 @@ function getFileNameByValues(project, values, checkPreselected, skipDefaultPerce
 	);
 }
 
-function getFileNameByValuesToSave(project, values, checkPreselected, skipDefaultPercent) {
+function getFileNameByValuesToSave(project, values, namingParam) {
 	return (
 		[
 			project.baseName
-		,	getFileNameByValues(project, values, checkPreselected, skipDefaultPercent)
+		,	getFileNameByValues(project, values, namingParam)
 		]
 		.filter(arrayFilterNonEmptyValues)
 		.join('_')
@@ -3646,8 +3673,19 @@ var	sets = getAllValueSets(project, true)
 			,	'fileName': fileName
 			}
 		);
-		if (saveToFile) await saveImg(project, render, getFileNameByValuesToSave(values, true, true));
 		if (showOnPage) await showImg(project, render, batchContainer);
+		if (saveToFile) await saveImg(
+			project,
+			render,
+			getFileNameByValuesToSave(
+				project,
+				values,
+				{
+					checkPreselected: true,
+					skipDefaultPercent: true,
+				}
+			)
+		);
 
 	var	endTime = +new Date;
 
@@ -3674,7 +3712,7 @@ var	sets = getAllValueSets(project, true)
 		}
 	}
 
-	logTime('finished rendering ' + setsCount + ' sets, total ' + totalTime + ' ms (excluding pauses)');
+	logTime('"' + project.fileName + '" finished rendering ' + setsCount + ' sets, total ' + totalTime + ' ms (excluding pauses)');
 
 	console.groupEnd(logLabel);
 	console.timeEnd(logLabel);
