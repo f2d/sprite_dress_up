@@ -193,6 +193,12 @@ label:hover {
 .project-header button {
 	margin: 0.5em 0;
 }
+.project-header button span::before {
+	content: " (";
+}
+.project-header button span::after {
+	content: ")";
+}
 .project-header button,
 .project-options select {
 	display: block;

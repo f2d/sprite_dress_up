@@ -1440,6 +1440,7 @@ var	button = cre('button', buttonTab);
 			}
 
 			if (project.options) {
+				updateBatchCount(project);
 				updateMenuAndShowImg(project);
 			}
 
@@ -1597,17 +1598,17 @@ async function getProjectViewMenu(project) {
 
 		function getProcessedLayerInBranch(layer) {
 
-			function getOrAddOptionGroup(sectionName, listName) {
+			function getOptionGroup(sectionName, listName) {
 			var	sectionName = ''+sectionName
 			,	listName    = ''+listName
 			,	o = (options || (options = {}))
 			,	o = (o[sectionName] || (o[sectionName] = {}))
-			,	o = (o[listName] || (o[listName] = {
+			,	optionGroup = (o[listName] || (o[listName] = {
 					'params': {}
 				,	'items': {}
 				}))
 				;
-				return o;
+				return optionGroup;
 			}
 
 			function checkBatchParams(globalOptionParams) {
@@ -1624,7 +1625,8 @@ async function getProjectViewMenu(project) {
 			}
 
 			function addOptionGroup(sectionName, listName) {
-			var	optionParams = getOrAddOptionGroup(sectionName, listName).params
+			var	optionGroup = getOptionGroup(sectionName, listName)
+			,	optionParams = optionGroup.params
 			,	i,j,k,o
 				;
 				checkBatchParams(optionParams);
@@ -1645,6 +1647,7 @@ async function getProjectViewMenu(project) {
 				]) {
 					if (params[k]) optionParams[k] = true;
 				}
+				return optionGroup;
 			}
 
 			function addOptionItem(layer, sectionName, listName, optionName) {
@@ -1654,7 +1657,7 @@ async function getProjectViewMenu(project) {
 					layer.type = sectionName.replace(regLayerTypeSingleTrim, '');
 				}
 
-			var	optionItems = getOrAddOptionGroup(sectionName, listName).items
+			var	optionItems = getOptionGroup(sectionName, listName).items
 			,	optionItemLayers = (optionItems[optionName] || (optionItems[optionName] = []))
 				;
 				if (optionName !== '') {
@@ -1666,9 +1669,9 @@ async function getProjectViewMenu(project) {
 			var	param = params[sectionName];
 				if (!param) return;
 
-			var	o = getOrAddOptionGroup(sectionName, listName || sectionName)
-			,	optionParams = o.params
-			,	optionItems = o.items
+			var	optionGroup = addOptionGroup(sectionName, listName || sectionName)
+			,	optionParams = optionGroup.params
+			,	optionItems = optionGroup.items
 			,	i,j,k
 				;
 				checkBatchParams(optionParams);
@@ -2585,7 +2588,7 @@ var	o = getProjectOptionValue(project, sectionName, listName, optionName);
 		testValues[sectionName][listName] = optionName;
 
 		for (var layer of o) {
-			if (getLayerPathVisibilityByValues(project, layer, testValues)) {
+			if (getLayerPathVisibilityByValues(project, layer, testValues, listName)) {
 				return true;
 			}
 		}
@@ -2626,40 +2629,48 @@ var	section, optionName, o, resultSet;
 	return resultSet;
 }
 
-function setAllValues(project, toFirst) {
+function setAllValues(project, targetValue) {
 	gt('select', project.container).forEach(
 		s => {
-			if (toFirst > 0) {
+			if (targetValue === 'top') {
 				s.value = s.options[0].value;
-				return;
-			}
-
-			if (toFirst < 0) {
+			} else
+			if (targetValue === 'bottom') {
+				s.value = s.options[s.options.length - 1].value;
+			} else
+			if (targetValue === 'init') {
 				s.value = s.initialValue;
-				return;
-			}
+			} else {
+				for (var o of s.options) if ('' === o.value) {
+					s.value = o.value;
+					return;
+				}
 
-			for (o of s.options) if ('' === o.value) {
-				s.value = o.value;
-				return;
-			}
-
-			for (o of s.options) if ('' === trim(o.textContent)) {
-				s.value = o.value;
-				return;
+				for (var o of s.options) if ('' === trim(o.textContent)) {
+					s.value = o.value;
+					return;
+				}
 			}
 		}
 	);
 
-	if (toFirst < 0) {
+	if (
+		targetValue === 'init'
+	||	targetValue === 'empty'
+	) {
 		gt('input', project.container).forEach(
 			i => {
-				i.checked = i.initialValue;
-				onProjectMenuUpdate(i);
+				i.checked = (
+					targetValue === 'init'
+					? i.initialValue
+					: true
+				);
+				updateCheckBox(i);
 			}
 		);
 	}
 
+	updateBatchCount(project);
 	showImg(project);
 }
 
@@ -2686,7 +2697,7 @@ var	values = {};
 	return values;
 }
 
-function getAllValueSets(project, checkPreselected) {
+function getAllValueSets(project, checkPreselected, onlyNames) {
 
 	function goDeeper(optionLists, partialValueSet) {
 		if (
@@ -2721,16 +2732,23 @@ function getAllValueSets(project, checkPreselected) {
 						}
 					);
 
-					if (!(fileName in resultSets)) {
-						resultSets[fileName] = values;
+					if (onlyNames) {
+						if (resultSets.indexOf(fileName) < 0) {
+							resultSets.push(fileName);
+						}
+					} else {
+						if (!(fileName in resultSets)) {
+							resultSets[fileName] = values;
+						}
 					}
+
 				}
 			}
 		}
 	}
 
 var	values = getAllMenuValues(project, checkPreselected)
-,	resultSets = {}
+,	resultSets = onlyNames ? [] : {}
 ,	optionLists = []
 ,	section
 ,	sectionName
@@ -3112,7 +3130,7 @@ var	color
 		if (optionalColors = getSelectedOptionValue(project, values, 'colors', listName)) {
 			for (var layer of optionalColors) if (
 				layer.isColor
-			&&	getLayerPathVisibilityByValues(project, layer, values)
+			&&	getLayerPathVisibilityByValues(project, layer, values, listName)
 			) {
 				color = selectedColors[listName] = getPropByAnyOfNamesChain(layer, 'color', 'img', 'layer');
 
@@ -3141,9 +3159,9 @@ var	selectedName = getPropByNameChain(values, sectionName, listName);
 	return getProjectOptionValue(project, sectionName, listName, selectedName);
 }
 
-function getLayerPathVisibilityByValues(project, layer, values) {
+function getLayerPathVisibilityByValues(project, layer, values, listName) {
 	do {
-		if (!getLayerVisibilityByValues(project, layer, values)) {
+		if (!getLayerVisibilityByValues(project, layer, values, listName)) {
 			return false;
 		}
 	} while (layer = layer.clippingLayer || getParentLayer(layer));
@@ -3151,7 +3169,7 @@ function getLayerPathVisibilityByValues(project, layer, values) {
 	return true;
 }
 
-function getLayerVisibilityByValues(project, layer, values) {
+function getLayerVisibilityByValues(project, layer, values, listName) {
 
 	function skipByFunc(layer, callback) {
 		if (
@@ -3198,6 +3216,29 @@ function getLayerVisibilityByValues(project, layer, values) {
 		return false;
 	}
 
+	function getOpacityByAnyName(listNames) {
+	var	max = -1
+	,	unselectable = false
+		;
+
+		for (var listName of listNames) {
+		var	v = getSelectedOptionValue(project, values, 'opacities', listName);
+
+			if (v === null) {
+				unselectable = true;
+			} else {
+				if (max < v) max = v;
+				if (max >= 1) break;
+			}
+		}
+
+		return (
+			max >= 0
+			? (unselectable ? 1 : max)
+			: layer.opacity
+		);
+	}
+
 //* skip by explicit name or param:
 
 	if (isLayerSkipped(layer)) {
@@ -3236,28 +3277,7 @@ function getLayerVisibilityByValues(project, layer, values) {
 
 //* skip fully transparent:
 
-var	max = null;
-
-	for (var listName of layer.names) {
-	var	v = getSelectedOptionValue(project, values, 'opacities', listName);
-
-		if (v === null) {
-			// max = 1;
-		} else
-		if (max === null || max < v) {
-			max = v;
-		}
-
-		if (max && max >= 1) {
-			break;
-		}
-	}
-
-var	opacity = (
-		max !== null
-		? max
-		: layer.opacity
-	);
+var	opacity = getOpacityByAnyName(listName ? [listName] : layer.names);
 
 	if (opacity > 0) {
 		return opacity;
@@ -3827,6 +3847,25 @@ function updateMenuAndShowImg(project) {
 	showImg(project);
 }
 
+function updateCheckBox(e, params) {
+	if (params || (params = e.params)) {
+		params.batch = !(params.preselect = !!e.checked);
+	}
+}
+
+function updateBatchCount(project) {
+
+var	count = getAllValueSets(project, true, true).length;
+
+	['show_all', 'save_all'].forEach(
+		name => gn(name, project.container).forEach(
+			e => {
+				(e.lastElementChild || cre('span', e)).textContent = count;
+			}
+		)
+	);
+}
+
 function setProjectWIPstate(project, isWIP) {
 var	state = !!isWIP;
 
@@ -3893,15 +3932,16 @@ function onProjectButtonClick(e) {
 var	container = getProjectContainer(e)
 ,	project = container.project
 ,	action = e.name
+,	reset = 'reset_to_'
 	;
 
 	if (action === 'show') showImg(project); else
 	if (action === 'save') saveImg(project); else
 	if (action === 'show_all') showAll(project); else
 	if (action === 'save_all') saveAll(project); else
-	if (action === 'reset_to_init' ) setAllValues(project, -1); else
-	if (action === 'reset_to_top'  ) setAllValues(project,  1); else
-	if (action === 'reset_to_empty') setAllValues(project    ); else
+	if (action.substr(0, reset.length) === reset) {
+		setAllValues(project, action.substr(reset.length));
+	} else
 	if (action === 'stop') {
 		project.cancelBatchWIP = true;
 	} else {
@@ -3909,7 +3949,7 @@ var	container = getProjectContainer(e)
 	}
 }
 
-function onProjectMenuUpdate(e, params) {
+function onProjectMenuUpdate(e) {
 	if (
 		e
 	&&	e.type
@@ -3926,20 +3966,17 @@ function onProjectMenuUpdate(e, params) {
 		return;
 	}
 
-//* batch checkbox:
-
-	if (params || (params = e.params)) {
-		params.batch = !(params.preselect = !!e.checked);
-	} else
-
-//* select option:
+var	container = getProjectContainer(e)
+,	project = container.project
+	;
 
 	if (e.getAttribute('data-section')) {
-	var	container = getProjectContainer(e)
-	,	project = container.project
-		;
 		updateMenuAndShowImg(project);
+	} else {
+		updateCheckBox(e);
 	}
+
+	updateBatchCount(project);
 }
 
 function onPageDragOver(e) {
