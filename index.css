@@ -223,8 +223,11 @@ label:hover {
 .project-options .single:hover {
 	background-color: #bdf;
 }
-.project-options :checked ~ .all,
-.project-options :not(:checked) ~ .single,
+.project-options label input:disabled ~ :not(input) {
+	background-color: #aaa;
+}
+.project-options label input:checked ~ .all,
+.project-options label input:not(:checked) ~ .single,
 .project-options label input[type="checkbox"] {
 	display: none;
 }
@@ -243,7 +246,7 @@ label:hover {
 	padding: 0 0.5em 0 1em;
 }
 .project-options {
-	width: 0%;	/* <- take the least possible width without line-wrap */
+	width: 0;	/* <- take the least possible width without line-wrap */
 }
 .preview {
 	padding-right: 6px;
@@ -256,6 +259,8 @@ label:hover {
 	font-weight: bold;
 }
 *[onclick],
+button,
+select,
 label,
 input[type="file"] {
 	cursor: pointer;

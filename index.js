@@ -182,6 +182,12 @@ examples of 'multi_select':
 	,	layerTypeFolder		: /^(open|closed)[\s_]folder$/i
 	,	layerUnicodeName	: /^Unicode[\s_]layer[\s_]name$/i
 	}
+,	QUERY_SELECTOR = {
+		getElementsByClassName:	['.', ''],
+		getElementsByTagName:	['', ''],
+		getElementsByName:	['*[name="', '"]'],
+		getElementsById:	['*[id="', '"]'],
+	}
 // ,	LS = window.localStorage || localStorage
 ,	URL_API = window.URL || window.webkitURL
 ,	BLOB_PREFIX = 'blob:'
@@ -502,10 +508,34 @@ var	SIZE_64_KB = 65536	// 0x10000
 	}
 }
 
-function gc(n,p) {try {return Array.from((p || document).getElementsByClassName	(n));} catch (e) {return [];}}
-function gt(n,p) {try {return Array.from((p || document).getElementsByTagName	(n));} catch (e) {return [];}}
-function gn(n,p) {try {return Array.from((p || document).querySelectorAll('*[name="'+n+'"]'));} catch (e) {return [];}}
-function gi(n,p) {try {return Array.from((p || document).querySelectorAll('*[id="'  +n+'"]'));} catch (e) {return [];}}
+function getElementsArray(by, value, parent) {
+	if (!parent) {
+		parent = document;
+	}
+
+	try {
+	var	a = (
+			parent[by]
+			? parent[by](value)
+			: parent.querySelectorAll(QUERY_SELECTOR[by].join(value))
+		) || [];
+
+		return (
+			Array.from
+			? Array.from(a)
+			: Array.prototype.slice.call(a)
+		);
+	} catch (error) {
+		console.log(error);
+	}
+
+	return [];
+}
+
+function gc(n,p) {return getElementsArray('getElementsByClassName', n,p);}
+function gt(n,p) {return getElementsArray('getElementsByTagName', n,p);}
+function gn(n,p) {return getElementsArray('getElementsByName', n,p);}
+function gi(n,p) {return getElementsArray('getElementsById', n,p);}
 function id(i) {return document.getElementById(i);}
 function cre(e,p,b) {
 	e = document.createElement(e);
@@ -1268,7 +1298,7 @@ var	path = [];
 function isLayerSkipped(layer) {
 	return (
 		layer.params.skip
-	||	regLayerNameToSkip.test(layer.name)
+	// ||	regLayerNameToSkip.test(layer.name)
 	);
 }
 
@@ -1644,7 +1674,7 @@ async function getProjectViewMenu(project) {
 				checkBatchParams(optionParams);
 
 				if (sectionName === 'side') {
-					for (k in (j = la.side)) {
+					for (k in (j = la.project_option_side)) {
 						optionItems[k] = j[k];
 					}
 
@@ -1910,6 +1940,10 @@ async function getProjectViewMenu(project) {
 			.join('<br>')
 		);
 
+		if (TESTING) {
+			addButton(cre('footer', e), t = 'console_log').name = t;
+		}
+
 //* add batch controls:
 
 		for (var i in (t = la.project_controls)) {
@@ -1941,6 +1975,7 @@ async function getProjectViewMenu(project) {
 	,	b = project.batch.paramNameDefault
 	,	c = project.batch.paramNameMarked
 	,	batch_settings = la.project_option_batch_setting
+	,	view_sides = la.project_option_side
 	,	sections = la.project_option_sections
 	,	section
 	,	optionList
@@ -1979,7 +2014,7 @@ async function getProjectViewMenu(project) {
 			,	i = cre('input', label)
 				;
 				i.type = 'checkbox';
-				i.checked = params.preselect;
+				i.checked = i.initialValue = params.preselect;
 				i.params = params;
 
 				for (var i in batch_settings) {
@@ -1996,7 +2031,7 @@ async function getProjectViewMenu(project) {
 				for (var optionName in items) {
 				var	n = optionName;
 					if (sectionName === 'side') {
-						n = la.side[n] || n;
+						n = view_sides[n] || n;
 					} else
 					if (NAME_PARTS_PERCENTAGES.indexOf(sectionName) >= 0) {
 						if (n === '0%') {
@@ -2616,6 +2651,15 @@ function setAllValues(project, toFirst) {
 		}
 	);
 
+	if (toFirst < 0) {
+		gt('input', project.container).forEach(
+			i => {
+				i.checked = i.initialValue;
+				onProjectMenuUpdate(i);
+			}
+		);
+	}
+
 	showImg(project);
 }
 
@@ -3192,17 +3236,27 @@ function getLayerVisibilityByValues(project, layer, values) {
 
 //* skip fully transparent:
 
-var	opacity = layer.opacity;
+var	max = null;
 
-	layer.names.find(
-		listName => {
-		var	v = getSelectedOptionValue(project, values, 'opacities', listName);
+	for (var listName of layer.names) {
+	var	v = getSelectedOptionValue(project, values, 'opacities', listName);
 
-			if (v !== null) {
-				opacity = v;
-				return true;
-			}
+		if (v === null) {
+			// max = 1;
+		} else
+		if (max === null || max < v) {
+			max = v;
 		}
+
+		if (max && max >= 1) {
+			break;
+		}
+	}
+
+var	opacity = (
+		max !== null
+		? max
+		: layer.opacity
 	);
 
 	if (opacity > 0) {
@@ -3363,7 +3417,9 @@ var	canvas = cre('canvas')
 		}
 
 		if (img) {
-			if (!clippingGroupResult) {
+			if (clippingGroupResult) {
+				opacity = 1;
+			} else {
 
 //* apply mask:
 
@@ -3818,16 +3874,25 @@ var	state = !!isWIP;
 
 function onProjectButtonClick(e) {
 	if (
+		e
+	&&	e.type
+	&&	e.type === 'click'
+	&&	e.target
+	) {
+		e = e.target;
+	}
+
+	if (
 		!e
-	||	e.type !== 'click'
-	||	e.target.tagName.toLowerCase() !== 'button'
+	||	!e.tagName
+	||	e.tagName.toLowerCase() !== 'button'
 	) {
 		return;
 	}
 
 var	container = getProjectContainer(e)
 ,	project = container.project
-,	action = e.target.name
+,	action = e.name
 	;
 
 	if (action === 'show') showImg(project); else
@@ -3846,21 +3911,30 @@ var	container = getProjectContainer(e)
 
 function onProjectMenuUpdate(e, params) {
 	if (
+		e
+	&&	e.type
+	&&	e.type === 'change'
+	&&	e.target
+	) {
+		e = e.target;
+	}
+
+	if (
 		!e
-	||	e.type !== 'change'
+	||	!e.tagName
 	) {
 		return;
 	}
 
 //* batch checkbox:
 
-	if (params || (params = e.target.params)) {
-		params.batch = !(params.preselect = !!e.target.checked);
+	if (params || (params = e.params)) {
+		params.batch = !(params.preselect = !!e.checked);
 	} else
 
 //* select option:
 
-	if (e.target.getAttribute('data-section')) {
+	if (e.getAttribute('data-section')) {
 	var	container = getProjectContainer(e)
 	,	project = container.project
 		;
