@@ -162,6 +162,7 @@ examples of 'multi_select':
 ,	regTrimNewLine		= /[^\S\r\n]*(\r\n|\r|\n)/g
 ,	regHex3			= /^#?([0-9a-f])([0-9a-f])([0-9a-f])$/i
 ,	regHex68		= /^#?([0-9a-f]{6}|[0-9a-f]{8})$/i
+,	regClassOption		= getClassReg('project-option|option')
 ,	regClassExampleFiles	= getClassReg('example-files|files')
 ,	regClassExampleFile	= getClassReg('example-file|file')
 ,	regClassLoadedFile	= getClassReg('loaded-file|file')
@@ -195,9 +196,12 @@ examples of 'multi_select':
 ,	NAME_PARTS_ORDER = ['parts', 'colors', 'paddings', 'opacities', 'side', 'zoom']
 ,	SPLIT_SEC = 60
 ,	MAX_OPACITY = 255
+
 ,	TESTING = false
-,	cancelBatchWIP = false
 ,	fileNameAddParamKey = true
+
+,	cancelBatchWIP
+,	isBatchWIP
 
 ,	BLEND_MODE_NORMAL = 'source-over'
 ,	BLEND_MODE_CLIP = 'source-atop'
@@ -1406,7 +1410,7 @@ var	button = cre('button', buttonTab);
 			}
 
 			if (project.options) {
-				updateMenuAndRender(project);
+				updateMenuAndShowImg(project);
 			}
 
 			id('loaded-files-view').appendChild(container);
@@ -1540,7 +1544,7 @@ async function getProjectViewMenu(project) {
 					project.options = options;
 
 				var	container = createProjectView(project);
-					createOptionsMenu(project.options, gc('options', container)[0]);
+					createOptionsMenu(project, gc('project-options', container)[0]);
 
 					return container;
 				}
@@ -1908,8 +1912,8 @@ async function getProjectViewMenu(project) {
 
 //* add batch controls:
 
-		for (var i in la.selection) {
-		var	j = la.selection[i]
+		for (var i in (t = la.project_controls)) {
+		var	j = t[i]
 		,	b = j.buttons
 		,	e = cre('section', header)
 		,	h = cre('header', e)
@@ -1926,26 +1930,29 @@ async function getProjectViewMenu(project) {
 //* place for results:
 
 		tr = cre('tr', cre('table', container));
-		cre('td', tr).className = 'options';
-		cre('td', tr).className = 'render';
+		cre('td', tr).className = 'project-options';
+		cre('td', tr).className = 'project-render';
 
 		return container;
 	}
 
-	function createOptionsMenu(options, container) {
-	var	container = delAllChildNodes(container || id('project-options'))
-	,	sections = la.sections
-	,	section
-	,	optionList
+	function createOptionsMenu(project, container) {
+	var	options = project.options
 	,	b = project.batch.paramNameDefault
 	,	c = project.batch.paramNameMarked
+	,	batch_settings = la.project_option_batch_setting
+	,	sections = la.project_option_sections
+	,	section
+	,	optionList
+	,	table = cre('table', container)
+	,	maxTabCount = 0
 		;
 
 //* section = type of use (fill colors, draw parts):
 
 		for (var sectionName in sections) if (section = options[sectionName]) {
-		var	sectionBox = cre('section', container);
-			sectionBox.textContent = sections[sectionName] + ':';
+		var	th = cre('header', cre('th', cre('tr', table)));
+			th.textContent = sections[sectionName] + ':';
 
 //* list box = set of parts:
 
@@ -1956,21 +1963,33 @@ async function getProjectViewMenu(project) {
 				;
 				params[c] = !(params[b] = (typeof params[c] === 'undefined'));
 
-			var	optionBox = cre('div', sectionBox)
-			,	label = cre('label', optionBox)
-				;
-				label.title = listName;
-				label.textContent = listName + ':';
+			var	tr = cre('tr', table);
+				tr.className = 'project-option';
 
-			var	i = cre('input', label, label.firstChild);
+			var	td = cre('td', tr);
+				td.title = listName;
+				td.textContent = listName + ':';
+
+			var	s = cre('select', cre('td', tr));
+				s.name = listName;
+				s.setAttribute('data-section', sectionName);
+
+			var	td = cre('td', tr)
+			,	label = cre('label', td)
+			,	i = cre('input', label)
+				;
 				i.type = 'checkbox';
-				i.title = la.options.preselect;
 				i.checked = params.preselect;
 				i.params = params;
 
-			var	s = cre('select', optionBox);
-				s.name = listName;
-				s.setAttribute('data-section', sectionName);
+				for (var i in batch_settings) {
+				var	j = batch_settings[i]
+				,	t = cre('span', label)
+					;
+					t.className = i;
+					t.textContent = j.label;
+					t.title = j.hint;
+				}
 
 //* list item = each part:
 
@@ -2001,8 +2020,17 @@ async function getProjectViewMenu(project) {
 				}
 
 				s.initialValue = s.value;
+
+			var	tabCount = gt('td', tr).length;
+				if (maxTabCount < tabCount) maxTabCount = tabCount;
 			}
 		}
+
+		gt('th', table).forEach(
+			th => {
+				th.colSpan = maxTabCount;
+			}
+		);
 	}
 
 	return await getProjectOptionsContainer(project);
@@ -2724,7 +2752,8 @@ var	values = {};
 					}
 				);
 			var	hide = (allHidden ? 'none' : '')
-			,	style = s.parentNode.style
+			,	container = getParentByClass(s, 'project-option') || s.parentNode
+			,	style = container.style
 				;
 				if (!hide && selectedValueHidden) {
 					s.value = fallbackValue;
@@ -3608,43 +3637,6 @@ var	img = prerenders[refName];
 	return img;
 }
 
-function updateMenuAndRender(project) {
-	if (
-		!project
-	||	project.isWIP
-	||	project.rendering
-	||	project.loading
-	) {
-		if (project.isWIP) logTime('updateMenuAndRender - skipped while other work is in progress.');
-		if (project.rendering) logTime('updateMenuAndRender - skipped while already rendering.');
-		if (project.loading) logTime('updateMenuAndRender - skipped while loading project.');
-
-		return;
-	}
-
-	showImg(project);
-}
-
-function setProjectWIPstate(project, isWIP) {
-
-	['button', 'select', 'input'].forEach(
-		tagName => gt(tagName, project.container).forEach(
-			e => (
-				e.disabled = (
-					tagName === 'button'
-				&&	e.name === 'stop'
-					? !isWIP
-					: !!isWIP
-				)
-			)
-		)
-	);
-
-	return project.isWIP = !!isWIP;
-}
-
-function getEmptyRenderContainer(project) {return delAllChildNodes(gc('render', project.container)[0]);}
-
 async function renderAll(project, saveToFile, showOnPage) {
 	if (!(saveToFile || showOnPage)) {
 		return;
@@ -3756,6 +3748,72 @@ async function saveImg(project, render, fileName) {
 	if (isWIP) setProjectWIPstate(project, false);
 }
 
+function getEmptyRenderContainer(project) {
+	return delAllChildNodes(
+		gc('project-render', project.container)[0]
+	);
+}
+
+function updateMenuAndShowImg(project) {
+	if (
+		!project
+	||	project.isBatchWIP
+	||	project.rendering
+	||	project.loading
+	) {
+		if (project.isBatchWIP) logTime('updateMenuAndRender - skipped while batch work is in progress.');
+		if (project.rendering) logTime('updateMenuAndRender - skipped while already rendering.');
+		if (project.loading) logTime('updateMenuAndRender - skipped while loading project.');
+
+		return;
+	}
+
+	showImg(project);
+}
+
+function setProjectWIPstate(project, isWIP) {
+var	state = !!isWIP;
+
+	project.cancelBatchWIP = false;
+	project.isBatchWIP = state;
+
+	['button', 'select', 'input'].forEach(
+		tagName => gt(tagName, project.container).forEach(
+			e => (
+				e.disabled = (
+					tagName === 'button'
+				&&	e.name === 'stop'
+					? !state
+					: state
+				)
+			)
+		)
+	);
+
+	return state;
+}
+
+function setGlobalWIPstate(isWIP) {
+var	state = !!isWIP;
+
+	cancelBatchWIP = false;
+	isBatchWIP = state;
+
+	gt('button', gc('menu-bar')[0]).forEach(
+		e => {
+			if (e.name !== 'download_all') {
+				e.disabled = (
+					e.name === 'stop'
+					? !state
+					: state
+				)
+			}
+		}
+	);
+
+	return state;
+}
+
 //* Page-specific functions: UI-side *-----------------------------------------
 
 function onProjectButtonClick(e) {
@@ -3806,7 +3864,7 @@ function onProjectMenuUpdate(e, params) {
 	var	container = getProjectContainer(e)
 	,	project = container.project
 		;
-		updateMenuAndRender(project);
+		updateMenuAndShowImg(project);
 	}
 }
 
@@ -3898,19 +3956,23 @@ var	isProjectLoaded = await addProjectView(
 	return isProjectLoaded;
 }
 
-async function loadFromButton(e, action) {
-	if (e.disabled) {
-		return;
+async function loadFromButton(e, inBatch) {
+	if (!inBatch) {
+		if (e.disabled) {
+			return;
+		}
+
+		e.disabled = true;
 	}
 
-	e.disabled = true;
+var	action, url;
 
-	if (
-		action
-	||	(action = e.getAttribute('data-action'))
-	) {
+	if (action = e.name || e.getAttribute('data-action')) {
 	var	p = getParentByClass(e, regClassExampleFiles);
 
+		if (action === 'stop') {
+			cancelBatchWIP = true;
+		} else
 		if (action === 'download_all') {
 		var	countWithoutPause = 0;
 
@@ -3924,11 +3986,24 @@ async function loadFromButton(e, action) {
 			}
 		} else
 		if (action === 'load_all') {
+			setGlobalWIPstate(true);
+
 			for (var b of gt('button', p)) if (b.getAttribute('data-url')) {
-				await b.onclick();
+				await loadFromButton(b, true);
+
+				if (cancelBatchWIP) {
+					cancelBatchWIP = false;
+
+					break;
+				}
 			}
+
+			setGlobalWIPstate(false);
+		} else {
+			console.log([e, p, 'Unknown action: ' + action]);
 		}
-	} else {
+	} else
+	if (url = e.getAttribute('data-url')) {
 
 //* show loading status:
 
@@ -3946,9 +4021,7 @@ async function loadFromButton(e, action) {
 
 //* process the file:
 
-	var	url = e.getAttribute('data-url')
-	,	isProjectLoaded = await loadFromURL(url)
-		;
+	var	isProjectLoaded = await loadFromURL(url);
 
 		if (!isProjectLoaded) alert(
 			la.error.file
@@ -3963,7 +4036,9 @@ async function loadFromButton(e, action) {
 		}
 	}
 
-	e.disabled = false;
+	if (!inBatch) {
+		e.disabled = false;
+	}
 }
 
 function selectProject(e) {
@@ -4071,12 +4146,20 @@ var	supportedFileTypesText = (
 							,	fileInfo
 							,	downloadLink
 							,	loadButton
-							];
+							].map(
+								(v,i,a) => (
+									'<td'
+								+	(i === 3 ? ' colspan="2"' : '')
+								+	'>'
+								+		v
+								+	'</td>'
+								)
+							).join('')
+							;
+
 							return (
 								'<tr class="example-file">'
-							+		'<td>'
-							+		tabs.join('</td><td>')
-							+		'</td>'
+							+		tabs
 							+	'</tr>'
 							);
 						}
@@ -4086,11 +4169,18 @@ var	supportedFileTypesText = (
 					Object.entries(la.menu.examples.batch_buttons)
 					.map(
 						([k, v]) => (
-							'<td colspan="2"><button onclick="return loadFromButton(this)" data-action="'
-						+		encodeTagAttr(k)
-						+	'">'
-						+		v
-						+	'</button></td>'
+							(
+								k === 'download_all'
+								? '<td colspan="2"></td>'
+								: ''
+							)
+						+	'<td>'
+						+		'<button onclick="return loadFromButton(this)" name="'
+						+			encodeTagAttr(k)
+						+		'">'
+						+			v
+						+		'</button>'
+						+	'</td>'
 						)
 					).join('')
 				);
@@ -4104,7 +4194,7 @@ var	supportedFileTypesText = (
 				}
 
 				return (
-					'<p>'
+					'<div class="example-file-type">'
 				+		'<header>'
 				+			(la.menu.examples[v.example] || v.example)
 				+			':'
@@ -4112,14 +4202,10 @@ var	supportedFileTypesText = (
 				+		'<table class="example-files">'
 				+			fileListHTML
 				+		'</table>'
-				+	'</p>'
+				+	'</div>'
 				);
 			}
 		).join('')
-	);
-
-	HTMLparts.help = (
-		'<p>TODO</p>'
 	);
 
 	HTMLparts.about = (
@@ -4135,7 +4221,7 @@ var	topMenuHTML = (
 		.map(
 			([k, v]) => getDropdownMenuHTML(
 				v.header || 'TODO'
-			,	HTMLparts[k] || 'TODO'
+			,	HTMLparts[k] || '<p>TODO</p>'
 			)
 		).join('')
 	);
@@ -4147,6 +4233,8 @@ var	topMenuHTML = (
 	+	'<div id="loaded-files-selection"></div>'
 	+	'<div id="loaded-files-view"></div>'
 	);
+
+	setGlobalWIPstate(false);
 
 //* drop event may not work without dragover:
 

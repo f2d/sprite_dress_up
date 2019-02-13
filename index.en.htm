@@ -9,26 +9,30 @@
 	<link rel="alternate" hreflang="ru" href="index.ru.htm">
 	<script>
 	var	la = {
-			'hint': {
-				'canvas': 'Right click to save result image.',
-			},
 			'menu': {
 				'file': {
 					'header': 'File',
 					'project': 'Drag and drop a project file onto this page, or select here:',
 					'formats': 'Supported file types:',
+				/*	'save_all': 'Save all opened projects:',
+					'buttons': {
+						'save_all_png': 'Save all images to PNG',
+						'save_all_ora': 'Save all projects to ORA',
+						'stop': 'Stop',
+					}*/
 				},
 				'examples': {
 					'header': 'Examples',
 					'psd_from_sai2': 'SAI2 → PSD as is (layer masks in PSD are not working here yet)',
 					'ora_mockup': 'SAI2 → PSD → Krita (no clipping) → ORA (no masks) → manual fixes',
 					'buttons': {
-						'download': 'Download',
-						'load': 'Load example',
+						'download': 'Download file',
+						'load': 'Show example',
 					},
 					'batch_buttons': {
 						'download_all': 'Download all',
-						'load_all': 'Load all',
+						'load_all': 'Show all',
+						'stop': 'Stop',
 					},
 				},
 				'help': {
@@ -48,12 +52,21 @@
 				'bytes': 'bytes',
 				'date': 'last modified',
 			},
-			'selection': {
+			'project_controls': {
+				'reset': {
+					'title': 'Reset selection',
+					'buttons': {
+						'reset_to_init':  'All to initial',
+						'reset_to_top':   'All to top',
+						'reset_to_empty': 'All to empty',
+					},
+				},
 				'current': {
 					'title': 'Current selection',
 					'buttons': {
 						'show': 'Show',
 						'save': 'Save',
+					//	'save_ora': 'Save project to ORA',
 					},
 				},
 				'batch': {
@@ -64,31 +77,31 @@
 						'stop': 'Stop',
 					},
 				},
-				'reset': {
-					'title': 'Reset selection',
-					'buttons': {
-						'reset_to_init':  'All to initial',
-						'reset_to_top':   'All to top',
-						'reset_to_empty': 'All to empty',
-					},
+			},
+			'project_option_batch_setting': {
+				'single': {
+					'label': 'single',
+					'hint': 'Use only the single selected option for batch view/save.',
+				},
+				'all': {
+					'label': 'all',
+					'hint': 'Go over this list for batch view/save.',
 				},
 			},
-			'options': {
-				'autosave_on_load': 'Batch autosave all possible results when a project is loaded',
-				'batch': 'Mark this list for batch export.',
-				'preselect': 'Use only the single selected option for batch export.',
+			'project_option_sections': {
+				'zoom': 'Image scale',
+				'side': 'View side',
+				'paddings': 'Outlines and paddings',
+				'opacities': 'Part opacities',
+				'colors': 'Colors',
+				'parts': 'Visible parts',
 			},
-			'sections': {
-				'zoom': 'Select zoom',
-				'side': 'Select side',
-				'paddings': 'Select paddings',
-				'opacities': 'Select opacities',
-				'colors': 'Select colors',
-				'parts': 'Select parts',
-			},
-			'side': {
+			'project_option_side': {
 				'front': 'Front',
 				'back': 'Back',
+			},
+			'hint': {
+				'canvas': 'Right click to save result image.',
 			},
 			'error': {
 				'file': 'No suitable files found.',

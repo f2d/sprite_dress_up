@@ -25,17 +25,8 @@ canvas {
 canvas:hover {
 	border-color: #aaa;
 }
-select {
-	display: block;
-	width: 100%;
-}
 label:hover {
 	background-color: #eee;
-}
-label {
-	display: inline-block;
-	padding: 0 4px 0 0;
-	/* white-space: normal; */
 }
 .menu-head {
 	display: inline-block;
@@ -96,6 +87,9 @@ label {
 }
 .example-files td:first-child {
 	text-align: right;
+}
+.example-file-type {
+	margin: 1em 0;
 }
 .example-file.loading td {
 	position: relative;
@@ -165,10 +159,13 @@ label {
 	padding: 0.5em;
 	margin: 0.5em;
 }
+.project-options th *,
 .loaded-file td div,
 .loaded-file td section {
 	background-color: rgba(0,0,0, 0.1);
 }
+.project-options th,
+.project-options td,
 .loaded-file td section {
 	white-space: nowrap;
 }
@@ -193,21 +190,60 @@ label {
 .project-header div {
 	margin: 0.5em;
 }
-.project-header button + button {
-	margin-left: 0.5em;
+.project-header button {
+	margin: 0.5em 0;
 }
-.project-header section > button {
-	margin: 0.5em;
+.project-header button,
+.project-options select {
 	display: block;
-	text-align: center;
+	width: 100%;
+	min-width: 100px;
+}
+.project-options select {
+	max-width: 200px;
 }
 .project-options label {
 	display: block;
-	min-width: 100px;
-	padding: 0 0 0 4px;
+	min-width: 50px;
 }
-.project-options input[type="checkbox"] {
-	float: right;
+.project-options label :not(input) {
+	display: block;
+	padding: 0 0.5em;
+	text-align: center;
+}
+.project-options .all {
+	background-color: #eda;
+}
+.project-options .all:hover {
+	background-color: #feb;
+}
+.project-options .single {
+	background-color: #ace;
+}
+.project-options .single:hover {
+	background-color: #bdf;
+}
+.project-options :checked ~ .all,
+.project-options :not(:checked) ~ .single,
+.project-options label input[type="checkbox"] {
+	display: none;
+}
+.project-options tr:empty {
+	height: 1em;
+}
+.project-options th {
+	padding: 0.5em 0;
+	/* text-align: center; */
+}
+.project-options header {
+	padding: 0.5em 1em;
+}
+.project-options td:first-child {
+	text-align: right;
+	padding: 0 0.5em 0 1em;
+}
+.project-options {
+	width: 0%;	/* <- take the least possible width without line-wrap */
 }
 .preview {
 	padding-right: 6px;
@@ -220,6 +256,7 @@ label {
 	font-weight: bold;
 }
 *[onclick],
+label,
 input[type="file"] {
 	cursor: pointer;
 }
