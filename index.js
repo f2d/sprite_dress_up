@@ -202,6 +202,7 @@ examples of 'multi_select':
 ,	NAME_PARTS_ORDER = ['parts', 'colors', 'paddings', 'opacities', 'side', 'zoom']
 ,	SPLIT_SEC = 60
 ,	MAX_OPACITY = 255
+,	MAX_BATCH_PRECOUNT = 1000
 
 ,	TESTING = false
 ,	fileNameAddParamKey = true
@@ -2580,18 +2581,22 @@ var	o = getProjectOptionValue(project, sectionName, listName, optionName);
 	&&	o.map
 	&&	o.length > 0
 	) {
-
-//* https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/assign#Deep_Clone
-
-	var	testValues = JSON.parse(JSON.stringify(values));
-
-		testValues[sectionName][listName] = optionName;
+	var	section = values[sectionName]
+	,	oldOptionName = section[listName]
+	,	result = false
+		;
+		section[listName] = optionName;
 
 		for (var layer of o) {
-			if (getLayerPathVisibilityByValues(project, layer, testValues, listName)) {
-				return true;
+			if (getLayerPathVisibilityByValues(project, layer, values, listName)) {
+				result = true;
+				break;
 			}
 		}
+
+		section[listName] = oldOptionName;
+
+		return result;
 	} else {
 		return true;
 	}
@@ -2697,7 +2702,7 @@ var	values = {};
 	return values;
 }
 
-function getAllValueSets(project, checkPreselected, onlyNames) {
+function getAllValueSets(project, checkPreselected, onlyNames, stopAtMaxCount) {
 
 	function goDeeper(optionLists, partialValueSet) {
 		if (
@@ -2715,6 +2720,16 @@ function getAllValueSets(project, checkPreselected, onlyNames) {
 			);
 
 			for (var optionName of optionNames) {
+				if (
+					onlyNames
+				&&	stopAtMaxCount
+				&&	resultSets.length > MAX_BATCH_PRECOUNT
+				) {
+					return;
+				}
+
+//* https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/assign#Deep_Clone
+
 			var	values = JSON.parse(JSON.stringify(partialValueSet || {}))
 			,	section = (values[sectionName] || (values[sectionName] = {}))
 				;
@@ -2754,6 +2769,7 @@ var	values = getAllMenuValues(project, checkPreselected)
 ,	sectionName
 ,	optionNames
 ,	listName
+,	maxPossibleCount = 1
 	;
 
 	for (var sectionName in values) if (section = values[sectionName])
@@ -2763,11 +2779,37 @@ var	values = getAllMenuValues(project, checkPreselected)
 		,	'listName'   : listName
 		,	'optionNames': optionNames
 		});
+		if (onlyNames) {
+			maxPossibleCount *= optionNames.length;
+		}
+	}
+
+	if (
+		onlyNames
+	&&	stopAtMaxCount
+	&&	maxPossibleCount > MAX_BATCH_PRECOUNT
+	) {
+		return null;
 	}
 
 	goDeeper(optionLists);
 
 	return resultSets;
+}
+
+function getAllValueSetsCount(project) {
+var	a = getAllValueSets(
+		project
+	,	true
+	,	true
+	,	MAX_BATCH_PRECOUNT && MAX_BATCH_PRECOUNT > 0
+	);
+
+	return (
+		a === null
+		? la.hint.too_much
+		: a.length
+	);
 }
 
 function getMenuValues(project, updatedValues) {
@@ -3855,7 +3897,15 @@ function updateCheckBox(e, params) {
 
 function updateBatchCount(project) {
 
-var	count = getAllValueSets(project, true, true).length;
+var	count = getAllValueSetsCount(project);
+
+	if (
+		MAX_BATCH_PRECOUNT
+	&&	MAX_BATCH_PRECOUNT > 0
+	&&	count > MAX_BATCH_PRECOUNT
+	) {
+		count = MAX_BATCH_PRECOUNT + '+';
+	}
 
 	['show_all', 'save_all'].forEach(
 		name => gn(name, project.container).forEach(

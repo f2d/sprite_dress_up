@@ -199,6 +199,9 @@ label:hover {
 .project-header button span::after {
 	content: ")";
 }
+.project-header button span:empty::after {
+	content: "?)";
+}
 .project-header button,
 .project-options select {
 	display: block;
