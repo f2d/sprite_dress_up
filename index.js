@@ -3961,6 +3961,12 @@ var	state = !!isWIP;
 
 //* Page-specific functions: UI-side *-----------------------------------------
 
+function onPageKeyPress(e) {
+	if (e.keyCode === 27) {	//* Esc
+		gn('stop').forEach(e => e.click());
+	}
+}
+
 function onProjectButtonClick(e) {
 	if (
 		e
@@ -4402,6 +4408,7 @@ var	topMenuHTML = (
 	[
 		['dragover',	onPageDragOver]
 	,	['drop',	onPageDrop]
+	,	['keypress',	onPageKeyPress]
 	].forEach(
 		([k, v]) => window.addEventListener(k, v, false)
 	);
