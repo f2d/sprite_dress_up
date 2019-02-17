@@ -210,6 +210,15 @@ label:hover {
 }
 .project-options select {
 	max-width: 200px;
+	border-width: 1px;
+}
+.project-options select,
+.project-options option {
+	background-color: #fff;
+}
+.project-options select[value][value=""],
+.project-options option:empty {
+	background-color: #ddd;
 }
 .project-options label {
 	display: block;
@@ -266,6 +275,12 @@ label:hover {
 }
 .filename {
 	font-weight: bold;
+}
+p.warning {
+	text-align: center;
+}
+.warning::before {
+	content: "⚠";
 }
 *[onclick],
 button,

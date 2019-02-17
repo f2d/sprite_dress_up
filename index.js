@@ -2054,11 +2054,7 @@ async function getProjectViewMenu(project) {
 					addOption(s, '');
 				}
 
-				if (params.last) {
-					s.value = s.options[s.options.length - 1].value;
-				}
-
-				s.initialValue = s.value;
+				s.initialValue = selectValueByPos(s, params.last ? 'bottom' : 'top');
 
 			var	tabCount = gt('td', tr).length;
 				if (maxTabCount < tabCount) maxTabCount = tabCount;
@@ -2634,39 +2630,52 @@ var	section, optionName, o, resultSet;
 	return resultSet;
 }
 
-function setAllValues(project, targetValue) {
-	gt('select', project.container).forEach(
-		s => {
-			if (targetValue === 'top') {
-				s.value = s.options[0].value;
-			} else
-			if (targetValue === 'bottom') {
-				s.value = s.options[s.options.length - 1].value;
-			} else
-			if (targetValue === 'init') {
-				s.value = s.initialValue;
-			} else {
-				for (var o of s.options) if ('' === o.value) {
-					s.value = o.value;
-					return;
-				}
-
-				for (var o of s.options) if ('' === trim(o.textContent)) {
-					s.value = o.value;
-					return;
-				}
-			}
+function selectValueByPos(s, valuePos) {
+var	v = s.value;
+	if (valuePos === 'top') {
+		v = s.options[0].value;
+	} else
+	if (valuePos === 'bottom') {
+		v = s.options[s.options.length - 1].value;
+	} else
+	if (valuePos === 'init') {
+		v = s.initialValue;
+	} else {
+		for (var o of s.options) if (
+			'' === o.value
+		||	'' === trim(o.textContent)
+		) {
+			v = o.value;
+			break;
 		}
+	}
+	return selectValue(s, v);
+}
+
+function selectValue(s, valueContent) {
+	s.value = valueContent || '';
+	s.setAttribute('value', (
+		s.getAttribute('data-section') === 'opacities'
+	&&	s.value === '0%'
+		? ''
+		: s.value)
+	);	//* <- for CSS
+	return s.value;
+}
+
+function setAllValues(project, valuePos) {
+	gt('select', project.container).forEach(
+		s => selectValueByPos(s, valuePos)
 	);
 
 	if (
-		targetValue === 'init'
-	||	targetValue === 'empty'
+		valuePos === 'init'
+	||	valuePos === 'empty'
 	) {
 		gt('input', project.container).forEach(
 			i => {
 				i.checked = (
-					targetValue === 'init'
+					valuePos === 'init'
 					? i.initialValue
 					: true
 				);
@@ -2859,9 +2868,11 @@ var	values = {};
 			,	container = getParentByClass(s, 'project-option') || s.parentNode
 			,	style = container.style
 				;
-				if (!hide && selectedValueHidden) {
-					s.value = fallbackValue;
-				}
+				selectValue(s, (
+					!hide && selectedValueHidden
+					? fallbackValue
+					: selectedValue
+				));
 				if (style.display != hide) {
 					style.display = hide;
 				}
@@ -4373,6 +4384,9 @@ var	supportedFileTypesText = (
 				);
 			}
 		).join('')
+	+	'<p class="warning">'
+	+		Array.from(la.menu.examples.notice).join('<br>')
+	+	'</p>'
 	);
 
 	HTMLparts.about = (
