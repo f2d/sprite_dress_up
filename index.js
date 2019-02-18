@@ -1957,7 +1957,7 @@ async function getProjectViewMenu(project) {
 		,	h = cre('header', e)
 		,	f = cre('footer', e)
 			;
-			h.textContent = j.title + ':';
+			h.textContent = j.header + ':';
 
 			for (var k in b) addButton(f, b[k]).name = k;
 		}
@@ -1975,28 +1975,25 @@ async function getProjectViewMenu(project) {
 	}
 
 	function createOptionsMenu(project, container) {
-	var	options = project.options
-	,	b = project.batch.paramNameDefault
-	,	c = project.batch.paramNameMarked
-	,	batch_settings = la.project_option_batch_setting
-	,	view_sides = la.project_option_side
-	,	sections = la.project_option_sections
-	,	section
-	,	optionList
-	,	table = cre('table', container)
-	,	maxTabCount = 0
-		;
 
-//* section = type of use (fill colors, draw parts):
-
-		for (var sectionName in sections) if (section = options[sectionName]) {
+		function addHeader(text) {
 		var	th = cre('header', cre('th', cre('tr', table)));
-			th.textContent = sections[sectionName] + ':';
+			th.textContent = text + ':';
+		}
+
+		function addOptions(sectionName, text) {
+
+//* section = type of use (fill colors, draw parts, etc):
+
+		var	section = options[sectionName]
+		,	optionList
+			;
 
 //* list box = set of parts:
 
 			for (var listName in section) if (optionList = section[listName]) {
-			var	items = optionList.items
+			var	listLabel = text || listName
+			,	items = optionList.items
 			,	params = optionList.params
 			,	hasEmptyOption = ('' in items)
 				;
@@ -2006,8 +2003,8 @@ async function getProjectViewMenu(project) {
 				tr.className = 'project-option';
 
 			var	td = cre('td', tr);
-				td.title = listName;
-				td.textContent = listName + ':';
+				td.title = listLabel;
+				td.textContent = listLabel + ':';
 
 			var	s = cre('select', cre('td', tr));
 				s.name = listName;
@@ -2058,6 +2055,41 @@ async function getProjectViewMenu(project) {
 
 			var	tabCount = gt('td', tr).length;
 				if (maxTabCount < tabCount) maxTabCount = tabCount;
+			}
+		}
+
+	var	options = project.options
+	,	b = project.batch.paramNameDefault
+	,	c = project.batch.paramNameMarked
+	,	batch_settings = la.project_option_batch_setting
+	,	view_sides = la.project_option_side
+	,	sectionBatches = la.project_option_sections
+	,	sections
+	,	table = cre('table', container)
+	,	maxTabCount = 0
+		;
+
+		for (var i in sectionBatches) if (sections = sectionBatches[i]) {
+			if (sections.header) {
+			var	header = sections.header
+			,	sections = sections.select
+				;
+				for (var sectionName in sections) {
+					if (options[sectionName]) {
+						if (header) {
+							addHeader(header);
+							header = null;
+						}
+						addOptions(sectionName, sections[sectionName]);
+					}
+				}
+			} else {
+				for (var sectionName in sections) {
+					if (options[sectionName]) {
+						addHeader(sections[sectionName]);
+						addOptions(sectionName);
+					}
+				}
 			}
 		}
 
