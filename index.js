@@ -3369,6 +3369,17 @@ var	opacity = getOpacityByAnyName(listName ? [listName] : layer.names);
 	}
 }
 
+function getNewCanvas(project) {
+	project.rendering.layersBatchCount++;
+
+var	canvas = cre('canvas');
+
+	canvas.width  = project.width;
+	canvas.height = project.height;
+
+	return canvas;
+}
+
 function getRenderByValues(project, values, layersBatch, renderParam) {
 
 	if (!project || !project.layers) {
@@ -3392,17 +3403,13 @@ function getRenderByValues(project, values, layersBatch, renderParam) {
 		project.rendering.layersBatchCount++;
 	}
 
-var	canvas = cre('canvas')
-,	ctx = canvas.getContext('2d')
-,	l_a = layersBatch || project.layers
+var	l_a = layersBatch || project.layers
 ,	l_i = l_a.length
 ,	bottomLayer = l_a[l_i - 1]
 ,	renderParam = renderParam || {}
 ,	side = getPropBySameNameChain(values, 'side')
-,	layers, layer, opacity, clippingMask
+,	canvas, ctx, layers, layer, opacity, clippingMask
 	;
-	canvas.width  = project.width;
-	canvas.height = project.height;
 
 	while (l_i-- > 0) if (layer = l_a[l_i]) {
 	var	names = layer.names
@@ -3583,6 +3590,10 @@ var	canvas = cre('canvas')
 
 //* add content to current buffer canvas:
 
+			if (!ctx) {
+				canvas = getNewCanvas(project);
+				ctx = canvas.getContext('2d');
+			}
 			drawImageOrColor(project, ctx, img, blendMode, opacity);
 
 			++project.rendering.layersApplyCount;
@@ -3601,18 +3612,22 @@ var	canvas = cre('canvas')
 	}
 
 //* end of layer batch iteration.
+
+	if (ctx) {
+
 //* apply stored mask to the blended clipping group content:
 
-	if (mask = clippingMask) {
-		drawImageOrColor(project, ctx, mask, BLEND_MODE_MASK);
+		if (mask = clippingMask) {
+			drawImageOrColor(project, ctx, mask, BLEND_MODE_MASK);
 
-		clearCanvasBeforeGC(mask);
-	}
+			clearCanvasBeforeGC(mask);
+		}
 
 //* apply padding:
 
-	if (padding = renderParam.padding) {
-		padCanvas(ctx, padding);
+		if (padding = renderParam.padding) {
+			padCanvas(ctx, padding);
+		}
 	}
 
 //* end of layer tree:
@@ -3767,8 +3782,9 @@ var	img = prerenders[refName];
 
 	if (!img) {
 		if (fileName == refName) {
-			canvas = getRenderByValues(project, values);
-			img = await getAndCacheRenderedImgElement(canvas, refName);
+			if (canvas = getRenderByValues(project, values)) {
+				img = await getAndCacheRenderedImgElement(canvas, refName);
+			}
 		} else {
 			render = {values: render.refValues};
 			render = await getOrCreateRender(project, render);
@@ -3888,7 +3904,9 @@ async function showImg(project, render, container) {
 	var	img = await getOrCreateRenderedImg(project, render)
 	,	imgContainer = container || getEmptyRenderContainer(project)
 		;
-		imgContainer.appendChild(img);
+		if (img) {
+			imgContainer.appendChild(img);
+		}
 	} catch (error) {
 		console.log(error);
 	}
