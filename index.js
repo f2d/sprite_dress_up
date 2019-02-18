@@ -2155,9 +2155,7 @@ var	m,v
 		for (var param of paramList) {
 			for (var k in regLayerNameParamType) if (m = param.match(regLayerNameParamType[k])) {
 				if (NAME_PARTS_FOLDERS.indexOf(k) >= 0) {
-					if (!layer.type && isLayerFolder) {
-						layer.type = k;
-					}
+					layer.type = k;
 				} else
 				if (k === 'zoom' || k === 'opacities') {
 					params[k] = {
@@ -2262,15 +2260,23 @@ var	m,v
 			if (params.if_only) {
 				if (params.any) {
 					layer.isOptionIfAny = true;
-				} else {
+				} else
+				if (isLayerFolder) {
 					layer.isOptionIfList = true;
+				} else {
+					delete layer.type;
 				}
-			} else
-			if (NAME_PARTS_FOLDERS.indexOf(k) >= 0) {
-				layer.isOptionList = true;
+			} else {
+				if (isLayerFolder) {
+					if (NAME_PARTS_FOLDERS.indexOf(k) >= 0) {
+						layer.isOptionList = true;
 
-				if (k === 'colors') {
-					layer.isColorList = true;
+						if (k === 'colors') {
+							layer.isColorList = true;
+						}
+					}
+				} else {
+					delete layer.type;
 				}
 			}
 		}
