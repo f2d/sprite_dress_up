@@ -4416,10 +4416,15 @@ var	supportedFileTypesText = (
 				);
 			}
 		).join('')
-	+	'<p class="warning">'
-	+		Array.from(la.menu.examples.notice).join('<br>')
-	+	'</p>'
 	);
+
+	if (v = la.menu.examples.notice) {
+		HTMLparts.examples += (
+			'<p class="warning">'
+		+		(v.join ? v.join('<br>') : v)
+		+	'</p>'
+		);
+	}
 
 	HTMLparts.about = (
 		'<p>'

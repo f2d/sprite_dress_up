@@ -12,3 +12,5 @@ var exampleProjectFiles = [
 		]
 	},
 ];
+
+la.menu.examples.notice = '';
