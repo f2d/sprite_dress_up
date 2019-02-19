@@ -3829,16 +3829,29 @@ async function renderAll(project, saveToFile, showOnPage) {
 
 var	logLabel = 'Render all: ' + project.fileName;
 
+	await pause(100);
+
 	console.time(logLabel);
 	console.group(logLabel);
 
-var	sets = getAllValueSets(project, true)
+var	startTime = +new Date
+,	sets = getAllValueSets(project, true)
+,	lastPauseTime = +new Date
 ,	setsCountWithoutPause = 0
 ,	setsCount = 0
 ,	totalTime = 0
-,	lastPauseTime = +new Date
 ,	batchContainer = (showOnPage ? getEmptyRenderContainer(project) : null)
 	;
+
+	logTime(
+		'"' + project.fileName + '"'
+	+	' started rendering ' + Object.keys(sets).length
+	+	' sets (listing took ' + (lastPauseTime - startTime)
+	+	' ms)'
+	);
+
+	await pause(100);
+
 	for (var fileName in sets) if (values = sets[fileName]) {
 	var	startTime = +new Date
 	,	render = await getOrCreateRender(
@@ -3887,7 +3900,12 @@ var	sets = getAllValueSets(project, true)
 		}
 	}
 
-	logTime('"' + project.fileName + '" finished rendering ' + setsCount + ' sets, total ' + totalTime + ' ms (excluding pauses)');
+	logTime(
+		'"' + project.fileName + '"'
+	+	' finished rendering ' + setsCount
+	+	' sets, took ' + totalTime
+	+	' ms total (excluding pauses)'
+	);
 
 	console.groupEnd(logLabel);
 	console.timeEnd(logLabel);
