@@ -163,6 +163,7 @@ examples of 'multi_select':
 ,	regNaN			= /\D+/g
 ,	regSpace		= /\s+/g
 ,	regCommaSpace		= /,+\s*/g
+,	regSanitizeFileName	= /[_\s\/\\:?*"]+/g
 ,	regTrim			= getTrimReg('\\s+')
 ,	regTrimNaN		= getTrimReg('\\D+')
 ,	regTrimNaNorSign	= getTrimReg('^\\d+-')
@@ -2068,26 +2069,29 @@ async function getProjectViewMenu(project) {
 //* list item = each part:
 
 				for (var optionName in items) {
-				var	n = optionName;
-					if (sectionName === 'separate') {
-						if (optionName) {
-							t = (
-								getTopLevelMultiLayer(project.layers)
-								.map(layer => layer.name)
-							);
-							n = t.length + ': ' + t.join(', ');
+				var	n = optionName
+				,	v = n
+					;
+					if (sectionName === 'separate' && n !== '') {
+						getTopLevelMultiLayer(project.layers).forEach(
+							(layer, i) => {
+								v = i + 1;
+								n = v + ': ' + layer.name;
+								addOption(s,n,n);
+							}
+						);
+					} else {
+						if (sectionName === 'side') {
+							n = view_sides[n] || n;
+						} else
+						if (NAME_PARTS_PERCENTAGES.indexOf(sectionName) >= 0) {
+							if (n === '0%') {
+								n = '';
+								hasEmptyOption = true;
+							}
 						}
-					} else
-					if (sectionName === 'side') {
-						n = view_sides[n] || n;
-					} else
-					if (NAME_PARTS_PERCENTAGES.indexOf(sectionName) >= 0) {
-						if (n === '0%') {
-							n = '';
-							hasEmptyOption = true;
-						}
+						addOption(s,n,v);
 					}
-					addOption(s, n, optionName);
 				}
 
 				if (
@@ -3435,36 +3439,7 @@ var	canvas = cre('canvas');
 
 function getRenderByValues(project, values, layersBatch, renderParam) {
 
-	if (!project || !project.layers) {
-		return;
-	}
-
-	if (project.loading) {
-		logTime('getRenderByValues - skipped while loading project.');
-		return;
-	}
-
-	if (!project.rendering) {
-		project.rendering = {
-			startTime: +new Date
-		,	layersApplyCount: 0
-		,	layersBatchCount: 1
-		,	colors: {}
-		};
-	} else
-	if (layersBatch) {
-		project.rendering.layersBatchCount++;
-	}
-
-var	l_a = layersBatch || project.layers
-,	l_i = l_a.length
-,	bottomLayer = l_a[l_i - 1]
-,	renderParam = renderParam || {}
-,	side = getPropBySameNameChain(values, 'side')
-,	canvas, ctx, layers, layer, opacity, clippingMask
-	;
-
-	while (l_i-- > 0) if (layer = l_a[l_i]) {
+	function renderOneLayer(layer) {
 	var	names = layer.names
 	,	params = layer.params
 	,	skipColoring = !!params.if_only
@@ -3506,7 +3481,7 @@ var	l_a = layersBatch || project.layers
 			!isLayerRendered(layer)
 		||	!(opacity = getLayerVisibilityByValues(project, layer, values))
 		) {
-			continue;
+			return;
 		}
 
 //* skip unrelated to alpha composition when getting mask for padding:
@@ -3523,7 +3498,7 @@ var	l_a = layersBatch || project.layers
 			&&	layer !== bottomLayer
 			&&	blendMode === BLEND_MODE_NORMAL
 			) {
-				continue;
+				return;
 			}
 		}
 
@@ -3561,7 +3536,7 @@ var	l_a = layersBatch || project.layers
 					l_a = l_a.slice(0, l_i).concat(layers);
 					l_i = l_a.length;
 
-					continue;
+					return;
 				} else {
 					img = getRenderByValues(
 						project
@@ -3664,7 +3639,64 @@ var	l_a = layersBatch || project.layers
 		}
 	}
 
-//* end of layer batch iteration.
+	if (!project || !project.layers) {
+		return;
+	}
+
+	if (project.loading) {
+		logTime('getRenderByValues - skipped while loading project.');
+		return;
+	}
+
+	if (project.rendering) {
+		if (layersBatch) {
+			project.rendering.layersBatchCount++;
+		} else {
+			logTime('getRenderByValues - skipped call without layers while rendering.');
+			return;
+		}
+	} else {
+		l_i = orz(getPropBySameNameChain(values, 'separate'));
+
+		if (l_i > 0) {
+			if (
+				(layers = getTopLevelMultiLayer(project.layers))
+			&&	(layer = layers[l_i - 1])
+			) {
+			var	layersToRenderOne = (getParentLayer(layer) || project).layers;
+			} else {
+				return;
+			}
+		}
+
+		project.rendering = {
+			startTime: +new Date
+		,	layersApplyCount: 0
+		,	layersBatchCount: 1
+		,	colors: {}
+		};
+	}
+
+var	l_a = layersToRenderOne || layersBatch || project.layers
+,	l_i = l_a.length
+,	bottomLayer = l_a[l_i - 1]
+,	renderParam = renderParam || {}
+,	side = getPropBySameNameChain(values, 'side')
+,	canvas, ctx, layers, layer, opacity, clippingMask
+	;
+
+//* start rendering layer batch:
+
+	if (layersToRenderOne) {
+		l_i = layersToRenderOne.indexOf(layer);
+		renderOneLayer(layer);
+	} else {
+		while (l_i-- > 0) if (layer = l_a[l_i]) {
+			renderOneLayer(layer);
+		}
+	}
+
+//* end of layer batch.
 
 	if (ctx) {
 
@@ -3783,6 +3815,7 @@ function getFileNameByValuesToSave(project, values, namingParam) {
 		]
 		.filter(arrayFilterNonEmptyValues)
 		.join('_')
+		.replace(regSanitizeFileName, '_')
 	);
 }
 
