@@ -12,6 +12,7 @@
 //* TODO: zoom format in filenames: [x1, x1.00, x100%].
 
 //* rendering:
+//* TODO: multi-image rendering for single selection (separate root-most layers, e.g. outline + body).
 //* TODO: arithmetic emulation of all blending operations, not native to JS.
 //* TODO: arithmetic emulation of all operations in 16/32-bit until final result; to be optionally available as checkbox/selectbox.
 //* TODO: decode layer data (PSD/PNG/etc) manually without using canvas, to avoid premultiplied-alpha (PMA - in Firefox, not in Chrome) while rendering.
@@ -54,6 +55,7 @@ var	regLayerNameToSkip		= /^(skip)$/i
 	,	'zoom':		/^x(\d[\d\W]*)%(\d*)$/i
 
 	,	'side':		/^(front|back|reverse(?:\W+(hor|ver))?)$/i
+	,	'separate':	/^(separate|split)$/i
 	,	'multi_select':	/^(x(\d[\d\W]*)|optional)$/i
 /*
 examples of layer folder names with parameter syntax:
@@ -126,6 +128,11 @@ examples of 'side':
 
 	Note: any of these will add one global select for all to the menu, with 2 options: front and back.
 
+examples of 'separate':
+
+	[separate]	layers in the top-most non-single-layer folder will be rendered into series of separate images.
+	Note: like zoom, this option works only globally.
+
 examples of 'multi_select':
 
 	[optional]	(1 or none)
@@ -186,6 +193,7 @@ examples of 'multi_select':
 		getElementsByClassName:	['.', ''],
 		getElementsByTagName:	['', ''],
 		getElementsByName:	['*[name="', '"]'],
+		getElementsByType:	['*[type="', '"]'],
 		getElementsById:	['*[id="', '"]'],
 	}
 // ,	LS = window.localStorage || localStorage
@@ -199,7 +207,7 @@ examples of 'multi_select':
 ,	VIEW_FLIPS = ['hor', 'ver']
 ,	NAME_PARTS_PERCENTAGES = ['zoom', 'opacities']
 ,	NAME_PARTS_FOLDERS = ['parts', 'colors']
-,	NAME_PARTS_ORDER = ['parts', 'colors', 'paddings', 'opacities', 'side', 'zoom']
+,	NAME_PARTS_ORDER = ['parts', 'colors', 'paddings', 'opacities', 'side', 'separate', 'zoom']
 ,	SPLIT_SEC = 60
 ,	MAX_OPACITY = 255
 ,	MAX_BATCH_PRECOUNT = 1000
@@ -535,6 +543,7 @@ function getElementsArray(by, value, parent) {
 
 function gc(n,p) {return getElementsArray('getElementsByClassName', n,p);}
 function gt(n,p) {return getElementsArray('getElementsByTagName', n,p);}
+function gy(n,p) {return getElementsArray('getElementsByType', n,p);}
 function gn(n,p) {return getElementsArray('getElementsByName', n,p);}
 function gi(n,p) {return getElementsArray('getElementsById', n,p);}
 function id(i) {return document.getElementById(i);}
@@ -1296,10 +1305,37 @@ var	path = [];
 	return path;
 }
 
+function getTopLevelMultiLayer(layers) {
+	while (
+		layers
+	&&	layers.length
+	&&	layers.length > 0
+	) {
+	var	layersToRender = layers.filter(isLayerRendered);
+
+		if (layersToRender.length > 1) {
+			return layersToRender;
+		} else {
+			layers = layersToRender[0];
+		}
+	}
+
+	return layers;
+}
+
+function isLayerRendered(layer) {
+	return !(
+		layer.params.skip
+	||	layer.params.skip_render
+	||	(layer.clippingLayer && !isLayerRendered(layer.clippingLayer))
+	);
+}
+
 function isLayerSkipped(layer) {
 	return (
 		layer.params.skip
 	// ||	regLayerNameToSkip.test(layer.name)
+	||	(layer.clippingLayer && isLayerSkipped(layer.clippingLayer))
 	);
 }
 
@@ -1673,10 +1709,13 @@ async function getProjectViewMenu(project) {
 			var	optionGroup = addOptionGroup(sectionName, listName || sectionName)
 			,	optionParams = optionGroup.params
 			,	optionItems = optionGroup.items
-			,	i,j,k
+			,	i,j,k = sectionName
 				;
 				checkBatchParams(optionParams);
 
+				if (sectionName === 'separate') {
+					optionItems[k] = k;
+				} else
 				if (sectionName === 'side') {
 					for (k in (j = la.project_option_side)) {
 						optionItems[k] = j[k];
@@ -1748,6 +1787,8 @@ async function getProjectViewMenu(project) {
 
 			addOptionsFromParam('zoom');
 			addOptionsFromParam('side');
+			addOptionsFromParam('separate');
+
 			m.forEach(
 				listName => {
 					addOptionsFromParam('opacities', listName);
@@ -1820,10 +1861,7 @@ async function getProjectViewMenu(project) {
 			return (
 				layers
 				.filter(layer => {
-					if (
-						isLayerSkipped(layer)
-					||	(layer.clippingLayer && isLayerSkipped(layer.clippingLayer))
-					) {
+					if (isLayerSkipped(layer)) {
 						return false;
 					} else {
 						if (isInsideColorList) {
@@ -2031,6 +2069,15 @@ async function getProjectViewMenu(project) {
 
 				for (var optionName in items) {
 				var	n = optionName;
+					if (sectionName === 'separate') {
+						if (optionName) {
+							t = (
+								getTopLevelMultiLayer(project.layers)
+								.map(layer => layer.name)
+							);
+							n = t.length + ': ' + t.join(', ');
+						}
+					} else
 					if (sectionName === 'side') {
 						n = view_sides[n] || n;
 					} else
@@ -3456,7 +3503,7 @@ var	l_a = layersBatch || project.layers
 //* skip not visible, not selected, etc:
 
 		if (
-			params.skip_render
+			!isLayerRendered(layer)
 		||	!(opacity = getLayerVisibilityByValues(project, layer, values))
 		) {
 			continue;
@@ -3838,6 +3885,7 @@ var	startTime = +new Date
 ,	sets = getAllValueSets(project, true)
 ,	lastPauseTime = +new Date
 ,	setsCountWithoutPause = 0
+,	setsCountTotal = Object.keys(sets).length
 ,	setsCount = 0
 ,	totalTime = 0
 ,	batchContainer = (showOnPage ? getEmptyRenderContainer(project) : null)
@@ -3845,7 +3893,7 @@ var	startTime = +new Date
 
 	logTime(
 		'"' + project.fileName + '"'
-	+	' started rendering ' + Object.keys(sets).length
+	+	' started rendering ' + setsCountTotal
 	+	' sets (listing took ' + (lastPauseTime - startTime)
 	+	' ms)'
 	);
@@ -3903,6 +3951,7 @@ var	startTime = +new Date
 	logTime(
 		'"' + project.fileName + '"'
 	+	' finished rendering ' + setsCount
+	+	' / ' + setsCountTotal
 	+	' sets, took ' + totalTime
 	+	' ms total (excluding pauses)'
 	);
@@ -3982,14 +4031,31 @@ function updateCheckBox(e, params) {
 
 function updateBatchCount(project) {
 
-var	count = getAllValueSetsCount(project);
+var	precounts = (project.renderBatchCounts || (project.renderBatchCounts = {}))
+,	key = (
+		(
+			gy('checkbox', project.container)
+			.map(e => (e.checked ? 1 : 0))
+			.join('')
+		)
+	+	'_'
+	+	getFileNameByValues(project)
+	)
+,	count = precounts[key]
+	;
 
-	if (
-		MAX_BATCH_PRECOUNT
-	&&	MAX_BATCH_PRECOUNT > 0
-	&&	count > MAX_BATCH_PRECOUNT
-	) {
-		count = MAX_BATCH_PRECOUNT + '+';
+	if (!count) {
+		count = getAllValueSetsCount(project);
+
+		if (
+			MAX_BATCH_PRECOUNT
+		&&	MAX_BATCH_PRECOUNT > 0
+		&&	count > MAX_BATCH_PRECOUNT
+		) {
+			count = MAX_BATCH_PRECOUNT + '+';
+		}
+
+		precounts[key] = count;
 	}
 
 	['show_all', 'save_all'].forEach(
