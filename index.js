@@ -163,7 +163,7 @@ examples of 'multi_select':
 ,	regNaN			= /\D+/g
 ,	regSpace		= /\s+/g
 ,	regCommaSpace		= /,+\s*/g
-,	regSanitizeFileName	= /[_\s\/\\:?*"]+/g
+,	regSanitizeFileName	= /[_\s\/\\:<>?*"]+/g
 ,	regTrim			= getTrimReg('\\s+')
 ,	regTrimNaN		= getTrimReg('\\D+')
 ,	regTrimNaNorSign	= getTrimReg('^\\d+-')
@@ -3129,26 +3129,9 @@ var	canvas = ctx.canvas;
 
 function padCanvas(ctx, padding) {
 
-	if (!ctx || !padding) return;
-
-var	w = ctx.canvas.width
-,	h = ctx.canvas.height
-,	r = padding.radius
-,	t = padding.threshold
-,	t_min = (t === 'min')
-,	t_max = (t === 'max')
-,	threshold = (
-		!(t_min || t_max)
-		? (orz(t) || 16)
-		: 0
-	);
-	if (r) {
-	var	r0 = r.in
-	,	r1 = r.out
-	,	ref = ctx.getImageData(0,0, w,h)
-	,	res = ctx.getImageData(0,0, w,h)
-	,	referencePixels = ref.data
-	,	resultPixels    = res.data
+	function addPadding(res, ref, radius) {
+	var	referencePixels = ref.data
+	,	resultPixels = res.data
 	,	resultValue, distMin
 		;
 		for (var y = h; y--;) next_result_pixel:
@@ -3160,13 +3143,13 @@ var	w = ctx.canvas.width
 			if (threshold) distMin = +Infinity;
 
 			look_around:
-			for (var ydy, dy = -r1; dy <= r1; dy++) if ((ydy = y + dy) >= 0 && ydy < h)
-			for (var xdx, dx = -r1; dx <= r1; dx++) if ((xdx = x + dx) >= 0 && xdx < w) {
+			for (var ydy, dy = -radius; dy <= radius; dy++) if ((ydy = y + dy) >= 0 && ydy < h)
+			for (var xdx, dx = -radius; dx <= radius; dx++) if ((xdx = x + dx) >= 0 && xdx < w) {
 			var	alpha = referencePixels[getAlphaDataIndex(xdx, ydy, w)];
 				if (threshold) {
 					if (alpha > threshold) {
 					var	d = dist(dx, dy) + 1 - alpha/255;
-						if (d > r1) {
+						if (d > radius) {
 							if (distMin > d) distMin = d;
 						} else {
 							resultPixels[pos] = 255;
@@ -3185,7 +3168,7 @@ var	w = ctx.canvas.width
 			if (threshold) {
 			var	distFloor = Math.floor(distMin);
 				resultPixels[pos] = (
-					distFloor > r1
+					distFloor > radius
 					? 0
 					: (255 * (1 + distFloor - distMin))
 				);
@@ -3193,6 +3176,109 @@ var	w = ctx.canvas.width
 				resultPixels[pos] = resultValue;
 			}
 		}
+
+		return res;
+	}
+
+	function intersectMask(res, ref) {
+	var	referencePixels = ref.data
+	,	resultPixels = res.data
+	,	i = resultPixels.length
+	,	pos
+		;
+		while (i) {
+			pos = i|3;
+			resultPixels[pos] = Math.min(resultPixels[pos], referencePixels[pos]);
+			i -= 4;
+		}
+
+		return res;
+	}
+
+	function combineMask(res, ref) {
+	var	referencePixels = ref.data
+	,	resultPixels = res.data
+	,	i = resultPixels.length
+	,	pos
+		;
+		while (i) {
+			pos = i|3;
+			resultPixels[pos] = Math.max(resultPixels[pos], referencePixels[pos]);
+			i -= 4;
+		}
+
+		return res;
+	}
+
+	function invertAlpha(res) {
+	var	resultPixels = res.data
+	,	i = resultPixels.length
+	,	pos
+		;
+		while (i) {
+			pos = i|3;
+			resultPixels[pos] = 255 - resultPixels[pos];
+			i -= 4;
+		}
+
+		return res;
+	}
+
+	function getImageDataClone(img) {
+		return new ImageData(new Uint8ClampedArray(img.data), w,h);
+	}
+
+	function getImageDataInverted(img) {
+		return invertAlpha(getImageDataClone(img));
+	}
+
+	function getImageDataPadded(radius, invert) {
+	var	res = new ImageData(w,h);
+
+		if (radius > 0) addPadding(res, ref, radius); else
+		if (radius < 0) addPadding(res, invRef, -radius);
+		else {
+			res.data.set(ref.data);
+		}
+
+		if (!invert === (radius < 0)) {
+			invertAlpha(res);
+		}
+
+		return res;
+	}
+
+	if (!ctx || !padding) {
+		return;
+	}
+
+	if (ctx.getContext) {
+		ctx = ctx.getContext('2d');
+	}
+
+var	w = ctx.canvas.width
+,	h = ctx.canvas.height
+,	r = padding.radius
+,	t = padding.threshold
+,	t_min = (t === 'min')
+,	t_max = (t === 'max')
+,	threshold = (
+		!(t_min || t_max)
+		? (orz(t) || 16)
+		: 0
+	);
+	if (r) {
+	var	r0 = r.in
+	,	r1 = r.out
+	,	ref = ctx.getImageData(0,0, w,h)
+	,	invRef = (r0 < 0 || r1 < 0 ? getImageDataInverted(ref) : null)
+	,	res = getImageDataPadded(r1)
+		;
+
+		if (typeof r0 !== 'undefined') {
+			intersectMask(res, getImageDataPadded(r0, true));
+		}
+
 		ctx.putImageData(res, 0,0);
 	}
 }
@@ -3581,9 +3667,14 @@ function getRenderByValues(project, values, layersBatch, renderParam) {
 						,	l_a.slice(0, l_i)
 						,	{
 								ignoreColors: true
-							,	padding: padding
 							}
 						);
+
+//* apply padding before using the mask:
+
+						if (mask) {
+							padCanvas(mask, padding);
+						}
 					}
 				} else {
 					mask = layer.mask;
@@ -3706,12 +3797,6 @@ var	l_a = layersToRenderOne || layersBatch || project.layers
 			drawImageOrColor(project, ctx, mask, BLEND_MODE_MASK);
 
 			clearCanvasBeforeGC(mask);
-		}
-
-//* apply padding:
-
-		if (padding = renderParam.padding) {
-			padCanvas(ctx, padding);
 		}
 	}
 
