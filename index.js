@@ -166,7 +166,7 @@ examples of 'multi_select':
 ,	regSanitizeFileName	= /[_\s\/\\:<>?*"]+/g
 ,	regTrim			= getTrimReg('\\s+')
 ,	regTrimNaN		= getTrimReg('\\D+')
-,	regTrimNaNorSign	= getTrimReg('^\\d+-')
+,	regTrimNaNorSign	= getTrimReg('^\\d\\.+-')
 ,	regTrimNewLine		= /[^\S\r\n]*(\r\n|\r|\n)/g
 ,	regHex3			= /^#?([0-9a-f])([0-9a-f])([0-9a-f])$/i
 ,	regHex68		= /^#?([0-9a-f]{6}|[0-9a-f]{8})$/i
@@ -212,6 +212,7 @@ examples of 'multi_select':
 ,	SPLIT_SEC = 60
 ,	MAX_OPACITY = 255
 ,	MAX_BATCH_PRECOUNT = 1000
+,	PADDING_ALPHA_THRESHOLD_DEFAULT = 16
 
 ,	TESTING = false
 ,	fileNameAddParamKey = true
@@ -718,7 +719,7 @@ function trim(t) {
 
 function trimOrz(n,d) {return orz(n.replace(regTrimNaN, ''), d);}
 function orz(n,d) {return (isNaN(d) ? parseInt(n||0) : parseFloat(n||d))||0;}
-function orzFloat(n) {return orz(n, 4);}
+function orzFloat(n) {return orz(n, 0.0);}
 function leftPad(n, len, pad) {
 	n = '' + orz(n);
 	len = orz(len) || 2;
@@ -2231,7 +2232,7 @@ var	m,v
 									y => {
 										if (y.length == 0) return null;
 										y = y.split(':', 2).map(
-											z => orz(
+											z => orzFloat(
 												z.replace(regTrimNaNorSign, '')
 											)
 										);
@@ -3133,39 +3134,45 @@ function padCanvas(ctx, padding) {
 	var	referencePixels = ref.data
 	,	resultPixels = res.data
 	,	resultValue, distMin
+	,	startValue = (t_min ? 255 : 0)
+	,	radius = Math.abs(radius)
+	,	radiusPixels = Math.ceil(radius)
 		;
 		for (var y = h; y--;) next_result_pixel:
 		for (var x = w; x--;) {
 		var	pos = getAlphaDataIndex(x,y,w);
 
-			if (t_min) resultValue = 255; else
-			if (t_max) resultValue = 0; else
-			if (threshold) distMin = +Infinity;
+			if (t_dist) {
+				distMin = +Infinity;
+			} else {
+				resultValue = startValue;
+			}
 
 			look_around:
-			for (var ydy, dy = -radius; dy <= radius; dy++) if ((ydy = y + dy) >= 0 && ydy < h)
-			for (var xdx, dx = -radius; dx <= radius; dx++) if ((xdx = x + dx) >= 0 && xdx < w) {
+			for (var ydy, dy = -radiusPixels; dy <= radiusPixels; dy++) if ((ydy = y + dy) >= 0 && ydy < h)
+			for (var xdx, dx = -radiusPixels; dx <= radiusPixels; dx++) if ((xdx = x + dx) >= 0 && xdx < w) {
 			var	alpha = referencePixels[getAlphaDataIndex(xdx, ydy, w)];
-				if (threshold) {
-					if (alpha > threshold) {
-					var	d = dist(dx, dy) + 1 - alpha/255;
-						if (d > radius) {
-							if (distMin > d) distMin = d;
-						} else {
-							resultPixels[pos] = 255;
-							continue next_result_pixel;
-						}
-					}
-				} if (t_min) {
+
+				if (t_min) {
 					if (resultValue > alpha) resultValue = alpha;
 					if (resultValue == 0) break look_around;
-				} else {
+				} else
+				if (t_max) {
 					if (resultValue < alpha) resultValue = alpha;
 					if (resultValue == 255) break look_around;
+				} else
+				if (alpha > threshold) {
+				var	d = dist(dx, dy) + 1 - alpha/255;
+					if (d > radius) {
+						if (distMin > d) distMin = d;
+					} else {
+						resultPixels[pos] = 255;
+						continue next_result_pixel;
+					}
 				}
 			}
 
-			if (threshold) {
+			if (t_dist) {
 			var	distFloor = Math.floor(distMin);
 				resultPixels[pos] = (
 					distFloor > radius
@@ -3235,9 +3242,9 @@ function padCanvas(ctx, padding) {
 	function getImageDataPadded(radius, invert) {
 	var	res = new ImageData(w,h);
 
-		if (radius > 0) addPadding(res, ref, radius); else
-		if (radius < 0) addPadding(res, invRef, -radius);
-		else {
+		if (radius) {
+			addPadding(res, (radius > 0 ? ref : invRef), radius);
+		} else {
 			res.data.set(ref.data);
 		}
 
@@ -3256,20 +3263,22 @@ function padCanvas(ctx, padding) {
 		ctx = ctx.getContext('2d');
 	}
 
-var	w = ctx.canvas.width
-,	h = ctx.canvas.height
-,	r = padding.radius
-,	t = padding.threshold
-,	t_min = (t === 'min')
-,	t_max = (t === 'max')
-,	threshold = (
-		!(t_min || t_max)
-		? (orz(t) || 16)
-		: 0
-	);
+var	r = padding.radius;
+
 	if (r) {
 	var	r0 = r.in
 	,	r1 = r.out
+	,	t = padding.threshold
+	,	t_min = (t === 'min')
+	,	t_max = (t === 'max')
+	,	t_dist = !(t_min || t_max)
+	,	threshold = (
+			t_dist
+			? (orz(t) || PADDING_ALPHA_THRESHOLD_DEFAULT)
+			: 0
+		)
+	,	w = ctx.canvas.width
+	,	h = ctx.canvas.height
 	,	ref = ctx.getImageData(0,0, w,h)
 	,	invRef = (r0 < 0 || r1 < 0 ? getImageDataInverted(ref) : null)
 	,	res = getImageDataPadded(r1)
