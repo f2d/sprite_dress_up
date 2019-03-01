@@ -209,6 +209,7 @@ examples of 'multi_select':
 ,	NAME_PARTS_PERCENTAGES = ['zoom', 'opacities']
 ,	NAME_PARTS_FOLDERS = ['parts', 'colors']
 ,	NAME_PARTS_ORDER = ['parts', 'colors', 'paddings', 'opacities', 'side', 'separate', 'zoom']
+,	NAME_PARTS_SEPARATOR = ''
 ,	SPLIT_SEC = 60
 ,	MAX_OPACITY = 255
 ,	MAX_BATCH_PRECOUNT = 1000
@@ -747,6 +748,7 @@ function getUniqueNumbersArray(t) {
 
 function getFileExt(n) {return n.split(/\./g).pop().toLowerCase();}
 function getFileName(n) {return n.split(/\//g).pop();}
+function getFormattedFileNamePart(n) {return (n.length > 0 ? '[' + n + ']' : n);}
 
 function getFormattedTimezoneOffset(t) {
 	return (
@@ -1297,8 +1299,8 @@ function getParentLayer(layer, propName, isTrue) {
 	return layer;
 }
 
-function getLayerPath(layer) {
-var	path = [];
+function getLayerPath(layer, includeSelf) {
+var	path = (includeSelf ? [layer.name] : []);
 
 	while (layer = getParentLayer(layer)) {
 		path.unshift(layer.name);
@@ -1416,7 +1418,11 @@ function thisToPng(targetLayer) {
 			return i;
 		}
 	} catch (error) {
-		console.log(error);
+		if (i = targetLayer) {
+			logTime('cannot get layer image: ' + getLayerPath(i, true).join(' / '));
+		} else {
+			console.log(error);
+		}
 	}
 
 	return null;
@@ -3886,7 +3892,8 @@ function getFileNameByValues(project, values, namingParam) {
 			listNames
 			.map(getProcessedListName)
 			.filter(arrayFilterNonEmptyValues)
-			.join('_')
+			.map(getFormattedFileNamePart)
+			.join(NAME_PARTS_SEPARATOR)
 		);
 	}
 
@@ -3897,7 +3904,7 @@ function getFileNameByValues(project, values, namingParam) {
 		NAME_PARTS_ORDER
 		.map(getProcessedSectionName)
 		.filter(arrayFilterNonEmptyValues)
-		.join('_')
+		.join(NAME_PARTS_SEPARATOR)
 	);
 }
 
@@ -3908,7 +3915,7 @@ function getFileNameByValuesToSave(project, values, namingParam) {
 		,	getFileNameByValues(project, values, namingParam)
 		]
 		.filter(arrayFilterNonEmptyValues)
-		.join('_')
+		.join(NAME_PARTS_SEPARATOR)
 		.replace(regSanitizeFileName, '_')
 	);
 }
