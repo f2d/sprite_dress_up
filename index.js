@@ -25,7 +25,7 @@
 //* Config *-------------------------------------------------------------------
 
 var	regLayerNameToSkip		= /^(skip)$/i
-,	regLayerNameParamOrComment	= /(?:^|[\s_]*)(?:\[([^\[\]]*)\]|\([^()]*\))(?:[\s_]*|$)/i
+,	regLayerNameParamOrComment	= /^([^\[\]()]*)(?:\[([^\[\]]*)\]|\([^()]*\))(.*?)$/i
 ,	regLayerNameParamSplit		= /[\s,_]+/g
 ,	regLayerNameParamTrim		= getTrimReg('\\s,_')
 
@@ -43,6 +43,7 @@ var	regLayerNameToSkip		= /^(skip)$/i
 	,	'not':		/^(\!|not?)$/i
 	,	'any':		/^(\?|any|some)$/i
 
+	,	'copypaste':	/^(copy|paste)(?:\W(.*))?$/i
 	,	'color_code':	/^(?:rgba?\W*(\w.+)|(?:hex\W*|#)(\w+))$/i
 
 	,	'colors':	/^(colou?r)s$/i
@@ -70,17 +71,30 @@ examples of layer folder names with parameter syntax:
 	Note: [parts/colors] folder with [if/not/any] are intended for logical dependencies, and do not add options to selectable list.
 	Note: [colors] folder without [if/not/any] gets replaced with selected color, or skipped if empty value is selected. Any layer inside it is added as option regardless of nesting depth, which is intended for logical dependencies and overwriting color value under same name.
 
+examples of 'copypaste':
+
+	[copy]
+	[copy=alias]
+	[paste=]	(copypaste-specific ID = empty string)
+	[paste=alias]	(copypaste-specific ID = "alias")
+	[copy:1 copy:2]	(copypaste-specific ID = any of "1" or "2")
+
+	Note: layer content or children are not copied in the project layer tree, only referenced during relevance checking or rendering.
+	Note: for relevance - all paste targets under given aliases are checked.
+	Note: for rendering - all copy sources under given aliases are pasted in order of encounter.
+
 examples of 'color_code':
 
 	[#1]
 	[#123]
+	[#1234]
 	[#112233]
 	[#11223344]
 	[hex-1F2F3F4F]
 	[rgb-255-123-0]
 	[rgba-10-20-30-40]
 
-	Note: missing RGB values are set to 0.
+	Note: missing RGB values are set to 0 (partial specification is tolerated, but should not be relied upon).
 	Note: missing Alpha value is set to 255 (FF).
 
 examples of 'paddings', 'radius':
@@ -164,12 +178,11 @@ examples of 'multi_select':
 ,	regSpace		= /\s+/g
 ,	regCommaSpace		= /,+\s*/g
 ,	regSanitizeFileName	= /[_\s\/\\:<>?*"]+/g
-,	regTrim			= getTrimReg('\\s+')
-,	regTrimNaN		= getTrimReg('\\D+')
+,	regTrim			= getTrimReg('\\s')
+,	regTrimCommaSpace	= getTrimReg('\\s,')
+,	regTrimNaN		= getTrimReg('\\D')
 ,	regTrimNaNorSign	= getTrimReg('^\\d\\.+-')
 ,	regTrimNewLine		= /[^\S\r\n]*(\r\n|\r|\n)/g
-,	regHex3			= /^#?([0-9a-f])([0-9a-f])([0-9a-f])$/i
-,	regHex68		= /^#?([0-9a-f]{6}|[0-9a-f]{8})$/i
 ,	regClassOption		= getClassReg('project-option|option')
 ,	regClassExampleFiles	= getClassReg('example-files|files')
 ,	regClassExampleFile	= getClassReg('example-file|file')
@@ -425,14 +438,33 @@ function pause(msec) {
 
 function dist(x,y) {return Math.sqrt(x*x + y*y)};
 function getAlphaDataIndex(x,y,w) {return ((y*w + x) << 2) | 3;}
-
+function repeat(t,n) {return new Array(n+1).join(t);}
 function hex2rgbArray(v) {
-	if (v.length === 1) v += repeat(v, 5); else
-	if (v.length === 3) v = v.replace(regHex3, '$1$1$2$2$3$3');
+
+//* extend shortcut notation:
+
+var	j = v = ''+v
+,	i = v.length
+	;
+	if (i === 1) j = repeat(v, 6); else
+	if (i === 2) j = repeat(v, 3); else
+	if (i === 3 || i === 4) {
+		j = (
+			v
+			.split('')
+			.map(v => repeat(v, 2))
+			.join('')
+		);
+	}
+	if (v !== j) v = j;
+
+//* parse string into numbers:
+
 var	a = [];
-	while (v.length > 1) {
-		a.push(parseInt(v.substr(0,2), 16));
-		v = v.substr(2);
+	while (i = v.length) {
+	var	j = Math.min(2, i);
+		a.push(parseInt(v.substr(0, j), 16));
+		v = v.substr(j);
 	}
 	return a;
 }
@@ -1782,6 +1814,8 @@ async function getProjectViewMenu(project) {
 		,	m = layer.names = (
 				n
 				.split(regCommaSpace)
+				.map(trim)
+				.filter(arrayFilterNonEmptyValues)
 				.filter(arrayFilterUniqueValues)
 			);
 
@@ -1789,9 +1823,32 @@ async function getProjectViewMenu(project) {
 				return;
 			}
 
+			if (!m.length) {
+				m.push('');
+			}
+
 		var	params = layer.params
 		,	layersInside = layer.layers
+		,	j = 'layersForCopyPaste'
+		,	k = 'copypaste'
+		,	layerCP = params[k]
 			;
+
+			if (layerCP) {
+			var	allCP = project[j] || (project[j] = {});
+
+				for (var t in layerCP) {
+				var	allAliases = allCP[t] || (allCP[t] = {});
+
+					layerCP[t].forEach(
+						alias => {
+						var	allByAlias = allAliases[alias] || (allAliases[alias] = []);
+
+							allByAlias.push(layer);
+						}
+					);
+				}
+			}
 
 			addOptionsFromParam('zoom');
 			addOptionsFromParam('side');
@@ -1846,7 +1903,11 @@ async function getProjectViewMenu(project) {
 				||	layer.isInsideColorList
 				);
 			} else
-			if (layer.opacity > 0) {
+			if (
+				layer.width > 0
+			&&	layer.height > 0
+			&&	layer.opacity > 0
+			) {
 				project.loading.images.push(layer);
 			}
 
@@ -1898,39 +1959,37 @@ async function getProjectViewMenu(project) {
 			(resolve, reject) => {
 				if (layer.img = getPropByNameChain(layer, 'params', 'color_code')) {
 					resolve(true);
-
-					return;
-				}
-
-			var	img, onImgLoad = async function(e) {
-					if (layer.isColor) {
-						layer.img = getFirstPixelRGBA(img);
-					} else {
-					var	i = layer.img = await getImgOptimized(img);
-						i.top  = layer.top;
-						i.left = layer.left;
-					}
-
-					resolve(true);
-				}
-
-				try {
-					img = project.toPng(layer);
-				} catch (error) {
-					console.log(error);
-				}
-
-				if (img) {
-					if (
-						isImgElement(img)
-					&&	!img.onload
-					) {
-						img.onload = onImgLoad;
-					} else {
-						onImgLoad();
-					}
 				} else {
-					resolve(false);
+				var	img, onImgLoad = async function(e) {
+						if (layer.isColor) {
+							layer.img = getFirstPixelRGBA(img);
+						} else {
+						var	i = layer.img = await getImgOptimized(img);
+							i.top  = layer.top;
+							i.left = layer.left;
+						}
+
+						resolve(true);
+					};
+
+					try {
+						img = project.toPng(layer);
+					} catch (error) {
+						console.log(error);
+					}
+
+					if (img) {
+						if (
+							isImgElement(img)
+						&&	!img.onload
+						) {
+							img.onload = onImgLoad;
+						} else {
+							onImgLoad();
+						}
+					} else {
+						resolve(false);
+					}
 				}
 			}
 		);
@@ -2194,16 +2253,19 @@ var	m,v
 
 	while (m = name.match(regLayerNameParamOrComment)) {
 		if (
-			(m = m[1])
-		&&	(m.length > 0)
+			(v = m[2])
+		&&	(v.length > 0)
 		) {
-			m
+			v
 			.split(regLayerNameParamSplit)
 			.map(trimParam)
 			.filter(arrayFilterNonEmptyValues)
 			.forEach(v => paramList.push(v));
 		}
-		name = trim(name.replace(regLayerNameParamOrComment, ''));
+		name = (
+			(m[1] + ', ' + m[3])
+			.replace(regTrimCommaSpace, '')
+		);
 	}
 
 	if (paramList.length > 0) {
@@ -2268,6 +2330,16 @@ var	m,v
 						)
 					);
 					params[k] = v.concat(params[k] || []);
+				} else
+				if (k === 'copypaste') {
+				var	j = m[1]
+				,	v = m[2]
+				,	o = params[k] || (params[k] = {})
+				,	a = o[j] || (o[j] = [])
+					;
+					if (a.indexOf(v) < 0) {
+						a.push(v);
+					}
 				} else
 				if (k === 'color_code') {
 					v = [0,0,0,255];
@@ -2675,9 +2747,12 @@ var	o = getProjectOptionValue(project, sectionName, listName, optionName);
 	) {
 	var	section = values[sectionName]
 	,	oldOptionName = section[listName]
+	,	optionNameChanged = (oldOptionName !== optionName)
 	,	result = false
 		;
-		section[listName] = optionName;
+		if (optionNameChanged) {
+			section[listName] = optionName;
+		}
 
 		for (var layer of o) {
 			if (getLayerPathVisibilityByValues(project, layer, values, listName)) {
@@ -2686,7 +2761,9 @@ var	o = getProjectOptionValue(project, sectionName, listName, optionName);
 			}
 		}
 
-		section[listName] = oldOptionName;
+		if (optionNameChanged) {
+			section[listName] = oldOptionName;
+		}
 
 		return result;
 	} else {
@@ -2861,7 +2938,6 @@ function getAllValueSets(project, checkPreselected, onlyNames, stopAtMaxCount) {
 							resultSets[fileName] = values;
 						}
 					}
-
 				}
 			}
 		}
@@ -2917,7 +2993,7 @@ var	a = getAllValueSets(
 	);
 }
 
-function getMenuValues(project, updatedValues) {
+function getUpdatedMenuValues(project, updatedValues) {
 var	values = {};
 
 	gt('select', project.container).forEach(
@@ -2990,7 +3066,7 @@ var	values = {};
 	return (
 		updatedValues
 		? values
-		: getMenuValues(project, values)
+		: getUpdatedMenuValues(project, values)
 	);
 }
 
@@ -3490,6 +3566,14 @@ function getLayerVisibilityByValues(project, layer, values, listName) {
 
 //* skip not selected parts:
 
+	if (layer.isOnlyForOneSide) {
+	var	selectedName = getPropBySameNameChain(values, 'side')
+		;
+		if (layer.params.side !== selectedName) {
+			return;
+		}
+	}
+
 	if (layer.isOptionIfAny) {
 		if (skipByFunc(layer, skipByAnyName)) {
 			return;
@@ -3506,14 +3590,6 @@ function getLayerVisibilityByValues(project, layer, values, listName) {
 			: getParentLayer(layer)
 		);
 		if (skipByFunc(layer, skipBySpecificName)) {
-			return;
-		}
-	}
-
-	if (layer.isOnlyForOneSide) {
-	var	selectedName = getPropBySameNameChain(values, 'side')
-		;
-		if (layer.params.side !== selectedName) {
 			return;
 		}
 	}
@@ -3580,7 +3656,7 @@ function getRenderByValues(project, values, layersBatch, renderParam) {
 
 		if (
 			!isLayerRendered(layer)
-		||	!(opacity = getLayerVisibilityByValues(project, layer, values))
+		||	!(opacity = renderParam.opacity || getLayerVisibilityByValues(project, layer, values))
 		) {
 			return;
 		}
@@ -3603,7 +3679,9 @@ function getRenderByValues(project, values, layersBatch, renderParam) {
 			}
 		}
 
-	var	img = null;
+	var	img = null
+	,	layers = null
+		;
 
 //* render clipping group as separate batch:
 
@@ -3617,44 +3695,64 @@ function getRenderByValues(project, values, layersBatch, renderParam) {
 				,	clippingGroupWIP: true
 				}
 			);
-		} else
+		} else {
 
 //* get layer/folder/batch as flat image:
 
-		if (layers = layer.layers) {
-			if (
-				!skipColoring
-			&&	layer.isColorList
-			) {
-				names.find(
-					listName => !!(
-						img = getCanvasColored(project, values, listName)
+			if (aliases = getPropByNameChain(params, 'copypaste', 'paste')) {
+				layers = [];
+				aliases.forEach(
+					alias => (
+						getPropByNameChain(project, 'layersForCopyPaste', 'copy', alias)
+					||	[]
+					).forEach(
+						layer => {
+							if (layers.indexOf(layer) < 0) {
+								layers.push(layer);
+							}
+						}
 					)
 				);
-			} else
-			if (layers.length > 0) {
-				if (blendMode == 'pass') {
-					l_a = l_a.slice(0, l_i).concat(layers);
-					l_i = l_a.length;
-
-					return;
-				} else {
-					img = getRenderByValues(
-						project
-					,	values
-					,	(
-							backward
-							? Array.from(layers).reverse()
-							: layers
-						)
-					,	{
-							ignoreColors: renderParam.ignoreColors
-						}
-					);
-				}
+			} else {
+				layers = layer.layers;
 			}
-		} else {
-			img = layer.img;
+
+			if (layers) {
+				if (
+					!skipColoring
+				&&	layer.isColorList
+				) {
+					names.find(
+						listName => !!(
+							img = getCanvasColored(project, values, listName)
+						)
+					);
+				} else
+				if (layers.length > 0) {
+					if (blendMode == 'pass') {
+						l_a = l_a.slice(0, l_i).concat(layers);
+						l_i = l_a.length;
+
+						return;
+					} else {
+						img = getRenderByValues(
+							project
+						,	values
+						,	(
+								backward
+								? Array.from(layers).reverse()
+								: layers
+							)
+						,	{
+								ignoreColors: renderParam.ignoreColors
+							,	opacity: (aliases ? opacity : 0)
+							}
+						);
+					}
+				}
+			} else {
+				img = layer.img;
+			}
 		}
 
 		if (img) {
@@ -3788,7 +3886,7 @@ var	l_a = layersToRenderOne || layersBatch || project.layers
 ,	bottomLayer = l_a[l_i - 1]
 ,	renderParam = renderParam || {}
 ,	side = getPropBySameNameChain(values, 'side')
-,	canvas, ctx, layers, layer, opacity, clippingMask
+,	canvas, ctx, layers, layer, opacity, clippingMask, aliases
 	;
 
 //* start rendering layer batch:
@@ -3898,7 +3996,7 @@ function getFileNameByValues(project, values, namingParam) {
 	}
 
 	if (!namingParam) namingParam = {};
-	if (!values) values = getMenuValues(project);
+	if (!values) values = getUpdatedMenuValues(project);
 
 	return (
 		NAME_PARTS_ORDER
@@ -3922,7 +4020,7 @@ function getFileNameByValuesToSave(project, values, namingParam) {
 
 async function getOrCreateRender(project, render) {
 	if (!render) render = {};
-var	values    = render.values    || (render.values    = getMenuValues(project))
+var	values    = render.values    || (render.values    = getUpdatedMenuValues(project))
 ,	refValues = render.refValues || (render.refValues = JSON.parse(JSON.stringify(values, replaceJSONpartsFromNameToCache)))
 ,	refName   = render.refName   || (render.refName   = getFileNameByValuesToSave(project, refValues))
 ,	fileName  = render.fileName  || (render.fileName  = getFileNameByValuesToSave(project, values))
