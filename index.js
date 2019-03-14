@@ -6,13 +6,9 @@
 //* menu:
 //* TODO: progress/status panel + [stop operation] button.
 //* TODO: options menu: add/remove/copy/edit colors and outlines, or all list(s), maybe in textarea.
-//* TODO: N px outline, select color and method:
-//*	a) max alpha in +|- N px around,
-//*	b) min distance to any non-transparent px (map the 0,N:N+1,+Inf range to 255:0).
 //* TODO: zoom format in filenames: [x1, x1.00, x100%].
 
 //* rendering:
-//* TODO: multi-image rendering for single selection (separate root-most layers, e.g. outline + body).
 //* TODO: arithmetic emulation of all blending operations, not native to JS.
 //* TODO: arithmetic emulation of all operations in 16/32-bit until final result; to be optionally available as checkbox/selectbox.
 //* TODO: decode layer data (PSD/PNG/etc) manually without using canvas, to avoid premultiplied-alpha (PMA - in Firefox, not in Chrome) while rendering.
@@ -38,6 +34,7 @@ var	regLayerNameToSkip		= /^(skip)$/i
 ,	regLayerNameParamType = {
 		'skip':		/^(skip)$/i
 	,	'skip_render':	/^(skip|no)\W+(render)$/i
+	,	'check_order':	/^(?:check\W+)?(?:top|bottom\W+)?(down|up)$/i
 	,	'none':		/^(none)$/i
 	,	'if_only':	/^(if|in)$/i
 	,	'not':		/^(\!|not?)$/i
@@ -49,14 +46,16 @@ var	regLayerNameToSkip		= /^(skip)$/i
 	,	'colors':	/^(colou?r)s$/i
 	,	'parts':	/^(option|part|type)s$/i
 
-	,	'paddings':	/^(outline|inline)(?:\W+(box|out))?$/i
-	,	'radius':	/^(.*?\d.*)px(?:\W+(max|min|\d+))?$/i
+	,	'paddings':	/^(outline|pad(?:ding)?)$/i
+	,	'radius':	/^(.*?\d.*)px(?:\W+(.+))?$/i
+	,	'wireframe':	/^(?:wire\W*)?(frame|fill)$/i
 
 	,	'opacities':	/^(\d[\d\W]*)%(\d*)$/i
 	,	'zoom':		/^x(\d[\d\W]*)%(\d*)$/i
 
 	,	'side':		/^(front|back|reverse(?:\W+(hor|ver))?)$/i
 	,	'separate':	/^(separate|split)$/i
+
 	,	'multi_select':	/^(x(\d[\d\W]*)|optional)$/i
 /*
 examples of layer folder names with parameter syntax:
@@ -99,17 +98,32 @@ examples of 'color_code':
 
 examples of 'paddings', 'radius':
 
-	"[outline (1:2x3:4)px]  name" = [1 to 2] width x [3 to 4] height px radius, rectangle area around each pixel.
-	"[outline (1x/2x/3x)px] name" = (1 or 2 or 3) px radius, square area.
-	"[outline (-4:5)px-max] name" = [-4 to 5] px radius, rounded area, use max value around.
+	"name [pad 1px]"		defaults to outline mode.
+	"name [pad 1px-outline]"	fills a padded mask behind layers above it in the same folder.
+	"name [pad 1px-inline]"		TODO: fills a padded mask over layers below it in the same folder.
+	"name [pad 1px-enclosed]"	TODO: use a mask enclosed from outer side, fill inner areas and holes.
+	"name [pad 1px-boundbox]"	TODO: use bounding rectangle as a mask.
+	"name [pad 0px-wireframe]"	TODO: use wireframe as a mask (render b/w-filled image, then convert white into transparency).
+	"name [pad 0px-wirefill]"	TODO: render b/w-filled image.
+	"name [pad 5px-min]"		for each pixel use min value found inside 5px radius of source alpha.
+	"name [pad 5px-max]"		for each pixel use max value found inside 5px radius.
+	"name [pad 5px-16]"		for each pixel use 100% alpha if any value inside 5px radius is above threshold 16 of 255.
+	"name [pad (1:2x3:4)px]"	[1 to 2] width x [3 to 4] height px radius, rectangle area around each pixel.
+	"name [pad (5...1:0...1)px]"	generates same sequence as "5:0/4:0/3:0(...)3:1/2:1/1:1".
+	"name [pad (1x/2x/3x)px]"	(1 or 2 or 3) px radius, square area.
+	"name [pad (-4:5)px-max]"	[-4 to 5] px radius, rounded area, use max value around.
+	"name [pad 1/2/3px-in-min/out-max/enclosed-16]"	cross-variation combo.
 
-	Note: [inline]          fills a padded mask over layers below it in the same folder.
-	Note: [outline]         fills a padded mask behind layers above it in the same folder.
-	Note: [outline-out]     use a mask enclosed from outer side, fill inner areas and holes.
-	Note: [outline-box]     use bounding rectangle as a mask.
-	Note: [outline 5px-min] for each pixel use min value found inside 5px radius of source alpha.
-	Note: [outline 5px-max] for each pixel use max value found inside 5px radius.
-	Note: [outline 5px-16]  for each pixel use 100% alpha if any value inside 5px radius is above threshold 16 of 255.
+	Note: when rendering in outline or wireframe mode, all irrelevant layers are skipped (coloring, clipping, etc).
+	Note: use 0px to get mask or image without padding.
+
+examples of 'wireframe':
+
+	[frame]
+	[wireframe]
+	[wire-frame]	(TODO: recolor this layer into black)
+
+	Note: when rendering wireframe mask, unmarked layers will be recolored into white.
 
 examples of 'opacities':
 
@@ -145,15 +159,16 @@ examples of 'side':
 examples of 'separate':
 
 	[separate]	layers in the top-most non-single-layer folder will be rendered into series of separate images.
+
 	Note: like zoom, this option works only globally.
 
 examples of 'multi_select':
 
 	[optional]	(1 or none)
 	[x0-1]		(1 or none)
-	[x1+]		(1 or more)
-	[x2]		(exactly 2)
-	[x]		(any, from none to all at once)
+	[x1+]		(TODO: 1 or more)
+	[x2]		(TODO: exactly 2)
+	[x]		(TODO: any, from none to all at once)
 
 	Note: [parts] cannot be selected more than 1 at once currently.
 	Note: [colors] cannot be selected more than 1 at once (they will overwrite anyway).
@@ -175,6 +190,7 @@ examples of 'multi_select':
 ,	regLayerTypeSingleTrim	= /s+$/i
 ,	regHasDigit		= /\d/
 ,	regNaN			= /\D+/g
+,	regNonWord		= /\W+/g
 ,	regSpace		= /\s+/g
 ,	regCommaSpace		= /,+\s*/g
 ,	regSanitizeFileName	= /[_\s\/\\:<>?*"]+/g
@@ -1341,7 +1357,19 @@ var	path = (includeSelf ? [layer.name] : []);
 	return path;
 }
 
-function getTopLevelMultiLayer(layers) {
+function getLayerVisibilityChain(layer) {
+var	layers = [];
+
+	while (layer) {
+		layers.push(layer);
+
+		layer = layer.clippingLayer || getParentLayer(layer);
+	}
+
+	return layers.reverse();
+}
+
+function getLayersTopSeparated(layers) {
 	while (
 		layers
 	&&	layers.length
@@ -1650,6 +1678,7 @@ async function getProjectViewMenu(project) {
 
 				if (result) {
 					project.options = options;
+					project.layersTopSeparated = getLayersTopSeparated(project.layers);
 
 				var	container = createProjectView(project);
 					createOptionsMenu(project, gc('project-options', container)[0]);
@@ -1761,15 +1790,20 @@ async function getProjectViewMenu(project) {
 						optionItems[k] = j[k];
 					}
 
-					if (
-						(j = VIEW_SIDES.indexOf(param)) >= 0
-					||	params.if_only
-					) {
+					j = VIEW_SIDES.indexOf(param);
+
+					if (j >= 0) {
 						params[sectionName] = (
-							params.if_only
-							? VIEW_SIDES[params.not ? 0 : 1]
-							: (params.not ? VIEW_SIDES[j ? 0 : 1] : param)
+							params.not
+							? VIEW_SIDES[j ? 0 : 1]
+							: param
 						);
+
+						layer.isOnlyForOneSide = true;
+					} else
+					if (params.if_only) {
+						params[sectionName] = VIEW_SIDES[params.not ? 0 : 1];
+
 						layer.isOnlyForOneSide = true;
 					} else {
 						layer.isOrderedBySide = true;
@@ -1894,6 +1928,17 @@ async function getProjectViewMenu(project) {
 						)
 					);
 				}
+			}
+
+			if (
+				layer.isOption
+			||	layer.isOptionIf
+			) {
+				layer.optionParent = (
+					layer.isColor
+					? getParentLayer(layer, 'isInsideColorList', false)
+					: getParentLayer(layer)
+				);
 			}
 
 			if (layersInside) {
@@ -2139,7 +2184,7 @@ async function getProjectViewMenu(project) {
 				,	v = n
 					;
 					if (sectionName === 'separate' && n !== '') {
-						getTopLevelMultiLayer(project.layers).forEach(
+						project.layersTopSeparated.forEach(
 							(layer, i) => {
 								v = i + 1;
 								n = v + ': ' + layer.name;
@@ -2242,7 +2287,7 @@ function getProjectViewImage(project) {
 }
 
 function getNextParentAfterAddingLayerToTree(layer, sourceData, name, parentGroup, isLayerFolder) {
-var	m,v
+var	m,k,v
 ,	paramList = []
 ,	params = {}
 	;
@@ -2281,12 +2326,6 @@ var	m,v
 					params[k] = {
 						'values': getUniqueNumbersArray(m[1])
 					,	'format': orz(m[2])
-					};
-				} else
-				if (k === 'paddings') {
-					params[k] = {
-						'way': m[1]	//* <- inline|outline
-					,	'form': m[2]	//* <- box|enclosed|etc
 					};
 				} else
 				if (k === 'radius') {
@@ -2372,6 +2411,9 @@ var	m,v
 						'min': Math.max(0, v[0])
 					,	'max': Math.max(1, v[v.length > 1?1:0])
 					};
+				} else
+				if (k === 'check_order') {
+					params[k] = m[1];
 				} else {
 					if (k === 'preselect' && param.indexOf('last') >= 0) {
 						params.last = true;
@@ -2416,6 +2458,13 @@ var	m,v
 	layer.params = params;
 	layer.parent = parentGroup;
 	parentGroup.push(layer);
+
+	if (
+		!params[k = 'check_order']
+	&&	(v = getPropByNameChain(getParentLayer(layer), 'params', k))
+	) {
+		params[k] = v;
+	}
 
 	if (isLayerFolder) {
 		parentGroup = layer.layers = [];
@@ -3024,7 +3073,10 @@ var	values = {};
 								selectedValueHidden = true;
 							}
 						} else {
-							if (optionName) {
+							if (
+								optionName.length > 0
+							&&	fallbackValue.length === 0
+							) {
 								fallbackValue = optionName;
 							}
 						}
@@ -3479,11 +3531,19 @@ var	selectedName = getPropByNameChain(values, sectionName, listName);
 }
 
 function getLayerPathVisibilityByValues(project, layer, values, listName) {
-	do {
-		if (!getLayerVisibilityByValues(project, layer, values, listName)) {
+	if (layer.params.check_order === 'up') {
+		if (getLayerVisibilityChain(layer).find(
+			layer => !getLayerVisibilityByValues(project, layer, values, listName)
+		)) {
 			return false;
 		}
-	} while (layer = layer.clippingLayer || getParentLayer(layer));
+	} else {
+		do {
+			if (!getLayerVisibilityByValues(project, layer, values, listName)) {
+				return false;
+			}
+		} while (layer = layer.clippingLayer || getParentLayer(layer));
+	}
 
 	return true;
 }
@@ -3491,48 +3551,32 @@ function getLayerPathVisibilityByValues(project, layer, values, listName) {
 function getLayerVisibilityByValues(project, layer, values, listName) {
 
 	function skipByFunc(layer, callback) {
-		if (
+		return (
 			layer.names
 			? layer.names.every(callback)
 			: callback(layer.name)
-		) {
-			return true;
-		}
-
-		return false;
+		);
 	}
 
 	function skipByAnyName(listName) {
-	var	selectedName = getPropByNameChain(values, layer.type, listName) || ''
-		;
-		if (!layer.params.not === !selectedName) {
-			return true;
-		}
+	var	selectedName = getPropByNameChain(values, layer.type, listName) || '';
 
-		return false;
+		return (!layer.params.not === !selectedName);
 	}
 
 	function skipBySpecificName(optionName) {
 
 		function skipByListName(listName) {
-		var	selectedName = getPropByNameChain(values, parent.type, listName) || ''
-			;
-			if (
+		var	selectedName = getPropByNameChain(values, parent.type, listName) || '';
+
+			return (
 				(optionName === selectedName)
 				!==
 				(!layer.params.not === !parent.params.not)
-			) {
-				return true;
-			}
-
-			return false;
+			);
 		}
 
-		if (skipByFunc(parent, skipByListName)) {
-			return true;
-		}
-
-		return false;
+		return skipByFunc(parent, skipByListName);
 	}
 
 	function getOpacityByAnyName(listNames) {
@@ -3552,16 +3596,16 @@ function getLayerVisibilityByValues(project, layer, values, listName) {
 		}
 
 		return (
-			max >= 0
-			? (unselectable ? 1 : max)
-			: layer.opacity
+			max < 0
+			? layer.opacity
+			: (unselectable ? 1 : max)
 		);
 	}
 
 //* skip by explicit name or param:
 
 	if (isLayerSkipped(layer)) {
-		return;
+		return 0;
 	}
 
 //* skip not selected parts:
@@ -3570,37 +3614,27 @@ function getLayerVisibilityByValues(project, layer, values, listName) {
 	var	selectedName = getPropBySameNameChain(values, 'side')
 		;
 		if (layer.params.side !== selectedName) {
-			return;
+			return 0;
 		}
 	}
 
 	if (layer.isOptionIfAny) {
 		if (skipByFunc(layer, skipByAnyName)) {
-			return;
+			return 0;
 		}
 	}
 
-	if (
-		layer.isOption
-	||	layer.isOptionIf
-	) {
-	var	parent = (
-			layer.isColor
-			? getParentLayer(layer, 'isInsideColorList', false)
-			: getParentLayer(layer)
-		);
+var	parent = layer.optionParent;
+
+	if (parent) {
 		if (skipByFunc(layer, skipBySpecificName)) {
-			return;
+			return 0;
 		}
 	}
 
 //* skip fully transparent:
 
-var	opacity = getOpacityByAnyName(listName ? [listName] : layer.names);
-
-	if (opacity > 0) {
-		return opacity;
-	}
+	return getOpacityByAnyName(listName ? [listName] : layer.names);
 }
 
 function getNewCanvas(project) {
@@ -3729,6 +3763,9 @@ function getRenderByValues(project, values, layersBatch, renderParam) {
 					);
 				} else
 				if (layers.length > 0) {
+					if (backward) {
+						layers = Array.from(layers).reverse();
+					}
 					if (blendMode == 'pass') {
 						l_a = l_a.slice(0, l_i).concat(layers);
 						l_i = l_a.length;
@@ -3738,11 +3775,7 @@ function getRenderByValues(project, values, layersBatch, renderParam) {
 						img = getRenderByValues(
 							project
 						,	values
-						,	(
-								backward
-								? Array.from(layers).reverse()
-								: layers
-							)
+						,	layers
 						,	{
 								ignoreColors: renderParam.ignoreColors
 							,	opacity: (aliases ? opacity : 0)
@@ -3760,13 +3793,13 @@ function getRenderByValues(project, values, layersBatch, renderParam) {
 				opacity = 1;
 			} else {
 
-//* apply mask:
+//* get mask:
 
-			var	mask = null;
+			var	mask = null
+			,	padding = null
+				;
 
 				if (layer.isMaskGenerated) {
-				var	padding = null;
-
 					names.find(
 						listName => !!(
 							padding = getSelectedOptionValue(project, values, 'paddings', listName)
@@ -3783,7 +3816,7 @@ function getRenderByValues(project, values, layersBatch, renderParam) {
 							}
 						);
 
-//* apply padding before using the mask:
+//* apply padding to mask:
 
 						if (mask) {
 							padCanvas(mask, padding);
@@ -3792,6 +3825,8 @@ function getRenderByValues(project, values, layersBatch, renderParam) {
 				} else {
 					mask = layer.mask;
 				}
+
+//* apply mask:
 
 				if (mask) {
 					img = getCanvasBlended(project, img, mask, BLEND_MODE_MASK);
@@ -3864,7 +3899,7 @@ function getRenderByValues(project, values, layersBatch, renderParam) {
 
 		if (l_i > 0) {
 			if (
-				(layers = getTopLevelMultiLayer(project.layers))
+				(layers = project.layersTopSeparated)
 			&&	(layer = layers[l_i - 1])
 			) {
 			var	layersToRenderOne = (getParentLayer(layer) || project).layers;
