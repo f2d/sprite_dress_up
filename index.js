@@ -7,6 +7,7 @@
 //* TODO: progress/status panel + [stop operation] button.
 //* TODO: options menu: add/remove/copy/edit colors and outlines, or all list(s), maybe in textarea.
 //* TODO: zoom format in filenames: [x1, x1.00, x100%].
+//* TODO: store batch counts and lists per project, under keys like this: batch_checkboxes.map(checked?1:0).join().
 
 //* rendering:
 //* TODO: arithmetic emulation of all blending operations, not native to JS.
@@ -2145,8 +2146,13 @@ async function getProjectViewMenu(project) {
 			var	listLabel = text || listName
 			,	items = optionList.items
 			,	params = optionList.params
-			,	hasEmptyOption = ('' in items)
-				;
+			,	addEmpty = !(
+					'' in items
+				||	sectionName === 'side'
+				) && (
+					params.multi_select
+				&&	params.multi_select.min <= 0
+				);
 				params[c] = !(params[b] = (typeof params[c] === 'undefined'));
 
 			var	tr = cre('tr', table);
@@ -2198,18 +2204,14 @@ async function getProjectViewMenu(project) {
 						if (NAME_PARTS_PERCENTAGES.indexOf(sectionName) >= 0) {
 							if (n === '0%') {
 								n = '';
-								hasEmptyOption = true;
+								addEmpty = false;
 							}
 						}
 						addOption(s,n,v);
 					}
 				}
 
-				if (
-					!hasEmptyOption
-				&&	params.multi_select
-				&&	params.multi_select.min <= 0
-				) {
+				if (addEmpty) {
 					addOption(s, '');
 				}
 
