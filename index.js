@@ -8,6 +8,7 @@
 //* TODO: options menu: add/remove/copy/edit colors and outlines, or all list(s), maybe in textarea.
 //* TODO: zoom format in filenames: [x1, x1.00, x100%].
 //* TODO: store batch counts and lists per project, under keys like this: batch_checkboxes.map(checked?1:0).join().
+//* TODO: <select multiple> <optgroup> <option>?</option> </optgroup> </select>.
 
 //* rendering:
 //* TODO: arithmetic emulation of all blending operations, not native to JS.
@@ -63,11 +64,11 @@ examples of layer folder names with parameter syntax:
 
 	"[if not any parts] body" = render contents of this folder if "parts: body" select box value is empty.
 	"[if     any parts] body" = render contents of this folder if "parts: body" select box value is non-empty.
-	"[if not colors]    hair" = render only those subfolders/layers, which are named not as the "colors: hair" select box value.
-	"[if     colors]    hair" = render only those subfolders/layers, which are named same as the "colors: hair" select box value.
+	"[if not colors] eyes, hair" = render only those subfolders/layers, which have no names selected in "colors: hair" AND "colors: eyes" select boxes.
+	"[if     colors] eyes, hair" = render only those subfolders/layers, which have any of names selected in "colors: hair" OR "colors: eyes" select boxes.
 
 	Note: any amount of whitespace is ok.
-	Note: [none] discards layer name for option ID, result equals empty name; may be used for clarity in logical sets.
+	Note: [none] adds empty name to the list of layer's option IDs. Comma-separated empty IDs are discarded.
 	Note: [parts/colors] folder with [if/not/any] are intended for logical dependencies, and do not add options to selectable list.
 	Note: [colors] folder without [if/not/any] gets replaced with selected color, or skipped if empty value is selected. Any layer inside it is added as option regardless of nesting depth, which is intended for logical dependencies and overwriting color value under same name.
 
@@ -1845,7 +1846,8 @@ async function getProjectViewMenu(project) {
 				}
 			}
 
-		var	n = layer.name
+		var	params = layer.params
+		,	n = layer.name
 		,	m = layer.names = (
 				n
 				.split(regCommaSpace)
@@ -1858,12 +1860,11 @@ async function getProjectViewMenu(project) {
 				return;
 			}
 
-			if (!m.length) {
+			if (!m.length || params.none) {
 				m.push('');
 			}
 
-		var	params = layer.params
-		,	layersInside = layer.layers
+		var	layersInside = layer.layers
 		,	j = 'layersForCopyPaste'
 		,	k = 'copypaste'
 		,	layerCP = params[k]
@@ -2456,7 +2457,7 @@ var	m,k,v
 		}
 	}
 
-	layer.name = (params.none ? '' : name);
+	layer.name = name;
 	layer.params = params;
 	layer.parent = parentGroup;
 	parentGroup.push(layer);
@@ -3552,10 +3553,14 @@ function getLayerPathVisibilityByValues(project, layer, values, listName) {
 
 function getLayerVisibilityByValues(project, layer, values, listName) {
 
-	function skipByFunc(layer, callback) {
+	function skipByFunc(layer, callback, isNot) {
 		return (
 			layer.names
-			? layer.names.every(callback)
+			? (
+				isNot
+				? layer.names.some(callback)
+				: layer.names.every(callback)
+			)
 			: callback(layer.name)
 		);
 	}
@@ -3571,14 +3576,10 @@ function getLayerVisibilityByValues(project, layer, values, listName) {
 		function skipByListName(listName) {
 		var	selectedName = getPropByNameChain(values, parent.type, listName) || '';
 
-			return (
-				(optionName === selectedName)
-				!==
-				(!layer.params.not === !parent.params.not)
-			);
+			return (optionName === selectedName) === isNot;
 		}
 
-		return skipByFunc(parent, skipByListName);
+		return skipByFunc(parent, skipByListName, isNot);
 	}
 
 	function getOpacityByAnyName(listNames) {
@@ -3629,7 +3630,9 @@ function getLayerVisibilityByValues(project, layer, values, listName) {
 var	parent = layer.optionParent;
 
 	if (parent) {
-		if (skipByFunc(layer, skipBySpecificName)) {
+	var	isNot = (!layer.params.not !== !parent.params.not);
+
+		if (skipByFunc(layer, skipBySpecificName, isNot)) {
 			return 0;
 		}
 	}
