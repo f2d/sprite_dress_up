@@ -88,8 +88,12 @@ label:hover {
 .example-files td:first-child {
 	text-align: right;
 }
-.example-file-type {
+.example-file-type,
+.example-file-type header {
 	margin: 1em 0;
+}
+.example-file:hover:not(.loading):not(:last-child) td {
+	background-color: #fff;
 }
 .example-file.loading td {
 	position: relative;

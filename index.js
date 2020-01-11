@@ -196,6 +196,7 @@ examples of 'multi_select':
 ,	regSpace		= /\s+/g
 ,	regCommaSpace		= /,+\s*/g
 ,	regSanitizeFileName	= /[_\s\/\\:<>?*"]+/g
+,	regHMS			= /(T\d+)-(\d+)-(\d+\D*)/
 ,	regTrim			= getTrimReg('\\s')
 ,	regTrimCommaSpace	= getTrimReg('\\s,')
 ,	regTrimNaN		= getTrimReg('\\D')
@@ -329,10 +330,10 @@ examples of 'multi_select':
 
 //* Config: loaders of project files *-----------------------------------------
 
-var	examplesDir = 'example_project_files/'
+var	exampleRootDir = ''
 ,	exampleProjectFiles = []
-,	libDir = 'lib/'
-,	libFormatsDir = libDir + 'formats/'
+,	libRootDir = 'lib/'
+,	libFormatsDir = libRootDir + 'formats/'
 ,	fileTypeLibs = {
 		'UPNG.js': {
 
@@ -555,6 +556,7 @@ function cleanupObjectTree(obj, childKeys, keysToRemove) {
 
 function arrayFilterNonEmptyValues(v) {return (typeof v === 'string' ? (v.length > 0) : !!v);}
 function arrayFilterUniqueValues(v,i,a) {return a.indexOf(v) === i;}
+function arrayFilteredJoin(a,j) {return a.filter(arrayFilterNonEmptyValues).join(j);}
 
 //* https://gist.github.com/wellcaffeinated/5399067#gistcomment-1364265
 function nextValidHeapSize(realSize) {
@@ -799,6 +801,15 @@ function getUniqueNumbersArray(t) {
 function getFileExt(n) {return n.split(/\./g).pop().toLowerCase();}
 function getFileName(n) {return n.split(/\//g).pop();}
 function getFormattedFileNamePart(n) {return (n.length > 0 ? '[' + n + ']' : n);}
+function getFormattedFileSize(shortened, bytes) {
+	if (bytes) {
+		bytes += ' ' + la.project.bytes;
+	}
+	if (shortened && bytes) {
+		shortened += ' (' + bytes + ')';
+	}
+	return shortened || bytes;
+}
 
 function getFormattedTimezoneOffset(t) {
 	return (
@@ -2073,12 +2084,7 @@ async function getProjectViewMenu(project) {
 		+	project.height + ' '
 		+	la.project.pixels
 
-		,	[
-				(project.colorMode || '')
-			,	t
-			]
-			.filter(arrayFilterNonEmptyValues)
-			.join(' ')
+		,	arrayFilteredJoin([project.colorMode, t], ' ')
 		];
 
 	var	i = project.loading.imagesCount
@@ -2090,11 +2096,7 @@ async function getProjectViewMenu(project) {
 		if (sourceFile.size) t.push(sourceFile.size + ' ' + la.project.bytes);
 		if (sourceFileTime)  t.push(la.project.date + ' ' + getFormattedTime(sourceFileTime));
 
-		cre('div', e).innerHTML = (
-			t
-			.filter(arrayFilterNonEmptyValues)
-			.join('<br>')
-		);
+		cre('div', e).innerHTML = arrayFilteredJoin(t, '<br>');
 
 		if (TESTING) {
 			addButton(cre('footer', e), t = 'console_log').name = t;
@@ -4663,7 +4665,7 @@ function closeProject(e) {
 async function init() {
 	await loadLib(
 		'config.js',
-		libDir + 'composition.asm.js',
+		libRootDir + 'composition.asm.js',
 	);
 
 	if (CompositionModule = AsmCompositionModule) {
@@ -4704,14 +4706,27 @@ var	supportedFileTypesText = (
 			var	fileListHTML = (
 					v.files.map(
 						file => {
-						var	fileName = (file.join ? file[0] : file)
+						var	fileName = (
+								file.length
+							&&	file.length > 0
+							&&	file[0]
+								? file[0]
+								: file.name || file || '?'
+							)
 						,	fileInfo = (
-								file.join
+								file.length
+							&&	file.length > 1
 							&&	file[1]
 								? '(' + file[1] + ')'
-								: ''
+								: arrayFilteredJoin(
+									[
+										file.pixels
+									,	getFormattedFileSize(file.filesize, file.bytes)
+									]
+								,	', '
+								)
 							)
-						,	filePath = examplesDir + (v.dir || '') + fileName
+						,	filePath = arrayFilteredJoin([exampleRootDir, v.subdir, fileName], '/')
 						,	fileAttr = encodeTagAttr(fileName)
 						,	pathAttr = encodeTagAttr(filePath)
 						,	dict = la.menu.examples.buttons
@@ -4734,12 +4749,13 @@ var	supportedFileTypesText = (
 						,	tabs = [
 								fileName
 							,	fileInfo
+							,	getFormattedTime(file.modtime)
 							,	downloadLink
 							,	loadButton
 							].map(
 								(v,i,a) => (
 									'<td'
-								+	(i === 3 ? ' colspan="2"' : '')
+								+	(i === 4 ? ' colspan="3"' : '')
 								+	'>'
 								+		v
 								+	'</td>'
@@ -4786,7 +4802,7 @@ var	supportedFileTypesText = (
 				return (
 					'<div class="example-file-type">'
 				+		'<header>'
-				+			(la.menu.examples[v.example] || v.example)
+				+			(la.menu.examples.subdirs[v.subdir] || v.subdir)
 				+			':'
 				+		'</header>'
 				+		'<table class="example-files">'
@@ -4798,7 +4814,10 @@ var	supportedFileTypesText = (
 		).join('')
 	);
 
-	if (v = la.menu.examples.notice) {
+	if (
+		EXAMPLE_NOTICE
+	&&	(v = la.menu.examples.notice)
+	) {
 		HTMLparts.examples += (
 			'<p class="warning">'
 		+		(v.join ? v.join('<br>') : v)
