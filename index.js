@@ -248,6 +248,7 @@ examples of 'multi_select':
 ,	PADDING_ALPHA_THRESHOLD_DEFAULT = 16
 
 ,	TESTING = false
+,	EXAMPLE_NOTICE = false
 ,	fileNameAddParamKey = true
 
 ,	cancelBatchWIP
@@ -4703,7 +4704,15 @@ var	supportedFileTypesText = (
 	HTMLparts.examples = (
 		exampleProjectFiles.map(
 			v => {
-			var	fileListHTML = (
+			var	headerHTML = (
+					v.subdir
+					? '<header>'
+					+	(la.menu.examples.subdirs[v.subdir] || v.subdir)
+					+	':'
+					+ '</header>'
+					: ''
+				)
+			,	fileListHTML = (
 					v.files.map(
 						file => {
 						var	fileName = (
@@ -4801,10 +4810,7 @@ var	supportedFileTypesText = (
 
 				return (
 					'<div class="example-file-type">'
-				+		'<header>'
-				+			(la.menu.examples.subdirs[v.subdir] || v.subdir)
-				+			':'
-				+		'</header>'
+				+		headerHTML
 				+		'<table class="example-files">'
 				+			fileListHTML
 				+		'</table>'
