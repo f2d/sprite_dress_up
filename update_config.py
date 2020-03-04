@@ -11,11 +11,28 @@ import base64, datetime, json, math, os, re, subprocess, sys, time, zipfile
 
 
 
-TEST = ('t' in sys.argv) or ('test' in sys.argv)
+undashed_args = list(map(lambda x: x.replace('-', '') or x, sys.argv))
 
-IM_6 = ('--imagemagick-6' in sys.argv) or ('-im6' in sys.argv) or ('6' in sys.argv)
-IM_7 = ('--imagemagick-7' in sys.argv) or ('-im7' in sys.argv) or ('7' in sys.argv)
+TEST         = ('t' in undashed_args) or ('test'    in undashed_args)
+TEST_FILTERS = ('f' in undashed_args) or ('filters' in undashed_args)
+
+IM_6 = ('imagemagick6' in undashed_args) or ('im6' in undashed_args) or ('6' in undashed_args)
+IM_7 = ('imagemagick7' in undashed_args) or ('im7' in undashed_args) or ('7' in undashed_args)
 IM_UNDEFINED = not (IM_6 or IM_7)
+
+DEFAULT_FILTER = 'Welch'
+
+if 'filter' in undashed_args:
+	i = undashed_args.index('filter') + 1
+
+	if len(undashed_args) > i:
+		DEFAULT_FILTER = undashed_args[i]
+
+# Notes about some tested filters:
+# 1. Welch - super-fast, adds mild visual artifacts on vector-like icons.
+# 2. Sinc - slower, sharper on high-detail high-res images, very bad artifacts on vector-like icons.
+# 3. Lanczos and its variants - slower but otherwise looks the same as Welch on all examples.
+# Most of others available were too blocky or too blurry on the test projects files.
 
 
 
@@ -38,13 +55,18 @@ is_dest_array = True
 # - config - external helper programs: --------------------------------------
 
 
+# Full path example: 'd:/programs/ImageMagick_7/magick.exe'
+# Directory part of this path will be used for version 6 commands, if present.
 
-converter_exe_path = 'magick'			# <- full path example: 'd:/programs/ImageMagick_7/magick.exe'
+converter_exe_path = 'magick'
+
+converter_filters = None			# <- get automatically once for each run
 
 merged_layer_suffix = '[0]'			# <- to use pre-merged layer
 temp_layer_file_path = 'temp_layer.png'
 temp_thumb_file_path = 'temp_thumb.png'
 src_file_path_placeholder = '<src_placeholder>'
+filter_placeholder = '<filter_placeholder>'
 
 layer_suffix_file_types = [
 	'psd'
@@ -77,9 +99,17 @@ cmd_make_thumbnail_args = [
 	'convert'
 ,	src_file_path_placeholder
 ,	'-verbose'
+,	'-filter'
+,	filter_placeholder if TEST_FILTERS else DEFAULT_FILTER
 ,	'-thumbnail'
 ,	'16x16'
 ,	'png32:' + temp_thumb_file_path
+]
+
+cmd_get_filters = [
+	'convert'
+,	'-list'
+,	'filter'
 ]
 
 pat_check_image_size = re.compile(r'^(\d+)x(\d+)$', re.U | re.I)
@@ -229,7 +259,7 @@ def get_image_cmd_versions(cmd_args):
 
 	return cmd_versions
 
-def get_image_cmd_result(src_file_path, cmd_args, check_thumbnail=False):
+def get_image_path_for_cmd(src_file_path, check_thumbnail=False):
 	print('')
 	print('Parsing image file:')
 	print(src_file_path)
@@ -270,35 +300,28 @@ def get_image_cmd_result(src_file_path, cmd_args, check_thumbnail=False):
 	if src_file_ext in layer_suffix_file_types:
 		src_file_path += merged_layer_suffix
 
-	# must get list instead of map object, or it will not run in python3:
-	cmd_args_with_src_path = list(map(
-		lambda x: (
-			# os.path.abspath(src_file_path)
-			# './' + src_file_path
-			src_file_path
-			if x == src_file_path_placeholder
-			else x
-		)
-	,	cmd_args
-	))
+	return src_file_path
 
+def get_cmd_result(cmd_args):
 	print('')
 	print('Running command:')
-	print(' '.join(quoted_list(cmd_args_with_src_path)))
+	print(' '.join(quoted_list(cmd_args)))
 
 	# https://stackoverflow.com/a/16198668
 	try:
-		output = subprocess.check_output(
-			cmd_args_with_src_path
-		# ,	stderr=subprocess.STDOUT
-		# ,	shell=True	# <- IM does not work in Linux terminal with this
-		# ,	timeout=3
-		# ,	universal_newlines=True
-		)
+		# Note: IM does not work in Linux terminal with shell=True
+		output = subprocess.check_output(cmd_args)
+
 	except subprocess.CalledProcessError as e:
 		print('')
 		print('Error code {}, command output:'.format(e.returncode))
 		print(get_str_from_bytes(e.output))
+
+	except FileNotFoundError as e:
+		print('')
+		print('Error:')
+		print(e)
+
 	else:
 		output = get_str_from_bytes(output)
 
@@ -309,6 +332,64 @@ def get_image_cmd_result(src_file_path, cmd_args, check_thumbnail=False):
 		return output
 
 	return ''
+
+def get_converter_filters():
+	global converter_filters
+
+	if not converter_filters:
+		for cmd_args in get_image_cmd_versions(cmd_get_filters):
+			cmd_result = get_cmd_result(cmd_args)
+
+			if cmd_result:
+				a = cmd_result.split('\n')
+				a = map(lambda x: x.strip(), a)
+				a = filter(None, a)
+				a = sorted(list(set(a)))
+				converter_filters = a
+
+				break
+
+	return converter_filters
+
+def get_image_cmd_result(src_file_path, cmd_args, check_thumbnail=False):
+	src_file_name = get_file_name(src_file_path)
+	src_file_path = get_image_path_for_cmd(src_file_path, check_thumbnail=False)
+
+	# must get list instead of map object, or it will not run in python3:
+	cmd_args_with_src_path = list(map(
+		lambda x: (
+			src_file_path
+			if x == src_file_path_placeholder
+			else x
+		)
+	,	cmd_args
+	))
+
+	if filter_placeholder in cmd_args_with_src_path:
+		for filter_name in get_converter_filters():
+			cmd_args_with_filter = list(map(
+				lambda x: (
+					filter_name
+					if x == filter_placeholder
+					else x
+					if x.find(temp_thumb_file_path) < 0
+					else (
+						'_' + src_file_name +
+						'_' + filter_name +
+						'.'
+					).join(
+						x.rsplit('.', 1)
+					)
+				)
+			,	cmd_args_with_src_path
+			))
+
+			get_cmd_result(cmd_args_with_filter)
+
+		i = cmd_args_with_src_path.index(filter_placeholder)
+		cmd_args_with_src_path = cmd_args_with_src_path[: i - 2] + cmd_args_with_src_path[i + 1 :]
+
+	return get_cmd_result(cmd_args_with_src_path)
 
 def get_image_size(src_file_path):
 	for cmd_args in get_image_cmd_versions(cmd_get_image_size_args):

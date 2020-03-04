@@ -1279,7 +1279,8 @@ function setElementImageData(img, data) {
 	}
 	if (isImgElement(img)) {
 		img.src = data;
-	} else {
+	} else
+	if (img.style) {
 		img.style.backgroundImage = 'url("' + data + '")';
 	}
 }

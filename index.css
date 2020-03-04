@@ -128,9 +128,12 @@ label:hover {
 	background-color: #eda;
 }
 .button button {
-	padding: 0.5em 1em;
+	padding: 0.5em;
 	border: none;
 	background: transparent;
+}
+.button .close-button {
+	padding: 0.5em 1em;
 }
 .close-button:hover {
 	color: white;
