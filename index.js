@@ -1273,6 +1273,28 @@ function isImgElement(e) {
 	);
 }
 
+function setElementImageData(img, data) {
+	if (!data) {
+		data = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAADlSURBVDhPY2xoaPjPQAGAGVAD4ZIMWligDAwANLgFygQDDw+PBRYWFnegXDhggtJwcP36dQl0zSCwY8eOhOXLl7tAuXCAYcDBgwftQTQ3N/croEE1IAyyHSR28+ZNh6dPn/KB2DCAYgBI8sWLF7ogto+PzyqwIBAgO/3Tp09cUCYYoISBtLT0J5CNUC4cbN++3RjKZODj4/sGZYIBhhfQAcjfJ0+eDASxQV4BWQKWgAK8BoA0g/wNYhMdCzAACg9CmkEApwHIgYVLMwhQnBJxugCWoEAYKoQVEIwFQoBiL1CYnRkYANlxYfox0LLxAAAAAElFTkSuQmCC';
+	}
+	if (isImgElement(img)) {
+		img.src = data;
+	} else {
+		img.style.backgroundImage = 'url("' + data + '")';
+	}
+}
+
+function getCanvasFromImg(img, w,h) {
+var	canvas = cre('canvas')
+,	ctx = canvas.getContext('2d')
+	;
+	canvas.width  = w || img.width;
+	canvas.height = h || img.height;
+	ctx.drawImage(img, 0,0, img.width, img.height, 0,0, w,h);
+
+	return canvas;
+}
+
 function getFirstPixelImageData(img) {
 var	canvas = cre('canvas')
 ,	ctx = canvas.getContext('2d')
@@ -1524,6 +1546,14 @@ async function addProjectView(sourceFile) {
 var	buttonTab = cre('div', id('loaded-files-selection'));
 	buttonTab.className = 'button loading';
 
+var	thumbnail = cre('div', buttonTab);
+	thumbnail.className = 'thumbnail';
+
+	thumbnail = cre('img', thumbnail);
+	thumbnail.className = 'thumbnail';
+
+	setElementImageData(thumbnail);
+
 var	button = cre('button', buttonTab);
 	button.textContent = sourceFile.name;
 
@@ -1552,28 +1582,29 @@ var	button = cre('button', buttonTab);
 
 			container.id = buttonTab.id = fileID;
 			container.className = 'loaded-file';
+			buttonTab.className = 'button';
+
+			project.thumbnail = thumbnail;
 
 			if (project.options || TESTING) {
 				container.project = project;
 				project.container = container;
 			}
 
-			if (project.options) {
-				updateBatchCount(project);
-				updateMenuAndShowImg(project);
-			}
-
-			id('loaded-files-view').appendChild(container);
-
-			buttonTab.className = 'button';
-
 		var	buttonX = cre('button', buttonTab);
 			buttonX.className = 'close-button';
 			buttonX.textContent = 'X';
 
+			id('loaded-files-view').appendChild(container);
+
 			buttonX.setAttribute('onclick', 'closeProject(this)');
 			button.setAttribute('onclick', 'selectProject(this)');
 			button.click();
+
+			if (project.options) {
+				updateBatchCount(project);
+				updateMenuAndShowImg(project);
+			}
 
 			return true;
 		}
@@ -4247,13 +4278,17 @@ async function showImg(project, render, container) {
 
 //* prepare image before container cleanup to avoid flicker:
 
-//* TODO: resize img to thumbnail on button
-
 	var	img = await getOrCreateRenderedImg(project, render)
 	,	imgContainer = container || getEmptyRenderContainer(project)
 		;
 		if (img) {
 			imgContainer.appendChild(img);
+
+//* resize img to thumbnail on button:
+
+			if (!container) {
+				setElementImageData(project.thumbnail, getCanvasFromImg(img, 16,16).toDataURL());
+			}
 		}
 	} catch (error) {
 		console.log(error);
@@ -4735,6 +4770,13 @@ var	supportedFileTypesText = (
 								,	', '
 								)
 							)
+						,	thumbnail = '<div class="thumbnail">' + (
+								file.thumbnail
+								? '<img class="thumbnail" src="'
+								+	encodeHTMLSpecialChars(file.thumbnail)
+								+ '">'
+								: ''
+							) + '</div>'
 						,	filePath = arrayFilteredJoin([exampleRootDir, v.subdir, fileName], '/')
 						,	fileAttr = encodeTagAttr(fileName)
 						,	pathAttr = encodeTagAttr(filePath)
@@ -4757,6 +4799,7 @@ var	supportedFileTypesText = (
 							)
 						,	tabs = [
 								fileName
+							,	thumbnail
 							,	fileInfo
 							,	getFormattedTime(file.modtime)
 							,	downloadLink
@@ -4764,7 +4807,7 @@ var	supportedFileTypesText = (
 							].map(
 								(v,i,a) => (
 									'<td'
-								+	(i === 4 ? ' colspan="3"' : '')
+								// +	(i === 4 ? ' colspan="3"' : '')
 								+	'>'
 								+		v
 								+	'</td>'
@@ -4786,7 +4829,7 @@ var	supportedFileTypesText = (
 						([k, v]) => (
 							(
 								k === 'download_all'
-								? '<td colspan="2"></td>'
+								? '<td colspan="3"></td>'
 								: ''
 							)
 						+	'<td>'
@@ -4856,6 +4899,10 @@ var	topMenuHTML = (
 	+	'<div id="loaded-files-selection"></div>'
 	+	'<div id="loaded-files-view"></div>'
 	);
+
+	for (e in gc('thumbnail')) if (!e.firstElementChild) {
+		setElementImageData(e);
+	}
 
 	setGlobalWIPstate(false);
 

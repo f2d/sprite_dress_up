@@ -14,7 +14,7 @@ body {
 p > button + button {
 	margin-left: 1em;
 }
-img,
+#loaded-files-view img,
 canvas {
 	border: 1px solid #ddd;
 	box-shadow: 3px 3px rgba(0,0,0, 0.1);
@@ -135,6 +135,24 @@ label:hover {
 .close-button:hover {
 	color: white;
 	background-color: #f88;
+}
+.button .thumbnail:not(img) {
+	margin-left: 0.5em;
+}
+.thumbnail:not(img) {
+	display: inline-block;
+	vertical-align: middle;
+	background-position: center;
+	background-repeat: no-repeat;
+	background-color: transparent;
+}
+.thumbnail {
+	min-width: 16px;
+	min-height: 16px;
+}
+img.thumbnail {
+	width: 16px;
+	height: 16px;
 }
 #loaded-files-selection .button {
 	display: inline-block;
