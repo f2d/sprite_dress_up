@@ -7,9 +7,60 @@ import base64, datetime, json, math, os, re, subprocess, sys, time, zipfile
 
 
 
+# - config - source files and result content: -------------------------------
+
+
+
+src_root_path = 'example_project_files'
+dest_file_path = 'config.js'
+
+src_dir_var_name = 'exampleRootDir'
+filelist_var_name = 'exampleProjectFiles'
+thumbnail_size_var_name = 'THUMBNAIL_SIZE'
+
+quote = '"'
+
+is_dest_array = True
+
+thumbnail_size = '20'
+thumbnail_filter = 'Welch'
+
+# Notes about some tested filters:
+# 1. Welch - super-fast, adds mild visual artifacts on vector-like icons.
+# 2. Sinc - slower, sharper on high-detail high-res images, very bad artifacts on vector-like icons.
+# 3. Lanczos and its variants - slower but otherwise looks the same as Welch on all examples.
+# Most of others available were too blocky or too blurry on the test projects files.
+
+
+
 # - command line arguments: -------------------------------------------------
 
 
+
+def get_cmd_arg_after_arg(first_arg_names, natural_number=False):
+	first_arg_name = None
+
+	for arg_name in first_arg_names:
+		undashed_arg = arg_name.replace('-', '').replace('_', '')
+
+		if undashed_arg in undashed_args:
+			first_arg_name = undashed_arg
+			break
+
+	if first_arg_name:
+		i = undashed_args.index(first_arg_name) + 1
+
+		if len(undashed_args) > i:
+			v = undashed_args[i]
+
+			if natural_number:
+				try:
+					if int(v) < 1:
+						return None
+				except:
+					return None
+			return v
+	return None
 
 undashed_args = list(map(lambda x: x.replace('-', '') or x, sys.argv))
 
@@ -20,35 +71,9 @@ IM_6 = ('imagemagick6' in undashed_args) or ('im6' in undashed_args) or ('6' in 
 IM_7 = ('imagemagick7' in undashed_args) or ('im7' in undashed_args) or ('7' in undashed_args)
 IM_UNDEFINED = not (IM_6 or IM_7)
 
-DEFAULT_FILTER = 'Welch'
-
-if 'filter' in undashed_args:
-	i = undashed_args.index('filter') + 1
-
-	if len(undashed_args) > i:
-		DEFAULT_FILTER = undashed_args[i]
-
-# Notes about some tested filters:
-# 1. Welch - super-fast, adds mild visual artifacts on vector-like icons.
-# 2. Sinc - slower, sharper on high-detail high-res images, very bad artifacts on vector-like icons.
-# 3. Lanczos and its variants - slower but otherwise looks the same as Welch on all examples.
-# Most of others available were too blocky or too blurry on the test projects files.
-
-
-
-# - config - source files and result content: -------------------------------
-
-
-
-src_root_path = 'example_project_files'
-dest_file_path = 'config.js'
-
-src_dir_var_name = 'exampleRootDir'
-filelist_var_name = 'exampleProjectFiles'
-
-quote = '"'
-
-is_dest_array = True
+src_root_path    = get_cmd_arg_after_arg(['path', 'root_path', 'src_path', 'src_root_path']) or src_root_path
+thumbnail_filter = get_cmd_arg_after_arg(['filter', 'thumb_filter', 'thumbnail_filter']) or thumbnail_filter
+thumbnail_size   = get_cmd_arg_after_arg(['size', 'thumb_size', 'thumbnail_size'], natural_number=True) or thumbnail_size
 
 
 
@@ -100,9 +125,9 @@ cmd_make_thumbnail_args = [
 ,	src_file_path_placeholder
 ,	'-verbose'
 ,	'-filter'
-,	filter_placeholder if TEST_FILTERS else DEFAULT_FILTER
+,	filter_placeholder
 ,	'-thumbnail'
-,	'16x16'
+,	thumbnail_size + 'x' + thumbnail_size
 ,	'png32:' + temp_thumb_file_path
 ]
 
@@ -130,6 +155,7 @@ s_type = type('')
 u_type = type(u'')
 
 converter_exe_path_dir = os.path.dirname(converter_exe_path)
+
 
 
 # - functions: --------------------------------------------------------------
@@ -358,8 +384,8 @@ def get_image_cmd_result(src_file_path, cmd_args, check_thumbnail=False):
 	# must get list instead of map object, or it will not run in python3:
 	cmd_args_with_src_path = list(map(
 		lambda x: (
-			src_file_path
-			if x == src_file_path_placeholder
+			thumbnail_filter if (not TEST_FILTERS) and (x == filter_placeholder)
+			else src_file_path if x == src_file_path_placeholder
 			else x
 		)
 	,	cmd_args
@@ -369,10 +395,8 @@ def get_image_cmd_result(src_file_path, cmd_args, check_thumbnail=False):
 		for filter_name in get_converter_filters():
 			cmd_args_with_filter = list(map(
 				lambda x: (
-					filter_name
-					if x == filter_placeholder
-					else x
-					if x.find(temp_thumb_file_path) < 0
+					filter_name if x == filter_placeholder
+					else x if x.find(temp_thumb_file_path) < 0
 					else (
 						'_' + src_file_name +
 						'_' + filter_name +
@@ -477,7 +501,7 @@ if old_content:
 		print('Parsing old file:')
 
 		try:
-			old_files = json.loads(content)	# 'encoding' is ignored and deprecated.
+			old_files = json.loads(content)	# <- 'encoding' is ignored and deprecated.
 			print('OK')
 		except Exception as e:
 			print(e)
@@ -509,6 +533,8 @@ if not content_before:
 // var TESTING = true;
 
 // var EXAMPLE_NOTICE = true;
+
+var ''' + thumbnail_size_var_name + ''' = ''' + thumbnail_size + ''';
 
 var ''' + src_dir_var_name + ''' = ''' + quote + src_root_path + quote + ''';
 
@@ -594,9 +620,9 @@ for dir_name, filenames in src_filenames_by_subdir.items():
 
 
 try:
-	json_text = json.dumps(new_files, sort_keys=True, indent='\t', default=repr)
+	json_text = json.dumps(new_files, sort_keys=True, indent='\t', default=repr)	# <- use tabs, only in python 3
 except TypeError:
-	json_text = json.dumps(new_files, sort_keys=True, indent=4, default=repr)
+	json_text = json.dumps(new_files, sort_keys=True, indent=4, default=repr)	# <- use spaces, fallback for python 2
 
 json_lines = json_text.split('\n')
 

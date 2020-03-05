@@ -1,7 +1,8 @@
 
 //* source file data:
-//* TODO: read PSD layer masks.
+//* TODO: read PSD layer masks (not "clipping masks").
 //* TODO: save as ORA.
+//* TODO: whole config in JSON-format?
 
 //* menu:
 //* TODO: progress/status panel + [stop operation] button.
@@ -246,11 +247,13 @@ examples of 'multi_select':
 ,	MAX_OPACITY = 255
 ,	MAX_BATCH_PRECOUNT = 1000
 ,	PADDING_ALPHA_THRESHOLD_DEFAULT = 16
+,	THUMBNAIL_SIZE = 16
 
 ,	TESTING = false
 ,	EXAMPLE_NOTICE = false
-,	fileNameAddParamKey = true
+,	FILE_NAME_ADD_PARAM_KEY = true
 
+,	thumbnailPlaceholder
 ,	cancelBatchWIP
 ,	isBatchWIP
 
@@ -441,7 +444,7 @@ var	exampleRootDir = ''
 			]
 		},
 	]
-,	ora, zip, PSD, PSD_JS, PSDLIB
+,	ora, zip, PSD, PSD_JS, PSDLIB	//* <- external variable names, do not change, except "PSD_JS"
 ,	CompositionModule
 ,	CompositionFuncList
 	;
@@ -1273,9 +1276,43 @@ function isImgElement(e) {
 	);
 }
 
-function setElementImageData(img, data) {
+function getImageSrcPlaceholder() {
+	if (!thumbnailPlaceholder) {
+	var	canvas = cre('canvas')
+	,	ctx = canvas.getContext('2d')
+	,	w = canvas.width  = THUMBNAIL_SIZE
+	,	h = canvas.height = THUMBNAIL_SIZE
+	,	textHeight = THUMBNAIL_SIZE - 2
+		;
+		ctx.fillStyle = 'lightgray';
+		ctx.fillRect(0,0, w,h);
+
+		ctx.lineWidth = 1;
+		ctx.strokeStyle = 'gray';
+		ctx.strokeRect(0,0, w,h);
+
+		ctx.fillStyle = 'gray';
+		ctx.strokeStyle = 'gray';
+		ctx.textAlign = 'left';
+		ctx.textBaseline = 'top';
+		ctx.font = 'bold ' + textHeight + 'px sans-serif';
+
+	var	text = '?'
+	,	textWidth = ctx.measureText(text).width
+	,	x = Math.round((w - textWidth) / 2)
+	,	y = Math.round((h - textHeight) / 2)
+		;
+		ctx.fillText(text, x,y);
+
+		thumbnailPlaceholder = canvas.toDataURL();
+	}
+
+	return thumbnailPlaceholder;
+}
+
+function setImageSrc(img, data) {
 	if (!data) {
-		data = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAADlSURBVDhPY2xoaPjPQAGAGVAD4ZIMWligDAwANLgFygQDDw+PBRYWFnegXDhggtJwcP36dQl0zSCwY8eOhOXLl7tAuXCAYcDBgwftQTQ3N/croEE1IAyyHSR28+ZNh6dPn/KB2DCAYgBI8sWLF7ogto+PzyqwIBAgO/3Tp09cUCYYoISBtLT0J5CNUC4cbN++3RjKZODj4/sGZYIBhhfQAcjfJ0+eDASxQV4BWQKWgAK8BoA0g/wNYhMdCzAACg9CmkEApwHIgYVLMwhQnBJxugCWoEAYKoQVEIwFQoBiL1CYnRkYANlxYfox0LLxAAAAAElFTkSuQmCC';
+		data = getImageSrcPlaceholder();
 	}
 	if (isImgElement(img)) {
 		img.src = data;
@@ -1283,17 +1320,52 @@ function setElementImageData(img, data) {
 	if (img.style) {
 		img.style.backgroundImage = 'url("' + data + '")';
 	}
+
+	return img;
 }
 
-function getCanvasFromImg(img, w,h) {
+function getResizedCanvasFromImg(img, w,h) {
 var	canvas = cre('canvas')
 ,	ctx = canvas.getContext('2d')
+,	widthFrom  = img.width
+,	heightFrom = img.height
+,	widthTo  = w || widthFrom || 1
+,	heightTo = h || w || heightFrom || 1
+,	widthRatio  = widthFrom/widthTo
+,	heightRatio = heightFrom/heightTo
+,	scaleFactor = 4	//* <- one-step scaling result is too blocky, stepping by factor of 2 is too blurry, 4 looks okay
 	;
-	canvas.width  = w || img.width;
-	canvas.height = h || img.height;
-	ctx.drawImage(img, 0,0, img.width, img.height, 0,0, w,h);
 
-	return canvas;
+	if (
+		widthRatio  > scaleFactor
+	||	heightRatio > scaleFactor
+	) {
+		canvas.width  = widthTo  = Math.round(widthFrom  / scaleFactor);
+		canvas.height = heightTo = Math.round(heightFrom / scaleFactor);
+
+		ctx.drawImage(img, 0,0, widthFrom, heightFrom, 0,0, widthTo, heightTo);
+
+		return getResizedCanvasFromImg(canvas, w,h);
+	} else {
+	var	xOffset = 0
+	,	yOffset = 0
+		;
+		canvas.width = widthTo;
+		canvas.height = heightTo;
+
+		if (widthRatio < heightRatio) {
+			widthTo = Math.round(widthFrom / heightRatio);
+			xOffset = Math.round((canvas.width - widthTo) / 2);
+		} else
+		if (widthRatio > heightRatio) {
+			heightTo = Math.round(heightFrom / widthRatio);
+			yOffset = Math.round((canvas.height - heightTo) / 2);
+		}
+
+		ctx.drawImage(img, 0,0, widthFrom, heightFrom, xOffset, yOffset, widthTo, heightTo);
+
+		return canvas;
+	}
 }
 
 function getFirstPixelImageData(img) {
@@ -1553,7 +1625,7 @@ var	thumbnail = cre('div', buttonTab);
 	thumbnail = cre('img', thumbnail);
 	thumbnail.className = 'thumbnail';
 
-	setElementImageData(thumbnail);
+	setImageSrc(thumbnail);
 
 var	button = cre('button', buttonTab);
 	button.textContent = sourceFile.name;
@@ -4041,7 +4113,7 @@ function getFileNameByValues(project, values, namingParam) {
 				if (
 					namingParam.addAllListNames
 				||	(
-						fileNameAddParamKey
+						FILE_NAME_ADD_PARAM_KEY
 					&&	!params.no_prefix
 					)
 				) {
@@ -4288,7 +4360,7 @@ async function showImg(project, render, container) {
 //* resize img to thumbnail on button:
 
 			if (!container) {
-				setElementImageData(project.thumbnail, getCanvasFromImg(img, 16,16).toDataURL());
+				setImageSrc(project.thumbnail, getResizedCanvasFromImg(img, THUMBNAIL_SIZE).toDataURL());
 			}
 		}
 	} catch (error) {
@@ -4902,7 +4974,7 @@ var	topMenuHTML = (
 	);
 
 	for (e in gc('thumbnail')) if (!e.firstElementChild) {
-		setElementImageData(e);
+		setImageSrc(e);
 	}
 
 	setGlobalWIPstate(false);

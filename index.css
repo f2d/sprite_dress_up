@@ -153,10 +153,6 @@ label:hover {
 	min-width: 16px;
 	min-height: 16px;
 }
-img.thumbnail {
-	width: 16px;
-	height: 16px;
-}
 #loaded-files-selection .button {
 	display: inline-block;
 	margin: 0.5em;
