@@ -1619,16 +1619,15 @@ async function addProjectView(sourceFile) {
 var	buttonTab = cre('div', id('loaded-files-selection'));
 	buttonTab.className = 'button loading';
 
-var	thumbnail = cre('div', buttonTab);
-	thumbnail.className = 'thumbnail';
+var	button = cre('button', buttonTab);
 
-	thumbnail = cre('img', thumbnail);
+var	thumbnail = cre('img', button);
 	thumbnail.className = 'thumbnail';
 
 	setImageSrc(thumbnail);
 
-var	button = cre('button', buttonTab);
-	button.textContent = sourceFile.name;
+var	caption = cre('div', button);
+	caption.textContent = sourceFile.name;
 
 	try {
 	var	project = await getNormalizedProjectData(sourceFile);
@@ -4843,13 +4842,13 @@ var	supportedFileTypesText = (
 								,	', '
 								)
 							)
-						,	thumbnail = '<div class="thumbnail">' + (
+						,	thumbnail = (
 								file.thumbnail
 								? '<img class="thumbnail" src="'
 								+	encodeHTMLSpecialChars(file.thumbnail)
 								+ '">'
 								: ''
-							) + '</div>'
+							)
 						,	filePath = arrayFilteredJoin([exampleRootDir, v.subdir, fileName], '/')
 						,	fileAttr = encodeTagAttr(fileName)
 						,	pathAttr = encodeTagAttr(filePath)

@@ -139,22 +139,17 @@ label:hover {
 	color: white;
 	background-color: #f88;
 }
-.button .thumbnail:not(img) {
-	margin-left: 0.5em;
+.button img.thumbnail {
+	margin-right: 0.5em;
 }
-.thumbnail:not(img) {
-	display: inline-block;
-	vertical-align: middle;
-	background-position: center;
-	background-repeat: no-repeat;
-	background-color: transparent;
+img.thumbnail {
+	vertical-align: top;	/* <- hacky way to center the image */
 }
-.thumbnail {
-	min-width: 16px;
-	min-height: 16px;
+#loaded-files-selection .button > * {
+	display: inline-flex;	/* <- modern way to vertically fill parent height */
 }
 #loaded-files-selection .button {
-	display: inline-block;
+	display: inline-flex;
 	margin: 0.5em;
 }
 #loaded-files-selection,
