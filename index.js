@@ -440,7 +440,7 @@ var	exampleRootDir = ''
 		,	'handlerFuncs': [
 				// loadPSD,
 				loadPSDBrowser,
-				loadPSDLIB,
+				// loadPSDLIB,
 			]
 		},
 	]
@@ -1178,7 +1178,7 @@ var	depends = lib.depends || null;
 
 //* Page-specific functions: internal, utility *-------------------------------
 
-function replaceJSONpartsFromPSD(key, value) {
+/*function replaceJSONpartsFromPSD(key, value) {
 
 	function JSONtoFlatLine(v) {
 		return JSON.stringify(v, replaceJSONpartsFromPSD).replace(/"/g, "'");
@@ -1224,7 +1224,7 @@ function replaceJSONpartsFromTree(key, value) {
 		return o || undefined;
 	}
 	return value;
-}
+}*/
 
 function replaceJSONpartsFromNameToCache(key, value) {
 	if (
@@ -1573,8 +1573,8 @@ var	arrayBuffer = await readFilePromiseFromURL(url)
 
 function thisToPng(targetLayer) {
 	try {
-	var	e = targetLayer || this
-	,	e = e.sourceData || e
+	var	t = targetLayer || this
+	,	e = t.sourceData || t
 	,	i = e.prerendered || e.thumbnail
 		;
 		if (i) return i;
@@ -1583,7 +1583,14 @@ function thisToPng(targetLayer) {
 			return e;
 		}
 
-		if (e.toPng && (i = e.toPng())) {
+		if (
+			e.toPng
+		&&	(
+				e.toPng != thisToPng
+			||	t != e
+			)	//* <- to avoid infinite recursion
+		&&	(i = e.toPng())
+		) {
 			return i;
 		}
 	} catch (error) {
@@ -1645,10 +1652,16 @@ var	caption = cre('div', button);
 			removeProjectView(fileID);
 
 		var	childKeys = ['layers']
-		,	keysToRemove = ['loading', 'toPng']
-			;
+		,	keysToRemove = [
+				'loading'
+			,	'toPng'
+			];
 			if (!TESTING) {
-				keysToRemove = keysToRemove.concat(['blendModeOriginal', 'nameOriginal', 'sourceData']);
+				keysToRemove = keysToRemove.concat([
+					'blendModeOriginal'
+				,	'nameOriginal'
+				,	'sourceData'
+				]);
 			}
 			cleanupObjectTree(project, childKeys, keysToRemove);
 
@@ -1657,11 +1670,8 @@ var	caption = cre('div', button);
 			buttonTab.className = 'button';
 
 			project.thumbnail = thumbnail;
-
-			if (project.options || TESTING) {
-				container.project = project;
-				project.container = container;
-			}
+			project.container = container;
+			container.project = project;
 
 		var	buttonX = cre('button', buttonTab);
 			buttonX.className = 'close-button';
@@ -2157,81 +2167,6 @@ async function getProjectViewMenu(project) {
 		);
 	}
 
-	function createProjectView(project) {
-	var	sourceFile = project.loading.data.file || {}
-	,	sourceFileTime = sourceFile.lastModified || sourceFile.lastModifiedDate
-	,	container = cre('div')
-	,	header = cre('header', container)
-		;
-		header.className = 'project-header';
-
-//* show overall project info:
-
-	var	e = cre('section', header)
-	,	h = cre('header', e)
-		;
-		h.className = 'filename';
-		h.textContent = project.fileName;
-
-		if (project.channels && project.bitDepth) {
-			t = project.channels + 'x' + project.bitDepth + ' ' + la.project.bits;
-		} else
-		if (project.channels) {
-			t = project.channels + ' ' + la.project.channels;
-		} else
-		if (project.bitDepth) {
-			t = project.bitDepth + ' ' + la.project.bits;
-		} else t = '';
-
-		t = [
-			project.width + 'x'
-		+	project.height + ' '
-		+	la.project.pixels
-
-		,	arrayFilteredJoin([project.colorMode, t], ' ')
-		];
-
-	var	i = project.loading.imagesCount
-	,	j = project.layersCount
-		;
-		if (j) t.push(j + ' ' + la.project.layers);
-		if (i) t.push(i + ' ' + la.project.images);
-
-		if (sourceFile.size) t.push(sourceFile.size + ' ' + la.project.bytes);
-		if (sourceFileTime)  t.push(la.project.date + ' ' + getFormattedTime(sourceFileTime));
-
-		cre('div', e).innerHTML = arrayFilteredJoin(t, '<br>');
-
-		if (TESTING) {
-			addButton(cre('footer', e), t = 'console_log').name = t;
-		}
-
-//* add batch controls:
-
-		for (var i in (t = la.project_controls)) {
-		var	j = t[i]
-		,	b = j.buttons
-		,	e = cre('section', header)
-		,	h = cre('header', e)
-		,	f = cre('footer', e)
-			;
-			h.textContent = j.header + ':';
-
-			for (var k in b) addButton(f, b[k]).name = k;
-		}
-
-		container.addEventListener('click', onProjectButtonClick, false);
-		container.addEventListener('change', onProjectMenuUpdate, false);
-
-//* place for results:
-
-		tr = cre('tr', cre('table', container));
-		cre('td', tr).className = 'project-options';
-		cre('td', tr).className = 'project-render';
-
-		return container;
-	}
-
 	function createOptionsMenu(project, container) {
 
 		function addHeader(text) {
@@ -2374,15 +2309,108 @@ async function getProjectViewMenu(project) {
 	return await getProjectOptionsContainer(project);
 }
 
-function getProjectViewImage(project) {
+function createProjectView(project) {
+var	sourceFile = project.loading.data.file || {}
+,	sourceFileTime = sourceFile.lastModified || sourceFile.lastModifiedDate
+,	container = cre('div')
+,	header = cre('header', container)
+	;
+	header.className = 'project-header';
+
+//* show overall project info:
+
+var	e = cre('section', header)
+,	h = cre('header', e)
+	;
+	h.className = 'filename';
+	h.textContent = project.fileName;
+
+	if (project.channels && project.bitDepth) {
+		t = project.channels + 'x' + project.bitDepth + ' ' + la.project.bits;
+	} else
+	if (project.channels) {
+		t = project.channels + ' ' + la.project.channels;
+	} else
+	if (project.bitDepth) {
+		t = project.bitDepth + ' ' + la.project.bits;
+	} else t = '';
+
+	t = [
+		project.width + 'x'
+	+	project.height + ' '
+	+	la.project.pixels
+
+	,	arrayFilteredJoin([project.colorMode, t], ' ')
+	];
+
+var	i = project.loading.imagesCount
+,	j = project.layersCount
+	;
+	if (j) t.push(j + ' ' + la.project.layers);
+	if (i) t.push(i + ' ' + la.project.images);
+
+	if (sourceFile.size) t.push(sourceFile.size + ' ' + la.project.bytes);
+	if (sourceFileTime)  t.push(la.project.date + ' ' + getFormattedTime(sourceFileTime));
+
+	cre('div', e).innerHTML = arrayFilteredJoin(t, '<br>');
+
+	t = 'console_log';
+	addButton(cre('footer', e), la.hint[t]).name = t;
+
+	container.addEventListener('click', onProjectButtonClick, false);
+
+//* add batch controls:
+
+	if (project.options) {
+		for (var i in (t = la.project_controls)) {
+		var	j = t[i]
+		,	b = j.buttons
+		,	e = cre('section', header)
+		,	h = cre('header', e)
+		,	f = cre('footer', e)
+			;
+			h.textContent = j.header + ':';
+
+			for (var k in b) addButton(f, b[k]).name = k;
+		}
+
+		container.addEventListener('change', onProjectMenuUpdate, false);
+
+//* place for results:
+
+		tr = cre('tr', cre('table', container));
+		cre('td', tr).className = 'project-options';
+		cre('td', tr).className = 'project-render';
+	}
+
+	return container;
+}
+
+function setProjectThumbnail(project, fullImage) {
+	if (fullImage && project && project.thumbnail) {
+	var	canvas = getResizedCanvasFromImg(fullImage, THUMBNAIL_SIZE);
+		if (canvas) {
+			setImageSrc(project.thumbnail, canvas.toDataURL());
+		}
+	}
+}
+
+function getProjectViewImage(project, img) {
 	if (
 		project
 	&&	project.toPng
 	&&	(img = project.toPng())
 	) {
-	var	img
-	,	e = cre('div')
-	,	t = cre('header', e)
+		img.onload = () => setProjectThumbnail(project, img);
+
+	var	e = createProjectView(project)
+	,	h = gt('header', e)[0]
+	,	f = gt('footer', e)[0]
+	,	t = (
+			f
+			? cre('header', f, f.firstElementChild)
+			: h || cre('header', e)
+		)
 	,	d = cre('div', e)
 		;
 		t.textContent = la.error.options;
@@ -2617,9 +2645,7 @@ var	actionLabel = 'parsing with ' + libName;
 	);
 
 	if (sourceData) {
-		if (TESTING) {
-			project.sourceData = sourceData;
-		}
+		project.sourceData = sourceData;
 		project.toPng = thisToPng;
 
 		if (treeConstructorFunc(project, sourceData)) {
@@ -4359,7 +4385,7 @@ async function showImg(project, render, container) {
 //* resize img to thumbnail on button:
 
 			if (!container) {
-				setImageSrc(project.thumbnail, getResizedCanvasFromImg(img, THUMBNAIL_SIZE).toDataURL());
+				setProjectThumbnail(project, img);
 			}
 		}
 	} catch (error) {
@@ -4521,20 +4547,32 @@ function onProjectButtonClick(e) {
 var	container = getProjectContainer(e)
 ,	project = container.project
 ,	action = e.name
-,	reset = 'reset_to_'
+,	resetPrefix = 'reset_to_'
 	;
 
+	if (action === 'stop') {
+		project.cancelBatchWIP = true;
+	} else
 	if (action === 'show') showImg(project); else
 	if (action === 'save') saveImg(project); else
 	if (action === 'show_all') showAll(project); else
 	if (action === 'save_all') saveAll(project); else
-	if (action.substr(0, reset.length) === reset) {
-		setAllValues(project, action.substr(reset.length));
+	if (action.substr(0, resetPrefix.length) === resetPrefix) {
+		setAllValues(project, action.substr(resetPrefix.length));
 	} else
-	if (action === 'stop') {
-		project.cancelBatchWIP = true;
+	if (action === 'console_log') {
+		console.log(project);
+
+		alert(la.hint.see_console);
 	} else {
-		console.log([e, container, project, 'Unknown action: ' + action]);
+		console.log([
+			e
+		,	container
+		,	project
+		,	'Unknown action: ' + action
+		]);
+
+		alert(la.error.unknown_button);
 	}
 }
 
