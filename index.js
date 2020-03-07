@@ -1324,6 +1324,21 @@ function setImageSrc(img, data) {
 	return img;
 }
 
+function getCanvasFromByteArray(bytes, w,h) {
+var	canvas = cre('canvas')
+,	ctx = canvas.getContext('2d')
+	;
+	canvas.width = w;
+	canvas.height = h;
+
+var	imageData = ctx.createImageData(w,h);
+	imageData.data.set(bytes);	//* <- RGBA array
+
+	ctx.putImageData(imageData, 0,0);
+
+	return canvas;
+}
+
 function getResizedCanvasFromImg(img, w,h) {
 var	canvas = cre('canvas')
 ,	ctx = canvas.getContext('2d')
@@ -1661,6 +1676,7 @@ var	caption = cre('div', button);
 					'blendModeOriginal'
 				,	'nameOriginal'
 				,	'sourceData'
+				,	'maskData'
 				]);
 			}
 			cleanupObjectTree(project, childKeys, keysToRemove);
@@ -1776,7 +1792,7 @@ async function getProjectViewMenu(project) {
 			var	l_a = project.loading.images
 			,	l_i = project.loading.imagesCount = l_a.length
 			,	actionLabel = 'preloading ' + l_i + ' images'
-			,	result
+			,	result, layer
 				;
 
 				logTime('"' + n + '" started ' + actionLabel);
@@ -1787,7 +1803,9 @@ async function getProjectViewMenu(project) {
 
 				while (
 					l_a.length > 0
-				&&	(result = await getLayerImgLoadPromise(l_a.pop()))
+				&&	(layer = l_a.pop())
+				&&	(result = await getLayerImgLoadPromise(layer))
+				&&	(result = await getLayerMaskLoadPromise(layer))
 				);
 
 			var	tookTime = +new Date - startTime;
@@ -2068,19 +2086,26 @@ async function getProjectViewMenu(project) {
 				);
 			}
 
+			if (
+				layer.opacity > 0
+			&&	(
+					layer.maskData
+				||	(
+						!layersInside
+					&&	layer.width > 0
+					&&	layer.height > 0
+					)
+				)
+			) {
+				project.loading.images.push(layer);
+			}
+
 			if (layersInside) {
 				layer.layers = getUnskippedProcessedLayers(
 					layersInside
 				,	layer.isColorList
 				||	layer.isInsideColorList
 				);
-			} else
-			if (
-				layer.width > 0
-			&&	layer.height > 0
-			&&	layer.opacity > 0
-			) {
-				project.loading.images.push(layer);
 			}
 
 			return layer;
@@ -2129,7 +2154,10 @@ async function getProjectViewMenu(project) {
 	function getLayerImgLoadPromise(layer) {
 		return new Promise(
 			(resolve, reject) => {
-				if (layer.img = getPropByNameChain(layer, 'params', 'color_code')) {
+				if (
+					layer.layers
+				||	(layer.img = getPropByNameChain(layer, 'params', 'color_code'))
+				) {
 					resolve(true);
 				} else {
 				var	img, onImgLoad = async function(e) {
@@ -2162,6 +2190,32 @@ async function getProjectViewMenu(project) {
 					} else {
 						resolve(false);
 					}
+				}
+			}
+		);
+
+	}
+
+	function getLayerMaskLoadPromise(layer) {
+		return new Promise(
+			(resolve, reject) => {
+			var	mask = layer.mask
+			,	maskData = layer.maskData
+				;
+				if (mask && maskData) {
+				var	w = mask.width
+				,	h = mask.height
+				,	canvas = getCanvasFromByteArray(maskData, w,h)
+				,	data = canvas.toDataURL()
+				,	blob = dataToBlob(data)
+				,	img = layer.mask = cre('img')
+					;
+					img.top = mask.top;
+					img.left = mask.left;
+					img.onload = () => resolve(true);
+					img.src = (blob ? blob.url : data);
+				} else {
+					resolve(true);
 				}
 			}
 		);
@@ -2712,7 +2766,7 @@ async function loadORA(project) {
 //* note: layer masks also may be emulated via compositing modes in ORA
 
 				if (mask) {
-					m = layerWIP.mask = getPropByAnyOfNamesChain(mask, 'img', 'image');
+				var	m = layerWIP.mask = getPropByAnyOfNamesChain(mask, 'img', 'image');	//* <- already loaded img element
 					m.top    = orz(mask.top  || mask.y);
 					m.left   = orz(mask.left || mask.x);
 					m.width  = orz(m.width   || mask.width);
@@ -2758,13 +2812,16 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 
 			if (!l_i) return;
 
-		var	m = sourceData.header.mode;
+		var	projectHeader = sourceData.header || sourceData
+		,	layerMasks = getPropByNameChain(sourceData, 'layerMask', 'obj', 'layers')
+		,	m = projectHeader.mode
+			;
 
-			project.width	= sourceData.header.cols;
-			project.height	= sourceData.header.rows;
+			project.width	= projectHeader.cols;
+			project.height	= projectHeader.rows;
 			project.colorMode	= (isNaN(m) ? m : PSD_COLOR_MODES[m]);
-			project.channels	= sourceData.header.channels;
-			project.bitDepth	= sourceData.header.depth;
+			project.channels	= projectHeader.channels;
+			project.bitDepth	= projectHeader.depth;
 
 //* gather layers into a tree object:
 
@@ -2772,6 +2829,7 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 			var	l	= layer.layer || layer
 			,	n	= layer.name  || l.name  || ''
 			,	img	= layer.image || l.image || null
+			,	mask	= layer.mask  || l.mask  || img.mask || null
 			,	mode	= getPropByAnyOfNamesChain(l, 'blendMode', 'mode')
 			,	clipping = getPropByAnyOfNamesChain(l, 'blendMode', 'clipped', 'clipping')
 			,	modePass = getPropByNameChain(l, 'adjustments', 'sectionDivider', 'obj', 'blendMode')
@@ -2805,7 +2863,20 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 				,	blendModeOriginal: mode
 				};
 
-//* TODO: mask
+				if (
+					mask
+				&&	!(mask.disabled || (mask.flags & 2))	//* <- mask visibility checkbox, supposedly
+				&&	img.hasMask
+				&&	img.maskData
+				) {
+					layerWIP.maskData = img.maskData;	//* <- RGBA byte array
+					layerWIP.mask = {
+						top:    orz(mask.top  || mask.y)
+					,	left:   orz(mask.left || mask.x)
+					,	width:  orz(mask.width)
+					,	height: orz(mask.height)
+					};
+				}
 
 				parentGroup = getNextParentAfterAddingLayerToTree(
 					layerWIP
