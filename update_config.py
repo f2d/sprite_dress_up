@@ -37,38 +37,42 @@ thumbnail_filter = 'Welch'
 
 
 
-def get_cmd_arg_after_arg(first_arg_names, natural_number=False):
-	first_arg_name = None
+def get_arg_undashed(arg_name):
+	return arg_name.replace('-', '').replace('_', '') or arg_name
 
-	for arg_name in first_arg_names:
-		undashed_arg = arg_name.replace('-', '').replace('_', '')
+def get_first_found_arg_in_cmd(arg_names):
+	for arg_name in arg_names:
+		undashed_arg = get_arg_undashed(arg_name)
 
 		if undashed_arg in undashed_args:
-			first_arg_name = undashed_arg
-			break
+			return undashed_arg
+	return None
+
+def get_cmd_arg_after_arg(first_arg_names, natural_number=False):
+	first_arg_name = get_first_found_arg_in_cmd(first_arg_names)
 
 	if first_arg_name:
 		i = undashed_args.index(first_arg_name) + 1
 
 		if len(undashed_args) > i:
-			v = undashed_args[i]
+			next_arg = sys.argv[i]
 
 			if natural_number:
 				try:
-					if int(v) < 1:
+					if int(next_arg) < 1:
 						return None
 				except:
 					return None
-			return v
+			return next_arg
 	return None
 
-undashed_args = list(map(lambda x: x.replace('-', '') or x, sys.argv))
+undashed_args = list(map(get_arg_undashed, sys.argv))
 
-TEST         = ('t' in undashed_args) or ('test'    in undashed_args)
-TEST_FILTERS = ('f' in undashed_args) or ('filters' in undashed_args)
+TEST         = get_first_found_arg_in_cmd(['t', 'test'])
+TEST_FILTERS = get_first_found_arg_in_cmd(['f', 'test_filters', 'filters'])
 
-IM_6 = ('imagemagick6' in undashed_args) or ('im6' in undashed_args) or ('6' in undashed_args)
-IM_7 = ('imagemagick7' in undashed_args) or ('im7' in undashed_args) or ('7' in undashed_args)
+IM_6 = get_first_found_arg_in_cmd(['imagemagick6', 'im6', '6'])
+IM_7 = get_first_found_arg_in_cmd(['imagemagick7', 'im7', '7'])
 IM_UNDEFINED = not (IM_6 or IM_7)
 
 src_root_path    = get_cmd_arg_after_arg(['path', 'root_path', 'src_path', 'src_root_path']) or src_root_path
