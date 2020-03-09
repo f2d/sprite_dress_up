@@ -1,6 +1,5 @@
 
 //* source file data:
-//* TODO: read PSD layer masks (not "clipping masks").
 //* TODO: save as ORA.
 //* TODO: whole config in JSON-format?
 
@@ -230,6 +229,7 @@ examples of 'multi_select':
 		getElementsByType:	['*[type="', '"]'],
 		getElementsById:	['*[id="', '"]'],
 	}
+,	RUNNING_FROM_DISK = (location.protocol.substr(0,4).toLowerCase() === 'file')
 // ,	LS = window.localStorage || localStorage
 ,	URL_API = window.URL || window.webkitURL
 ,	BLOB_PREFIX = 'blob:'
@@ -360,15 +360,21 @@ var	exampleRootDir = ''
 		,	'files': [
 				'zip.js',
 				'zip-fs.js',
-			]
+
+//* CORS workaround: https://github.com/gildas-lormeau/zip.js/issues/169#issuecomment-312110395
+
+			].concat(RUNNING_FROM_DISK ? [
+				'inflate.js',
+				'deflate.js',
+			] : [])
 		},
 
 		'ora.js': {
 
 //* source: https://github.com/zsgalusz/ora.js
 
-//* no support for ORA in CSP/SAI
-//* not enough supported features in Krita
+//* no support for ORA in CSP, SAI, etc.
+//* not enough supported features in Krita, etc.
 
 //* way: draw in SAI2 → export PSD → import PSD in Krita (loses clipping groups) → export ORA (loses opacity masks)
 //* wish: draw in SAI2 → export ORA (all layers rasterized + all blending properties and modes included as attributes)
@@ -389,8 +395,6 @@ var	exampleRootDir = ''
 //* source: https://github.com/meltingice/psd.js
 //* based on https://github.com/layervault/psd.rb
 
-//* TODO: layer opacity masks
-
 			'varName': 'PSD_JS'
 		,	'dir': libFormatsDir + 'psd/psd_js/'
 		,	'files': [
@@ -403,8 +407,6 @@ var	exampleRootDir = ''
 
 //* source: https://github.com/imcuttle/psd.js/tree/release
 //* fork of https://github.com/meltingice/psd.js
-
-//* TODO: layer opacity masks
 
 			'varName': 'PSD'
 		,	'dir': libFormatsDir + 'psd/psd_browser/'
@@ -430,7 +432,7 @@ var	exampleRootDir = ''
 	}
 ,	fileTypeLoaders = [
 		{
-			'dropFileExts': ['ora']
+			'dropFileExts': ['ora', 'zip']
 		,	'handlerFuncs': [
 				loadORA,
 			]
@@ -1121,16 +1123,17 @@ var	depends = lib.depends || null;
 		(resolve, reject) => {
 
 			function addNextScript(e) {
-				var t;
 
 //* some var init, no better place for this:
 
 				if (varName === 'zip' && window[varName]) {
-					if (!zip.workerScriptsPath) zip.workerScriptsPath = dir;
+					zip.useWebWorkers = !RUNNING_FROM_DISK;
+					zip.workerScriptsPath = dir;
 				}
 
 				if (varName === 'ora' && window[varName]) {
-					if (!ora.scriptsPath) ora.scriptsPath = dir;
+					ora.enableWorkers = !RUNNING_FROM_DISK;
+					ora.scriptsPath = dir;
 				}
 
 				if (varName === 'PSD_JS' && !window[varName] && e) {
