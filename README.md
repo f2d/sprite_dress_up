@@ -44,10 +44,10 @@ python ./update_config.py -im7 -filter Sinc
 
 ## included libraries
 
-ORA file parser - modified version of (ora.js)[https://github.com/zsgalusz/ora.js].
+ORA file parser - modified version of [ora.js](https://github.com/zsgalusz/ora.js).
 
-PSD file parser - unmodified (fork)[https://github.com/imcuttle/psd.js] of (psd.js)[https://github.com/meltingice/psd.js].
+PSD file parser - unmodified [fork](https://github.com/imcuttle/psd.js) of [psd.js](https://github.com/meltingice/psd.js).
 
-PNG file parser - unmodified (UPNG.js)[https://github.com/photopea/UPNG.js] with [Pako.js](https://github.com/nodeca/pako).
+PNG file parser - unmodified [UPNG.js](https://github.com/photopea/UPNG.js) with [Pako.js](https://github.com/nodeca/pako).
 
-ZIP file parser - unmodified (zip.js)[https://github.com/gildas-lormeau/zip.js].
+ZIP file parser - unmodified [zip.js](https://github.com/gildas-lormeau/zip.js).
