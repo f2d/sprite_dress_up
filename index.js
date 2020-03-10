@@ -4883,10 +4883,14 @@ function closeProject(e) {
 //* Runtime: prepare UI *------------------------------------------------------
 
 async function init() {
+var	t = THUMBNAIL_SIZE;
+
 	await loadLib(
 		'config.js',
 		libRootDir + 'composition.asm.js',
 	);
+
+	THUMBNAIL_SIZE = Math.abs(orz(THUMBNAIL_SIZE)) || t;
 
 	if (CompositionModule = AsmCompositionModule) {
 		CompositionFuncList = Object.keys(CompositionModule(window, null, new ArrayBuffer(nextValidHeapSize(0))));

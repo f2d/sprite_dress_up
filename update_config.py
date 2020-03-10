@@ -75,9 +75,10 @@ IM_6 = get_first_found_arg_in_cmd(['imagemagick6', 'im6', '6'])
 IM_7 = get_first_found_arg_in_cmd(['imagemagick7', 'im7', '7'])
 IM_UNDEFINED = not (IM_6 or IM_7)
 
-src_root_path    = get_cmd_arg_after_arg(['path', 'root_path', 'src_path', 'src_root_path']) or src_root_path
-thumbnail_filter = get_cmd_arg_after_arg(['filter', 'thumb_filter', 'thumbnail_filter']) or thumbnail_filter
-thumbnail_size   = get_cmd_arg_after_arg(['size', 'thumb_size', 'thumbnail_size'], natural_number=True) or thumbnail_size
+arg_src_root_path    = get_cmd_arg_after_arg(['src', 'src_path', 'src_root_path'])
+arg_dest_file_path   = get_cmd_arg_after_arg(['dest', 'dest_path', 'dest_file_path'])
+arg_thumbnail_filter = get_cmd_arg_after_arg(['filter', 'thumb_filter', 'thumbnail_filter'])
+arg_thumbnail_size   = get_cmd_arg_after_arg(['size', 'thumb_size', 'thumbnail_size'], natural_number=True)
 
 
 
@@ -95,6 +96,7 @@ merged_layer_suffix = '[0]'			# <- to use pre-merged layer
 temp_layer_file_path = 'temp_layer.png'
 temp_thumb_file_path = 'temp_thumb.png'
 src_file_path_placeholder = '<src_placeholder>'
+thumbnail_size_placeholder = '<size_placeholder>'
 filter_placeholder = '<filter_placeholder>'
 
 layer_suffix_file_types = [
@@ -131,7 +133,7 @@ cmd_make_thumbnail_args = [
 ,	'-filter'
 ,	filter_placeholder
 ,	'-thumbnail'
-,	thumbnail_size + 'x' + thumbnail_size
+,	thumbnail_size_placeholder
 ,	'png32:' + temp_thumb_file_path
 ]
 
@@ -148,6 +150,10 @@ pat_check_image_size = re.compile(r'^(\d+)x(\d+)$', re.U | re.I)
 # - config - internal, do not change: ---------------------------------------
 
 
+
+pat_comment_line = re.compile(r'((?:^|[\r\n])\s*)(//([^\r\n]*))', re.U | re.S)
+pat_comment_block = re.compile(r'((?:^|[\r\n])\s*)(/\*(.*?)\*/)', re.U | re.S)
+pat_unslash = re.compile(r'\\(.)', re.U | re.S)
 
 format_epoch = '%Epoch'	# <- not from python library, but custom str-replaced
 # format_ymd = '%Y-%m-%d'
@@ -198,6 +204,23 @@ def get_formatted_filesize(num, space=' ', binary='i', suffix='B'):
 	if magnitude > 7:
 		return '{:.1f}{}{}{}{}'.format(val, space, 'Y', binary, suffix)
 	return '{:3.1f}{}{}{}{}'.format(val, space, ['', 'K', 'M', 'G', 'T', 'P', 'E', 'Z'][magnitude], binary, suffix)
+
+def get_quoted_value_text(value):
+	return (
+		quote
+	+	(
+			str(value)
+			.replace('\\', '\\\\')
+			.replace(quote, '\\' + quote)
+		)
+	+	quote
+	)
+
+def remove_comments(text):
+	text = re.sub(pat_comment_line, r'\1', text)
+	text = re.sub(pat_comment_block, r'\1', text)
+
+	return text
 
 def normalize_slashes(path):
 	return path.replace('\\', '/')
@@ -389,7 +412,8 @@ def get_image_cmd_result(src_file_path, cmd_args, check_thumbnail=False):
 	cmd_args_with_src_path = list(map(
 		lambda x: (
 			thumbnail_filter if (not TEST_FILTERS) and (x == filter_placeholder)
-			else src_file_path if x == src_file_path_placeholder
+			else thumbnail_size_arg if (x == thumbnail_size_placeholder)
+			else src_file_path if (x == src_file_path_placeholder)
 			else x
 		)
 	,	cmd_args
@@ -399,7 +423,7 @@ def get_image_cmd_result(src_file_path, cmd_args, check_thumbnail=False):
 		for filter_name in get_converter_filters():
 			cmd_args_with_filter = list(map(
 				lambda x: (
-					filter_name if x == filter_placeholder
+					filter_name if (x == filter_placeholder)
 					else x if x.find(temp_thumb_file_path) < 0
 					else (
 						'_' + src_file_name +
@@ -464,6 +488,9 @@ def get_thumbnail_as_base64(src_file_path):
 
 
 
+if arg_dest_file_path:
+	dest_file_path = arg_dest_file_path
+
 print('')
 print('Reading old file:')
 print(dest_file_path)
@@ -481,72 +508,84 @@ if old_content:
 	print(str(len(old_content)) + ' bytes')
 
 	pat_array_value = re.compile(
-	r'''^
-		(?P<Before>.*?\b''' + filelist_var_name + r'''\b\s*=\s*)
-		(?P<OldFileList>[\[\{].*?[\]\}])
-		(?P<After>;[\r\n]+.*)
-	$'''
-	, re.I | re.S | re.U | re.X)
+		r'''^
+			(?P<Before>.*?\b''' + filelist_var_name + r'''\b\s*=\s*)
+			(?P<OldFileList>[\[\{].*?[\]\}])
+			(?P<After>;[\r\n]+.*)
+		$'''
+	,	re.I | re.S | re.U | re.X
+	)
 
-	res = re.search(pat_array_value, old_content)
-	if res:
-		content_before = res.group('Before')
-		content_after = res.group('After')
-		old_vars = content_before + content_after
+	pat_var_value = re.compile(
+		r'''
+			(?P<VarName>[^\s'"`~!@#$%^&*{}()\[\].,;+=-]+)
+			(?P<Operator>\s*=\s*)
+			(?P<VarValue>
+				[+-]?(?P<Numeric>\d+)
+			|	'(?P<Quoted1>([\\\\]'|[^'])*)'
+			|	"(?P<Quoted2>([\\\\]"|[^"])*)"
+			)
+		'''
+	,	re.I | re.S | re.U | re.X
+	)
 
-		pat_comment_line = re.compile(r'//([^\r\n]*)', re.U)
-		pat_comment_block = re.compile(r'/\*(.*?)\*/', re.U | re.S)
+	match = re.search(pat_array_value, old_content)
+	if match:
+		content_before = match.group('Before')
+		content_after = match.group('After')
 
-		content = res.group('OldFileList')
-		content = re.sub(pat_comment_line, '', content)
-		content = re.sub(pat_comment_block, '', content)
+		old_vars_text = remove_comments(content_before + content_after)
+		old_files_text = remove_comments(match.group('OldFileList'))
 
 		print('')
-		print('Parsing old file:')
+		print('Parsing old file list:')
 
-		try:
-			old_files = json.loads(content)	# <- 'encoding' is ignored and deprecated.
-			print('OK')
-		except Exception as e:
-			print(e)
+		old_files = json.loads(old_files_text)	# <- 'encoding' is ignored and deprecated.
 
-		pat_quoted_value = re.compile(r'''
-		\b''' + src_dir_var_name + r'''\b\s*=\s*
-		(
-			'(?P<PathQ1>([\\\\]'|[^'])*)'
-		|	"(?P<PathQ2>([\\\\]"|[^"])*)"
-		)
-		'''
-		, re.I | re.S | re.U | re.X)
+		print('OK')
 
-		res = re.search(pat_quoted_value, old_vars)
-		if res:
-			t = res.group('PathQ1') or res.group('PathQ2')
-			if t:
-				pat_unslash = re.compile(r'\\(.)')
-				src_root_path = re.sub(pat_unslash, r'\1', t)
+		print('')
+		print('Parsing optional old variables:')
+
+		for match in re.finditer(pat_var_value, old_vars_text):
+			var_value = (
+				match.group('Numeric')
+			or	match.group('Quoted1')
+			or	match.group('Quoted2')
+			)
+
+			if len(var_value) > 0:
+				var_name = match.group('VarName')
+
+				if var_name == src_dir_var_name:
+					src_root_path = re.sub(pat_unslash, r'\1', var_value)
+
+				elif var_name == thumbnail_size_var_name:
+					try:
+						if int(var_value) > 0:
+							thumbnail_size = var_value
+					except:
+						continue
+
+				else:
+					continue
+
+				print(var_name, '=', var_value)
+		print('OK')
 else:
 	print('Empty or none.')
 
-if not content_before:
-	content_before = '''
-//* Notes to avoid generation trouble:
-//*	Keep paths as simple one-line strings.
-//*	Keep JSON as strictly simple and valid.
 
-// var TESTING = true;
 
-// var EXAMPLE_NOTICE = true;
+# - override old values with command-line arguments: ------------------------
 
-var ''' + thumbnail_size_var_name + ''' = ''' + thumbnail_size + ''';
 
-var ''' + src_dir_var_name + ''' = ''' + quote + src_root_path + quote + ''';
 
-var ''' + filelist_var_name + ''' = '''
+if arg_src_root_path:    src_root_path    = arg_src_root_path
+if arg_thumbnail_filter: thumbnail_filter = arg_thumbnail_filter
+if arg_thumbnail_size:   thumbnail_size   = arg_thumbnail_size
 
-if not content_after:
-	content_after = ''';
-'''
+thumbnail_size_arg = thumbnail_size + 'x' + thumbnail_size
 
 
 
@@ -629,6 +668,53 @@ except TypeError:
 	json_text = json.dumps(new_files, sort_keys=True, indent=4, default=repr)	# <- use spaces, fallback for python 2
 
 json_lines = json_text.split('\n')
+
+
+
+if old_content:
+	replacements = [
+		[src_dir_var_name, src_root_path]
+	,	[thumbnail_size_var_name, thumbnail_size, True]	# <- write unquoted
+	]
+
+	def replace_var(match):
+		var_name = match.group('VarName')
+
+		for replacement in replacements:
+			if var_name == replacement[0]:
+				return (
+					var_name
+				+	match.group('Operator')
+				+	(
+						replacement[1] if len(replacement) > 2 and replacement[2]
+						else get_quoted_value_text(replacement[1])
+					)
+				)
+
+		return match.group(0)
+
+	content_before = re.sub(pat_var_value, replace_var, content_before)
+	content_after = re.sub(pat_var_value, replace_var, content_after)
+else:
+	content_before = '''
+//* Notes to avoid generation trouble:
+//*	Keep paths as simple one-line strings.
+//*	Keep JSON as strictly simple and valid.
+
+// var TESTING = true;
+
+// var EXAMPLE_NOTICE = true;
+
+var ''' + thumbnail_size_var_name + ''' = ''' + thumbnail_size + ''';
+
+var ''' + src_dir_var_name + ''' = ''' + quote + src_root_path + quote + ''';
+
+var ''' + filelist_var_name + ''' = '''
+
+	content_after = ''';
+'''
+
+
 
 new_content = '\n'.join([
 	content_before + json_lines[0]
