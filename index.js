@@ -209,6 +209,7 @@ examples of 'multi_select':
 ,	regClassMenuBar		= getClassReg('menu-bar')
 ,	regClassButton		= getClassReg('button')
 ,	regClassShow		= getClassReg('show')
+,	regClassFailed		= getClassReg('failed')
 
 ,	regJSONstringify = {
 		asFlatLine	: /^(data)$/i
@@ -933,17 +934,23 @@ function readFilePromiseFromURL(url, responseType) {
 
 			r.responseType = responseType || 'arraybuffer';
 			r.addEventListener('load', (e) => {
-			var	a = e.target.response;
+			var	response = e.target.response;
 
-				if (a) {
-					resolve(a);
+				if (response) {
+					resolve(response);
 				} else{
-					reject(new Error('No response'));
+				var	error = new Error('No response');
+					error.event = e;
+
+					reject(error);
 				}
 			});
 
 			r.addEventListener('error', (e) => {
-				reject(new Error('An error has occurred on request'));
+			var	error = new Error('An error has occurred on request');
+				error.event = e;
+
+				reject(error);
 			});
 
 			r.open('GET', url, true);
@@ -1715,7 +1722,10 @@ var	caption = cre('button', buttonTab);
 		console.log(error);
 	}
 
-	buttonTab.className = 'button loading failed';
+	del(buttonTab);
+
+	// buttonTab.className = 'button loading failed';
+	// buttonTab.setAttribute('onclick', 'closeProject(this)');
 
 	return false;
 }
@@ -4874,11 +4884,17 @@ function selectProject(e) {
 function closeProject(e) {
 	if (e = getProjectButton(e)) {
 	var	c = e.className;
-		if (c && regClassShow.test(c)) {
-		var	selectNext = e.nextElementSibling || e.previousElementSibling;
-			selectProject(selectNext);
+
+		if (c && regClassFailed.test(c)) {
+			del(e);
+		} else {
+			if (c && regClassShow.test(c)) {
+			var	selectNext = e.nextElementSibling || e.previousElementSibling;
+				selectProject(selectNext);
+			}
+
+			removeProjectView(e.id);
 		}
-		removeProjectView(e.id);
 	}
 }
 
