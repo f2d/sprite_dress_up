@@ -26,9 +26,9 @@ thumbnail_size = '20'
 thumbnail_filter = 'Welch'
 
 # Notes about some tested filters:
-# 1. Welch - super-fast, adds mild visual artifacts on vector-like icons.
+# 1. Welch - super-fast, adds mild visual artifacts on vector-like icons. Looks better with thumbnail sizes bigger than 30.
 # 2. Sinc - slower, sharper on high-detail high-res images, very bad artifacts on vector-like icons.
-# 3. Lanczos and its variants - slower but otherwise looks the same as Welch on all examples.
+# 3. Lanczos and its variants - slower, looks okay, but almost the same as Welch on all examples.
 # Most of others available were too blocky or too blurry on the test projects files.
 
 
