@@ -127,10 +127,16 @@ label:hover {
 .button.loading {
 	background-color: #eda;
 }
+.button.failed {
+	background-color: #f88;
+}
 .button button {
 	padding: 0.5em;
 	border: none;
 	background: transparent;
+}
+.button .thumbnail-button {
+	padding-right: 0;
 }
 .button .close-button {
 	padding: 0.5em 1em;
@@ -138,9 +144,6 @@ label:hover {
 .close-button:hover {
 	color: white;
 	background-color: #f88;
-}
-.button img.thumbnail {
-	margin-right: 0.5em;
 }
 img.thumbnail {
 	vertical-align: top;	/* <- hacky way to center the image */

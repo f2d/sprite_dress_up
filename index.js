@@ -1645,14 +1645,15 @@ var	buttonTab = cre('div', id('loaded-files-selection'));
 	buttonTab.className = 'button loading';
 
 var	button = cre('button', buttonTab);
+	button.className = 'thumbnail-button';
 
 var	thumbnail = cre('img', button);
 	thumbnail.className = 'thumbnail';
 
-	setImageSrc(thumbnail);
-
-var	caption = cre('div', button);
+var	caption = cre('button', buttonTab);
 	caption.textContent = sourceFile.name;
+
+	setImageSrc(thumbnail);
 
 	try {
 	var	project = await getNormalizedProjectData(sourceFile);
@@ -1699,6 +1700,7 @@ var	caption = cre('div', button);
 			id('loaded-files-view').appendChild(container);
 
 			buttonX.setAttribute('onclick', 'closeProject(this)');
+			caption.setAttribute('onclick', 'selectProject(this)');
 			button.setAttribute('onclick', 'selectProject(this)');
 			button.click();
 
@@ -1711,9 +1713,9 @@ var	caption = cre('div', button);
 		}
 	} catch (error) {
 		console.log(error);
-
-		del(button);
 	}
+
+	buttonTab.className = 'button loading failed';
 
 	return false;
 }
