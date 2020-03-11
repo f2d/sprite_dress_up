@@ -253,6 +253,7 @@ examples of 'multi_select':
 ,	TESTING = false
 ,	EXAMPLE_NOTICE = false
 ,	FILE_NAME_ADD_PARAM_KEY = true
+,	DOWNSCALE_BY_MAX_FACTOR_FIRST = true
 
 ,	thumbnailPlaceholder
 ,	cancelBatchWIP
@@ -1358,15 +1359,48 @@ var	canvas = cre('canvas')
 ,	heightTo = h || w || heightFrom || 1
 ,	widthRatio  = widthFrom/widthTo
 ,	heightRatio = heightFrom/heightTo
-,	scaleFactor = 4	//* <- one-step scaling result is too blocky, stepping by factor of 2 is too blurry, 4 looks okay
+,	maxScaleFactor = 4	//* <- one-step scaling result is too blocky, stepping by factor of 2 is too blurry, 4 looks okay
 	;
 
 	if (
-		widthRatio  > scaleFactor
-	||	heightRatio > scaleFactor
+		widthRatio  > maxScaleFactor
+	||	heightRatio > maxScaleFactor
 	) {
-		canvas.width  = widthTo  = Math.round(widthFrom  / scaleFactor);
-		canvas.height = heightTo = Math.round(heightFrom / scaleFactor);
+		if (DOWNSCALE_BY_MAX_FACTOR_FIRST) {
+			canvas.width  = widthTo  = Math.round(widthFrom  / maxScaleFactor);
+			canvas.height = heightTo = Math.round(heightFrom / maxScaleFactor);
+		} else {
+			if (widthRatio < heightRatio) {
+				widthTo = Math.round(widthFrom / heightRatio);
+			} else
+			if (widthRatio > heightRatio) {
+				heightTo = Math.round(heightFrom / widthRatio);
+			}
+
+		var	widthToUp  = widthTo
+		,	heightToUp = heightTo
+			;
+			while (
+				widthTo  < widthFrom
+			&&	heightTo < heightFrom
+			) {
+				widthToUp  *= maxScaleFactor;
+				heightToUp *= maxScaleFactor;
+
+				if (
+					widthToUp  < widthFrom
+				&&	heightToUp < heightFrom
+				) {
+					widthTo  = widthToUp;
+					heightTo = heightToUp;
+				} else {
+					break;
+				}
+			}
+
+			canvas.width  = widthTo;
+			canvas.height = heightTo;
+		}
 
 		ctx.drawImage(img, 0,0, widthFrom, heightFrom, 0,0, widthTo, heightTo);
 
