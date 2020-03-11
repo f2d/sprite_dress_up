@@ -8,19 +8,37 @@
 	<link rel="alternate" hreflang="en" href="index.en.htm">
 	<link rel="alternate" hreflang="ru" href="index.ru.htm">
 	<script>
+	var	la_stop = 'Stop (Esc)';
 	var	la = {
 			'menu': {
 				'file': {
 					'header': 'File',
-					'project': 'Drag and drop a project file onto this page, or select here:',
-					'formats': 'Supported file types:',
-					'same_filename': 'Previous files with same names will be automatically closed.',
-				/*	'save_all': 'Save all opened projects:',
-					'buttons': {
-						'save_all_png': 'Save all images to PNG',
-						'save_all_ora': 'Save all projects to ORA',
-						'stop': 'Stop',
-					}*/
+					'project': 'Drag and drop a project file onto this page, or select here',
+					'formats': 'Supported file types',
+					'notes': [
+						'Notes:',
+						'ZIP-files are loaded as ORA, if their content is conforming.',
+						'If multiple files with same name are opened, earlier ones will close.',
+					],
+					'batch_buttons': {
+						'save_all': {
+							'header': 'Save all opened projects',
+							'buttons': {
+								'ora': 'Save to ORA',
+								'png': 'Save to PNG',
+								'batch': 'Save all variants to PNG',
+								'stop': la_stop,
+							},
+						},
+						'close_all': {
+							'header': 'Close all opened projects',
+							'buttons': {
+								'no_var': 'Only with no variants',
+								'errors': 'Only with errors',
+								'all': 'Close all',
+							},
+						},
+					},
 				},
 				'examples': {
 					'header': 'Examples',
@@ -32,11 +50,15 @@
 						'download': 'Download file',
 						'load': 'Show example',
 					},
-					'batch_buttons': {
-						'download_all': 'Download all',
-						'load_all': 'Show all',
-						'stop': 'Stop (Esc)',
-					},
+					'batch_buttons': [
+						{
+							'download_all': 'Download all',
+							'load_all': 'Show all',
+						},
+						{
+							'stop': la_stop,
+						},
+					],
 					'notice': [
 						'Notice:',
 						'The files here are only for reference.',
@@ -83,7 +105,7 @@
 					'buttons': {
 						'show_all': 'Show all',
 						'save_all': 'Save all',
-						'stop': 'Stop (Esc)',
+						'stop': la_stop,
 					},
 				},
 			},

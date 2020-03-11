@@ -4926,19 +4926,24 @@ var	supportedFileTypesText = (
 		.sort()
 		.join(', ')
 	)
+,	openingNotesText = la.menu.file.notes.join('<br>')
 ,	HTMLparts = {}
 	;
 
 	HTMLparts.file = (
 		'<p>'
 	+		la.menu.file.project
+	+		':'
 	+	'</p>'
 	+	'<input type="file" onchange="onPageDrop(this)">'
 	+	'<p>'
 	+		la.menu.file.formats
-	+		'\n'
+	+		':\n'
 	+		supportedFileTypesText
 	+		'.'
+	+	'</p>'
+	+	'<p>'
+	+		openingNotesText
 	+	'</p>'
 	);
 
@@ -4953,6 +4958,7 @@ var	supportedFileTypesText = (
 					+ '</header>'
 					: ''
 				)
+			,	tabsCount = 0
 			,	fileListHTML = (
 					v.files.map(
 						file => {
@@ -5010,58 +5016,75 @@ var	supportedFileTypesText = (
 							,	getFormattedTime(file.modtime)
 							,	downloadLink
 							,	loadButton
-							].map(
+							]
+						,	tabsHTML = tabs.map(
 								(v,i,a) => (
-									'<td'
-								// +	(i === 4 ? ' colspan="3"' : '')
-								+	'>'
+									'<td>'
 								+		v
 								+	'</td>'
 								)
 							).join('')
 							;
 
+							tabsCount = Math.max(tabsCount, tabs.length);
+
 							return (
 								'<tr class="example-file">'
-							+		tabs
+							+		tabsHTML
 							+	'</tr>'
 							);
 						}
 					).join('')
-				)
-			,	batchButtons = (
-					Object.entries(la.menu.examples.batch_buttons)
-					.map(
-						([k, v]) => (
-							(
-								k === 'download_all'
-								? '<td colspan="3"></td>'
-								: ''
-							)
-						+	'<td>'
+				);
+
+				function getRightButtonsRow(tabs, rowLength) {
+					if (tabs.map) {
+						return tabs.map(
+							(tabs) => getRightButtonsRow(tabs, rowLength)
+						).join('');
+					}
+
+					tabs = Object.entries(tabs);
+
+				var	padCount = orz(rowLength) - orz(tabs.length)
+				,	padHTML = (
+						padCount > 0
+						? '<td' + (
+							padCount > 1
+							? ' colspan="' + padCount + '"'
+							: ''
+						) + '></td>'
+						: ''
+					)
+				,	tabsHTML = tabs.map(
+						([name, text]) => (
+							'<td>'
 						+		'<button onclick="return loadFromButton(this)" name="'
-						+			encodeTagAttr(k)
+						+			encodeTagAttr(name)
 						+		'">'
-						+			v
+						+			text
 						+		'</button>'
 						+	'</td>'
 						)
 					).join('')
-				);
+					;
 
-				if (batchButtons.length > 0) {
-					fileListHTML += (
-						'<tr class="example-file">'
-					+		batchButtons
+					return (
+						'<tr class="example-file batch-buttons">'
+					+		padHTML
+					+		tabsHTML
 					+	'</tr>'
 					);
 				}
+
+			var	batchButtonsHTML = getRightButtonsRow(la.menu.examples.batch_buttons, tabsCount)
 
 				return (
 					'<div class="example-file-type">'
 				+		headerHTML
 				+		'<table class="example-files">'
 				+			fileListHTML
+				+			batchButtonsHTML
 				+		'</table>'
 				+	'</div>'
 				);

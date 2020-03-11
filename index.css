@@ -92,7 +92,7 @@ label:hover {
 .example-file-type header {
 	margin: 1em 0;
 }
-.example-file:hover:not(.loading):not(:last-child) td {
+.example-file:hover:not(.loading):not(.batch-buttons) td {
 	background-color: #fff;
 }
 .example-file.loading td {
