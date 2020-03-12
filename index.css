@@ -115,13 +115,13 @@ label:hover {
 .button {
 	background-color: rgba(0,0,0, 0.1);
 }
-.button.show {
+.button.without-options:not(:hover) {
+	background-color: rgba(0,0,0, 0.2);
+}
+.button.show:not(:hover) {
 	background-color: #ace;
 }
-.button:hover {
-	background-color: #fff;
-}
-.button:hover.show {
+.button.show:hover {
 	background-color: #bdf;
 }
 .button.loading {
@@ -129,6 +129,9 @@ label:hover {
 }
 .button.failed {
 	background-color: #f88;
+}
+.button:hover {
+	background-color: #fff;
 }
 .button button {
 	padding: 0.5em;

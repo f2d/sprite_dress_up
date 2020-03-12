@@ -1700,6 +1700,8 @@ var	caption = cre('button', buttonTab);
 	var	project = await getNormalizedProjectData(sourceFile);
 
 		if (project) {
+			project.thumbnail = thumbnail;
+
 		var	container = (
 				await getProjectViewMenu(project)
 			||	await getProjectViewImage(project)
@@ -1728,9 +1730,7 @@ var	caption = cre('button', buttonTab);
 
 			container.id = buttonTab.id = fileID;
 			container.className = 'loaded-file';
-			buttonTab.className = 'button';
 
-			project.thumbnail = thumbnail;
 			project.container = container;
 			container.project = project;
 
@@ -1748,6 +1748,10 @@ var	caption = cre('button', buttonTab);
 			if (project.options) {
 				updateBatchCount(project);
 				updateMenuAndShowImg(project);
+
+				buttonTab.className = 'button with-options';
+			} else {
+				buttonTab.className = 'button without-options';
 			}
 
 			return true;
@@ -1756,10 +1760,11 @@ var	caption = cre('button', buttonTab);
 		console.log(error);
 	}
 
-	del(buttonTab);
+	buttonTab.className = 'button loading failed';
 
-	// buttonTab.className = 'button loading failed';
-	// buttonTab.setAttribute('onclick', 'closeProject(this)');
+	setTimeout(function() {
+		del(buttonTab);
+	}, 2000);
 
 	return false;
 }
@@ -2230,7 +2235,7 @@ async function getProjectViewMenu(project) {
 					if (img) {
 						if (
 							isImgElement(img)
-						&&	!img.onload
+						&&	!img.complete
 						) {
 							img.onload = onImgLoad;
 						} else {
@@ -2505,6 +2510,8 @@ function getProjectViewImage(project, img) {
 	&&	(img = project.toPng())
 	) {
 		img.onload = () => setProjectThumbnail(project, img);
+
+		if (img.complete) img.onload();
 
 	var	e = createProjectView(project)
 	,	h = gt('header', e)[0]
@@ -4778,13 +4785,13 @@ var	logLabel = 'Load project from event: ' + tryFiles.map(v => v.name).join(', '
 	console.groupEnd(logLabel);
 	console.timeEnd(logLabel);
 
-	if (!loadedProjectsCount) alert(
+	/*if (TESTING && !loadedProjectsCount) alert(
 		la.error.file
 	+	'\n'
 	+	loadedProjectsCount
 	+	' / '
 	+	tryFiles.length
-	);
+	);*/
 }
 
 async function loadFromURL(url) {
