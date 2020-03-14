@@ -1,5 +1,6 @@
 
 //* source file data:
+//* TODO: lazy loading only needed images in ORA one by one, as in PSD.
 //* TODO: save as ORA.
 //* TODO: whole config in JSON-format?
 
@@ -808,6 +809,8 @@ function getUniqueNumbersArray(t) {
 
 function getFileExt(n) {return n.split(/\./g).pop().toLowerCase();}
 function getFileName(n) {return n.split(/\//g).pop();}
+function getFileBaseName(n) {return n.split(/\./g).shift();}
+function getFilePathFromUrl(n) {return n.split(/\#/g).shift().split(/\?/g).shift();}
 function getFormattedFileNamePart(n) {return (n.length > 0 ? '[' + n + ']' : n);}
 function getFormattedFileSize(shortened, bytes) {
 	if (bytes) {
@@ -1678,8 +1681,28 @@ var	countDeleted = gi(fileID).reduce(
 
 async function addProjectView(sourceFile) {
 
-	if (!window.FileReader) {
+	if (
+		!sourceFile
+	||	!window.FileReader
+	) {
 		return false;
+	}
+
+	if (!sourceFile.name) {
+		if (sourceFile.url) {
+			sourceFile.name = getFileName(getFilePathFromUrl(sourceFile.url));
+		}
+	}
+	if (!sourceFile.name) {
+		return false;
+	}
+
+	if (!sourceFile.baseName) {
+		sourceFile.baseName = getFileBaseName(sourceFile.name);
+	}
+
+	if (!sourceFile.ext) {
+		sourceFile.ext = getFileExt(sourceFile.name);
 	}
 
 var	buttonTab = cre('div', id('loaded-files-selection'));
@@ -1785,13 +1808,12 @@ async function getNormalizedProjectData(sourceFile) {
 		return null;
 	}
 
-var	n = sourceFile.name
-,	i = n.lastIndexOf('.')
-,	b = (i < 0 ? n : n.substr(0, i))
-,	ext = sourceFile.ext || getFileExt(n)
+var	fileName = sourceFile.name
+,	baseName = sourceFile.baseName
+,	ext      = sourceFile.ext
 ,	actionLabel = 'parsing file structure';
 	;
-	logTime('"' + n + '" started ' + actionLabel);
+	logTime('"' + fileName + '" started ' + actionLabel);
 
 var	startTime = +new Date;
 
@@ -1799,8 +1821,8 @@ var	startTime = +new Date;
 	for (var ftl of fileTypeLoaders) if (ftl.dropFileExts.indexOf(ext) >= 0)
 	for (var f of ftl.handlerFuncs) {
 	var	project = {
-			fileName: n
-		,	baseName: b
+			fileName: fileName
+		,	baseName: baseName
 		,	batch: {}
 		,	loading: {
 				startTime: +new Date
@@ -1819,7 +1841,7 @@ var	startTime = +new Date;
 var	tookTime = +new Date - startTime;
 
 	logTime(
-		'"' + n + '"'
+		'"' + fileName + '"'
 	+	(
 			project
 			? ' finished ' + actionLabel + ', took '
@@ -4647,20 +4669,22 @@ var	state = !!isWIP;
 
 //* Page-specific functions: UI-side *-----------------------------------------
 
-function onPageKeyPress(e) {
-	if (e.keyCode === 27) {	//* Esc
-		gn('stop').forEach(e => e.click());
+function onPageKeyPress(evt) {
+	if (evt.keyCode === 27) {	//* Esc
+		gn('stop').forEach(evt => evt.click());
 	}
 }
 
-function onProjectButtonClick(e) {
+function onProjectButtonClick(evt) {
 	if (
-		e
-	&&	e.type
-	&&	e.type === 'click'
-	&&	e.target
+		evt
+	&&	evt.type
+	&&	evt.type === 'click'
+	&&	evt.target
 	) {
-		e = e.target;
+	var	e = evt.target;
+	} else {
+		e = evt;
 	}
 
 	if (
@@ -4693,7 +4717,8 @@ var	container = getProjectContainer(e)
 		alert(la.hint.see_console);
 	} else {
 		console.log([
-			e
+			evt
+		,	e
 		,	container
 		,	project
 		,	'Unknown action: ' + action
@@ -4703,14 +4728,16 @@ var	container = getProjectContainer(e)
 	}
 }
 
-function onProjectMenuUpdate(e) {
+function onProjectMenuUpdate(evt) {
 	if (
-		e
-	&&	e.type
-	&&	e.type === 'change'
-	&&	e.target
+		evt
+	&&	evt.type
+	&&	evt.type === 'change'
+	&&	evt.target
 	) {
-		e = e.target;
+	var	e = evt.target;
+	} else {
+		e = evt;
 	}
 
 	if (
@@ -4733,24 +4760,41 @@ var	container = getProjectContainer(e)
 	updateBatchCount(project);
 }
 
-function onPageDragOver(e) {
-	eventStop(e).preventDefault();
+function onPageDragOver(evt) {
 
-var	d = e.dataTransfer.files
-,	i = d && d.length
+	function isThereAnyFile(items) {
+		for (var i = 0, k = items.length; i < k; i++) {
+			if (items[i].kind == 'file') {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	eventStop(evt).preventDefault();
+
+var	d = evt.dataTransfer
+,	files = d.files
+,	items = d.items
 	;
-	e.dataTransfer.dropEffect = (i ? 'copy' : 'move');
+	d.dropEffect = (
+		(files && files.length)
+	||	(items && items.length && isThereAnyFile(items))
+		? 'copy'
+		: 'none'
+	);
 }
 
-async function onPageDrop(e) {
-var	e = eventStop(e,0,1)
-,	tryFiles = []
-,	files, name, ext, projectRenderFallBack
+function onPageDrop(evt) {
+var	evt = eventStop(evt,0,1)
+,	filesToLoad = []
+,	files, name, ext
 	;
 
 //* get list of files to process:
 
-	for (var batch of [e.dataTransfer, e.target, e.value, e]) if (
+	for (var batch of [evt.dataTransfer, evt.target, evt.value, evt]) if (
 		batch
 	&&	(files = batch.files)
 	&&	files.length
@@ -4760,8 +4804,8 @@ var	e = eventStop(e,0,1)
 		&&	(name = file.name).length > 0
 		&&	(ext = getFileExt(name)).length > 0
 		) {
-			tryFiles.push({
-				evt: e
+			filesToLoad.push({
+				evt: evt
 			,	file: file
 			,	name: name
 			,	ext: ext
@@ -4769,29 +4813,38 @@ var	e = eventStop(e,0,1)
 		}
 	}
 
-var	logLabel = 'Load project from event: ' + tryFiles.map(v => v.name).join(', ')
-,	loadedProjectsCount = 0
-	;
+//* process files:
 
-	console.time(logLabel);
-	console.group(logLabel);
+	loadFromFileList(filesToLoad, evt);
+}
 
-	for (var file of tryFiles) {
-		if (await addProjectView(file)) {
-			++loadedProjectsCount;
+async function loadFromFileList(files, evt) {
+	if (
+		files
+	&&	files.length > 0
+	) {
+	var	logLabel = 'Load ' + files.length + ' project files: ' + files.map(v => v.name).join(', ')
+	,	loadedProjectsCount = 0
+		;
+
+		console.time(logLabel);
+		console.group(logLabel);
+
+		for (var file of files) {
+			if (await addProjectView(file)) {
+				++loadedProjectsCount;
+			}
 		}
+
+		console.groupEnd(logLabel);
+		console.timeEnd(logLabel);
+
+		console.log('Loaded ' + loadedProjectsCount + ' of ' + files.length + ' project files.');
+	} else if (TESTING) {
+		console.log(['Cannot load files:', files, 'From event:', evt]);
 	}
 
-	console.groupEnd(logLabel);
-	console.timeEnd(logLabel);
-
-	/*if (TESTING && !loadedProjectsCount) alert(
-		la.error.file
-	+	'\n'
-	+	loadedProjectsCount
-	+	' / '
-	+	tryFiles.length
-	);*/
+	return loadedProjectsCount;
 }
 
 async function loadFromURL(url) {
@@ -4799,21 +4852,14 @@ async function loadFromURL(url) {
 		return;
 	}
 
-var	name = getFileName(url)
-,	ext = getFileExt(name)
-,	logLabel = 'Load project from url: ' + url
-	;
+var	logLabel = 'Load project from url: ' + url;
 
 	console.time(logLabel);
 	console.group(logLabel);
 
-var	isProjectLoaded = await addProjectView(
-		{
-			url: url
-		,	name: name
-		,	ext: ext
-		}
-	);
+var	isProjectLoaded = await addProjectView({
+		url: url
+	});
 
 	console.groupEnd(logLabel);
 	console.timeEnd(logLabel);
@@ -5031,14 +5077,15 @@ var	supportedFileTypesText = (
 								: ''
 							)
 						,	filePath = arrayFilteredJoin([exampleRootDir, v.subdir, fileName], '/')
-						,	fileAttr = encodeTagAttr(fileName)
-						,	pathAttr = encodeTagAttr(filePath)
+						,	fileURL = filePath + '?t=' + file.modtime.replace(/\W+/g, '_')
+						,	nameAttr = encodeTagAttr(fileName)
+						,	pathAttr = encodeTagAttr(fileURL)
 						,	dict = la.menu.examples.buttons
 						,	downloadLink = (
 								'<a href="'
 							+		pathAttr
 							+	'" download="'
-							+		fileAttr
+							+		nameAttr
 							+	'">'
 							+		dict.download
 							+	'</a>'

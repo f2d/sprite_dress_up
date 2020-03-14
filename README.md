@@ -13,6 +13,10 @@ Parse artwork project files (ORA, PSD) into menu of parts and batch export of al
 
 Open one of `index.<lang>.htm` files in a web-browser, drop files on the page or use menu at the top.
 
+Using project files saved in a maximum compatibility mode is recommended.
+
+Recomposition functionality is already usable to some extent, but lacks support of a lot of advanced project file features (e.g. smart objects, text, vectors, procedural effects), and rendering quality is more of a proof-of-concept than production-ready.
+
 
 
 ## server side
