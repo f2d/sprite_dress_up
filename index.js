@@ -250,11 +250,13 @@ examples of 'multi_select':
 ,	MAX_BATCH_PRECOUNT = 1000
 ,	PADDING_ALPHA_THRESHOLD_DEFAULT = 16
 ,	THUMBNAIL_SIZE = 16
+,	PREVIEW_SIZE = 64
 
 ,	TESTING = false
 ,	EXAMPLE_NOTICE = false
 ,	FILE_NAME_ADD_PARAM_KEY = true
 ,	DOWNSCALE_BY_MAX_FACTOR_FIRST = true
+,	TAB_THUMBNAIL_ZOOM = true
 
 ,	thumbnailPlaceholder
 ,	cancelBatchWIP
@@ -2518,9 +2520,25 @@ var	i = project.loading.imagesCount
 
 function setProjectThumbnail(project, fullImage) {
 	if (fullImage && project && project.thumbnail) {
+
 	var	canvas = getResizedCanvasFromImg(fullImage, THUMBNAIL_SIZE);
 		if (canvas) {
 			setImageSrc(project.thumbnail, canvas.toDataURL());
+		}
+
+		if (TAB_THUMBNAIL_ZOOM) {
+		var	preview = project.thumbnail.nextElementSibling;
+			if (!preview) {
+			var	container = project.thumbnail.parentNode;
+				toggleClass(container, 'thumbnail-hover', 1);
+				preview = cre('img', container);
+				preview.className = 'thumbnail larger';
+			}
+
+			canvas = getResizedCanvasFromImg(fullImage, PREVIEW_SIZE);
+			if (canvas) {
+				setImageSrc(preview, canvas.toDataURL());
+			}
 		}
 	}
 }

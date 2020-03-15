@@ -7,6 +7,13 @@ a {
 a:hover {
 	color: #000;
 }
+*[onclick],
+button,
+select,
+label,
+input[type="file"] {
+	cursor: pointer;
+}
 body {
 	margin: 1em auto;
 	text-align: center;
@@ -163,6 +170,7 @@ img.larger {
 	position: absolute;
 	top: 100%;
 	left: 100%;
+	z-index: 9;
 }
 .thumbnail-hover:not(:hover) .larger {
 	display: none;
@@ -319,11 +327,4 @@ p.warning {
 }
 .warning::before {
 	content: "⚠";
-}
-*[onclick],
-button,
-select,
-label,
-input[type="file"] {
-	cursor: pointer;
 }
