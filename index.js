@@ -5070,11 +5070,22 @@ var	supportedFileTypesText = (
 								)
 							)
 						,	thumbnail = (
-								file.thumbnail
-								? '<img class="thumbnail" src="'
-								+	encodeHTMLSpecialChars(file.thumbnail)
-								+ '">'
-								: ''
+								'<div class="thumbnail-hover">'
+							+	(
+									file.thumbnail
+									? '<img class="thumbnail" src="'
+									+	encodeHTMLSpecialChars(file.thumbnail)
+									+ '">'
+									: ''
+								)
+							+	(
+									file.preview
+									? '<img class="thumbnail larger" src="'
+									+	encodeHTMLSpecialChars(file.preview)
+									+ '">'
+									: ''
+								)
+							+	'</div>'
 							)
 						,	filePath = arrayFilteredJoin([exampleRootDir, v.subdir, fileName], '/')
 						,	fileURL = filePath + '?t=' + file.modtime.replace(/\W+/g, '_')

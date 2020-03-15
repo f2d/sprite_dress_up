@@ -16,14 +16,19 @@ dest_file_path = 'config.js'
 
 src_dir_var_name = 'exampleRootDir'
 filelist_var_name = 'exampleProjectFiles'
+
+preview_size_var_name = 'PREVIEW_SIZE'
 thumbnail_size_var_name = 'THUMBNAIL_SIZE'
+
+preview_size = '80'
+thumbnail_size = '20'
+
+resize_filter = 'Welch'
 
 quote = '"'
 
 is_dest_array = True
 
-thumbnail_size = '20'
-thumbnail_filter = 'Welch'
 
 
 
@@ -71,8 +76,9 @@ IM_UNDEFINED = not (IM_6 or IM_7)
 
 arg_src_root_path    = get_cmd_arg_after_arg(['src', 'src_path', 'src_root_path'])
 arg_dest_file_path   = get_cmd_arg_after_arg(['dest', 'dest_path', 'dest_file_path'])
-arg_thumbnail_filter = get_cmd_arg_after_arg(['filter', 'thumb_filter', 'thumbnail_filter'])
-arg_thumbnail_size   = get_cmd_arg_after_arg(['size', 'thumb_size', 'thumbnail_size'], natural_number=True)
+arg_resize_filter    = get_cmd_arg_after_arg(['r', 'filter', 'thumb_filter', 'thumbnail_filter', 'resize_filter'])
+arg_thumbnail_size   = get_cmd_arg_after_arg(['s', 'size', 'thumb_size', 'thumbnail_size'], natural_number=True)
+arg_preview_size     = get_cmd_arg_after_arg(['z', 'zoom_size', 'preview_size'], natural_number=True)
 
 
 
@@ -87,10 +93,12 @@ converter_exe_path = 'magick'
 converter_filters = None			# <- get automatically once for each run
 
 merged_layer_suffix = '[0]'			# <- to use pre-merged layer
-temp_layer_file_path = 'temp_layer.png'
-temp_thumb_file_path = 'temp_thumb.png'
+
+temp_extracted_file_path = 'temp_extracted.png'
+temp_resized_file_path = 'temp_resized.png'
+
 src_file_path_placeholder = '<src_placeholder>'
-thumbnail_size_placeholder = '<size_placeholder>'
+new_size_placeholder = '<size_placeholder>'
 filter_placeholder = '<filter_placeholder>'
 
 layer_suffix_file_types = [
@@ -120,15 +128,15 @@ cmd_get_image_size_args = [
 ,	src_file_path_placeholder
 ]
 
-cmd_make_thumbnail_args = [
+cmd_make_resized_image_args = [
 	'convert'
 ,	src_file_path_placeholder
 ,	'-verbose'
 ,	'-filter'
 ,	filter_placeholder
 ,	'-thumbnail'
-,	thumbnail_size_placeholder
-,	'png32:' + temp_thumb_file_path
+,	new_size_placeholder
+,	'png32:' + temp_resized_file_path
 ]
 
 cmd_get_filters = [
@@ -258,8 +266,8 @@ def remove_temp_file(path=None):
 
 			os.remove(path)
 	else:
-		remove_temp_file(temp_layer_file_path)
-		remove_temp_file(temp_thumb_file_path)
+		remove_temp_file(temp_extracted_file_path)
+		remove_temp_file(temp_resized_file_path)
 
 	return path
 
@@ -337,7 +345,7 @@ def get_image_path_for_cmd(src_file_path, check_thumbnail=False):
 
 					unzipped_content = src_zip.read(zipped_path)
 
-					src_file_path = remove_temp_file(temp_layer_file_path)
+					src_file_path = remove_temp_file(temp_extracted_file_path)
 					src_file_ext = get_file_ext(src_file_path)
 
 					write_file(src_file_path, unzipped_content)
@@ -398,15 +406,18 @@ def get_converter_filters():
 
 	return converter_filters
 
-def get_image_cmd_result(src_file_path, cmd_args, check_thumbnail=False):
+def get_image_cmd_result(src_file_path, cmd_args, new_size_arg=None, check_thumbnail=False):
+	if not new_size_arg:
+		new_size_arg = thumbnail_size_arg
+
 	src_file_name = get_file_name(src_file_path)
 	src_file_path = get_image_path_for_cmd(src_file_path, check_thumbnail=False)
 
 	# must get list instead of map object, or it will not run in python3:
 	cmd_args_with_src_path = list(map(
 		lambda x: (
-			thumbnail_filter if (not TEST_FILTERS) and (x == filter_placeholder)
-			else thumbnail_size_arg if (x == thumbnail_size_placeholder)
+			resize_filter if (not TEST_FILTERS) and (x == filter_placeholder)
+			else new_size_arg if (x == new_size_placeholder)
 			else src_file_path if (x == src_file_path_placeholder)
 			else x
 		)
@@ -414,17 +425,28 @@ def get_image_cmd_result(src_file_path, cmd_args, check_thumbnail=False):
 	))
 
 	if filter_placeholder in cmd_args_with_src_path:
+		if not os.path.isdir(new_size_arg):
+			os.makedirs(new_size_arg)
+
 		for filter_name in get_converter_filters():
 			cmd_args_with_filter = list(map(
 				lambda x: (
 					filter_name if (x == filter_placeholder)
-					else x if x.find(temp_thumb_file_path) < 0
+					else x if (x.find(temp_resized_file_path) < 0)
 					else (
 						'_' + src_file_name +
+						'_' + new_size_arg +
 						'_' + filter_name +
 						'.'
 					).join(
-						x.rsplit('.', 1)
+						(
+							(new_size_arg + '/' + x) if (x.find(':') < 0)
+							else (
+								':' + new_size_arg + '/'
+							).join(
+								x.split(':', 1)
+							)
+						).rsplit('.', 1)
 					)
 				)
 			,	cmd_args_with_src_path
@@ -452,11 +474,14 @@ def get_image_size(src_file_path):
 
 	return ''
 
-def get_thumbnail_as_base64(src_file_path):
-	for cmd_args in get_image_cmd_versions(cmd_make_thumbnail_args):
-		temp_file_path = remove_temp_file(temp_thumb_file_path)
+def get_resized_image_as_base64(src_file_path, new_size_arg=None):
+	if not new_size_arg:
+		new_size_arg = thumbnail_size_arg
 
-		cmd_result = get_image_cmd_result(src_file_path, cmd_args, check_thumbnail=True)
+	for cmd_args in get_image_cmd_versions(cmd_make_resized_image_args):
+		temp_file_path = remove_temp_file(temp_resized_file_path)
+
+		cmd_result = get_image_cmd_result(src_file_path, cmd_args, new_size_arg=new_size_arg, check_thumbnail=True)
 
 		if os.path.isfile(temp_file_path):
 			raw_content = read_file(temp_file_path, mode='r+b')
@@ -469,7 +494,7 @@ def get_thumbnail_as_base64(src_file_path):
 			)
 
 			print('')
-			print('Got thumbnail:')
+			print('Got resized image content:')
 			print(base64_content)
 
 			return base64_content
@@ -554,6 +579,13 @@ if old_content:
 				if var_name == src_dir_var_name:
 					src_root_path = re.sub(pat_unslash, r'\1', var_value)
 
+				elif var_name == preview_size_var_name:
+					try:
+						if int(var_value) > 0:
+							preview_size = var_value
+					except:
+						continue
+
 				elif var_name == thumbnail_size_var_name:
 					try:
 						if int(var_value) > 0:
@@ -575,10 +607,12 @@ else:
 
 
 
-if arg_src_root_path:    src_root_path    = arg_src_root_path
-if arg_thumbnail_filter: thumbnail_filter = arg_thumbnail_filter
-if arg_thumbnail_size:   thumbnail_size   = arg_thumbnail_size
+if arg_src_root_path:  src_root_path  = arg_src_root_path
+if arg_resize_filter:  resize_filter  = arg_resize_filter
+if arg_preview_size:   preview_size   = arg_preview_size
+if arg_thumbnail_size: thumbnail_size = arg_thumbnail_size
 
+preview_size_arg   = preview_size   + 'x' + preview_size
 thumbnail_size_arg = thumbnail_size + 'x' + thumbnail_size
 
 
@@ -626,8 +660,21 @@ for dir_name, filenames in src_filenames_by_subdir.items():
 		text_filesize_short = get_formatted_filesize(num_filesize, space=' ', binary='', suffix='')
 		text_filesize_bytes = re.sub(pat_separate_thousands, r' ', str(num_filesize))
 		text_modtime = get_formatted_time(num_modtime)
-		text_image_size = get_image_size(path) or get_old_field(old_files, dir_name, filename, 'pixels')
-		text_thumbnail_base64 = get_thumbnail_as_base64(path) or get_old_field(old_files, dir_name, filename, 'thumbnail')
+
+		text_image_size = (
+			get_image_size(path)
+		or	get_old_field(old_files, dir_name, filename, 'pixels')
+		)
+
+		text_preview_base64 = (
+			get_resized_image_as_base64(path, preview_size_arg)
+		or	get_old_field(old_files, dir_name, filename, 'preview')
+		)
+
+		text_thumbnail_base64 = (
+			get_resized_image_as_base64(path, thumbnail_size_arg)
+		or	get_old_field(old_files, dir_name, filename, 'thumbnail')
+		)
 
 		files.append(
 			{
@@ -636,6 +683,7 @@ for dir_name, filenames in src_filenames_by_subdir.items():
 			,	'filesize':	text_filesize_short
 			,	'bytes':	text_filesize_bytes
 			,	'modtime':	text_modtime
+			,	'preview':	text_preview_base64
 			,	'thumbnail':	text_thumbnail_base64
 			}
 		)
@@ -667,28 +715,49 @@ json_lines = json_text.split('\n')
 
 if old_content:
 	replacements = [
-		[src_dir_var_name, src_root_path]
-	,	[thumbnail_size_var_name, thumbnail_size, True]	# <- write unquoted
+		{
+			'var_name': src_dir_var_name
+		,	'new_value': get_quoted_value_text(src_root_path)
+		,	'encounters': 0
+		}
+	,	{
+			'var_name': preview_size_var_name
+		,	'new_value': preview_size
+		,	'encounters': 0
+		}
+	,	{
+			'var_name': thumbnail_size_var_name
+		,	'new_value': thumbnail_size
+		,	'encounters': 0
+		}
 	]
 
 	def replace_var(match):
+		global replacements
+
 		var_name = match.group('VarName')
 
 		for replacement in replacements:
-			if var_name == replacement[0]:
+			if var_name == replacement['var_name']:
+				replacement['encounters'] += 1
+
 				return (
 					var_name
 				+	match.group('Operator')
-				+	(
-						replacement[1] if len(replacement) > 2 and replacement[2]
-						else get_quoted_value_text(replacement[1])
-					)
+				+	replacement['new_value']
 				)
 
 		return match.group(0)
 
 	content_before = re.sub(pat_var_value, replace_var, content_before)
 	content_after = re.sub(pat_var_value, replace_var, content_after)
+
+	for replacement in replacements:
+		if not replacement['encounters']:
+			content_after += '''
+var ''' + replacement['var_name'] + ''' = ''' + replacement['new_value'] + ''';
+'''
+
 else:
 	content_before = '''
 //* Notes to avoid generation trouble:
@@ -699,9 +768,11 @@ else:
 
 // var EXAMPLE_NOTICE = true;
 
+var ''' + preview_size_var_name + ''' = ''' + preview_size + ''';
+
 var ''' + thumbnail_size_var_name + ''' = ''' + thumbnail_size + ''';
 
-var ''' + src_dir_var_name + ''' = ''' + quote + src_root_path + quote + ''';
+var ''' + src_dir_var_name + ''' = ''' + get_quoted_value_text(src_root_path) + ''';
 
 var ''' + filelist_var_name + ''' = '''
 

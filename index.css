@@ -151,6 +151,22 @@ label:hover {
 img.thumbnail {
 	vertical-align: top;	/* <- hacky way to center the image */
 }
+img.larger {
+	background-color: rgba(0,0,0, 0.4);
+	border: 1px solid white;
+}
+.thumbnail-hover {
+	position: relative;
+	cursor: zoom-in;
+}
+.thumbnail-hover .larger {
+	position: absolute;
+	top: 100%;
+	left: 100%;
+}
+.thumbnail-hover:not(:hover) .larger {
+	display: none;
+}
 #loaded-files-selection .button > * {
 	display: inline-flex;	/* <- modern way to vertically fill parent height */
 }

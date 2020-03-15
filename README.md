@@ -29,34 +29,46 @@ This script can be used manually on the server side to quickly update the table 
 
 #### Requirements:
 
-* Python (tested with versions 2.7.17 and 3.8.1)
-* ImageMagick (tested with versions 6.8.9-9 and 7.0.9-27) for project file canvas measurement and thumbnail generation, called by name or manually configurable path.
+* **Python** (tested with versions 2.7.17 and 3.8.1)
+* **ImageMagick** (tested with versions 6.8.9-9 and 7.0.9-27) for project file canvas measurement and thumbnail generation, called by name or manually configurable path.
 
 
 
 #### Command line arguments:
 
-`-test`
+`-test` or
+`-t`
 — run simulation for debug: do not save final config, do not clean up last saved temp file, but do everything else normally and show output.
 
 `-test-filters` or
-`-filters`
-— save a thumbnail file named `<...>_<FilterName>.png` for each resizing method supported by installed ImageMagick, to compare.
+`-filters` or
+`-f`
+— save all thumbnails to compare, one for each resizing method supported by installed ImageMagick. Files are saved as `<...>_<FilterName>.png` in a subfolder named by target image size.
 
+`-resize-filter <FilterName>` or
 `-thumb-filter <FilterName>` or
-`-filter <FilterName>`
-— set thumbnail resizing method, one of supported by installed ImageMagick. Default is `Welch`.
+`-filter <FilterName>` or
+`-r <FilterName>`
+— set resizing method, one of supported by installed ImageMagick. Default is `Welch`.
 
 `-thumb-size <Number>` or
-`-size <Number>`
+`-size <Number>` or
+`-s <Number>`
 — set longest dimension of thumbnails to a positive number of pixels. Default is 20.
 
+`-preview-size <Number>` or
+`-zoom-size <Number>` or
+`-z <Number>`
+— set longest dimension of zoomed-in thumbnails. Default is 80.
+
 `-imagemagick-6` or
-`-im6`
+`-im6` or
+`-6`
 — use ImageMagick version 6.x command format, such as `convert <args>`.
 
 `-imagemagick-7` or
-`-im7`
+`-im7` or
+`-7`
 — use ImageMagick version 7.x command format, such as `magick convert <args>`. If no version is given, script will try them all, starting with later.
 
 
