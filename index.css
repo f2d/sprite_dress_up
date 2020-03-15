@@ -300,6 +300,7 @@ img.larger {
 }
 .project-options th {
 	padding: 0.5em 0;
+	min-width: 300px;
 	/* text-align: center; */
 }
 .project-options header {
@@ -308,6 +309,10 @@ img.larger {
 .project-options td:first-child {
 	text-align: right;
 	padding: 0 0.5em 0 1em;
+	min-width: 128px;
+	max-width: 128px;
+	overflow: hidden;
+	text-overflow: ellipsis;	/* <- requires max-width */
 }
 .project-options {
 	width: 0;	/* <- take the least possible width without line-wrap */

@@ -1327,14 +1327,16 @@ function getImageSrcPlaceholder() {
 }
 
 function setImageSrc(img, data) {
-	if (!data) {
-		data = getImageSrcPlaceholder();
-	}
 	if (isImgElement(img)) {
-		img.src = data;
+		if (data || !img.src) {
+			img.src = data || getImageSrcPlaceholder();
+		}
 	} else
 	if (img.style) {
-		img.style.backgroundImage = 'url("' + data + '")';
+		if (data || !img.style.backgroundImage) {
+			data = data || getImageSrcPlaceholder();
+			img.style.backgroundImage = 'url("' + data + '")';
+		}
 	}
 
 	return img;
@@ -4687,6 +4689,25 @@ var	state = !!isWIP;
 
 //* Page-specific functions: UI-side *-----------------------------------------
 
+function onBeforeUnload(evt) {
+	if (id('loaded-files-view').firstElementChild) {
+
+//* Note: given message text won't be used in modern browsers.
+//* https://habr.com/ru/post/141793/
+
+	var	message = la.hint.close_page;
+
+		if (typeof evt === 'undefined') {
+			evt = window.event;
+		}
+		if (evt) {
+			evt.returnValue = message;
+		}
+
+		return message;
+	}
+}
+
 function onPageKeyPress(evt) {
 	if (evt.keyCode === 27) {	//* Esc
 		gn('stop').forEach(evt => evt.click());
@@ -5006,7 +5027,9 @@ function closeProject(e) {
 //* Runtime: prepare UI *------------------------------------------------------
 
 async function init() {
-var	t = THUMBNAIL_SIZE;
+var	t = THUMBNAIL_SIZE
+,	e,a,i,k,v
+	;
 
 	await loadLib(
 		'config.js',
@@ -5220,12 +5243,54 @@ var	supportedFileTypesText = (
 		);
 	}
 
+var	aboutLinks = [
+		{
+			'header': la.menu.about.source
+		,	'links': [
+				['https://github.com/f2d/sprite_dress_up', 'GitHub']
+			]
+		}
+	,	{
+			'header': la.menu.about.page_lang
+		,	'links': (
+				gt('link')
+				.filter(
+					(e) => (
+						e.getAttribute('rel') == 'alternate'
+					&&	e.getAttribute('href')
+					&&	e.getAttribute('hreflang')
+					)
+				).map(
+					(e) => [
+						e.getAttribute('href')
+					,	e.getAttribute('hreflang').toUpperCase()
+					]
+				)
+			)
+		}
+	];
+
 	HTMLparts.about = (
-		'<p>'
-	+		'<a href="https://github.com/f2d/sprite_dress_up">'
-	+			la.menu.about.source
-	+		'</a>'
-	+	'</p>'
+		aboutLinks.map(
+			(v) => (
+				'<p>'
+			+	(
+					v.header
+					? v.header + ':<br>'
+					: ''
+				)
+			+	v.links.map(
+					([url, text]) => (
+						'<a href="'
+					+		encodeTagAttr(url)
+					+	'">'
+					+		text
+					+	'</a>'
+					)
+				).join(', ')
+			+	'</p>'
+			)
+		).join('')
 	);
 
 var	topMenuHTML = (
@@ -5246,16 +5311,21 @@ var	topMenuHTML = (
 	+	'<div id="loaded-files-view"></div>'
 	);
 
-	for (e in gc('thumbnail')) if (!e.firstElementChild) {
-		setImageSrc(e);
-	}
+	gc('thumbnail').map(
+		(e) => {
+			if (!e.firstElementChild) {
+				setImageSrc(e);
+			}
+		}
+	);
 
 	setGlobalWIPstate(false);
 
 //* drop event may not work without dragover:
 
 	[
-		['dragover',	onPageDragOver]
+		['beforeunload',onBeforeUnload]
+	,	['dragover',	onPageDragOver]
 	,	['drop',	onPageDrop]
 	,	['keypress',	onPageKeyPress]
 	].forEach(
