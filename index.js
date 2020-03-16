@@ -4973,12 +4973,6 @@ var	action, url;
 
 	var	isProjectLoaded = await loadFromURL(url);
 
-		if (!isProjectLoaded) alert(
-			la.error.file
-		+	'\n'
-		+	url
-		);
-
 //* remove loading status:
 
 		if (p && p.className) {
@@ -5070,6 +5064,7 @@ var	supportedFileTypesText = (
 	+		supportedFileTypesText
 	+		'.'
 	+	'</p>'
+	+	'<hr>'
 	+	'<p>'
 	+		openingNotesText
 	+	'</p>'
@@ -5229,7 +5224,7 @@ var	supportedFileTypesText = (
 				+	'</div>'
 				);
 			}
-		).join('')
+		).join('<hr>')
 	);
 
 	if (
@@ -5237,7 +5232,8 @@ var	supportedFileTypesText = (
 	&&	(v = la.menu.examples.notice)
 	) {
 		HTMLparts.examples += (
-			'<p class="warning">'
+			'<hr>'
+		+	'<p class="warning">'
 		+		(v.join ? v.join('<br>') : v)
 		+	'</p>'
 		);
@@ -5268,26 +5264,40 @@ var	aboutLinks = [
 				)
 			)
 		}
+	,	{
+			'pretext': '<hr>'
+		,	'lines': la.menu.about.notes
+		}
 	];
 
 	HTMLparts.about = (
 		aboutLinks.map(
 			(v) => (
-				'<p>'
+				(v.pretext || '')
+			+	'<p>'
 			+	(
 					v.header
 					? v.header + ':<br>'
 					: ''
 				)
-			+	v.links.map(
-					([url, text]) => (
-						'<a href="'
-					+		encodeTagAttr(url)
-					+	'">'
-					+		text
-					+	'</a>'
-					)
-				).join(', ')
+			+	(
+					v.lines
+					? v.lines.join('<br>')
+					: ''
+				)
+			+	(
+					v.links
+					? v.links.map(
+						([url, text]) => (
+							'<a href="'
+						+		encodeTagAttr(url)
+						+	'">'
+						+		text
+						+	'</a>'
+						)
+					).join(', ')
+					: ''
+				)
 			+	'</p>'
 			)
 		).join('')

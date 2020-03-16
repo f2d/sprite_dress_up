@@ -8,6 +8,8 @@
 	<link rel="alternate" hreflang="en" href="index.en.htm">
 	<link rel="alternate" hreflang="ru" href="index.ru.htm">
 	<script>
+	var	la_notes = 'Notes:';
+	var	la_notice = 'Notice:';
 	var	la_stop = 'Stop (Esc)';
 	var	la = {
 			'menu': {
@@ -16,7 +18,7 @@
 					'project': 'Drag and drop a project file onto this page, or select here',
 					'formats': 'Supported file types',
 					'notes': [
-						'Notes:',
+						la_notes,
 						'ZIP-files are loaded as ORA, if their content is conforming.',
 						'If multiple files with same name are opened, earlier ones will close.',
 					],
@@ -60,7 +62,7 @@
 						},
 					],
 					'notice': [
-						'Notice:',
+						la_notice,
 						'The files here are only for reference.',
 						'Do not reuse without permission.',
 					],
@@ -72,6 +74,13 @@
 					'header': 'About',
 					'source': 'Source code, discuss issues and requests',
 					'page_lang': 'This page in different languages',
+					'notes': [
+						la_notes,
+						'Chrome-based browsers are recommended for this page.',,
+						'Firefox, for example, stores colors on canvas as premultiplied with alpha for faster display,',
+						'which hurts blending precision and results in color-banded gradients, which were supposed to be smooth.',,
+						'High-precision rendering without relying on canvas API is planned to be added later.',
+					],
 				},
 			},
 			'project': {
