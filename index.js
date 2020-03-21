@@ -1,5 +1,6 @@
 
 //* source file data:
+//* TODO: put each root-level layer with slash-separated layer name parts into made-up chain of PassThrough subfolders.
 //* TODO: lazy loading only needed images in ORA one by one, as in PSD.
 //* TODO: save as ORA.
 //* TODO: whole config in JSON-format?
@@ -2820,7 +2821,7 @@ async function loadORA(project) {
 					ora.load(
 						file
 					,	resolve
-					,	{getImageWithBlob: true}
+					,	{enableImageAsBlob: true}
 					);
 				}
 			);
@@ -4072,7 +4073,24 @@ function getRenderByValues(project, values, layersBatch, renderParam) {
 					if (backward) {
 						layers = Array.from(layers).reverse();
 					}
-					if (blendMode == 'pass') {
+
+//* if folder is to be recolored, ignore pass mode and any color blending inside:
+
+				var	passToColor = false;
+
+					if (
+						blendMode == 'pass'
+					&&	opacity == 1
+					&&	!layer.mask
+					&&	!layer.isMaskGenerated
+					&&	!(
+							passToColor = names.find(
+								listName => (
+									listName in getPropByNameChain(project, 'options', 'colors')
+								)
+							)
+						)
+					) {
 						l_a = l_a.slice(0, l_i).concat(layers);
 						l_i = l_a.length;
 
@@ -4083,7 +4101,7 @@ function getRenderByValues(project, values, layersBatch, renderParam) {
 						,	values
 						,	layers
 						,	{
-								ignoreColors: renderParam.ignoreColors
+								ignoreColors: renderParam.ignoreColors || passToColor
 							,	opacity: (aliases ? opacity : 0)
 							}
 						);
