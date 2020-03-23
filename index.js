@@ -280,6 +280,7 @@ examples of 'multi_select':
 ,	BLEND_MODES_REMAP = {
 		'normal':	BLEND_MODE_NORMAL
 	,	'add':		BLEND_MODE_ADD
+	,	'plus':		BLEND_MODE_ADD
 	,	'linear-dodge':	BLEND_MODE_ADD
 //* from SAI2, remap according to PSD.js:
 	,	'burn':		'color-burn'
