@@ -13,6 +13,8 @@
 //* TODO: <select multiple> <optgroup> <option>?</option> </optgroup> </select>.
 
 //* rendering:
+//* TODO: separate PassThrough from blending modes to fix overwriting.
+//* TODO: folder with PassThrough + mask + opacity (P): store a copy of the rendered state (B) before touching P, apply P content layers to the render (A), interpolate B to A using mask * opacity of P as gradient.
 //* TODO: arithmetic emulation of all blending operations, not native to JS.
 //* TODO: arithmetic emulation of all operations in 16/32-bit until final result; to be optionally available as checkbox/selectbox.
 //* TODO: decode layer data (PSD/PNG/etc) manually without using canvas, to avoid premultiplied-alpha (PMA - in Firefox, not in Chrome) while rendering.
@@ -3358,7 +3360,7 @@ var	values = {};
 
 		var	sectionName   = s.getAttribute('data-section')
 		,	listName      = s.name
-		,	selectedValue = s.value
+		,	selectedValue = s.value || ''
 		,	hide = false
 			;
 
@@ -3371,7 +3373,7 @@ var	values = {};
 				;
 				gt('option', s).forEach(
 					o => {
-					var	optionName = o.value
+					var	optionName = o.value || ''
 					,	hide = !isOptionRelevant(project, updatedValues, sectionName, listName, optionName)
 						;
 						if (hide) {
@@ -3390,7 +3392,7 @@ var	values = {};
 							allHidden = false;
 						}
 						if (!o.hidden === hide) {
-							o.hidden = hide;
+							o.hidden = o.disabled = hide;
 						}
 					}
 				);
