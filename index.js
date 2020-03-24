@@ -1778,7 +1778,7 @@ var	caption = cre('button', buttonTab);
 
 			if (project.options) {
 				updateBatchCount(project);
-				updateMenuAndShowImg(project);
+				await updateMenuAndShowImg(project);
 
 				buttonTab.className = 'button with-options';
 			} else {
@@ -4426,6 +4426,10 @@ var	prerenders = (project.renders || (project.renders = {}))
 
 	if (img = prerenders[fileName]) return img;
 
+//* let UI update before creating new image:
+
+	await pause(1);
+
 var	img = prerenders[refName];
 
 	if (!img) {
@@ -4471,8 +4475,6 @@ async function renderAll(project, saveToFile, showOnPage) {
 
 var	logLabel = 'Render all: ' + project.fileName;
 
-	await pause(100);
-
 	console.time(logLabel);
 	console.group(logLabel);
 
@@ -4492,8 +4494,6 @@ var	startTime = +new Date
 	+	' sets (listing took ' + (lastPauseTime - startTime)
 	+	' ms)'
 	);
-
-	await pause(100);
 
 	for (var fileName in sets) if (values = sets[fileName]) {
 	var	startTime = +new Date
@@ -4524,7 +4524,7 @@ var	startTime = +new Date
 		setsCount++;
 		setsCountWithoutPause++;
 
-//* https://stackoverflow.com/a/53841885/8352410
+//* https://stackoverflow.com/a/53841885
 //* must wait at least 1 second between each 10 downloads in Chrome:
 
 		if (
@@ -4561,7 +4561,7 @@ function saveAll(project) {renderAll(project,1,0);}
 function showAll(project) {renderAll(project,0,1);}
 
 async function showImg(project, render, container) {
-	if (!render) var isWIP = setProjectWIPstate(project, true);
+	if (!render) var isSingleWIP = setProjectWIPstate(project, true);
 
 	try {
 
@@ -4583,11 +4583,11 @@ async function showImg(project, render, container) {
 		console.log(error);
 	}
 
-	if (isWIP) setProjectWIPstate(project, false);
+	if (isSingleWIP) setProjectWIPstate(project, false);
 }
 
 async function saveImg(project, render, fileName) {
-	if (!render) var isWIP = setProjectWIPstate(project, true);
+	if (!render) var isSingleWIP = setProjectWIPstate(project, true);
 
 	try {
 		render = await getOrCreateRender(project, render);
@@ -4596,7 +4596,7 @@ async function saveImg(project, render, fileName) {
 		console.log(error);
 	}
 
-	if (isWIP) setProjectWIPstate(project, false);
+	if (isSingleWIP) setProjectWIPstate(project, false);
 }
 
 function getEmptyRenderContainer(project) {
@@ -4605,7 +4605,7 @@ function getEmptyRenderContainer(project) {
 	);
 }
 
-function updateMenuAndShowImg(project) {
+async function updateMenuAndShowImg(project) {
 	if (
 		!project
 	||	project.isBatchWIP
@@ -4619,7 +4619,7 @@ function updateMenuAndShowImg(project) {
 		return;
 	}
 
-	showImg(project);
+	await showImg(project);
 }
 
 function updateCheckBox(e, params) {
@@ -4812,13 +4812,15 @@ var	container = getProjectContainer(e)
 ,	project = container.project
 	;
 
-	if (e.getAttribute('data-section')) {
-		updateMenuAndShowImg(project);
-	} else {
+	if (e.type === 'checkbox') {
 		updateCheckBox(e);
 	}
 
 	updateBatchCount(project);
+
+	if (e.tagName.toLowerCase() === 'select') {
+		updateMenuAndShowImg(project);
+	}
 }
 
 function onPageDragOver(evt) {
@@ -4950,6 +4952,9 @@ var	action, url;
 
 			for (var a of gt('a', p)) if (a.download) {
 				a.click();
+
+//* https://stackoverflow.com/a/53841885
+//* must wait at least 1 second between each 10 downloads in Chrome:
 
 				if (++countWithoutPause >= 10) {
 					await pause(1000);
