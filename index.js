@@ -273,8 +273,8 @@ examples of 'multi_select':
 	,	['dst', 'destination']
 	,	['liner', 'linear']
 	,	['substruct', 'substract']
-	,	[/^.*:/g]
-	,	[/[\s\/_-]+/g, '-']
+	,	[/^.*:/g]		//* <- remove any "prefix:"
+	,	[/[\s\/_-]+/g, '-']	//* <- normalize word separators to use only dashes
 	,	[regLayerBlendModePass, 'pass']
 	]
 ,	BLEND_MODES_REMAP = {
@@ -4077,18 +4077,19 @@ function getRenderByValues(project, values, layersBatch, renderParam) {
 
 //* if folder is to be recolored, ignore pass mode and any color blending inside:
 
-				var	passToColor = false;
+				var	passToColor = false
+				,	colors = null
+					;
 
 					if (
 						blendMode == 'pass'
 					&&	opacity == 1
-					&&	!layer.mask
-					&&	!layer.isMaskGenerated
 					&&	!(
-							passToColor = names.find(
-								listName => (
-									listName in getPropByNameChain(project, 'options', 'colors')
-								)
+							layer.mask
+						||	layer.isMaskGenerated
+						||	(
+								(colors = getPropByNameChain(project, 'options', 'colors'))
+							&&	(passToColor = names.find(listName => (listName in colors)))
 							)
 						)
 					) {
