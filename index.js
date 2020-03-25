@@ -269,6 +269,7 @@ examples of 'multi_select':
 ,	BLEND_MODE_CLIP = 'source-atop'
 ,	BLEND_MODE_MASK = 'destination-in'
 ,	BLEND_MODE_ADD = 'lighter'
+,	BLEND_MODE_PASS = 'pass'
 
 ,	BLEND_MODES_REPLACE = [
 		['src', 'source']
@@ -277,7 +278,7 @@ examples of 'multi_select':
 	,	['substruct', 'substract']
 	,	[/^.*:/g]		//* <- remove any "prefix:"
 	,	[/[\s\/_-]+/g, '-']	//* <- normalize word separators to use only dashes
-	,	[regLayerBlendModePass, 'pass']
+	,	[regLayerBlendModePass, BLEND_MODE_PASS]
 	]
 ,	BLEND_MODES_REMAP = {
 		'normal':	BLEND_MODE_NORMAL
@@ -2849,19 +2850,25 @@ async function loadORA(project) {
 			,	mode	= layer.composite || ''
 			,	mask	= layer.mask || null
 			,	layers	= layer.layers || null
+			,	blendMode = getNormalizedBlendMode(mode)
 			,	isLayerFolder = (layers && layers.length > 0)
+			,	isPassThrough = (
+					blendMode === BLEND_MODE_PASS
+				||	layer.isolation === 'auto'
+				)
+			,	isClipped = (
+					blendMode === BLEND_MODE_CLIP
+				||	getTruthyValue(layer.clipping)
+				)
 			,	layerWIP = {
 					top:    orz(layer.top    || layer.y)
 				,	left:   orz(layer.left   || layer.x)
 				,	width:  orz(layer.width  || layer.w)
 				,	height: orz(layer.height || layer.h)
-				,	isClipped: getTruthyValue(layer.clipping)
-				,	opacity:   orzFloat(layer.opacity)
-				,	blendMode: getNormalizedBlendMode(
-						layer.isolation === 'auto'
-						? 'pass'
-						: mode
-					)
+				,	opacity: orzFloat(layer.opacity)
+				,	isClipped: isClipped
+				,	isPassThrough: (isLayerFolder && isPassThrough)
+				,	blendMode: blendMode
 				,	blendModeOriginal: mode
 				};
 
@@ -2949,19 +2956,21 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 					? layer.children()
 					: null
 				)
+			,	blendMode = getNormalizedBlendMode(mode)
 			,	isLayerFolder = (layers && layers.length > 0)
+			,	isPassThrough = (
+					regLayerBlendModePass.test(modePass)
+				||	regLayerBlendModePass.test(blendMode)
+				)
 			,	layerWIP = {
 					top:    orz(l.top)
 				,	left:   orz(l.left)
 				,	width:  orz(l.width)
 				,	height: orz(l.height)
+				,	opacity: getNormalizedOpacity(l.opacity) * fillOpacity
 				,	isClipped: getTruthyValue(clipping)
-				,	opacity:   getNormalizedOpacity(l.opacity) * fillOpacity
-				,	blendMode: getNormalizedBlendMode(
-						regLayerBlendModePass.test(modePass)
-						? modePass
-						: mode
-					)
+				,	isPassThrough: (isLayerFolder && isPassThrough)
+				,	blendMode: blendMode
 				,	blendModeOriginal: mode
 				};
 
@@ -3066,14 +3075,16 @@ async function loadPSDLIB(project) {
 //* layer masks are not supported here yet
 
 				var	mode = layer.blendMode || ''
+				,	blendMode = getNormalizedBlendMode(mode)
 				,	layerWIP = {
 						top:    orz(layer.top)
 					,	left:   orz(layer.left)
 					,	width:  orz(layer.width)
 					,	height: orz(layer.height)
+					,	opacity: getNormalizedOpacity(layer.opacity)
 					,	isClipped: getTruthyValue(layer.clipping)
-					,	opacity:   getNormalizedOpacity(layer.opacity)
-					,	blendMode: getNormalizedBlendMode(mode)
+					,	isPassThrough: regLayerBlendModePass.test(blendMode)
+					,	blendMode: blendMode
 					,	blendModeOriginal: mode
 					};
 
@@ -4084,7 +4095,7 @@ function getRenderByValues(project, values, layersBatch, renderParam) {
 					;
 
 					if (
-						blendMode == 'pass'
+						layer.isPassThrough
 					&&	opacity == 1
 					&&	!(
 							layer.mask
