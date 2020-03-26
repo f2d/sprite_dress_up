@@ -260,6 +260,7 @@ examples of 'multi_select':
 ,	FILE_NAME_ADD_PARAM_KEY = true
 ,	DOWNSCALE_BY_MAX_FACTOR_FIRST = true
 ,	TAB_THUMBNAIL_ZOOM = true
+,	USE_ZLIB_ASM = true
 
 ,	thumbnailPlaceholder
 ,	cancelBatchWIP
@@ -348,6 +349,12 @@ var	exampleRootDir = ''
 ,	exampleProjectFiles = []
 ,	libRootDir = 'lib/'
 ,	libFormatsDir = libRootDir + 'formats/'
+
+//* source: https://github.com/ukyo/zlib-asm
+
+,	zlibAsmSubDir = 'zlib-asm/v0.2.2/'	//* <- last version supported by zip.js, ~ x2 faster than default
+// ,	zlibAsmSubDir = 'zlib-asm/v1.0.7/'	//* <- not supported by zip.js, works in some cases
+
 ,	fileTypeLibs = {
 		'UPNG.js': {
 
@@ -373,10 +380,17 @@ var	exampleRootDir = ''
 
 //* CORS workaround: https://github.com/gildas-lormeau/zip.js/issues/169#issuecomment-312110395
 
-			].concat(RUNNING_FROM_DISK ? [
-				'inflate.js',
-				'deflate.js',
-			] : [])
+			].concat(RUNNING_FROM_DISK ? (
+				USE_ZLIB_ASM
+				? [
+					zlibAsmSubDir + 'zlib.js',
+					'zlib-asm/codecs.js',
+				]
+				: [
+					'inflate.js',
+					'deflate.js',
+				]
+			) : []).concat()
 		},
 
 		'ora.js': {
@@ -1161,8 +1175,25 @@ var	depends = lib.depends || null;
 //* some var init, no better place for this:
 
 				if (varName === 'zip' && window[varName]) {
-					zip.useWebWorkers = !RUNNING_FROM_DISK;
-					zip.workerScriptsPath = dir;
+					if (zip.useWebWorkers = !RUNNING_FROM_DISK) {
+
+//* http://gildas-lormeau.github.io/zip.js/core-api.html#alternative-codecs
+//* Either zip.workerScripts or zip.workerScriptsPath may be set, not both.
+
+						if (USE_ZLIB_ASM) {
+						var	zipWorkerScripts = [
+								dir + 'z-worker.js',
+								dir + zlibAsmSubDir + 'zlib.js',
+								dir + 'zlib-asm/codecs.js',
+							];
+							zip.workerScripts = {
+								deflater: zipWorkerScripts,
+								inflater: zipWorkerScripts,
+							};
+						} else {
+							zip.workerScriptsPath = dir;
+						}
+					}
 				}
 
 				if (varName === 'ora' && window[varName]) {
