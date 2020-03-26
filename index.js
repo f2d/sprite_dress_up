@@ -13,7 +13,6 @@
 //* TODO: <select multiple> <optgroup> <option>?</option> </optgroup> </select>.
 
 //* rendering:
-//* TODO: separate PassThrough from blending modes to fix overwriting.
 //* TODO: folder with PassThrough + mask + opacity (P): store a copy of the rendered state (B) before touching P, apply P content layers to the render (A), interpolate B to A using mask * opacity of P as gradient.
 //* TODO: arithmetic emulation of all blending operations, not native to JS.
 //* TODO: arithmetic emulation of all operations in 16/32-bit until final result; to be optionally available as checkbox/selectbox.
@@ -213,6 +212,7 @@ examples of 'multi_select':
 ,	regClassMenuBar		= getClassReg('menu-bar')
 ,	regClassButton		= getClassReg('button')
 ,	regClassShow		= getClassReg('show')
+,	regClassLoaded		= getClassReg('loaded')
 ,	regClassFailed		= getClassReg('failed')
 
 ,	regJSONstringify = {
@@ -701,6 +701,22 @@ var	j = orz(keep)
 
 function getClassReg(c) {return new RegExp('(^|\\s)('+c+')($|\\s)', 'i');}
 function getTrimReg(c) {return new RegExp('^['+c+']+|['+c+']+$', 'gi');}
+
+function getPreviousSiblingByClass(e,c) {
+var	r = (c.test ? c : getClassReg(c));
+	while (e && (e = e.previousElementSibling)) {
+		if (e.className && r.test(e.className)) break;
+	}
+	return e;
+}
+
+function getNextSiblingByClass(e,c) {
+var	r = (c.test ? c : getClassReg(c));
+	while (e && (e = e.nextElementSibling)) {
+		if (e.className && r.test(e.className)) break;
+	}
+	return e;
+}
 
 function getParentByClass(e,c) {
 var	r = (c.test ? c : getClassReg(c));
@@ -1684,7 +1700,7 @@ var	countDeleted = gi(fileID).reduce(
 	);
 
 	if (countDeleted) {
-		logTime('"' + fileID + '" closed');
+		logTime('"' + fileID + '" closed, ' + countDeleted + ' element(s) removed');
 	}
 }
 
@@ -1717,22 +1733,22 @@ async function addProjectView(sourceFile) {
 var	buttonTab = cre('div', id('loaded-files-selection'));
 	buttonTab.className = 'button loading';
 
-var	button = cre('button', buttonTab);
-	button.className = 'thumbnail-button';
+var	buttonThumb = cre('button', buttonTab);
+	buttonThumb.className = 'thumbnail-button';
 
-var	thumbnail = cre('img', button);
-	thumbnail.className = 'thumbnail';
+var	thumbImg = cre('img', buttonThumb);
+	thumbImg.className = 'thumbnail';
 
-var	caption = cre('button', buttonTab);
-	caption.textContent = sourceFile.name;
+var	buttonText = cre('button', buttonTab);
+	buttonText.textContent = sourceFile.name;
 
-	setImageSrc(thumbnail);
+	setImageSrc(thumbImg);
 
 	try {
 	var	project = await getNormalizedProjectData(sourceFile);
 
 		if (project) {
-			project.thumbnail = thumbnail;
+			project.thumbnail = thumbImg;
 
 		var	container = (
 				await getProjectViewMenu(project)
@@ -1766,25 +1782,26 @@ var	caption = cre('button', buttonTab);
 			project.container = container;
 			container.project = project;
 
-		var	buttonX = cre('button', buttonTab);
-			buttonX.className = 'close-button';
-			buttonX.textContent = 'X';
+		var	buttonClose = cre('button', buttonTab);
+			buttonClose.className = 'close-button';
+			buttonClose.textContent = 'X';
 
 			id('loaded-files-view').appendChild(container);
 
-			buttonX.setAttribute('onclick', 'closeProject(this)');
-			caption.setAttribute('onclick', 'selectProject(this)');
-			button.setAttribute('onclick', 'selectProject(this)');
-			button.click();
+			buttonText.setAttribute('onclick', 'selectProject(this)');
+			buttonThumb.setAttribute('onclick', 'selectProject(this)');
+			buttonClose.setAttribute('onclick', 'closeProject(this)');
 
 			if (project.options) {
 				updateBatchCount(project);
 				await updateMenuAndShowImg(project);
 
-				buttonTab.className = 'button with-options';
+				buttonTab.className = 'button loaded with-options';
 			} else {
-				buttonTab.className = 'button without-options';
+				buttonTab.className = 'button loaded without-options';
 			}
+
+			buttonText.click();
 
 			return true;
 		}
@@ -2474,15 +2491,15 @@ var	e = cre('section', header)
 		t = project.bitDepth + ' ' + la.project.bits;
 	} else t = '';
 
-	t = [
+var	i = (
 		project.width + 'x'
 	+	project.height + ' '
 	+	la.project.pixels
-
-	,	arrayFilteredJoin([project.colorMode, t], ' ')
-	];
-
-var	i = project.loading.imagesCount
+	)
+,	j = arrayFilteredJoin([project.colorMode, t], ' ')
+,	j = arrayFilteredJoin([i, j], ', ')
+,	t = [j]
+,	i = project.loading.imagesCount
 ,	j = project.layersCount
 	;
 	if (j) t.push(j + ' ' + la.project.layers);
@@ -4290,11 +4307,13 @@ var	l_a = layersToRenderOne || layersBatch || project.layers
 //* end of layer tree:
 
 	if (!layersBatch) {
+		canvas.renderingTime = (+new Date - project.rendering.startTime)
+
 		logTime(
 			'"' + project.fileName + '" rendered in '
 		+	[	project.rendering.layersBatchCount + ' canvas elements'
 			,	project.rendering.layersApplyCount + ' blending steps'
-			,	(+new Date - project.rendering.startTime) + ' ms'
+			,	(canvas.renderingTime / 1000) + ' seconds'
 			,	'subtitle'
 			].join(', ')
 		,	getFileNameByValues(project, values)
@@ -4413,10 +4432,12 @@ async function getOrCreateRenderedImg(project, render) {
 			var	data = canvas.toDataURL()
 			,	blob = dataToBlob(data)
 			,	img = cre('img')
+			,	ms = canvas.renderingTime
+			,	fileInfo = fileName + (ms ? ' \r\n(' + (ms / 1000) + 's)' : '')
 				;
+				img.title = img.alt = fileInfo;
 				img.width  = w || project.width;
 				img.height = h || project.height;
-				img.title = img.alt = fileName;
 				img.onload = () => resolve(img);
 				img.src = (blob ? blob.url : data);
 
@@ -5041,17 +5062,19 @@ function selectProject(e) {
 
 function closeProject(e) {
 	if (e = getProjectButton(e)) {
-	var	c = e.className;
+	var	c = e.className || '';
 
-		if (c && regClassFailed.test(c)) {
+		if (regClassShow.test(c)) {
+			selectProject(
+				getNextSiblingByClass(e, regClassLoaded)
+			||	getPreviousSiblingByClass(e, regClassLoaded)
+			);
+		}
+
+	var	isViewRemoved = regClassLoaded.test(c) && removeProjectView(e.id);
+
+		if (!isViewRemoved) {
 			del(e);
-		} else {
-			if (c && regClassShow.test(c)) {
-			var	selectNext = e.nextElementSibling || e.previousElementSibling;
-				selectProject(selectNext);
-			}
-
-			removeProjectView(e.id);
 		}
 	}
 }
