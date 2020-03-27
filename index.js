@@ -17,7 +17,6 @@
 //* TODO: arithmetic emulation of all blending operations, not native to JS.
 //* TODO: arithmetic emulation of all operations in 16/32-bit until final result; to be optionally available as checkbox/selectbox.
 //* TODO: decode layer data (PSD/PNG/etc) manually without using canvas, to avoid premultiplied-alpha (PMA - in Firefox, not in Chrome) while rendering.
-//* TODO: img src: recompress using temporary canvas (bad with PMA), save whichever is shorter (original vs temp) as base64 or blob.
 //* TODO: for files without merged image data - render ignoring options, but respecting layer visibility properties.
 
 //* later when it works at all, try in spare time:
@@ -190,6 +189,7 @@ examples of 'multi_select':
 //* TODO: add prefix automatically only if option names collide?
 	,	'no_prefix':	/^(no-prefix)$/i
 	}
+
 ,	regLayerBlendModePass	= /^pass[-through]*$/i
 ,	regLayerBlendModeAlpha	= /^(source|destination)-(\w+)$/i
 ,	regLayerTypeSingleTrim	= /s+$/i
@@ -222,11 +222,13 @@ examples of 'multi_select':
 	,	skipByKeyIfLong	: /^(imageData)$/i
 	,	showFromTree	: /^(layers|name)$/i
 	}
+
 ,	regPSD = {
 		layerNameEndOfFolder	: /^<\/Layer[\s_]group>$/i
 	,	layerTypeFolder		: /^(open|closed)[\s_]folder$/i
 	,	layerUnicodeName	: /^Unicode[\s_]layer[\s_]name$/i
 	}
+
 ,	QUERY_SELECTOR = {
 		getElementsByClassName:	['.', ''],
 		getElementsByTagName:	['', ''],
@@ -234,6 +236,18 @@ examples of 'multi_select':
 		getElementsByType:	['*[type="', '"]'],
 		getElementsById:	['*[id="', '"]'],
 	}
+
+,	FALSY_STRINGS = [
+		'0'
+	,	'no'
+	,	'none'
+	,	'null'
+	,	'false'
+	,	'hidden'
+	,	'disabled'
+	,	'undefined'
+	]
+
 ,	RUNNING_FROM_DISK = (location.protocol.substr(0,4).toLowerCase() === 'file')
 // ,	LS = window.localStorage || localStorage
 ,	URL_API = window.URL || window.webkitURL
@@ -241,7 +255,6 @@ examples of 'multi_select':
 ,	DATA_PREFIX = 'data:'
 ,	TYPE_TP = 'text/plain'
 ,	TOS = ['object', 'string']
-,	FALSY_STRINGS = ['', 'false', 'no', 'none', 'null', 'undefined']
 ,	VIEW_SIDES = ['front', 'back']
 ,	VIEW_FLIPS = ['hor', 'ver']
 ,	NAME_PARTS_PERCENTAGES = ['zoom', 'opacities']
@@ -281,12 +294,15 @@ examples of 'multi_select':
 	,	[/[\s\/_-]+/g, '-']	//* <- normalize word separators to use only dashes
 	,	[regLayerBlendModePass, BLEND_MODE_PASS]
 	]
+
 ,	BLEND_MODES_REMAP = {
 		'normal':	BLEND_MODE_NORMAL
 	,	'add':		BLEND_MODE_ADD
 	,	'plus':		BLEND_MODE_ADD
 	,	'linear-dodge':	BLEND_MODE_ADD
+
 //* from SAI2, remap according to PSD.js:
+
 	,	'burn':		'color-burn'
 	,	'burn-dodge':	'vivid-light'
 	,	'darken-color':	'darker-color'
@@ -297,39 +313,9 @@ examples of 'multi_select':
 	,	'shade-shine':	'linear-light'
 	,	'shine':	BLEND_MODE_ADD
 	}
-,	BLEND_MODES_EMULATED = [
-		'darker-color'
-	,	'divide'
-	,	'hard-mix'
-	,	'lighter-color'
-	,	'linear-burn'
-	,	'linear-light'
-	,	'pin-light'
-	,	'substract'
-	,	'vivid-light'
-//* JS-native blending will be used automatically when available:
-/*
-	,	'color-burn'
-	,	'color-dodge'
-	,	'darken'
-	,	'lighten'
-	,	'lighter'
-	,	'multiply'
-	,	'overlay'
-	,	'screen'
-	,	'soft-light'
-	,	'hard-light'
 
-	,	'difference'
-	,	'exclusion'
-
-	,	'color'
-	,	'hue'
-	,	'saturation'
-	,	'luminosity'
-*/
-	]
 //* taken from PSDLIB.js:
+
 ,	PSD_COLOR_MODES = [
 		'Bitmap'
 	,	'Grayscale'
@@ -353,7 +339,7 @@ var	exampleRootDir = ''
 //* source: https://github.com/ukyo/zlib-asm
 
 ,	zlibAsmSubDir = 'zlib-asm/v0.2.2/'	//* <- last version supported by zip.js, ~ x2 faster than default
-// ,	zlibAsmSubDir = 'zlib-asm/v1.0.7/'	//* <- not supported by zip.js, works in some cases
+// ,	zlibAsmSubDir = 'zlib-asm/v1.0.7/'	//* <- not supported by zip.js, works in some cases (with same speed as v0.2.2)
 
 ,	fileTypeLibs = {
 		'UPNG.js': {
@@ -1197,6 +1183,7 @@ var	depends = lib.depends || null;
 				}
 
 				if (varName === 'ora' && window[varName]) {
+					ora.enableImageAsBlob = true;
 					ora.enableWorkers = !RUNNING_FROM_DISK;
 					ora.scriptsPath = dir;
 				}
@@ -2663,6 +2650,7 @@ var	m,k,v
 			for (var k in regLayerNameParamType) if (m = param.match(regLayerNameParamType[k])) {
 				if (NAME_PARTS_FOLDERS.indexOf(k) >= 0) {
 					layer.type = k;
+					layer.isOptional = true;
 				} else
 				if (k === 'zoom' || k === 'opacities') {
 					params[k] = {
@@ -2671,6 +2659,7 @@ var	m,k,v
 					};
 				} else
 				if (k === 'radius') {
+					layer.isOptional = true;
 					v = (
 						m[1]
 						.split('/')
@@ -2759,6 +2748,9 @@ var	m,k,v
 				} else {
 					if (k === 'preselect' && param.indexOf('last') >= 0) {
 						params.last = true;
+					}
+					if (k === 'side') {
+						layer.isOptional = true;
 					}
 					if (k === 'side' && m[2]) {
 						params[k] = m[2];
@@ -2870,11 +2862,7 @@ async function loadORA(project) {
 	,	async function fileParserFunc(file) {
 			return await new Promise(
 				(resolve, reject) => {
-					ora.load(
-						file
-					,	resolve
-					,	{enableImageAsBlob: true}
-					);
+					ora.load(file, resolve);
 				}
 			);
 		}
@@ -2908,12 +2896,19 @@ async function loadORA(project) {
 					blendMode === BLEND_MODE_CLIP
 				||	getTruthyValue(layer.clipping)
 				)
+			,	isVisible = (
+					typeof layer.visibility === 'undefined'
+				||	layer.visibility === 'visible'
+				||	layer.visibility !== 'hidden'
+				// ||	getTruthyValue(layer.visibility)	//* <- non-standard, for testing
+				)
 			,	layerWIP = {
 					top:    orz(layer.top    || layer.y)
 				,	left:   orz(layer.left   || layer.x)
 				,	width:  orz(layer.width  || layer.w)
 				,	height: orz(layer.height || layer.h)
 				,	opacity: orzFloat(layer.opacity)
+				,	isVisible: isVisible
 				,	isClipped: isClipped
 				,	isPassThrough: (isLayerFolder && isPassThrough)
 				,	blendMode: blendMode
@@ -3016,6 +3011,7 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 				,	width:  orz(l.width)
 				,	height: orz(l.height)
 				,	opacity: getNormalizedOpacity(l.opacity) * fillOpacity
+				,	isVisible: getTruthyValue(l.visible)
 				,	isClipped: getTruthyValue(clipping)
 				,	isPassThrough: (isLayerFolder && isPassThrough)
 				,	blendMode: blendMode
@@ -3064,7 +3060,7 @@ async function loadPSDLIB(project) {
 		project
 	,	'PSDLIB.js'
 	,	async function fileParserFunc(file) {
-			return PSDLIB.parse(file);
+			return PSDLIB.parse(await readFilePromise(file));
 		}
 	,	function treeConstructorFunc(project, sourceData) {
 			if (!sourceData.layers) return;
@@ -3120,7 +3116,7 @@ async function loadPSDLIB(project) {
 						}
 					}
 
-//* layer masks are not supported here yet
+//* not supported here: layer masks, visibility toggle
 
 				var	mode = layer.blendMode || ''
 				,	blendMode = getNormalizedBlendMode(mode)
@@ -3130,6 +3126,7 @@ async function loadPSDLIB(project) {
 					,	width:  orz(layer.width)
 					,	height: orz(layer.height)
 					,	opacity: getNormalizedOpacity(layer.opacity)
+					,	isVisible: true
 					,	isClipped: getTruthyValue(layer.clipping)
 					,	isPassThrough: regLayerBlendModePass.test(blendMode)
 					,	blendMode: blendMode
@@ -3977,17 +3974,27 @@ function getLayerVisibilityByValues(project, layer, values, listName) {
 
 //* skip not selected parts:
 
+var	isVisible = (
+		layer.isVisible
+	||	layer.isOptional
+	||	layer.params.skip_render
+	);
+
 	if (layer.isOnlyForOneSide) {
 	var	selectedName = getPropBySameNameChain(values, 'side')
 		;
 		if (layer.params.side !== selectedName) {
 			return 0;
+		} else {
+			isVisible = true;
 		}
 	}
 
 	if (layer.isOptionIfAny) {
 		if (skipByFunc(layer, skipByAnyName)) {
 			return 0;
+		} else {
+			isVisible = true;
 		}
 	}
 
@@ -3998,7 +4005,13 @@ var	parent = layer.optionParent;
 
 		if (skipByFunc(layer, skipBySpecificName, isNot)) {
 			return 0;
+		} else {
+			isVisible = true;
 		}
+	}
+
+	if (!isVisible) {
+		return 0;
 	}
 
 //* skip fully transparent:

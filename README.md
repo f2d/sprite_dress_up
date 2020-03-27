@@ -97,4 +97,4 @@ PSD file parser - unmodified [fork](https://github.com/imcuttle/psd.js) of [psd.
 
 PNG file parser - unmodified [UPNG.js](https://github.com/photopea/UPNG.js) with [Pako.js](https://github.com/nodeca/pako).
 
-ZIP file parser - unmodified [zip.js](https://github.com/gildas-lormeau/zip.js).
+ZIP file parser - unmodified [zip.js](https://github.com/gildas-lormeau/zip.js) with [zlib-asm](https://github.com/ukyo/zlib-asm).
