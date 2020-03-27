@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 	<meta charset="utf-8">
-	<title>Dress up / sprite generator from PSD file</title>
+	<title>Dress up / sprite generator from a project file</title>
 	<link rel="shortcut icon" type="image/png" href="index.png">
 	<link rel="stylesheet" type="text/css" href="index.css">
 	<link rel="alternate" hreflang="en" href="index.en.htm">
@@ -22,6 +22,15 @@
 						'ZIP-files are loaded as ORA, if their content is conforming.',
 						'If multiple files with same name are opened, earlier ones will close.',
 					],
+					'open_same_name': {
+						'header': 'If opening file has the same name as one of already opened',
+						'select': {
+							'ask': 'Ask',
+							'skip': 'Skip',
+							'replace': 'Replace',
+							'replace_old': 'Replace if older',
+						},
+					},
 					'batch_buttons': {
 						'save_all': {
 							'header': 'Save all opened projects',
@@ -47,6 +56,7 @@
 					'subdirs': {
 						'psd_from_sai2': 'SAI2 → PSD as is',
 						'ora_mockup': 'SAI2 → PSD → Krita (no clipping) → ORA (no masks) → manual fixes',
+						'from_paint.net': 'paint.net (with plugins) → PSD and ORA as is (no folders)',
 					},
 					'buttons': {
 						'download': 'Download file',

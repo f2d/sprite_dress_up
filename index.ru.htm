@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 	<meta charset="utf-8">
-	<title>Одевалка / генератор спрайтов из PSD-файла</title>
+	<title>Одевалка / генератор спрайтов из файла-проекта</title>
 	<link rel="shortcut icon" type="image/png" href="index.png">
 	<link rel="stylesheet" type="text/css" href="index.css">
 	<link rel="alternate" hreflang="en" href="index.en.htm">
@@ -22,6 +22,15 @@
 						'ZIP-файлы открываются так же, как ORA, если содержание подходит.',
 						'Если открыть файлы с одинаковым именем, более ранние закроются.',
 					],
+					'open_same_name': {
+						'header': 'Если открыть файл с тем же именем, что уже есть в открытых',
+						'select': {
+							'ask': 'Спросить',
+							'skip': 'Пропустить',
+							'replace': 'Заменить',
+							'replace_old': 'Заменить более старые',
+						},
+					},
 					'batch_buttons': {
 						'save_all': {
 							'header': 'Сохранить все открытые проекты',
@@ -47,6 +56,7 @@
 					'subdirs': {
 						'psd_from_sai2': 'SAI2 → PSD прямо как есть',
 						'ora_mockup': 'SAI2 → PSD → Krita (нет клиппинга) → ORA (нет масок) → ручная правка',
+						'from_paint.net': 'paint.net (с доп.модулями) → PSD и ORA прямо как есть (нет папок)',
 					},
 					'buttons': {
 						'download': 'Сохранить файл',

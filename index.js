@@ -1,6 +1,5 @@
 
 //* source file data:
-//* TODO: put each root-level layer with slash-separated layer name parts into made-up chain of PassThrough subfolders.
 //* TODO: lazy loading only needed images in ORA one by one, as in PSD.
 //* TODO: save as ORA.
 //* TODO: whole config in JSON-format?
@@ -25,7 +24,18 @@
 //* Config *-------------------------------------------------------------------
 
 var	regLayerNameToSkip		= /^(skip)$/i
-,	regLayerNameParamOrComment	= /^([^\[\]()]*)(?:\[([^\[\]]*)\]|\([^()]*\))(.*?)$/i
+,	regLayerNameHasParam		= /^([^\[\]()]*\([^()]*\)[^\[\]()]*)*?\[([^\[\]]*)\]/
+,	regLayerNameParamOrComment	= new RegExp(
+		'^'
+	+		'([^\\/\\[\\]()]*)'		//* <- [1] layer identity names as prefix
+	+		'('				//* <- [2] block of logic
+	+			'/'			//* <- virtual passthrough subfolder as "/"
+	+		'|' +	'\\[([^\\[\\]]*)\\]'	//* <- [3] options as "[param]"
+	+		'|' +	'\\([^()]*\\)'		//* <- throwaway text as "(comment)"
+	+		')'
+	+		'(.*?)'				//* <- [4] remainder for next step
+	+	'$'
+	)
 ,	regLayerNameParamSplit		= /[\s,_]+/g
 ,	regLayerNameParamTrim		= getTrimReg('\\s,_')
 
@@ -2621,13 +2631,35 @@ var	m,k,v
 ,	params = {}
 	;
 
-	layer.sourceData = sourceData;
-	layer.nameOriginal = name;
-	name = trim(name);
+	if (typeof layer.sourceData   === 'undefined') layer.sourceData   = sourceData;
+	if (typeof layer.nameOriginal === 'undefined') layer.nameOriginal = name;
 
-	while (m = name.match(regLayerNameParamOrComment)) {
+var	hasParam = regLayerNameHasParam.test(name = trim(name));
+
+	while (m = name.match(regLayerNameParamOrComment)) if (
+		hasParam
+	&&	(v = m[2])
+	&&	(v === '/')
+	) {
+	var	subLayer = layer
+	,	isSubLayerFolder = isLayerFolder
+		;
+		isLayerFolder = true;
+		name          = m[1].replace(regTrimCommaSpace, '');
+		subLayer.name = m[4].replace(regTrimCommaSpace, '');
+		layer = {
+			nameOriginal: layer.nameOriginal
+		,	isPassThrough: true
+		,	isVisible: true
+		,	isClipped: layer.isClipped
+		,	opacity: 1
+		,	layers: []
+		};
+
+		break;
+	} else {
 		if (
-			(v = m[2])
+			(v = m[3])
 		&&	(v.length > 0)
 		) {
 			v
@@ -2636,8 +2668,9 @@ var	m,k,v
 			.filter(arrayFilterNonEmptyValues)
 			.forEach(v => paramList.push(v));
 		}
+
 		name = (
-			(m[1] + ', ' + m[3])
+			(m[1] + ', ' + m[4])
 			.replace(regTrimCommaSpace, '')
 		);
 	}
@@ -2803,6 +2836,16 @@ var	m,k,v
 	if (isLayerFolder) {
 		parentGroup = layer.layers = [];
 		parentGroup.parent = layer;
+
+		if (subLayer) {
+			parentGroup = getNextParentAfterAddingLayerToTree(
+				subLayer
+			,	sourceData
+			,	subLayer.name
+			,	parentGroup
+			,	isSubLayerFolder
+			);
+		}
 	}
 
 	return parentGroup;
