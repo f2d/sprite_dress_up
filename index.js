@@ -17,6 +17,7 @@
 //* TODO: arithmetic emulation of all operations in 16/32-bit until final result; to be optionally available as checkbox/selectbox.
 //* TODO: decode layer data (PSD/PNG/etc) manually without using canvas, to avoid premultiplied-alpha (PMA - in Firefox, not in Chrome) while rendering.
 //* TODO: for files without merged image data - render ignoring options, but respecting layer visibility properties.
+//* TODO: save batch to a single tileset image.
 
 //* later when it works at all, try in spare time:
 //* TODO: split functionality into modules to reuse with drawpad, etc.
@@ -2954,7 +2955,12 @@ async function loadORA(project) {
 				,	isVisible: isVisible
 				,	isClipped: isClipped
 				,	isPassThrough: (isLayerFolder && isPassThrough)
-				,	blendMode: blendMode
+				,	blendMode: (
+						(isClipped     && blendMode === BLEND_MODE_CLIP)
+					||	(isPassThrough && blendMode === BLEND_MODE_PASS)
+					?	BLEND_MODE_NORMAL
+					:	blendMode
+					)
 				,	blendModeOriginal: mode
 				};
 
@@ -4201,12 +4207,16 @@ function getRenderByValues(project, values, layersBatch, renderParam) {
 					if (
 						layer.isPassThrough
 					&&	opacity == 1
+					&&	(
+							blendMode === BLEND_MODE_PASS
+						||	blendMode === BLEND_MODE_NORMAL
+						)
 					&&	!(
 							layer.mask
 						||	layer.isMaskGenerated
 						||	(
 								(colors = getPropByNameChain(project, 'options', 'colors'))
-							&&	(passToColor = names.find(listName => (listName in colors)))
+							&&	(passToColor = !!names.find(listName => (listName in colors)))
 							)
 						)
 					) {
@@ -4347,6 +4357,7 @@ function getRenderByValues(project, values, layersBatch, renderParam) {
 			) {
 			var	layersToRenderOne = (getParentLayer(layer) || project).layers;
 			} else {
+				logTime('getRenderByValues - skipped call, separate layer not found.');
 				return;
 			}
 		}
@@ -4361,6 +4372,7 @@ function getRenderByValues(project, values, layersBatch, renderParam) {
 
 var	l_a = layersToRenderOne || layersBatch || project.layers
 ,	l_i = l_a.length
+,	l_k = 0
 ,	bottomLayer = l_a[l_i - 1]
 ,	renderParam = renderParam || {}
 ,	side = getPropBySameNameChain(values, 'side')
@@ -4370,12 +4382,12 @@ var	l_a = layersToRenderOne || layersBatch || project.layers
 //* start rendering layer batch:
 
 	if (layersToRenderOne) {
-		l_i = layersToRenderOne.indexOf(layer);
+		l_k = layersToRenderOne.indexOf(layer);
+		l_i = l_k + 1;
+	}
+
+	while (l_i-- > l_k) if (layer = l_a[l_i]) {
 		renderOneLayer(layer);
-	} else {
-		while (l_i-- > 0) if (layer = l_a[l_i]) {
-			renderOneLayer(layer);
-		}
 	}
 
 //* end of layer batch.
@@ -4394,17 +4406,25 @@ var	l_a = layersToRenderOne || layersBatch || project.layers
 //* end of layer tree:
 
 	if (!layersBatch) {
-		canvas.renderingTime = (+new Date - project.rendering.startTime)
+	var	renderingTime = +new Date - project.rendering.startTime
+	,	renderName = getFileNameByValues(project, values)
+		;
 
-		logTime(
-			'"' + project.fileName + '" rendered in '
-		+	[	project.rendering.layersBatchCount + ' canvas elements'
-			,	project.rendering.layersApplyCount + ' blending steps'
-			,	(canvas.renderingTime / 1000) + ' seconds'
-			,	'subtitle'
-			].join(', ')
-		,	getFileNameByValues(project, values)
-		);
+		if (canvas) {
+			canvas.renderingTime = renderingTime;
+
+			logTime(
+				'"' + project.fileName + '" rendered in '
+			+	[	project.rendering.layersBatchCount + ' canvas elements'
+				,	project.rendering.layersApplyCount + ' blending steps'
+				,	(renderingTime / 1000) + ' seconds'
+				,	'subtitle'
+				].join(', ')
+			,	renderName
+			);
+		} else {
+			logTime('getRenderByValues - visible layers not found.', renderName);
+		}
 
 		project.rendering = null;
 	}
@@ -4520,8 +4540,11 @@ async function getOrCreateRenderedImg(project, render) {
 			,	blob = dataToBlob(data)
 			,	img = cre('img')
 			,	ms = canvas.renderingTime
-			,	fileInfo = fileName + (ms ? ' \r\n(' + (ms / 1000) + 's)' : '')
-				;
+			,	fileInfo = fileName + (
+					typeof ms !== 'undefined'
+					? ' \r\n(' + (ms / 1000) + 's)'
+					: ''
+				);
 				img.title = img.alt = fileInfo;
 				img.width  = w || project.width;
 				img.height = h || project.height;
@@ -4543,7 +4566,9 @@ var	prerenders = (project.renders || (project.renders = {}))
 ,	values     = render.values
 	;
 
-	if (img = prerenders[fileName]) return img;
+	if (fileName in prerenders) {
+		return prerenders[fileName];
+	}
 
 //* let UI update before creating new image:
 
@@ -4555,6 +4580,8 @@ var	img = prerenders[refName];
 		if (fileName == refName) {
 			if (canvas = getRenderByValues(project, values)) {
 				img = await getAndCacheRenderedImgElement(canvas, refName);
+			} else {
+				prerenders[fileName] = null;
 			}
 		} else {
 			render = {values: render.refValues};
@@ -4614,8 +4641,9 @@ var	startTime = +new Date
 	+	' ms)'
 	);
 
-	for (var fileName in sets) if (values = sets[fileName]) {
+	for (var fileName in sets) {
 	var	startTime = +new Date
+	,	values = sets[fileName]
 	,	render = await getOrCreateRender(
 			project
 		,	{
@@ -4700,6 +4728,8 @@ async function showImg(project, render, container) {
 		}
 	} catch (error) {
 		console.log(error);
+
+		project.rendering = null;
 	}
 
 	if (isSingleWIP) setProjectWIPstate(project, false);
@@ -4713,6 +4743,8 @@ async function saveImg(project, render, fileName) {
 		saveDL(render.img.src, fileName || render.fileName, 'png');
 	} catch (error) {
 		console.log(error);
+
+		project.rendering = null;
 	}
 
 	if (isSingleWIP) setProjectWIPstate(project, false);
