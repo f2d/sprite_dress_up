@@ -25,14 +25,13 @@
 //* Config *-------------------------------------------------------------------
 
 var	regLayerNameToSkip		= /^(skip)$/i
-,	regLayerNameHasParam		= /^([^\[\]()]*\([^()]*\)[^\[\]()]*)*?\[([^\[\]]*)\]/
 ,	regLayerNameParamOrComment	= new RegExp(
 		'^'
-	+		'([^\\/\\[\\]()]*)'		//* <- [1] layer identity names as prefix
-	+		'('				//* <- [2] block of logic
-	+			'/'			//* <- virtual passthrough subfolder as "/"
-	+		'|' +	'\\[([^\\[\\]]*)\\]'	//* <- [3] options as "[param]"
-	+		'|' +	'\\([^()]*\\)'		//* <- throwaway text as "(comment)"
+	+		'([^/\\[(]*)'			//* <- [1] layer identity names, e.g. "name1, name2"
+	+		'('				//* <- [2] block of logic for any of identity names
+	+			'/'			//* <- virtual subfolder, e.g. "parent names [parent param] / child names [child param]"
+	+		'|' +	'\\[([^\\]]*)(?:\\]|$)'	//* <- [3] options, e.g. "name1 [param] name2"
+	+		'|' +	'\\([^)]*(?:\\)|$)'	//* <- throwaway text, e.g. "name1 (comment) name2"
 	+		')'
 	+		'(.*?)'				//* <- [4] remainder for next step
 	+	'$'
@@ -208,7 +207,8 @@ examples of 'multi_select':
 ,	regNaN			= /\D+/g
 ,	regNonWord		= /\W+/g
 ,	regSpace		= /\s+/g
-,	regCommaSpace		= /,+\s*/g
+,	regCommaSpace		= /\,+s*/g
+,	regSplitLayerNames	= /[\/,]+/g
 ,	regSanitizeFileName	= /[_\s\/\\:<>?*"]+/g
 ,	regHMS			= /(T\d+)-(\d+)-(\d+\D*)/
 ,	regTrim			= getTrimReg('\\s')
@@ -282,6 +282,7 @@ examples of 'multi_select':
 ,	TESTING = false
 ,	EXAMPLE_NOTICE = false
 ,	FILE_NAME_ADD_PARAM_KEY = true
+,	ADD_PAUSE_BEFORE_EACH_LAYER = false
 ,	DOWNSCALE_BY_MAX_FACTOR_FIRST = true
 ,	TAB_THUMBNAIL_ZOOM = true
 ,	USE_ZLIB_ASM = true
@@ -2124,7 +2125,7 @@ async function getProjectViewMenu(project) {
 		,	n = layer.name
 		,	m = layer.names = (
 				n
-				.split(regCommaSpace)
+				.split(regSplitLayerNames)
 				.map(trim)
 				.filter(arrayFilterNonEmptyValues)
 				.filter(arrayFilterUniqueValues)
@@ -2626,7 +2627,38 @@ function getProjectViewImage(project, img) {
 	return null;
 }
 
-function getNextParentAfterAddingLayerToTree(layer, sourceData, name, parentGroup, isLayerFolder) {
+function isParamInLayerName(name) {
+	while (
+		name
+	&&	name.length > 0
+	) {
+	var	i = name.indexOf('[');
+		if (i < 0) return false;	//* <- has no "[param]", nothing else to see
+
+	var	j = name.indexOf('(');
+		if (j < 0) return true;		//* <- has "[param]" and no "(comment)"
+		if (i < j) return true;		//* <- has "[param]" before "(comment)"
+
+	var	k = name.indexOf(')', j)
+		if (k < 0) return false;	//* <- the rest is unclosed "(comment"
+
+		name = name.substr(k + 1);	//* <- continue looking after "(comment)"
+	}
+
+	return false;
+}
+
+async function getNextParentAfterAddingLayerToTree(layer, sourceData, name, parentGroup, isLayerFolder, isInsideVirtualPath) {
+	if (
+		ADD_PAUSE_BEFORE_EACH_LAYER
+	||	(
+			isLayerFolder
+		&&	!isInsideVirtualPath
+		)
+	) {
+		await pause(1);
+	}
+
 var	m,k,v
 ,	paramList = []
 ,	params = {}
@@ -2635,10 +2667,15 @@ var	m,k,v
 	if (typeof layer.sourceData   === 'undefined') layer.sourceData   = sourceData;
 	if (typeof layer.nameOriginal === 'undefined') layer.nameOriginal = name;
 
-var	hasParam = regLayerNameHasParam.test(name = trim(name));
+	name = name.replace(regTrimCommaSpace, '');
+
+var	checkVirtualPath = (
+		isInsideVirtualPath
+	||	isParamInLayerName(name)
+	);
 
 	while (m = name.match(regLayerNameParamOrComment)) if (
-		hasParam
+		checkVirtualPath
 	&&	(v = m[2])
 	&&	(v === '/')
 	) {
@@ -2650,9 +2687,10 @@ var	hasParam = regLayerNameHasParam.test(name = trim(name));
 		subLayer.name = m[4].replace(regTrimCommaSpace, '');
 		layer = {
 			nameOriginal: layer.nameOriginal
+		,	isClipped: layer.isClipped
+		,	isVirtualFolder: true
 		,	isPassThrough: true
 		,	isVisible: true
-		,	isClipped: layer.isClipped
 		,	opacity: 1
 		,	layers: []
 		};
@@ -2839,12 +2877,13 @@ var	hasParam = regLayerNameHasParam.test(name = trim(name));
 		parentGroup.parent = layer;
 
 		if (subLayer) {
-			parentGroup = getNextParentAfterAddingLayerToTree(
+			parentGroup = await getNextParentAfterAddingLayerToTree(
 				subLayer
 			,	sourceData
 			,	subLayer.name
 			,	parentGroup
 			,	isSubLayerFolder
+			,	true
 			);
 		}
 	}
@@ -2889,7 +2928,7 @@ var	actionLabel = 'parsing with ' + libName;
 		project.sourceData = sourceData;
 		project.toPng = thisToPng;
 
-		if (treeConstructorFunc(project, sourceData)) {
+		if (await treeConstructorFunc(project, sourceData)) {
 			return (
 				project.loading.then
 				? await project.loading.then(project)
@@ -2910,7 +2949,7 @@ async function loadORA(project) {
 				}
 			);
 		}
-	,	function treeConstructorFunc(project, sourceData) {
+	,	async function treeConstructorFunc(project, sourceData) {
 			if (!sourceData.layers) return;
 
 		var	l_i = project.layersCount = (
@@ -2925,7 +2964,7 @@ async function loadORA(project) {
 
 //* gather layers into a tree object:
 
-			function addLayerToTree(layer, parentGroup) {
+			async function addLayerToTree(layer, parentGroup) {
 			var	n	= layer.name || ''
 			,	mode	= layer.composite || ''
 			,	mask	= layer.mask || null
@@ -2974,7 +3013,7 @@ async function loadORA(project) {
 					m.height = orz(m.height  || mask.height);
 				}
 
-				parentGroup = getNextParentAfterAddingLayerToTree(
+				parentGroup = await getNextParentAfterAddingLayerToTree(
 					layerWIP
 				,	layer
 				,	n
@@ -2983,13 +3022,13 @@ async function loadORA(project) {
 				);
 
 				if (isLayerFolder) {
-					layers.forEach(v => addLayerToTree(v, parentGroup));
+					for (var v of layers) await addLayerToTree(v, parentGroup);
 				}
 			}
 
 		var	parentGroup = project.layers = [];
 
-			sourceData.layers.forEach(v => addLayerToTree(v, parentGroup));
+			for (var v of sourceData.layers) await addLayerToTree(v, parentGroup);
 
 			return true;
 		}
@@ -3006,7 +3045,7 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 	,	async function fileParserFunc(file) {
 			return await window[varName].fromDroppedFile(file);
 		}
-	,	function treeConstructorFunc(project, sourceData) {
+	,	async function treeConstructorFunc(project, sourceData) {
 			if (!sourceData.layers) return;
 
 		var	l_i = project.layersCount = sourceData.layers.length;
@@ -3026,7 +3065,7 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 
 //* gather layers into a tree object:
 
-			function addLayerToTree(layer, parentGroup) {
+			async function addLayerToTree(layer, parentGroup) {
 			var	l	= layer.layer || layer
 			,	n	= layer.name  || l.name  || ''
 			,	img	= layer.image || l.image || null
@@ -3082,7 +3121,7 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 					};
 				}
 
-				parentGroup = getNextParentAfterAddingLayerToTree(
+				parentGroup = await getNextParentAfterAddingLayerToTree(
 					layerWIP
 				,	layer
 				,	n
@@ -3091,13 +3130,13 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 				);
 
 				if (isLayerFolder) {
-					layers.forEach(v => addLayerToTree(v, parentGroup));
+					for (var v of layers) await addLayerToTree(v, parentGroup);
 				}
 			}
 
 		var	parentGroup = project.layers = [];
 
-			sourceData.tree().children().forEach(v => addLayerToTree(v, parentGroup));
+			for (var v of sourceData.tree().children()) await addLayerToTree(v, parentGroup);
 
 			return true;
 		}
@@ -3111,7 +3150,7 @@ async function loadPSDLIB(project) {
 	,	async function fileParserFunc(file) {
 			return PSDLIB.parse(await readFilePromise(file));
 		}
-	,	function treeConstructorFunc(project, sourceData) {
+	,	async function treeConstructorFunc(project, sourceData) {
 			if (!sourceData.layers) return;
 
 		var	l_a = sourceData.layers
@@ -3182,7 +3221,7 @@ async function loadPSDLIB(project) {
 					,	blendModeOriginal: mode
 					};
 
-					parentGroup = getNextParentAfterAddingLayerToTree(
+					parentGroup = await getNextParentAfterAddingLayerToTree(
 						layerWIP
 					,	layer
 					,	n
@@ -4079,9 +4118,9 @@ var	canvas = cre('canvas');
 	return canvas;
 }
 
-function getRenderByValues(project, values, layersBatch, renderParam) {
+async function getRenderByValues(project, values, layersBatch, renderParam) {
 
-	function renderOneLayer(layer) {
+	async function renderOneLayer(layer) {
 	var	names = layer.names
 	,	params = layer.params
 	,	skipColoring = !!params.if_only
@@ -4151,7 +4190,7 @@ function getRenderByValues(project, values, layersBatch, renderParam) {
 //* render clipping group as separate batch:
 
 		if (clippingGroupResult) {
-			img = getRenderByValues(
+			img = await getRenderByValues(
 				project
 			,	values
 			,	g_a
@@ -4225,7 +4264,7 @@ function getRenderByValues(project, values, layersBatch, renderParam) {
 
 						return;
 					} else {
-						img = getRenderByValues(
+						img = await getRenderByValues(
 							project
 						,	values
 						,	layers
@@ -4260,7 +4299,7 @@ function getRenderByValues(project, values, layersBatch, renderParam) {
 					);
 
 					if (padding) {
-						mask = getRenderByValues(
+						mask = await getRenderByValues(
 							project
 						,	values
 						,	l_a.slice(0, l_i)
@@ -4379,6 +4418,10 @@ var	l_a = layersToRenderOne || layersBatch || project.layers
 ,	canvas, ctx, layers, layer, opacity, clippingMask, aliases
 	;
 
+	if (!ADD_PAUSE_BEFORE_EACH_LAYER) {
+		await pause(1);
+	}
+
 //* start rendering layer batch:
 
 	if (layersToRenderOne) {
@@ -4387,7 +4430,10 @@ var	l_a = layersToRenderOne || layersBatch || project.layers
 	}
 
 	while (l_i-- > l_k) if (layer = l_a[l_i]) {
-		renderOneLayer(layer);
+		if (ADD_PAUSE_BEFORE_EACH_LAYER) {
+			await pause(1);
+		}
+		await renderOneLayer(layer);
 	}
 
 //* end of layer batch.
@@ -4578,7 +4624,7 @@ var	img = prerenders[refName];
 
 	if (!img) {
 		if (fileName == refName) {
-			if (canvas = getRenderByValues(project, values)) {
+			if (canvas = await getRenderByValues(project, values)) {
 				img = await getAndCacheRenderedImgElement(canvas, refName);
 			} else {
 				prerenders[fileName] = null;
