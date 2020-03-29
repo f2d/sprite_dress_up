@@ -637,6 +637,13 @@ if dirs:
 		files, dirs2 = get_separate_lists_of_files_and_dirs(src_root_path + '/' + name)
 		src_filenames_by_subdir[name] = files
 
+print('')
+print('Found files:')
+
+for dir_name, filenames in sorted(src_filenames_by_subdir.items()):
+	for filename in sorted(filenames):
+		print(src_root_path + '/' + dir_name + '/' + filename)
+
 
 
 # - get metadata of files: --------------------------------------------------
@@ -649,9 +656,10 @@ pat_separate_thousands = re.compile(r'(?<!^)(?=(\d{3})+$)')
 new_files = [] if is_dest_array else {}
 
 
-for dir_name, filenames in src_filenames_by_subdir.items():
+
+for dir_name, filenames in sorted(src_filenames_by_subdir.items()):
 	files = []
-	for filename in filenames:
+	for filename in sorted(filenames):
 		path = src_root_path + '/' + dir_name + '/' + filename
 
 		num_filesize = os.path.getsize(path)
