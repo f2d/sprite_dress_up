@@ -12,7 +12,7 @@
 //* TODO: <select multiple> <optgroup> <option>?</option> </optgroup> </select>.
 
 //* rendering:
-//* TODO: folder with PassThrough + mask + opacity (P): store a copy of the rendered state (B) before touching P, apply P content layers to the render (A), interpolate B to A using mask * opacity of P as gradient.
+//* TODO: [reverse]: possibility to combine hor+ver flip on one layer.
 //* TODO: arithmetic emulation of all blending operations, not native to JS.
 //* TODO: arithmetic emulation of all operations in 16/32-bit until final result; to be optionally available as checkbox/selectbox.
 //* TODO: decode layer data (PSD/PNG/etc) manually without using canvas, to avoid premultiplied-alpha (PMA - in Firefox, not in Chrome) while rendering.
@@ -280,6 +280,7 @@ examples of 'multi_select':
 ,	PREVIEW_SIZE = 64
 
 ,	TESTING = false
+,	TESTING_RENDER = false
 ,	EXAMPLE_NOTICE = false
 ,	FILE_NAME_ADD_PARAM_KEY = true
 ,	ADD_PAUSE_BEFORE_EACH_LAYER = false
@@ -296,6 +297,7 @@ examples of 'multi_select':
 ,	BLEND_MODE_MASK = 'destination-in'
 ,	BLEND_MODE_ADD = 'lighter'
 ,	BLEND_MODE_PASS = 'pass'
+,	BLEND_MODE_TRANSIT = 'transition'
 
 ,	BLEND_MODES_REPLACE = [
 		['src', 'source']
@@ -844,7 +846,7 @@ function getUniqueNumbersArray(t) {
 
 function getFileExt(n) {return n.split(/\./g).pop().toLowerCase();}
 function getFileName(n) {return n.split(/\//g).pop();}
-function getFileBaseName(n) {return n.split(/\./g).shift();}
+function getFileBaseName(n) {var i = n.lastIndexOf('.'); return (i > 0 ? n.substr(0, i) : n);}
 function getFilePathFromUrl(n) {return n.split(/\#/g).shift().split(/\?/g).shift();}
 function getFormattedFileNamePart(n) {return (n.length > 0 ? '[' + n + ']' : n);}
 function getFormattedFileSize(shortened, bytes) {
@@ -2344,6 +2346,7 @@ async function getProjectViewMenu(project) {
 					;
 					img.top = mask.top;
 					img.left = mask.left;
+					img.defaultColor = orz(mask.defaultColor);
 					img.onload = () => resolve(true);
 					img.src = (blob ? blob.url : data);
 				} else {
@@ -2674,6 +2677,28 @@ var	checkVirtualPath = (
 	||	isParamInLayerName(name)
 	);
 
+//* common fixes:
+
+	if (layer.blendMode === BLEND_MODE_CLIP) {
+		layer.blendMode = BLEND_MODE_NORMAL;
+		layer.isClipped = true;
+	}
+
+	if (layer.blendMode === BLEND_MODE_PASS) {
+		layer.blendMode = BLEND_MODE_NORMAL;
+		layer.isPassThrough = true;
+	}
+
+	if (layer.isPassThrough) {
+		if (isLayerFolder) {
+			layer.blendMode = BLEND_MODE_NORMAL;
+		} else {
+			layer.isPassThrough = false;
+		}
+	}
+
+//* make virtual subfolder from layer name:
+
 	while (m = name.match(regLayerNameParamOrComment)) if (
 		checkVirtualPath
 	&&	(v = m[2])
@@ -2697,6 +2722,9 @@ var	checkVirtualPath = (
 
 		break;
 	} else {
+
+//* gather "[params]", remove "(comments)":
+
 		if (
 			(v = m[3])
 		&&	(v.length > 0)
@@ -2713,6 +2741,8 @@ var	checkVirtualPath = (
 			.replace(regTrimCommaSpace, '')
 		);
 	}
+
+//* process params:
 
 	if (paramList.length > 0) {
 		paramList = paramList.filter(arrayFilterUniqueValues);
@@ -2860,6 +2890,8 @@ var	checkVirtualPath = (
 		}
 	}
 
+//* place the layer into custom generic tree structure:
+
 	layer.name = name;
 	layer.params = params;
 	layer.parent = parentGroup;
@@ -2875,6 +2907,8 @@ var	checkVirtualPath = (
 	if (isLayerFolder) {
 		parentGroup = layer.layers = [];
 		parentGroup.parent = layer;
+
+//* add content to virtual subfolder:
 
 		if (subLayer) {
 			parentGroup = await getNextParentAfterAddingLayerToTree(
@@ -2993,13 +3027,8 @@ async function loadORA(project) {
 				,	opacity: orzFloat(layer.opacity)
 				,	isVisible: isVisible
 				,	isClipped: isClipped
-				,	isPassThrough: (isLayerFolder && isPassThrough)
-				,	blendMode: (
-						(isClipped     && blendMode === BLEND_MODE_CLIP)
-					||	(isPassThrough && blendMode === BLEND_MODE_PASS)
-					?	BLEND_MODE_NORMAL
-					:	blendMode
-					)
+				,	isPassThrough: isPassThrough
+				,	blendMode: blendMode
 				,	blendModeOriginal: mode
 				};
 
@@ -3101,7 +3130,7 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 				,	opacity: getNormalizedOpacity(l.opacity) * fillOpacity
 				,	isVisible: getTruthyValue(l.visible)
 				,	isClipped: getTruthyValue(clipping)
-				,	isPassThrough: (isLayerFolder && isPassThrough)
+				,	isPassThrough: isPassThrough
 				,	blendMode: blendMode
 				,	blendModeOriginal: mode
 				};
@@ -3118,6 +3147,7 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 					,	left:   orz(mask.left || mask.x)
 					,	width:  orz(mask.width)
 					,	height: orz(mask.height)
+					,	defaultColor: orz(mask.defaultColor)
 					};
 				}
 
@@ -3578,7 +3608,7 @@ function getOrCreateReusableHeap(project) {
 var	buffer = project.renderingBuffer;
 
 	if (!buffer) {
-	var	realSize = project.width * project.height * 4 * 2
+	var	realSize = project.width * project.height * 4 * 3	//* <- 2 RGBA pixel buffers + 1 Alpha mask (as RGBA too for convenience)
 	,	paddedSize = nextValidHeapSize(realSize)
 	,	buffer = project.renderingBuffer = new ArrayBuffer(paddedSize)
 		;
@@ -3587,9 +3617,9 @@ var	buffer = project.renderingBuffer;
 	return new Uint8Array(buffer);
 }
 
-function drawImageOrColor(project, ctx, img, blendMode, opacity) {
+function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
 
-	function drawImageOrColorInside() {
+	function drawImageOrColorInside(img) {
 		if (
 			img.join
 		||	img.split
@@ -3627,24 +3657,39 @@ function drawImageOrColor(project, ctx, img, blendMode, opacity) {
 //* get pixels of layer above (A):
 
 			ctx.clearRect(0,0, w,h);
-			ctx.globalAlpha = opacity;
+			ctx.globalAlpha = (mask ? 1 : opacity);
 
-			drawImageOrColorInside();
+			drawImageOrColorInside(img);
+			ctx.globalAlpha = 1;
 
 		var	newData = ctx.getImageData(0,0, w,h)
 		,	a = newData.data
 			;
 
+//* get pixels of transition mask (M):
+
+			if (mask) {
+				ctx.clearRect(0,0, w,h);
+				ctx.globalAlpha = opacity;
+
+				drawImageOrColorInside(mask);
+				ctx.globalAlpha = 1;
+
+			var	maskData = ctx.getImageData(0,0, w,h)
+			,	m = maskData.data
+				;
+			}
+
 //* compute resulting pixels linearly into newData, and save result back onto canvas:
 
-		var	isDone = callback(a,b, blendMode);
+		var	isDone = callback(a,b, blendMode, m);
 
 			ctx.putImageData(isDone ? newData : oldData, 0,0);
 
 			return isDone;
 		}
 
-		function usingAsmJS(a,b, blendMode) {
+		function usingAsmJS(a,b, blendMode, m) {
 			try {
 			var	i = a.length
 			,	uint8array = getOrCreateReusableHeap(project)
@@ -3654,6 +3699,8 @@ function drawImageOrColor(project, ctx, img, blendMode, opacity) {
 				;
 				uint8array.set(b, 0);
 				uint8array.set(a, i);
+
+				if (m) uint8array.set(m, i + i);
 
 				compute[funcName](i);
 				a.set(uint8array.slice(0, i));
@@ -3683,6 +3730,7 @@ function drawImageOrColor(project, ctx, img, blendMode, opacity) {
 
 	if (typeof opacity === 'undefined') opacity = 1;
 	if (typeof blendMode === 'undefined') blendMode = BLEND_MODE_NORMAL;
+	if (!mask && blendMode === BLEND_MODE_TRANSIT) mask = 'white';
 
 var	canvas = ctx.canvas;
 
@@ -3704,7 +3752,7 @@ var	canvas = ctx.canvas;
 		) {
 			ctx.globalAlpha = opacity;
 
-			drawImageOrColorInside();
+			drawImageOrColorInside(img);
 		}
 
 		ctx.globalAlpha = 1;
@@ -3897,9 +3945,56 @@ var	canvas = cre('canvas')
 	return canvas;
 }
 
-function getCanvasFlipped(project, img, isVerticalFlip) {
+function addDebugImage(project, layer, canvas, comment, highLightColor) {
+	if (TESTING_RENDER && project && layer && canvas) {
+	var	img = cre('img', project.renderContainer);
+
+		img.alt = img.title = [
+			project.rendering.fileName
+		,	getLayerPath(layer, true).join(' / ')
+		,	layer.nameOriginal
+		,	comment
+		].join(' \r\n');
+
+		if (highLightColor) {
+			img.style.borderColor = highLightColor;
+			img.style.boxShadow = '3px 3px ' + highLightColor;
+		}
+
+		img.src = canvas.toDataURL();
+	}
+}
+
+function getCanvasCopy(project, img) {
+	if (!img) return null;
+
+	project.rendering.layersBatchCount++;
+
+var	canvas = cre('canvas')
+,	ctx = canvas.getContext('2d')
+,	w = canvas.width  = orz(img.width)  || project.width
+,	h = canvas.height = orz(img.height) || project.height
+,	x = canvas.left   = orz(img.left)
+,	y = canvas.top    = orz(img.top)
+	;
+	if (img.getContext) {
+		ctx.putImageData(img.getContext('2d').getImageData(0,0, w,h), 0,0);
+	} else {
+		ctx.drawImage(img, 0,0);
+	}
+
+	return canvas;
+}
+
+function getCanvasFlipped(project, img, isVerticalFlip, isCopyNeeded) {
+	if (!img) return null;
+
 	if (isVerticalFlip < 0) {
-		return img;
+		return (
+			isCopyNeeded
+			? getCanvasCopy(project, img)
+			: img
+		);
 	}
 
 	project.rendering.layersBatchCount++;
@@ -3912,6 +4007,8 @@ var	canvas = cre('canvas')
 ,	y = canvas.top    = orz(img.top)
 	;
 
+	ctx.save();
+
 //* https://stackoverflow.com/a/3129152
 
 	if (isVerticalFlip) {
@@ -3922,6 +4019,35 @@ var	canvas = cre('canvas')
 		ctx.scale(-1, 1);
 	}
 	ctx.drawImage(img, 0,0);
+
+//* https://stackoverflow.com/a/42856420
+
+	ctx.restore();
+
+	return canvas;
+}
+
+function getCanvasFilledOutsideOfImage(project, img, fillColor) {
+	if (!img) return null;
+
+	project.rendering.layersBatchCount++;
+
+var	canvas = cre('canvas')
+,	ctx = canvas.getContext('2d')
+,	w = canvas.width  = project.width
+,	h = canvas.height = project.height
+,	fillColor = Math.max(0, Math.min(255, orz(fillColor)));
+	;
+	ctx.fillColor = 'rgba(' + fillColor + ',' + fillColor + ',' + fillColor + ',' + fillColor + ')';
+	ctx.fillRect(0,0, w,h);
+
+var	w = orz(img.width)  || project.width
+,	h = orz(img.height) || project.height
+,	x = orz(img.left)
+,	y = orz(img.top)
+	;
+	ctx.clearRect(x,y, w,h);
+	ctx.drawImage(img, x,y);
 
 	return canvas;
 }
@@ -4123,19 +4249,22 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 	async function renderOneLayer(layer) {
 	var	names = layer.names
 	,	params = layer.params
-	,	skipColoring = !!params.if_only
+	,	skipColoring = !!params.if_only			//* <- check logical visibility, but skip recolor
+	,	ignoreColors = !!renderParam.ignoreColors	//* <- only care about alpha channel, for mask generation
 	,	clippingGroupWIP = !!renderParam.clippingGroupWIP
 	,	clippingGroupResult = false
 	,	backward = (
 			layer.isOrderedBySide
 		&&	side === 'back'
-		);
+		)
+	,	flipSide = (backward ? VIEW_FLIPS.indexOf(params.side) : -1)
+		;
 
 //* step over clipping group to render or skip at once:
 
 		if (
 			!clippingGroupWIP
-		&&	!renderParam.ignoreColors
+		&&	!ignoreColors
 		) {
 		var	g_a = [layer]
 		,	g_i = l_i
@@ -4158,6 +4287,8 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 
 //* skip not visible, not selected, etc:
 
+	var	opacity;
+
 		if (
 			!isLayerRendered(layer)
 		||	!(opacity = renderParam.opacity || getLayerVisibilityByValues(project, layer, values))
@@ -4169,7 +4300,7 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 
 	var	blendMode = layer.blendMode;
 
-		if (renderParam.ignoreColors) {
+		if (ignoreColors) {
 			if (!regLayerBlendModeAlpha.test(blendMode)) {
 				blendMode = BLEND_MODE_NORMAL;
 			}
@@ -4181,11 +4312,29 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 			) {
 				return;
 			}
+		} else {
+			if (
+				clippingGroupWIP
+			&&	layer === bottomLayer
+			) {
+				blendMode = BLEND_MODE_NORMAL;
+			}
 		}
 
+//* start rendering:
+
 	var	img = null
-	,	layers = null
+	,	canvasCopy = null
 		;
+
+		if (
+			!canvas
+		&&	(canvas = renderParam.baseCanvas)
+		) {
+			ctx = canvas.getContext('2d');
+
+			if (TESTING_RENDER) addDebugImage(project, layer, canvas, 'renderParam.baseCanvas', 'green');
+		}
 
 //* render clipping group as separate batch:
 
@@ -4195,16 +4344,26 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 			,	values
 			,	g_a
 			,	{
-					ignoreColors: renderParam.ignoreColors
+					ignoreColors: ignoreColors
 				,	clippingGroupWIP: true
 				}
 			);
+
+			if (TESTING_RENDER) addDebugImage(project, layer, img, 'clippingGroupResult: img = getRenderByValues', 'cyan');
 		} else {
 
-//* get layer/folder/batch as flat image:
+		var	aliases = null
+		,	layers = layer.layers || null
+			;
+
+//* append copypasted layers to subqueue:
 
 			if (aliases = getPropByNameChain(params, 'copypaste', 'paste')) {
-				layers = [];
+				layers = (
+					layers
+					? Array.from(layers)
+					: []
+				);
 				aliases.forEach(
 					alias => (
 						getPropByNameChain(project, 'layersForCopyPaste', 'copy', alias)
@@ -4217,11 +4376,12 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 						}
 					)
 				);
-			} else {
-				layers = layer.layers;
 			}
 
 			if (layers) {
+
+//* get a flat color fill staright from a list:
+
 				if (
 					!skipColoring
 				&&	layer.isColorList
@@ -4232,66 +4392,96 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 						)
 					);
 				} else
+
+//* get layer/folder/batch as flat image:
+
 				if (layers.length > 0) {
 					if (backward) {
 						layers = Array.from(layers).reverse();
 					}
 
-//* if folder is to be recolored, ignore pass mode and any color blending inside:
+//* passthrough mode:
 
-				var	passToColor = false
-				,	colors = null
-					;
+//* if folder is to be recolored,
+//* ignore passthrough and any color blending inside.
 
-					if (
-						layer.isPassThrough
-					&&	opacity == 1
-					&&	(
-							blendMode === BLEND_MODE_PASS
-						||	blendMode === BLEND_MODE_NORMAL
-						)
-					&&	!(
-							layer.mask
-						||	layer.isMaskGenerated
-						||	(
-								(colors = getPropByNameChain(project, 'options', 'colors'))
-							&&	(passToColor = !!names.find(listName => (listName in colors)))
+//* if nothing was rendered below,
+//* ignore passthrough, render normally.
+
+//* in trivial cases,
+//* simply render the folder content in its parent's context.
+
+//* in complicated cases, interpolate render state
+//* between before and after trivial-case rendering
+//* using mask x opacity as transition value map.
+
+				var	isToRecolor = (
+						ignoreColors
+					||	!!names.find(
+							listName => (
+								listName in colors
+							&&	colors[listName]
 							)
 						)
-					) {
-						l_a = l_a.slice(0, l_i).concat(layers);
-						l_i = l_a.length;
+					);
 
-						return;
-					} else {
-						img = await getRenderByValues(
-							project
-						,	values
-						,	layers
-						,	{
-								ignoreColors: renderParam.ignoreColors || passToColor
-							,	opacity: (aliases ? opacity : 0)
-							}
-						);
+					if (
+						!isToRecolor
+					&&	layer.isPassThrough
+					) {
+						if (
+							flipSide >= 0
+						||	blendMode !== BLEND_MODE_NORMAL
+						||	opacity != 1
+						||	layer.mask
+						||	layer.isMaskGenerated
+						) {
+							canvasCopy = getCanvasFlipped(project, canvas, flipSide, true);
+						} else {
+							l_a = l_a.slice(0, l_i).concat(layers);
+							l_i = l_a.length;
+
+							return;
+						}
 					}
+
+//* render folder contents, isolated or based on result before passthrough:
+
+					img = await getRenderByValues(
+						project
+					,	values
+					,	layers
+					,	{
+							ignoreColors: (ignoreColors || isToRecolor)
+						,	baseCanvas: canvasCopy
+						,	opacity: (aliases ? opacity : 0)	//* <- TODO: properly check copypaste visibility
+						}
+					);
+
+					if (TESTING_RENDER) addDebugImage(project, layer, img, 'folder content result: img = getRenderByValues');
 				}
 			} else {
+
+//* not a folder:
+
 				img = layer.img;
 			}
 		}
 
 		if (img) {
+		var	mask = null
+		,	fillColor = 0
+			;
+
 			if (clippingGroupResult) {
 				opacity = 1;
 			} else {
 
-//* get mask:
-
-			var	mask = null
-			,	padding = null
-				;
+//* get mask of neighbour content, rendered before or after this layer:
 
 				if (layer.isMaskGenerated) {
+				var	padding = null;
+
 					names.find(
 						listName => !!(
 							padding = getSelectedOptionValue(project, values, 'paddings', listName)
@@ -4302,36 +4492,58 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 						mask = await getRenderByValues(
 							project
 						,	values
-						,	l_a.slice(0, l_i)
+						,	l_a.slice(0, l_i)	//* <- content after this layer
 						,	{
 								ignoreColors: true
 							}
 						);
 
-//* apply padding to mask:
+						if (TESTING_RENDER) addDebugImage(project, layer, mask, 'mask = getRenderByValues');
+
+//* apply padding to generated mask:
 
 						if (mask) {
 							padCanvas(mask, padding);
+
+							if (TESTING_RENDER) addDebugImage(project, layer, mask, 'padCanvas: mask');
 						}
 					}
-				} else {
-					mask = layer.mask;
+				} else
+
+//* get mask defined in the document:
+
+				if (mask = layer.mask) {
+					if (fillColor = mask.defaultColor) {
+						mask = getCanvasFilledOutsideOfImage(project, mask, fillColor);
+
+						if (TESTING_RENDER) addDebugImage(project, layer, mask, 'mask = getCanvasFilledOutsideOfImage');
+					}
 				}
 
 //* apply mask:
 
 				if (mask) {
-					img = getCanvasBlended(project, img, mask, BLEND_MODE_MASK);
+					if (canvasCopy) {
+						if (backward) {
+							mask = getCanvasFlipped(project, mask, flipSide);
 
-					clearCanvasBeforeGC(mask);
+							if (TESTING_RENDER) addDebugImage(project, layer, mask, 'mask = getCanvasFlipped');
+						}
+					} else {
+						img = getCanvasBlended(project, img, mask, BLEND_MODE_MASK);
+
+						if (TESTING_RENDER) addDebugImage(project, layer, img, 'img = getCanvasBlended: mask');
+
+						clearCanvasBeforeGC(mask);
+					}
 				}
 
 //* apply color:
 
 				if (
 					!skipColoring
-				&&	!layer.isColorList
-				&&	!renderParam.ignoreColors
+				&&	!ignoreColors
+				&&	!layer.isColorList	//* <- already got selected color fill
 				) {
 					names.forEach(
 						listName => {
@@ -4343,7 +4555,9 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 //* flip:
 
 				if (backward) {
-					img = getCanvasFlipped(project, img, VIEW_FLIPS.indexOf(params.side));
+					img = getCanvasFlipped(project, img, flipSide);
+
+					if (TESTING_RENDER) addDebugImage(project, layer, img, 'img = getCanvasFlipped');
 				}
 			}
 
@@ -4353,7 +4567,23 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 				canvas = getNewCanvas(project);
 				ctx = canvas.getContext('2d');
 			}
-			drawImageOrColor(project, ctx, img, blendMode, opacity);
+
+			if (canvasCopy) {
+				drawImageOrColor(project, ctx, img, BLEND_MODE_TRANSIT, opacity, mask);
+
+				if (TESTING_RENDER) addDebugImage(project, layer, canvas, [
+					'drawImageOrColor: ' + BLEND_MODE_TRANSIT
+				,	'opacity = ' + opacity
+				,	'mask = ' + mask
+				].join(' \r\n'), 'red');
+
+				clearCanvasBeforeGC(mask);
+				clearCanvasBeforeGC(canvasCopy);
+			} else {
+				drawImageOrColor(project, ctx, img, blendMode, opacity);
+
+				if (TESTING_RENDER) addDebugImage(project, layer, canvas, 'drawImageOrColor: ' + blendMode);
+			}
 
 			++project.rendering.layersApplyCount;
 
@@ -4364,6 +4594,8 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 			&&	layer === bottomLayer
 			) {
 				clippingMask = makeCanvasOpaqueAndGetItsMask(project, ctx);
+
+				if (TESTING_RENDER) addDebugImage(project, layer, canvas, 'clippingMask = makeCanvasOpaqueAndGetItsMask');
 			}
 
 			clearCanvasBeforeGC(img);
@@ -4403,6 +4635,7 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 
 		project.rendering = {
 			startTime: +new Date
+		,	fileName: getFileNameByValues(project, values)
 		,	layersApplyCount: 0
 		,	layersBatchCount: 1
 		,	colors: {}
@@ -4415,7 +4648,8 @@ var	l_a = layersToRenderOne || layersBatch || project.layers
 ,	bottomLayer = l_a[l_i - 1]
 ,	renderParam = renderParam || {}
 ,	side = getPropBySameNameChain(values, 'side')
-,	canvas, ctx, layers, layer, opacity, clippingMask, aliases
+,	colors = getPropByNameChain(values, 'colors') || {}
+,	canvas, ctx, layers, layer, mask, clippingMask
 	;
 
 	if (!ADD_PAUSE_BEFORE_EACH_LAYER) {
@@ -4445,6 +4679,8 @@ var	l_a = layersToRenderOne || layersBatch || project.layers
 		if (mask = clippingMask) {
 			drawImageOrColor(project, ctx, mask, BLEND_MODE_MASK);
 
+			if (TESTING_RENDER) addDebugImage(project, layer, canvas, 'drawImageOrColor: mask = clippingMask');
+
 			clearCanvasBeforeGC(mask);
 		}
 	}
@@ -4453,7 +4689,7 @@ var	l_a = layersToRenderOne || layersBatch || project.layers
 
 	if (!layersBatch) {
 	var	renderingTime = +new Date - project.rendering.startTime
-	,	renderName = getFileNameByValues(project, values)
+	,	renderName = project.rendering.fileName
 		;
 
 		if (canvas) {
@@ -4758,11 +4994,21 @@ async function showImg(project, render, container) {
 
 	try {
 
+//* cleanup before showing rendering steps:
+
+		if (TESTING_RENDER) {
+		var	imgContainer = container || getEmptyRenderContainer(project)
+		,	img = await getOrCreateRenderedImg(project, render)
+			;
+		} else {
+
 //* prepare image before container cleanup to avoid flicker:
 
-	var	img = await getOrCreateRenderedImg(project, render)
-	,	imgContainer = container || getEmptyRenderContainer(project)
-		;
+		var	img = await getOrCreateRenderedImg(project, render)
+		,	imgContainer = container || getEmptyRenderContainer(project)
+			;
+		}
+
 		if (img) {
 			imgContainer.appendChild(img);
 
@@ -4798,7 +5044,8 @@ async function saveImg(project, render, fileName) {
 
 function getEmptyRenderContainer(project) {
 	return delAllChildNodes(
-		gc('project-render', project.container)[0]
+		project.renderContainer
+	||	(project.renderContainer = gc('project-render', project.container)[0])
 	);
 }
 
@@ -4909,7 +5156,7 @@ var	state = !!isWIP;
 //* Page-specific functions: UI-side *-----------------------------------------
 
 function onBeforeUnload(evt) {
-	if (id('loaded-files-view').firstElementChild) {
+	if (!TESTING && id('loaded-files-view').firstElementChild) {
 
 //* Note: given message text won't be used in modern browsers.
 //* https://habr.com/ru/post/141793/
