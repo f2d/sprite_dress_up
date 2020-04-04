@@ -1840,26 +1840,30 @@ var	buttonClose = cre('button', buttonTab);
 
 			id('loaded-files-view').appendChild(container);
 
-			buttonText.setAttribute('onclick', 'selectProject(this)');
-			buttonThumb.setAttribute('onclick', 'selectProject(this)');
+		var	result = !(isStopRequested || project.isStopRequested || buttonTab.isStopRequested);
 
-			if (project.options) {
-				updateBatchCount(project);
+			if (result) {
+				if (project.options) {
+					updateBatchCount(project);
 
-				if (!await updateMenuAndShowImg(project)) {
-					removeProjectView(fileID);
-
-					throw new Error('stopped by request');
+					if (result = await updateMenuAndShowImg(project)) {
+						buttonTab.className = 'button loaded with-options';
+					}
+				} else {
+					buttonTab.className = 'button loaded without-options';
 				}
-
-				buttonTab.className = 'button loaded with-options';
-			} else {
-				buttonTab.className = 'button loaded without-options';
 			}
 
-			buttonText.click();
+			if (result) {
+				buttonText.setAttribute('onclick', 'selectProject(this)');
+				buttonThumb.setAttribute('onclick', 'selectProject(this)');
 
-			return true;
+				buttonText.click();
+
+				return true;
+			} else {
+				removeProjectView(fileID);
+			}
 		}
 	} catch (error) {
 		console.log(error);
@@ -5586,6 +5590,8 @@ function closeProject(e) {
 		}
 
 		if (regClassLoading.test(c)) {
+			toggleClass(e, 'failed', 1);
+
 			e.isStopRequested = true;
 
 			if (e.project) {
