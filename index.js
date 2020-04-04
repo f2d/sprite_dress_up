@@ -222,9 +222,10 @@ examples of 'multi_select':
 ,	regClassLoadedFile	= getClassReg('loaded-file|file')
 ,	regClassMenuBar		= getClassReg('menu-bar')
 ,	regClassButton		= getClassReg('button')
-,	regClassShow		= getClassReg('show')
-,	regClassLoaded		= getClassReg('loaded')
 ,	regClassFailed		= getClassReg('failed')
+,	regClassLoaded		= getClassReg('loaded')
+,	regClassLoading		= getClassReg('loading')
+,	regClassShow		= getClassReg('show')
 
 ,	regJSONstringify = {
 		asFlatLine	: /^(data)$/i
@@ -289,7 +290,7 @@ examples of 'multi_select':
 ,	USE_ZLIB_ASM = true
 
 ,	thumbnailPlaceholder
-,	cancelBatchWIP
+,	isStopRequested
 ,	isBatchWIP
 
 ,	BLEND_MODE_NORMAL = 'source-over'
@@ -1727,7 +1728,14 @@ function thisToPng(targetLayer) {
 
 async function removeProjectView(fileID) {
 var	countDeleted = gi(fileID).reduce(
-		(count, e) => (del(e) ? ++count : count)
+		(count, e) => {
+			if (e.project) {
+				e.project.isStopRequested = true;
+			}
+			if (del(e)) {
+				++count;
+			}
+		}
 	,	0
 	);
 
@@ -1774,18 +1782,34 @@ var	thumbImg = cre('img', buttonThumb);
 var	buttonText = cre('button', buttonTab);
 	buttonText.textContent = sourceFile.name;
 
+var	buttonClose = cre('button', buttonTab);
+	buttonClose.className = 'close-button';
+	buttonClose.textContent = 'X';
+
+	buttonClose.setAttribute('onclick', 'closeProject(this)');
+
 	setImageSrc(thumbImg);
 
 	try {
-	var	project = await getNormalizedProjectData(sourceFile);
+	var	project = await getNormalizedProjectData(sourceFile, buttonTab);
 
 		if (project) {
-			project.thumbnail = thumbImg;
+			buttonTab.project = project;
 
-		var	container = (
-				await getProjectViewMenu(project)
-			||	await getProjectViewImage(project)
-			);
+			if (isStopRequested || project.isStopRequested || buttonTab.isStopRequested) {
+				project.isStopRequested = true;
+			} else {
+				project.thumbnail = thumbImg;
+
+			var	container = (
+					await getProjectViewMenu(project)
+				||	await getProjectViewImage(project)
+				);
+			}
+
+			if (isStopRequested || project.isStopRequested || buttonTab.isStopRequested) {
+				container = null;
+			}
 		}
 
 		if (container) {
@@ -1814,19 +1838,19 @@ var	buttonText = cre('button', buttonTab);
 			project.container = container;
 			container.project = project;
 
-		var	buttonClose = cre('button', buttonTab);
-			buttonClose.className = 'close-button';
-			buttonClose.textContent = 'X';
-
 			id('loaded-files-view').appendChild(container);
 
 			buttonText.setAttribute('onclick', 'selectProject(this)');
 			buttonThumb.setAttribute('onclick', 'selectProject(this)');
-			buttonClose.setAttribute('onclick', 'closeProject(this)');
 
 			if (project.options) {
 				updateBatchCount(project);
-				await updateMenuAndShowImg(project);
+
+				if (!await updateMenuAndShowImg(project)) {
+					removeProjectView(fileID);
+
+					throw new Error('stopped by request');
+				}
 
 				buttonTab.className = 'button loaded with-options';
 			} else {
@@ -1850,7 +1874,7 @@ var	buttonText = cre('button', buttonTab);
 	return false;
 }
 
-async function getNormalizedProjectData(sourceFile) {
+async function getNormalizedProjectData(sourceFile, button) {
 
 	async function tryFileParserFunc(f, project) {
 		try {
@@ -1894,6 +1918,10 @@ var	startTime = +new Date;
 		} else {
 			project = null;
 		}
+
+		if (isStopRequested || project.isStopRequested || button.isStopRequested) {
+			 break;
+		}
 	}
 
 var	tookTime = +new Date - startTime;
@@ -1903,11 +1931,19 @@ var	tookTime = +new Date - startTime;
 	+	(
 			project
 			? ' finished ' + actionLabel + ', took '
-			: ' failed ' + actionLabel + ' after '
+			: (
+				isStopRequested || project.isStopRequested || button.isStopRequested
+				? ' stopped by request '
+				: ' failed '
+			) + actionLabel + ' after '
 		)
 	+	tookTime
 	+	' ms total'
 	);
+
+	if (isStopRequested || project.isStopRequested || button.isStopRequested) {
+		return null;
+	}
 
 	return project;
 }
@@ -1938,6 +1974,7 @@ async function getProjectViewMenu(project) {
 				while (
 					l_a.length > 0
 				&&	(layer = l_a.pop())
+				&&	(result = !(isStopRequested || project.isStopRequested))
 				&&	(result = await getLayerImgLoadPromise(layer))
 				&&	(result = await getLayerMaskLoadPromise(layer))
 				);
@@ -1949,11 +1986,19 @@ async function getProjectViewMenu(project) {
 				+	(
 						result
 						? ' finished ' + actionLabel + ', took '
-						: ' failed ' + actionLabel + ' after '
+						: (
+							isStopRequested || project.isStopRequested
+							? ' stopped by request '
+							: ' failed '
+						) + actionLabel + ' after '
 					)
 				+	tookTime
 				+	' ms'
 				);
+
+				if (isStopRequested || project.isStopRequested) {
+					return;
+				}
 
 				if (result) {
 					project.options = options;
@@ -2925,10 +2970,25 @@ var	checkVirtualPath = (
 	return parentGroup;
 }
 
+async function addLayerGroupCommonWrapper(project, parentGroup, layers, callback) {
+	for (var v of layers) {
+
+		if (isStopRequested || project.isStopRequested) {
+			return false;
+		}
+
+		await callback(v, parentGroup);
+	}
+
+	return true;
+}
+
 //* Page-specific functions: internal, loading from file *---------------------
 
 async function loadCommonWrapper(project, libName, fileParserFunc, treeConstructorFunc) {
-	if (!(await loadLibOnDemand(libName))) return;
+	if (!(await loadLibOnDemand(libName))) {
+		return;
+	}
 
 var	actionLabel = 'parsing with ' + libName;
 
@@ -2952,11 +3012,19 @@ var	actionLabel = 'parsing with ' + libName;
 	+	(
 			sourceData
 			? ' finished ' + actionLabel + ', took '
-			: ' failed ' + actionLabel + ' after '
+			: (
+				isStopRequested || project.isStopRequested
+				? ' stopped by request '
+				: ' failed '
+			) + actionLabel + ' after '
 		)
 	+	(+new Date - project.loading.startParsingTime)
 	+	' ms'
 	);
+
+	if (isStopRequested || project.isStopRequested) {
+		return;
+	}
 
 	if (sourceData) {
 		project.sourceData = sourceData;
@@ -3051,15 +3119,16 @@ async function loadORA(project) {
 				);
 
 				if (isLayerFolder) {
-					for (var v of layers) await addLayerToTree(v, parentGroup);
+					await addLayerGroupCommonWrapper(project, parentGroup, layers, addLayerToTree);
 				}
 			}
 
-		var	parentGroup = project.layers = [];
-
-			for (var v of sourceData.layers) await addLayerToTree(v, parentGroup);
-
-			return true;
+			return await addLayerGroupCommonWrapper(
+				project
+			,	project.layers = []
+			,	sourceData.layers
+			,	addLayerToTree
+			);
 		}
 	);
 }
@@ -3160,15 +3229,16 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 				);
 
 				if (isLayerFolder) {
-					for (var v of layers) await addLayerToTree(v, parentGroup);
+					await addLayerGroupCommonWrapper(project, parentGroup, layers, addLayerToTree);
 				}
 			}
 
-		var	parentGroup = project.layers = [];
-
-			for (var v of sourceData.tree().children()) await addLayerToTree(v, parentGroup);
-
-			return true;
+			return await addLayerGroupCommonWrapper(
+				project
+			,	project.layers = []
+			,	sourceData.tree().children()
+			,	addLayerToTree
+			);
 		}
 	);
 }
@@ -3202,6 +3272,9 @@ async function loadPSDLIB(project) {
 		,	d,k,n,t
 			;
 			while (l_i--) if (layer = l_a[l_i]) {
+				if (isStopRequested || project.isStopRequested) {
+					return;
+				}
 				n = layer.name || '';
 				if (regPSD.layerNameEndOfFolder.test(n)) {
 					while (
@@ -3261,7 +3334,7 @@ async function loadPSDLIB(project) {
 				}
 			}
 
-			return true;
+			return !(isStopRequested || project.isStopRequested);
 		}
 	);
 }
@@ -4360,9 +4433,9 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 
 			if (aliases = getPropByNameChain(params, 'copypaste', 'paste')) {
 				layers = (
-					layers
-					? Array.from(layers)
-					: []
+					[layer.img]
+					.concat(layers || [])
+					.filter(arrayFilterNonEmptyValues)
 				);
 				aliases.forEach(
 					alias => (
@@ -4602,7 +4675,7 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 		}
 	}
 
-	if (!project || !project.layers) {
+	if (!project || !project.layers || isStopRequested || project.isStopRequested) {
 		return;
 	}
 
@@ -4664,15 +4737,22 @@ var	l_a = layersToRenderOne || layersBatch || project.layers
 	}
 
 	while (l_i-- > l_k) if (layer = l_a[l_i]) {
+		if (isStopRequested || project.isStopRequested) {
+			canvas = ctx = null;
+
+			break;
+		}
+
 		if (ADD_PAUSE_BEFORE_EACH_LAYER) {
 			await pause(1);
 		}
+
 		await renderOneLayer(layer);
 	}
 
 //* end of layer batch.
 
-	if (ctx) {
+	if (canvas && ctx) {
 
 //* apply stored mask to the blended clipping group content:
 
@@ -4692,6 +4772,11 @@ var	l_a = layersToRenderOne || layersBatch || project.layers
 	,	renderName = project.rendering.fileName
 		;
 
+		if (isStopRequested || project.isStopRequested) {
+			canvas = ctx = null;
+
+			logTime('getRenderByValues - stopped by request after ' + (renderingTime / 1000) + ' seconds spent.', renderName);
+		} else
 		if (canvas) {
 			canvas.renderingTime = renderingTime;
 
@@ -4858,9 +4943,15 @@ var	prerenders = (project.renders || (project.renders = {}))
 
 var	img = prerenders[refName];
 
-	if (!img) {
+	if (!(img || isStopRequested || project.isStopRequested)) {
 		if (fileName == refName) {
-			if (canvas = await getRenderByValues(project, values)) {
+		var	canvas = await getRenderByValues(project, values);
+
+			if (isStopRequested || project.isStopRequested) {
+				return;
+			}
+
+			if (canvas) {
 				img = await getAndCacheRenderedImgElement(canvas, refName);
 			} else {
 				prerenders[fileName] = null;
@@ -4965,8 +5056,8 @@ var	startTime = +new Date
 			setsCountWithoutPause = 0;
 		}
 
-		if (cancelBatchWIP || project.cancelBatchWIP) {
-			project.cancelBatchWIP = false;
+		if (isStopRequested || project.isStopRequested) {
+			project.isStopRequested = false;
 
 			break;
 		}
@@ -5025,6 +5116,8 @@ async function showImg(project, render, container) {
 	}
 
 	if (isSingleWIP) setProjectWIPstate(project, false);
+
+	return !!img;
 }
 
 async function saveImg(project, render, fileName) {
@@ -5040,6 +5133,8 @@ async function saveImg(project, render, fileName) {
 	}
 
 	if (isSingleWIP) setProjectWIPstate(project, false);
+
+	return !!render;
 }
 
 function getEmptyRenderContainer(project) {
@@ -5063,7 +5158,7 @@ async function updateMenuAndShowImg(project) {
 		return;
 	}
 
-	await showImg(project);
+	return await showImg(project);
 }
 
 function updateCheckBox(e, params) {
@@ -5113,7 +5208,7 @@ var	precounts = (project.renderBatchCounts || (project.renderBatchCounts = {}))
 function setProjectWIPstate(project, isWIP) {
 var	state = !!isWIP;
 
-	project.cancelBatchWIP = false;
+	project.isStopRequested = false;
 	project.isBatchWIP = state;
 
 	['button', 'select', 'input'].forEach(
@@ -5135,7 +5230,7 @@ var	state = !!isWIP;
 function setGlobalWIPstate(isWIP) {
 var	state = !!isWIP;
 
-	cancelBatchWIP = false;
+	isStopRequested = false;
 	isBatchWIP = state;
 
 	gt('button', gc('menu-bar')[0]).forEach(
@@ -5176,7 +5271,14 @@ function onBeforeUnload(evt) {
 
 function onPageKeyPress(evt) {
 	if (evt.keyCode === 27) {	//* Esc
-		gn('stop').forEach(evt => evt.click());
+		gn('stop').forEach(
+			e => e.click()
+		);
+		gc('loading', id('loaded-files-selection')).forEach(
+			e => {
+				(e.project || e).isStopRequested = true;
+			}
+		);
 	}
 }
 
@@ -5207,7 +5309,7 @@ var	container = getProjectContainer(e)
 	;
 
 	if (action === 'stop') {
-		project.cancelBatchWIP = true;
+		project.isStopRequested = true;
 	} else
 	if (action === 'show') showImg(project); else
 	if (action === 'save') saveImg(project); else
@@ -5389,7 +5491,7 @@ var	action, url;
 	var	p = getParentByClass(e, regClassExampleFiles);
 
 		if (action === 'stop') {
-			cancelBatchWIP = true;
+			isStopRequested = true;
 		} else
 		if (action === 'download_all') {
 		var	countWithoutPause = 0;
@@ -5412,8 +5514,8 @@ var	action, url;
 			for (var b of gt('button', p)) if (b.getAttribute('data-url')) {
 				await loadFromButton(b, true);
 
-				if (cancelBatchWIP) {
-					cancelBatchWIP = false;
+				if (isStopRequested) {
+					isStopRequested = false;
 
 					break;
 				}
@@ -5483,10 +5585,16 @@ function closeProject(e) {
 			);
 		}
 
-	var	isViewRemoved = regClassLoaded.test(c) && removeProjectView(e.id);
+		if (regClassLoading.test(c)) {
+			e.isStopRequested = true;
 
-		if (!isViewRemoved) {
-			del(e);
+			if (e.project) {
+				e.project.isStopRequested = true;
+			}
+		}
+
+		if (regClassLoaded.test(c)) {
+			removeProjectView(e.id) && del(e);
 		}
 	}
 }
