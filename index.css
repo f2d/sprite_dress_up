@@ -142,14 +142,14 @@ label:hover {
 .button.show:hover {
 	background-color: #bdf;
 }
+.button:hover {
+	background-color: #fff;
+}
 .button.loading {
 	background-color: #eda;
 }
 .button.failed {
 	background-color: #f88;
-}
-.button:hover {
-	background-color: #fff;
 }
 .button button {
 	padding: 0.5em;
