@@ -1,6 +1,9 @@
 
+//* TODO: make visible user manual from notes and examples.
+//* TODO: keep all parameters single-word if possible.
+
 //* source file data:
-//* TODO: lazy loading only needed images in ORA one by one, as in PSD.
+//* TODO: lazy loading only needed images in ORA one by one, as in PSD, after new tree structure is finished.
 //* TODO: save as ORA.
 //* TODO: whole config in JSON-format?
 
@@ -12,14 +15,13 @@
 //* TODO: <select multiple> <optgroup> <option>?</option> </optgroup> </select>.
 
 //* rendering:
-//* TODO: [reverse]: possibility to combine hor+ver flip on one layer.
 //* TODO: arithmetic emulation of all blending operations, not native to JS.
 //* TODO: arithmetic emulation of all operations in 16/32-bit until final result; to be optionally available as checkbox/selectbox.
 //* TODO: decode layer data (PSD/PNG/etc) manually without using canvas, to avoid premultiplied-alpha (PMA - in Firefox, not in Chrome) while rendering.
-//* TODO: for files without merged image data - render ignoring options, but respecting layer visibility properties.
+//* TODO: for files without merged image data - render ignoring options, but respecting layer visibility properties. Or buttons to show  embedded and/or rendered image regardless of options. Or add this as top-most option for any project, with or without options.
 //* TODO: save batch to a single tileset image.
 
-//* later when it works at all, try in spare time:
+//* other:
 //* TODO: split functionality into modules to reuse with drawpad, etc.
 
 //* Config *-------------------------------------------------------------------
@@ -41,9 +43,6 @@ var	regLayerNameToSkip		= /^(skip)$/i
 
 //* examples of comments: "... (1) ... (copy 2) (etc)"
 //* examples of params: "... [param] ... [param,param param_param]"
-
-//* TODO: make visible user manual from notes and examples.
-//* TODO: keep all parameters single-word if possible.
 
 ,	regLayerNameParamType = {
 		'skip':		/^(skip)$/i
