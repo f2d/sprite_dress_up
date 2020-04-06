@@ -60,14 +60,14 @@ var	regLayerNameToSkip		= /^(skip)$/i
 	,	'colors':	/^(colou?r)s$/i
 	,	'parts':	/^(option|part|type)s$/i
 
-	,	'paddings':	/^(outline|pad(?:ding)?)$/i
-	,	'radius':	/^(.*?\d.*)px(?:\W+(.+))?$/i
+	,	'paddings':	/^(outline|pad[ding]*)$/i
+	,	'radius':	/^(.*?\d.*)px(?:\W+(.*))?$/i
 	,	'wireframe':	/^(?:wire\W*)?(frame|fill)$/i
 
-	,	'opacities':	/^(\d[\d\W]*)%(\d*)$/i
-	,	'zoom':		/^x(\d[\d\W]*)%(\d*)$/i
+	,	'opacities':	/^(?:(?:opacit[yies]*)\W*)?(\d[\d\W]*)%(\d*)$/i
+	,	'zoom':		/^(?:(?:zoom|scale|x)\W*)(\d[\d\W]*)%(\d*)$/i
 
-	,	'side':		/^(front|back|reverse(?:\W+(hor|ver))?)$/i
+	,	'side':		/^(front|back|reverse(?:\W+(h[orizontal]*|v[ertical]*))?)$/i
 	,	'separate':	/^(separate|split)$/i
 
 	,	'multi_select':	/^(x(\d[\d\W]*)|optional)$/i
@@ -268,11 +268,14 @@ examples of 'multi_select':
 ,	TYPE_TP = 'text/plain'
 ,	TOS = ['object', 'string']
 ,	VIEW_SIDES = ['front', 'back']
-,	VIEW_FLIPS = ['hor', 'ver']
 ,	NAME_PARTS_PERCENTAGES = ['zoom', 'opacities']
 ,	NAME_PARTS_FOLDERS = ['parts', 'colors']
 ,	NAME_PARTS_ORDER = ['parts', 'colors', 'paddings', 'opacities', 'side', 'separate', 'zoom']
 ,	NAME_PARTS_SEPARATOR = ''
+
+,	FLAG_FLIP_HORIZONTAL = 1
+,	FLAG_FLIP_VERTICAL = 2
+
 ,	SPLIT_SEC = 60
 ,	MAX_OPACITY = 255
 ,	MAX_BATCH_PRECOUNT = 1000
@@ -1322,20 +1325,25 @@ function replaceJSONpartsFromNameToCache(key, value) {
 function clearFill(ctx) {
 	ctx.fillStyle = 'white';
 	ctx.fillRect(0,0, ctx.canvas.width, ctx.canvas.height);
+
 	return ctx;
 }
 
-function clearCanvasBeforeGC(ctx) {
-	if (!ctx) return;
+function clearCanvasBeforeGC(e) {
+	if (e && isCanvasElement(e = e.canvas || e)) {
+		e.width = 1;
+		e.height = 1;
 
-var	canvas = ctx.canvas || ctx
-,	t = canvas.tagName
-	;
+		return e;
+	}
+}
 
-	if (!t || t.toLowerCase() !== 'canvas') return;
-
-	canvas.width = 1;
-	canvas.height = 1;
+function isCanvasElement(e) {
+	return (
+		e
+	&&	e.tagName
+	&&	e.tagName.toLowerCase() === 'canvas'
+	);
 }
 
 function isImgElement(e) {
@@ -2782,7 +2790,7 @@ var	checkVirtualPath = (
 			.split(regLayerNameParamSplit)
 			.map(trimParam)
 			.filter(arrayFilterNonEmptyValues)
-			.forEach(v => paramList.push(v));
+			.forEach(v => paramList.push(v.toLowerCase()));
 		}
 
 		name = (
@@ -2795,13 +2803,12 @@ var	checkVirtualPath = (
 
 	if (paramList.length > 0) {
 		paramList = paramList.filter(arrayFilterUniqueValues);
-		paramList.sort();
 
 		for (var param of paramList) {
 			for (var k in regLayerNameParamType) if (m = param.match(regLayerNameParamType[k])) {
 				if (NAME_PARTS_FOLDERS.indexOf(k) >= 0) {
 					layer.type = k;
-					layer.isOptional = true;
+					layer.isVisibilityOptional = true;
 				} else
 				if (k === 'zoom' || k === 'opacities') {
 					params[k] = {
@@ -2810,7 +2817,7 @@ var	checkVirtualPath = (
 					};
 				} else
 				if (k === 'radius') {
-					layer.isOptional = true;
+					layer.isVisibilityOptional = true;
 					v = (
 						m[1]
 						.split('/')
@@ -2901,13 +2908,16 @@ var	checkVirtualPath = (
 						params.last = true;
 					}
 					if (k === 'side') {
-						layer.isOptional = true;
+						layer.isVisibilityOptional = true;
+						if (
+							(v = m[2])
+						&&	(v = v[0])
+						) {
+							if (v === 'h') layer.flipSide = orz(layer.flipSide) | FLAG_FLIP_HORIZONTAL;
+							if (v === 'v') layer.flipSide = orz(layer.flipSide) | FLAG_FLIP_VERTICAL;
+						}
 					}
-					if (k === 'side' && m[2]) {
-						params[k] = m[2];
-					} else {
-						params[k] = param || k;
-					}
+					params[k] = param || k;
 				}
 				break;
 			}
@@ -4063,10 +4073,10 @@ var	canvas = cre('canvas')
 	return canvas;
 }
 
-function getCanvasFlipped(project, img, isVerticalFlip, isCopyNeeded) {
+function getCanvasFlipped(project, img, flipSide, isCopyNeeded) {
 	if (!img) return null;
 
-	if (isVerticalFlip < 0) {
+	if (!flipSide) {
 		return (
 			isCopyNeeded
 			? getCanvasCopy(project, img)
@@ -4086,18 +4096,21 @@ var	canvas = cre('canvas')
 
 	ctx.save();
 
-//* https://stackoverflow.com/a/3129152
+//* flip: https://stackoverflow.com/a/3129152
 
-	if (isVerticalFlip) {
-		ctx.translate(0, h);
-		ctx.scale(1, -1);
-	} else {
+	if (flipSide & FLAG_FLIP_HORIZONTAL) {
 		ctx.translate(w, 0);
 		ctx.scale(-1, 1);
 	}
+
+	if (flipSide & FLAG_FLIP_VERTICAL) {
+		ctx.translate(0, h);
+		ctx.scale(1, -1);
+	}
+
 	ctx.drawImage(img, 0,0);
 
-//* https://stackoverflow.com/a/42856420
+//* restore: https://stackoverflow.com/a/42856420
 
 	ctx.restore();
 
@@ -4107,12 +4120,10 @@ var	canvas = cre('canvas')
 function getCanvasFilledOutsideOfImage(project, img, fillColor) {
 	if (!img) return null;
 
-	project.rendering.layersBatchCount++;
-
-var	canvas = cre('canvas')
+var	canvas = getNewCanvas(project)
 ,	ctx = canvas.getContext('2d')
-,	w = canvas.width  = project.width
-,	h = canvas.height = project.height
+,	w = canvas.width
+,	h = canvas.height
 ,	fillColor = Math.max(0, Math.min(255, orz(fillColor)));
 	;
 	ctx.fillColor = 'rgba(' + fillColor + ',' + fillColor + ',' + fillColor + ',' + fillColor + ')';
@@ -4130,14 +4141,9 @@ var	w = orz(img.width)  || project.width
 }
 
 function getCanvasBlended(project, imgBelow, imgAbove, mode, maskOpacity) {
-	project.rendering.layersBatchCount++;
-
-var	canvas = cre('canvas')
+var	canvas = getNewCanvas(project)
 ,	ctx = canvas.getContext('2d')
 	;
-	canvas.width  = project.width;
-	canvas.height = project.height;
-
 	if (imgBelow) drawImageOrColor(project, ctx, imgBelow);
 	if (imgAbove) drawImageOrColor(project, ctx, imgAbove, mode || BLEND_MODE_CLIP, maskOpacity);
 
@@ -4267,7 +4273,7 @@ function getLayerVisibilityByValues(project, layer, values, listName) {
 
 var	isVisible = (
 		layer.isVisible
-	||	layer.isOptional
+	||	layer.isVisibilityOptional
 	||	layer.params.skip_render
 	);
 
@@ -4334,7 +4340,7 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 			layer.isOrderedBySide
 		&&	side === 'back'
 		)
-	,	flipSide = (backward ? VIEW_FLIPS.indexOf(params.side) : -1)
+	,	flipSide = orz(backward ? layer.flipSide : 0)
 		;
 
 //* step over clipping group to render or skip at once:
@@ -4507,7 +4513,7 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 					&&	layer.isPassThrough
 					) {
 						if (
-							flipSide >= 0
+							flipSide
 						||	blendMode !== BLEND_MODE_NORMAL
 						||	opacity != 1
 						||	layer.mask
@@ -4601,7 +4607,7 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 
 				if (mask) {
 					if (canvasCopy) {
-						if (backward) {
+						if (flipSide) {
 							mask = getCanvasFlipped(project, mask, flipSide);
 
 							if (TESTING_RENDER) addDebugImage(project, layer, mask, 'mask = getCanvasFlipped');
@@ -4631,7 +4637,7 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 
 //* flip:
 
-				if (backward) {
+				if (flipSide) {
 					img = getCanvasFlipped(project, img, flipSide);
 
 					if (TESTING_RENDER) addDebugImage(project, layer, img, 'img = getCanvasFlipped');
