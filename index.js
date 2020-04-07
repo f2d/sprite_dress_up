@@ -306,6 +306,7 @@ examples of 'multi_select':
 		['src', 'source']
 	,	['dst', 'destination']
 	,	['liner', 'linear']
+	,	['subtract', 'substract']
 	,	['substruct', 'substract']
 	,	[/^.*:/g]		//* <- remove any "prefix:"
 	,	[/[\s\/_-]+/g, '-']	//* <- normalize word separators to use only dashes
@@ -1568,6 +1569,8 @@ var	r,b = ('' + b).toLowerCase();
 }
 
 function getParentLayer(layer, propName, isTrue) {
+	if (!layer) return null;
+
 	while (layer = layer.parent) {
 		if (
 			layer.params
@@ -1584,6 +1587,8 @@ function getParentLayer(layer, propName, isTrue) {
 }
 
 function getLayerPath(layer, includeSelf) {
+	if (!layer) return [];
+
 var	path = (includeSelf ? [layer.name] : []);
 
 	while (layer = getParentLayer(layer)) {
@@ -1904,7 +1909,7 @@ async function getNormalizedProjectData(sourceFile, button) {
 var	fileName = sourceFile.name
 ,	baseName = sourceFile.baseName
 ,	ext      = sourceFile.ext
-,	actionLabel = 'parsing file structure';
+,	actionLabel = 'processing document structure';
 	;
 	logTime('"' + fileName + '" started ' + actionLabel);
 
@@ -2279,7 +2284,10 @@ async function getProjectViewMenu(project) {
 			if (
 				layer.opacity > 0
 			&&	(
-					layer.maskData
+					(
+						layer.mask
+					&&	layer.mask.maskData
+					)
 				||	(
 						!layersInside
 					&&	layer.width > 0
@@ -2389,11 +2397,12 @@ async function getProjectViewMenu(project) {
 	function getLayerMaskLoadPromise(layer) {
 		return new Promise(
 			(resolve, reject) => {
-			var	mask = layer.mask
-			,	maskData = layer.maskData
-				;
-				if (mask && maskData) {
-				var	w = mask.width
+				if (
+					(mask = layer.mask)
+				&&	(maskData = mask.maskData)
+				) {
+				var	mask, maskData
+				,	w = mask.width
 				,	h = mask.height
 				,	canvas = getCanvasFromByteArray(maskData, w,h)
 				,	data = canvas.toDataURL()
@@ -2772,9 +2781,16 @@ var	checkVirtualPath = (
 		,	isVirtualFolder: true
 		,	isPassThrough: true
 		,	isVisible: true
-		,	opacity: 1
+		,	opacity: subLayer.opacity
 		,	layers: []
 		};
+		subLayer.opacity = 1;
+
+		for (var k of ['mask', 'maskData']) if (subLayer[k]) {
+			layer[k] = subLayer[k];
+			subLayer[k] = null;
+			delete subLayer[k];
+		}
 
 		break;
 	} else {
@@ -3003,7 +3019,7 @@ async function loadCommonWrapper(project, libName, fileParserFunc, treeConstruct
 		return;
 	}
 
-var	actionLabel = 'parsing with ' + libName;
+var	actionLabel = 'opening with ' + libName;
 
 	logTime('"' + project.fileName + '" started ' + actionLabel);
 
@@ -3223,13 +3239,13 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 				&&	img.hasMask
 				&&	img.maskData
 				) {
-					layerWIP.maskData = img.maskData;	//* <- RGBA byte array
 					layerWIP.mask = {
 						top:    orz(mask.top  || mask.y)
 					,	left:   orz(mask.left || mask.x)
 					,	width:  orz(mask.width)
 					,	height: orz(mask.height)
 					,	defaultColor: orz(mask.defaultColor)
+					,	maskData: img.maskData		//* <- RGBA byte array
 					};
 				}
 
@@ -3731,10 +3747,22 @@ function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
 
 		function tryEmulation(blendMode, callback) {
 
+			if (TESTING) {
+			var	logLabelWrap = blendMode + ': ' + project.rendering.nestedLayers.map(v => v.name).join(' / ');
+				console.time(logLabelWrap);
+				console.group(logLabelWrap);
+
+			var	logLabel = blendMode + ': loading image data';
+				console.time(logLabel);
+			}
+
 //* get pixels of layer below (B):
 
 			ctx.globalAlpha = 1;
 			ctx.globalCompositeOperation = BLEND_MODE_NORMAL;
+
+			if (TESTING_RENDER) var t = 'tryBlendingEmulation: ' + blendMode + ', layer ';
+			if (TESTING_RENDER) addDebugImage(project, canvas, t + 'below at ' + (ctx.globalAlpha * 100) + '%', 'yellow');
 
 		var	oldData = ctx.getImageData(0,0, w,h)
 		,	b = oldData.data
@@ -3743,9 +3771,12 @@ function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
 //* get pixels of layer above (A):
 
 			ctx.clearRect(0,0, w,h);
-			ctx.globalAlpha = (mask ? 1 : opacity);
+			ctx.globalAlpha = (isTransition ? 1 : opacity);
 
 			drawImageOrColorInside(img);
+
+			if (TESTING_RENDER) addDebugImage(project, canvas, t + 'above at ' + (ctx.globalAlpha * 100) + '%', 'orange');
+
 			ctx.globalAlpha = 1;
 
 		var	newData = ctx.getImageData(0,0, w,h)
@@ -3754,11 +3785,14 @@ function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
 
 //* get pixels of transition mask (M):
 
-			if (mask) {
+			if (isTransition) {
 				ctx.clearRect(0,0, w,h);
 				ctx.globalAlpha = opacity;
 
-				drawImageOrColorInside(mask);
+				drawImageOrColorInside(mask || 'white');
+
+				if (TESTING_RENDER) addDebugImage(project, canvas, t + 'mask at ' + (ctx.globalAlpha * 100) + '%', 'brown');
+
 				ctx.globalAlpha = 1;
 
 			var	maskData = ctx.getImageData(0,0, w,h)
@@ -3768,9 +3802,28 @@ function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
 
 //* compute resulting pixels linearly into newData, and save result back onto canvas:
 
+			if (TESTING) {
+				console.timeEnd(logLabel);
+				console.log(['blendMode =', blendMode, 'opacity =', opacity, mask ? 'callback with mask' : 'callback']);
+				logLabel = blendMode + ': running calculation';
+				console.time(logLabel);
+			}
+
 		var	isDone = callback(a,b, blendMode, m);
 
+			if (TESTING) {
+				console.timeEnd(logLabel);
+				logLabel = blendMode + ': saving result to canvas';
+				console.time(logLabel);
+			}
+
 			ctx.putImageData(isDone ? newData : oldData, 0,0);
+
+			if (TESTING) {
+				console.timeEnd(logLabel);
+				console.groupEnd(logLabelWrap);
+				console.timeEnd(logLabelWrap);
+			}
 
 			return isDone;
 		}
@@ -3816,7 +3869,6 @@ function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
 
 	if (typeof opacity === 'undefined') opacity = 1;
 	if (typeof blendMode === 'undefined') blendMode = BLEND_MODE_NORMAL;
-	if (!mask && blendMode === BLEND_MODE_TRANSIT) mask = 'white';
 
 var	canvas = ctx.canvas;
 
@@ -3828,6 +3880,7 @@ var	canvas = ctx.canvas;
 	,	w = canvas.width
 	,	h = canvas.height
 	,	m = ctx.globalCompositeOperation
+	,	isTransition = !!(mask || blendMode === BLEND_MODE_TRANSIT)
 		;
 
 //* use native JS blending if available, or emulation fails/unavailable:
@@ -3836,6 +3889,8 @@ var	canvas = ctx.canvas;
 			m === blendMode
 		||	!tryBlendingEmulation(blendMode)
 		) {
+			if (TESTING && m !== blendMode) console.log(['blendMode =', blendMode, 'fallback =', m]);
+
 			ctx.globalAlpha = opacity;
 
 			drawImageOrColorInside(img);
@@ -4031,16 +4086,25 @@ var	canvas = cre('canvas')
 	return canvas;
 }
 
-function addDebugImage(project, layer, canvas, comment, highLightColor) {
-	if (TESTING_RENDER && project && layer && canvas) {
+function addDebugImage(project, canvas, comment, highLightColor) {
+	if (TESTING_RENDER && canvas && canvas.toDataURL) {
 	var	img = cre('img', project.renderContainer);
 
-		img.alt = img.title = [
-			project.rendering.fileName
-		,	getLayerPath(layer, true).join(' / ')
-		,	layer.nameOriginal
-		,	comment
-		].join(' \r\n');
+		if (project) {
+		var	layers = project.rendering.nestedLayers
+		,	layer = layers[layers.length - 1]
+			;
+			img.alt = img.title = [
+				'render name: ' + project.rendering.fileName
+			,	'render nesting level: ' + layers.length
+			,	'render nesting path: ' + layers.map(v => v.name).join(' / ')
+			,	'layer nesting path: ' + getLayerPath(layer, true).join(' / ')
+			,	'layer name: ' + (layer ? layer.nameOriginal : layer)
+			,	'comment: ' + comment
+			].join(' \r\n');
+		} else {
+			img.alt = img.title = comment;
+		}
 
 		if (highLightColor) {
 			img.style.borderColor = highLightColor;
@@ -4119,14 +4183,29 @@ var	canvas = cre('canvas')
 function getCanvasFilledOutsideOfImage(project, img, fillColor) {
 	if (!img) return null;
 
+	if (
+		!(
+			fillColor
+		||	img.left
+		||	img.top
+		)
+	||	(
+			img.width  == project.width
+		&&	img.height == project.height
+		)
+	) {
+		return img;
+	}
+
 var	canvas = getNewCanvas(project)
 ,	ctx = canvas.getContext('2d')
 ,	w = canvas.width
 ,	h = canvas.height
-,	fillColor = Math.max(0, Math.min(255, orz(fillColor)));
+,	fillColor = Math.max(0, Math.min(255, orz(fillColor)))
+,	flatColorData = ctx.createImageData(w,h)
 	;
-	ctx.fillColor = 'rgba(' + fillColor + ',' + fillColor + ',' + fillColor + ',' + fillColor + ')';
-	ctx.fillRect(0,0, w,h);
+	flatColorData.data.fill(fillColor);
+	ctx.putImageData(flatColorData, 0,0);
 
 var	w = orz(img.width)  || project.width
 ,	h = orz(img.height) || project.height
@@ -4329,6 +4408,11 @@ var	canvas = cre('canvas');
 async function getRenderByValues(project, values, layersBatch, renderParam) {
 
 	async function renderOneLayer(layer) {
+
+		function onReturnCleanup() {
+			project.rendering.nestedLayers.pop();
+		}
+
 	var	names = layer.names
 	,	params = layer.params
 	,	skipColoring = !!params.if_only			//* <- check logical visibility, but skip recolor
@@ -4340,7 +4424,11 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 		&&	side === 'back'
 		)
 	,	flipSide = orz(backward ? layer.flipSide : 0)
+	,	p = project.rendering
 		;
+
+		p.nestedLayers.push(layer);
+		p.nestedLevelMax = Math.max(p.nestedLevelMax, p.nestedLayers.length);
 
 //* step over clipping group to render or skip at once:
 
@@ -4375,7 +4463,7 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 			!isLayerRendered(layer)
 		||	!(opacity = renderParam.opacity || getLayerVisibilityByValues(project, layer, values))
 		) {
-			return;
+			return onReturnCleanup();
 		}
 
 //* skip unrelated to alpha composition when getting mask for padding:
@@ -4392,7 +4480,7 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 			&&	layer !== bottomLayer
 			&&	blendMode === BLEND_MODE_NORMAL
 			) {
-				return;
+				return onReturnCleanup();
 			}
 		} else {
 			if (
@@ -4415,7 +4503,7 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 		) {
 			ctx = canvas.getContext('2d');
 
-			if (TESTING_RENDER) addDebugImage(project, layer, canvas, 'renderParam.baseCanvas', 'green');
+			if (TESTING_RENDER) addDebugImage(project, canvas, 'renderParam.baseCanvas', 'green');
 		}
 
 //* render clipping group as separate batch:
@@ -4431,7 +4519,7 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 				}
 			);
 
-			if (TESTING_RENDER) addDebugImage(project, layer, img, 'clippingGroupResult: img = getRenderByValues', 'cyan');
+			if (TESTING_RENDER) addDebugImage(project, img, 'clippingGroupResult: img = getRenderByValues', 'cyan');
 		} else {
 
 		var	aliases = null
@@ -4523,7 +4611,7 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 							l_a = l_a.slice(0, l_i).concat(layers);
 							l_i = l_a.length;
 
-							return;
+							return onReturnCleanup();
 						}
 					}
 
@@ -4540,7 +4628,7 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 						}
 					);
 
-					if (TESTING_RENDER) addDebugImage(project, layer, img, 'folder content result: img = getRenderByValues');
+					if (TESTING_RENDER) addDebugImage(project, img, 'folder content result: img = getRenderByValues');
 				}
 			} else {
 
@@ -4551,9 +4639,7 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 		}
 
 		if (img) {
-		var	mask = null
-		,	fillColor = 0
-			;
+		var	mask = null;
 
 			if (clippingGroupResult) {
 				opacity = 1;
@@ -4580,14 +4666,14 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 							}
 						);
 
-						if (TESTING_RENDER) addDebugImage(project, layer, mask, 'mask = getRenderByValues');
+						if (TESTING_RENDER) addDebugImage(project, mask, 'mask = getRenderByValues');
 
 //* apply padding to generated mask:
 
 						if (mask) {
 							padCanvas(mask, padding);
 
-							if (TESTING_RENDER) addDebugImage(project, layer, mask, 'padCanvas: mask');
+							if (TESTING_RENDER) addDebugImage(project, mask, 'padCanvas: mask');
 						}
 					}
 				} else
@@ -4595,11 +4681,11 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 //* get mask defined in the document:
 
 				if (mask = layer.mask) {
-					if (fillColor = mask.defaultColor) {
-						mask = getCanvasFilledOutsideOfImage(project, mask, fillColor);
+				var	fillColor = orz(mask.defaultColor);
 
-						if (TESTING_RENDER) addDebugImage(project, layer, mask, 'mask = getCanvasFilledOutsideOfImage');
-					}
+					mask = getCanvasFilledOutsideOfImage(project, mask, fillColor);
+
+					if (TESTING_RENDER) addDebugImage(project, mask, 'mask = getCanvasFilledOutsideOfImage: ' + fillColor);
 				}
 
 //* apply mask:
@@ -4609,12 +4695,12 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 						if (flipSide) {
 							mask = getCanvasFlipped(project, mask, flipSide);
 
-							if (TESTING_RENDER) addDebugImage(project, layer, mask, 'mask = getCanvasFlipped');
+							if (TESTING_RENDER) addDebugImage(project, mask, 'mask = getCanvasFlipped');
 						}
 					} else {
 						img = getCanvasBlended(project, img, mask, BLEND_MODE_MASK);
 
-						if (TESTING_RENDER) addDebugImage(project, layer, img, 'img = getCanvasBlended: mask');
+						if (TESTING_RENDER) addDebugImage(project, img, 'img = getCanvasBlended: mask');
 
 						clearCanvasBeforeGC(mask);
 					}
@@ -4639,7 +4725,7 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 				if (flipSide) {
 					img = getCanvasFlipped(project, img, flipSide);
 
-					if (TESTING_RENDER) addDebugImage(project, layer, img, 'img = getCanvasFlipped');
+					if (TESTING_RENDER) addDebugImage(project, img, 'img = getCanvasFlipped');
 				}
 			}
 
@@ -4653,7 +4739,7 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 			if (canvasCopy) {
 				drawImageOrColor(project, ctx, img, BLEND_MODE_TRANSIT, opacity, mask);
 
-				if (TESTING_RENDER) addDebugImage(project, layer, canvas, [
+				if (TESTING_RENDER) addDebugImage(project, canvas, [
 					'drawImageOrColor: ' + BLEND_MODE_TRANSIT
 				,	'opacity = ' + opacity
 				,	'mask = ' + mask
@@ -4664,7 +4750,7 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 			} else {
 				drawImageOrColor(project, ctx, img, blendMode, opacity);
 
-				if (TESTING_RENDER) addDebugImage(project, layer, canvas, 'drawImageOrColor: ' + blendMode);
+				if (TESTING_RENDER) addDebugImage(project, canvas, 'drawImageOrColor: ' + blendMode);
 			}
 
 			++project.rendering.layersApplyCount;
@@ -4677,11 +4763,13 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 			) {
 				clippingMask = makeCanvasOpaqueAndGetItsMask(project, ctx);
 
-				if (TESTING_RENDER) addDebugImage(project, layer, canvas, 'clippingMask = makeCanvasOpaqueAndGetItsMask');
+				if (TESTING_RENDER) addDebugImage(project, canvas, 'clippingMask = makeCanvasOpaqueAndGetItsMask');
 			}
 
 			clearCanvasBeforeGC(img);
 		}
+
+		return onReturnCleanup();
 	}
 
 	if (!project || !project.layers || isStopRequested || project.isStopRequested) {
@@ -4720,6 +4808,8 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 		,	fileName: getFileNameByValues(project, values)
 		,	layersApplyCount: 0
 		,	layersBatchCount: 1
+		,	nestedLevelMax: 0
+		,	nestedLayers: []
 		,	colors: {}
 		};
 	}
@@ -4768,7 +4858,7 @@ var	l_a = layersToRenderOne || layersBatch || project.layers
 		if (mask = clippingMask) {
 			drawImageOrColor(project, ctx, mask, BLEND_MODE_MASK);
 
-			if (TESTING_RENDER) addDebugImage(project, layer, canvas, 'drawImageOrColor: mask = clippingMask');
+			if (TESTING_RENDER) addDebugImage(project, canvas, 'drawImageOrColor: mask = clippingMask');
 
 			clearCanvasBeforeGC(mask);
 		}
@@ -4793,6 +4883,7 @@ var	l_a = layersToRenderOne || layersBatch || project.layers
 				'"' + project.fileName + '" rendered in '
 			+	[	project.rendering.layersBatchCount + ' canvas elements'
 				,	project.rendering.layersApplyCount + ' blending steps'
+				,	project.rendering.nestedLevelMax + ' max nesting levels'
 				,	(renderingTime / 1000) + ' seconds'
 				,	'subtitle'
 				].join(', ')
