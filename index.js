@@ -306,8 +306,8 @@ examples of 'multi_select':
 		['src', 'source']
 	,	['dst', 'destination']
 	,	['liner', 'linear']
-	,	['subtract', 'substract']
-	,	['substruct', 'substract']
+	,	['substract', 'subtract']
+	,	['substruct', 'subtract']
 	,	[/^.*:/g]		//* <- remove any "prefix:"
 	,	[/[\s\/_-]+/g, '-']	//* <- normalize word separators to use only dashes
 	,	[regLayerBlendModePass, BLEND_MODE_PASS]
