@@ -2780,16 +2780,11 @@ var	checkVirtualPath = (
 		,	isVirtualFolder: true
 		,	isPassThrough: true
 		,	isVisible: true
-		,	opacity: subLayer.opacity
+		,	blendMode: BLEND_MODE_NORMAL
+		,	opacity: 1
 		,	layers: []
 		};
-		subLayer.opacity = 1;
-
-		for (var k of ['mask', 'maskData']) if (subLayer[k]) {
-			layer[k] = subLayer[k];
-			subLayer[k] = null;
-			delete subLayer[k];
-		}
+		subLayer.isClipped = false;
 
 		break;
 	} else {
@@ -3746,7 +3741,9 @@ function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
 
 		function tryEmulation(callback) {
 
-			if (TESTING) {
+			if (TESTING_RENDER) {
+				console.log(['blendMode =', blendMode, 'opacity =', opacity, mask ? 'callback with mask' : 'callback']);
+
 			var	logLabelWrap = blendMode + ': ' + project.rendering.nestedLayers.map(v => v.name).join(' / ');
 				console.time(logLabelWrap);
 				console.group(logLabelWrap);
@@ -3760,8 +3757,10 @@ function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
 			ctx.globalAlpha = 1;
 			ctx.globalCompositeOperation = BLEND_MODE_NORMAL;
 
-			if (TESTING_RENDER) var t = 'tryBlendingEmulation: ' + blendMode + ', layer ';
-			if (TESTING_RENDER) addDebugImage(project, canvas, t + 'below at ' + (ctx.globalAlpha * 100) + '%', 'yellow');
+			if (TESTING_RENDER) {
+			var	t = 'tryBlendingEmulation: ' + blendMode + ', layer ';
+				addDebugImage(project, canvas, t + 'below at ' + (ctx.globalAlpha * 100) + '%', 'yellow');
+			}
 
 		var	oldData = ctx.getImageData(0,0, w,h)
 		,	b = oldData.data
@@ -3801,16 +3800,15 @@ function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
 
 //* compute resulting pixels linearly into newData, and save result back onto canvas:
 
-			if (TESTING) {
+			if (TESTING_RENDER) {
 				console.timeEnd(logLabel);
-				console.log(['blendMode =', blendMode, 'opacity =', opacity, mask ? 'callback with mask' : 'callback']);
 				logLabel = blendMode + ': running calculation';
 				console.time(logLabel);
 			}
 
 		var	isDone = callback(a,b,m);
 
-			if (TESTING) {
+			if (TESTING_RENDER) {
 				console.timeEnd(logLabel);
 				logLabel = blendMode + ': saving result to canvas';
 				console.time(logLabel);
@@ -3818,7 +3816,7 @@ function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
 
 			ctx.putImageData(isDone ? newData : oldData, 0,0);
 
-			if (TESTING) {
+			if (TESTING_RENDER) {
 				console.timeEnd(logLabel);
 				console.groupEnd(logLabelWrap);
 				console.timeEnd(logLabelWrap);
