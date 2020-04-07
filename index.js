@@ -306,10 +306,9 @@ examples of 'multi_select':
 		['src', 'source']
 	,	['dst', 'destination']
 	,	['liner', 'linear']
-	,	['substract', 'subtract']
-	,	['substruct', 'subtract']
 	,	[/^.*:/g]		//* <- remove any "prefix:"
 	,	[/[\s\/_-]+/g, '-']	//* <- normalize word separators to use only dashes
+	,	[/^subs?tr[au]ct$/, 'subtract']
 	,	[regLayerBlendModePass, BLEND_MODE_PASS]
 	]
 
@@ -3745,7 +3744,7 @@ function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
 
 	function tryBlendingEmulation(blendMode) {
 
-		function tryEmulation(blendMode, callback) {
+		function tryEmulation(callback) {
 
 			if (TESTING) {
 			var	logLabelWrap = blendMode + ': ' + project.rendering.nestedLayers.map(v => v.name).join(' / ');
@@ -3809,7 +3808,7 @@ function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
 				console.time(logLabel);
 			}
 
-		var	isDone = callback(a,b, blendMode, m);
+		var	isDone = callback(a,b,m);
 
 			if (TESTING) {
 				console.timeEnd(logLabel);
@@ -3828,7 +3827,7 @@ function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
 			return isDone;
 		}
 
-		function usingAsmJS(a,b, blendMode, m) {
+		function usingAsmJS(a,b,m) {
 			try {
 			var	i = a.length
 			,	uint8array = getOrCreateReusableHeap(project)
@@ -3859,7 +3858,7 @@ function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
 			CompositionModule
 		&&	CompositionFuncList
 		&&	CompositionFuncList.indexOf(funcName) >= 0
-		&&	tryEmulation(blendMode, usingAsmJS)
+		&&	tryEmulation(usingAsmJS)
 		) {
 			return true;
 		}
