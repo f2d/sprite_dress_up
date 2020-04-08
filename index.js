@@ -18,7 +18,7 @@
 //* TODO: arithmetic emulation of all blending operations, not native to JS.
 //* TODO: arithmetic emulation of all operations in 16/32-bit until final result; to be optionally available as checkbox/selectbox.
 //* TODO: decode layer data (PSD/PNG/etc) manually without using canvas, to avoid premultiplied-alpha (PMA - in Firefox, not in Chrome) while rendering.
-//* TODO: for files without merged image data - render ignoring options, but respecting layer visibility properties. Or buttons to show  embedded and/or rendered image regardless of options. Or add this as top-most option for any project, with or without options.
+//* TODO: for files without merged image data - render ignoring options, but respecting layer visibility properties. Or buttons to show embedded and/or rendered image regardless of options. Or add this as top-most option for any project, with or without options.
 //* TODO: save batch to a single tileset image.
 
 //* other:
@@ -282,14 +282,16 @@ examples of 'multi_select':
 ,	THUMBNAIL_SIZE = 16
 ,	PREVIEW_SIZE = 64
 
-,	TESTING = false
-,	TESTING_RENDER = false
-,	EXAMPLE_NOTICE = false
-,	FILE_NAME_ADD_PARAM_KEY = true
-,	ADD_PAUSE_BEFORE_EACH_LAYER = false
-,	DOWNSCALE_BY_MAX_FACTOR_FIRST = true
-,	TAB_THUMBNAIL_ZOOM = true
-,	USE_ZLIB_ASM = true
+,	ADD_PAUSE_BEFORE_EACH_FOLDER	= true	//* <- when loading file and rendering
+,	ADD_PAUSE_BEFORE_EACH_LAYER	= false
+,	DOWNSCALE_BY_MAX_FACTOR_FIRST	= true
+,	EXAMPLE_NOTICE		= false
+,	FILE_NAME_ADD_PARAM_KEY	= true
+,	TAB_THUMBNAIL_ZOOM	= true
+,	TESTING			= false
+,	TESTING_RENDER		= false
+,	USE_ZLIB_ASM		= true
+,	VERIFY_PARAM_COLOR_VS_LAYER_CONTENT	= false
 
 ,	thumbnailPlaceholder
 ,	isStopRequested
@@ -519,6 +521,19 @@ var	a = [];
 		v = v.substr(j);
 	}
 	return a;
+}
+
+function getColorTextFromArray(img) {
+	return '' + (
+		img && img.join
+		? (
+			(img.length > 3 ? 'rgba' : 'rgb')
+		+	'('
+		+		img.slice(0,4).map(orzFloat).join(',')
+		+	')'
+		)
+		: img
+	);
 }
 
 function getPropByNameChain() {
@@ -1434,10 +1449,16 @@ var	canvas = cre('canvas')
 		widthRatio  > maxScaleFactor
 	||	heightRatio > maxScaleFactor
 	) {
+
+//* caclulate nearest scale factor top down:
+
 		if (DOWNSCALE_BY_MAX_FACTOR_FIRST) {
 			canvas.width  = widthTo  = Math.round(widthFrom  / maxScaleFactor);
 			canvas.height = heightTo = Math.round(heightFrom / maxScaleFactor);
 		} else {
+
+//* caclulate nearest scale factor bottom up - more complex, but result is not better:
+
 			if (widthRatio < heightRatio) {
 				widthTo = Math.round(widthFrom / heightRatio);
 			} else
@@ -1597,6 +1618,10 @@ var	path = (includeSelf ? [layer.name] : []);
 	return path;
 }
 
+function getLayerPathText(layer) {
+	return getLayerPath(layer, true).join(' / ');
+}
+
 function getLayerVisibilityChain(layer) {
 var	layers = [];
 
@@ -1726,7 +1751,7 @@ function thisToPng(targetLayer) {
 		}
 	} catch (error) {
 		if (i = targetLayer) {
-			logTime('cannot get layer image: ' + getLayerPath(i, true).join(' / '));
+			logTime('cannot get layer image: ' + getLayerPathText(i));
 		} else {
 			console.log(error);
 		}
@@ -2351,42 +2376,83 @@ async function getProjectViewMenu(project) {
 	function getLayerImgLoadPromise(layer) {
 		return new Promise(
 			(resolve, reject) => {
-				if (
-					layer.layers
-				||	(layer.img = getPropByNameChain(layer, 'params', 'color_code'))
-				) {
+				if (layer.layers) {
 					resolve(true);
-				} else {
-				var	img, onImgLoad = async function(e) {
-						if (layer.isColor) {
-							layer.img = getFirstPixelRGBA(img);
-						} else {
-						var	i = layer.img = await getImgOptimized(img);
-							i.top  = layer.top;
-							i.left = layer.left;
-						}
+					return;
+				}
 
-						resolve(true);
-					};
+			var	colorCode = getPropByNameChain(layer, 'params', 'color_code');
 
-					try {
-						img = project.toPng(layer);
-					} catch (error) {
-						console.log(error);
-					}
+				if (
+					colorCode
+				&&	!VERIFY_PARAM_COLOR_VS_LAYER_CONTENT
+				) {
+					layer.img = colorCode;
 
-					if (img) {
-						if (
-							isImgElement(img)
-						&&	!img.complete
-						) {
-							img.onload = onImgLoad;
-						} else {
-							onImgLoad();
+					resolve(true);
+					return;
+				}
+
+			var	img, onImgLoad = async function(e) {
+					if (layer.isColor) {
+						layer.img = getFirstPixelRGBA(img);
+
+						if (colorCode) {
+						var	colorCodeText = getColorTextFromArray(colorCode)
+						,	layerRGBAText = getColorTextFromArray(layer.img)
+							;
+
+							if (layerRGBAText != colorCodeText) {
+								console.log(
+									'got color code in param: '
+								+	colorCodeText
+								+	', prefered instead of layer content: '
+								+	layerRGBAText
+								+	', at:'
+								+	getLayerPathText(layer)
+								);
+
+								layer.img = colorCode;
+							}
 						}
 					} else {
-						resolve(false);
+					var	i = layer.img = await getImgOptimized(img);
+						i.top  = layer.top;
+						i.left = layer.left;
 					}
+
+					resolve(true);
+				};
+
+				try {
+					img = project.toPng(layer);
+				} catch (error) {
+					console.log(error);
+				}
+
+				if (img) {
+					if (
+						isImgElement(img)
+					&&	!img.complete
+					) {
+						img.onload = onImgLoad;
+					} else {
+						onImgLoad();
+					}
+				} else
+				if (colorCode) {
+					console.log(
+						'got color code in param: '
+					+	getColorTextFromArray(colorCode)
+					+	', layer content not found at: '
+					+	getLayerPathText(layer)
+					);
+
+					layer.img = colorCode;
+
+					resolve(true);
+				} else {
+					resolve(false);
 				}
 			}
 		);
@@ -2717,10 +2783,11 @@ function isParamInLayerName(name) {
 
 async function getNextParentAfterAddingLayerToTree(layer, sourceData, name, parentGroup, isLayerFolder, isInsideVirtualPath) {
 	if (
-		ADD_PAUSE_BEFORE_EACH_LAYER
-	||	(
+		!isInsideVirtualPath
+	&&	(
 			isLayerFolder
-		&&	!isInsideVirtualPath
+			? ADD_PAUSE_BEFORE_EACH_FOLDER
+			: ADD_PAUSE_BEFORE_EACH_LAYER
 		)
 	) {
 		await pause(1);
@@ -3522,7 +3589,7 @@ function getAllValueSets(project, checkPreselected, onlyNames, stopAtMaxCount) {
 		,	sectionName = optionList.sectionName
 		,	listName    = optionList.listName
 		,	optionNames = optionList.optionNames
-		,	optionsLeft  = (
+		,	optionsLeft = (
 				optionLists.length > 1
 				? optionLists.slice(1)
 				: null
@@ -3713,6 +3780,7 @@ var	buffer = project.renderingBuffer;
 	return new Uint8Array(buffer);
 }
 
+
 function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
 
 	function drawImageOrColorInside(img) {
@@ -3721,16 +3789,7 @@ function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
 		||	img.split
 		||	typeof img === 'string'
 		) {
-			ctx.fillStyle = '' + (
-				img.join
-				? (
-					(img.length > 3 ? 'rgba' : 'rgb')
-				+	'('
-				+		img.slice(0,4).map(orzFloat).join(',')
-				+	')'
-				)
-				: img
-			);
+			ctx.fillStyle = getColorTextFromArray(img);
 			ctx.fillRect(0,0, w,h);
 		} else {
 			ctx.drawImage(img, x,y);
@@ -4095,7 +4154,7 @@ function addDebugImage(project, canvas, comment, highLightColor) {
 				'render name: ' + project.rendering.fileName
 			,	'render nesting level: ' + layers.length
 			,	'render nesting path: ' + layers.map(v => v.name).join(' / ')
-			,	'layer nesting path: ' + getLayerPath(layer, true).join(' / ')
+			,	'layer nesting path: ' + getLayerPathText(layer)
 			,	'layer name: ' + (layer ? layer.nameOriginal : layer)
 			,	'comment: ' + comment
 			].join(' \r\n');
@@ -4112,17 +4171,37 @@ function addDebugImage(project, canvas, comment, highLightColor) {
 	}
 }
 
+function getNewCanvas(project) {
+	project.rendering.layersBatchCount++;
+
+var	canvas = cre('canvas');
+
+	canvas.width  = project.width;
+	canvas.height = project.height;
+
+	return canvas;
+}
+
+function getNewCanvasForImg(project, img) {
+	project.rendering.layersBatchCount++;
+
+var	canvas = cre('canvas');
+
+	canvas.width  = orz(img.width)  || project.width;
+	canvas.height = orz(img.height) || project.height;
+	canvas.left   = orz(img.left);
+	canvas.top    = orz(img.top);
+
+	return canvas;
+}
+
 function getCanvasCopy(project, img) {
 	if (!img) return null;
 
-	project.rendering.layersBatchCount++;
-
-var	canvas = cre('canvas')
+var	canvas = getNewCanvasForImg(project, img)
 ,	ctx = canvas.getContext('2d')
-,	w = canvas.width  = orz(img.width)  || project.width
-,	h = canvas.height = orz(img.height) || project.height
-,	x = canvas.left   = orz(img.left)
-,	y = canvas.top    = orz(img.top)
+,	w = canvas.width
+,	h = canvas.height
 	;
 	if (img.getContext) {
 		ctx.putImageData(img.getContext('2d').getImageData(0,0, w,h), 0,0);
@@ -4144,14 +4223,10 @@ function getCanvasFlipped(project, img, flipSide, isCopyNeeded) {
 		);
 	}
 
-	project.rendering.layersBatchCount++;
-
-var	canvas = cre('canvas')
+var	canvas = getNewCanvasForImg(project, img)
 ,	ctx = canvas.getContext('2d')
-,	w = canvas.width  = orz(img.width)  || project.width
-,	h = canvas.height = orz(img.height) || project.height
-,	x = canvas.left   = orz(img.left)
-,	y = canvas.top    = orz(img.top)
+,	w = canvas.width
+,	h = canvas.height
 	;
 
 	ctx.save();
@@ -4389,17 +4464,6 @@ var	parent = layer.optionParent;
 //* skip fully transparent:
 
 	return getOpacityByAnyName(listName ? [listName] : layer.names);
-}
-
-function getNewCanvas(project) {
-	project.rendering.layersBatchCount++;
-
-var	canvas = cre('canvas');
-
-	canvas.width  = project.width;
-	canvas.height = project.height;
-
-	return canvas;
 }
 
 async function getRenderByValues(project, values, layersBatch, renderParam) {
@@ -4821,7 +4885,10 @@ var	l_a = layersToRenderOne || layersBatch || project.layers
 ,	canvas, ctx, layers, layer, mask, clippingMask
 	;
 
-	if (!ADD_PAUSE_BEFORE_EACH_LAYER) {
+	if (
+		!ADD_PAUSE_BEFORE_EACH_LAYER
+	&&	ADD_PAUSE_BEFORE_EACH_FOLDER
+	) {
 		await pause(1);
 	}
 
@@ -4833,14 +4900,15 @@ var	l_a = layersToRenderOne || layersBatch || project.layers
 	}
 
 	while (l_i-- > l_k) if (layer = l_a[l_i]) {
+
+		if (ADD_PAUSE_BEFORE_EACH_LAYER) {
+			await pause(1);
+		}
+
 		if (isStopRequested || project.isStopRequested) {
 			canvas = ctx = null;
 
 			break;
-		}
-
-		if (ADD_PAUSE_BEFORE_EACH_LAYER) {
-			await pause(1);
 		}
 
 		await renderOneLayer(layer);
