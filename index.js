@@ -4408,7 +4408,7 @@ function getLayerVisibilityByValues(project, layer, values, listName) {
 
 		return (
 			max < 0
-			? layer.opacity
+			? (isVisible ? layer.opacity : 0)
 			: (unselectable ? 1 : max)
 		);
 	}
@@ -4421,7 +4421,7 @@ function getLayerVisibilityByValues(project, layer, values, listName) {
 
 //* skip not selected parts:
 
-var	isVisible = (
+var	isVisible = !!(
 		layer.isVisible
 	||	layer.isVisibilityOptional
 	||	layer.params.skip_render
@@ -4455,10 +4455,6 @@ var	parent = layer.optionParent;
 		} else {
 			isVisible = true;
 		}
-	}
-
-	if (!isVisible) {
-		return 0;
 	}
 
 //* skip fully transparent:
