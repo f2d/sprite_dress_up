@@ -216,7 +216,7 @@ examples of 'multi_select':
 ,	regTrimNaNorSign	= getTrimReg('^\\d\\.+-')
 ,	regTrimNewLine		= /[^\S\r\n]*(\r\n|\r|\n)/g
 ,	regClassOption		= getClassReg('project-option|option')
-,	regClassExampleFiles	= getClassReg('example-files|files')
+,	regClassExampleFiles	= getClassReg('example-file-type|example-files|files')
 ,	regClassExampleFile	= getClassReg('example-file|file')
 ,	regClassLoadedFile	= getClassReg('loaded-file|file')
 ,	regClassMenuBar		= getClassReg('menu-bar')
@@ -5814,6 +5814,56 @@ var	supportedFileTypesText = (
 	+	'</p>'
 	);
 
+	function getExampleHeaderRow(content, rowLength) {
+		return (
+			'<tr>'
+		+		'<th colspan="' + rowLength + '">'
+		+			content
+		+		'</th>'
+		+	'</tr>'
+		);
+	}
+
+	function getExampleButtonsRow(tabs, rowLength) {
+		if (tabs.map) {
+			return tabs.map(
+				(tabs) => getExampleButtonsRow(tabs, rowLength)
+			).join('');
+		}
+
+		tabs = Object.entries(tabs);
+
+	var	padCount = orz(rowLength) - orz(tabs.length)
+	,	padHTML = (
+			padCount > 0
+			? '<td' + (
+				padCount > 1
+				? ' colspan="' + padCount + '"'
+				: ''
+			) + '></td>'
+			: ''
+		)
+	,	tabsHTML = tabs.map(
+			([name, text]) => (
+				'<td>'
+			+		'<button onclick="return loadFromButton(this)" name="'
+			+			encodeTagAttr(name)
+			+		'">'
+			+			text
+			+		'</button>'
+			+	'</td>'
+			)
+		).join('')
+		;
+
+		return (
+			'<tr class="batch-buttons">'
+		+		padHTML
+		+		tabsHTML
+		+	'</tr>'
+		);
+	}
+
 var	tabsCountMax = 0
 ,	examplesHTML = (
 		exampleProjectFiles.map(
@@ -5918,71 +5968,28 @@ var	tabsCountMax = 0
 					).join('')
 				);
 
-				function getRightButtonsRow(tabs, rowLength) {
-					if (tabs.map) {
-						return tabs.map(
-							(tabs) => getRightButtonsRow(tabs, rowLength)
-						).join('');
-					}
-
-					tabs = Object.entries(tabs);
-
-				var	padCount = orz(rowLength) - orz(tabs.length)
-				,	padHTML = (
-						padCount > 0
-						? '<td' + (
-							padCount > 1
-							? ' colspan="' + padCount + '"'
-							: ''
-						) + '></td>'
-						: ''
-					)
-				,	tabsHTML = tabs.map(
-						([name, text]) => (
-							'<td>'
-						+		'<button onclick="return loadFromButton(this)" name="'
-						+			encodeTagAttr(name)
-						+		'">'
-						+			text
-						+		'</button>'
-						+	'</td>'
-						)
-					).join('')
-					;
-
-					return (
-						'<tr class="example-file batch-buttons">'
-					+		padHTML
-					+		tabsHTML
-					+	'</tr>'
-					);
-				}
-
-			var	batchButtonsHTML = getRightButtonsRow(la.menu.examples.batch_buttons, tabsCount)
+			var	batchButtonsHTML = getExampleButtonsRow(la.menu.examples.batch_buttons, tabsCount)
 
 				return (
 					'<tbody class="example-file-type">'
-				+		'<tr>'
-				+			'<th colspan="' + tabsCount + '">'
-				+				headerHTML
-				+			'</th>'
-				+		'</tr>'
+				+		getExampleHeaderRow(headerHTML, tabsCount)
 				+		fileListHTML
 				+		batchButtonsHTML
-				+		'<tr>'
-				+			'<th colspan="' + tabsCount + '">'
-				+				'<hr>'
-				+			'</th>'
-				+		'</tr>'
+				+		getExampleHeaderRow('<hr>', tabsCount)
 				+	'</tbody>'
 				);
 			}
 		).join('')
-	);
+	)
+,	batchButtonsHTML = getExampleButtonsRow(la.menu.examples.batch_buttons, tabsCountMax)
+	;
 
 	HTMLparts.examples = (
 		'<table class="example-files">'
 	+		examplesHTML
+	+		'<tfoot>'
+	+			batchButtonsHTML
+	+		'</tfoot>'
 	+	'</table>'
 	);
 

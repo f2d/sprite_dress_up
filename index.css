@@ -112,14 +112,14 @@ label:hover {
 .example-files:last-child .example-file-type:last-child hr {
 	visibility: hidden;
 }
+.example-files hr {
+	margin: 1em 0 0 0;
+}
 .example-file-type,
 .example-file-type header {
 	margin: 1em 0;
 }
-.example-file-type hr {
-	margin: 1em 0 0 0;
-}
-.example-file:hover:not(.loading):not(.batch-buttons) td {
+.example-file:hover:not(.loading) td {
 	background-color: #fff;
 }
 .example-file.loading td {
@@ -135,7 +135,7 @@ label:hover {
 	text-align: center;
 	content: "⌛";
 }
-.example-file button {
+.batch-buttons button {
 	width: 100%;
 }
 .close-button:not(:hover),
