@@ -100,15 +100,24 @@ label:hover {
 .example-files {
 	border-collapse: collapse;
 }
+.example-files th {
+	/* font-weight: normal; */
+}
 .example-files td {
 	padding: 2px 4px;
 }
 .example-files td:first-child {
 	text-align: right;
 }
+.example-files:last-child .example-file-type:last-child hr {
+	visibility: hidden;
+}
 .example-file-type,
 .example-file-type header {
 	margin: 1em 0;
+}
+.example-file-type hr {
+	margin: 1em 0 0 0;
 }
 .example-file:hover:not(.loading):not(.batch-buttons) td {
 	background-color: #fff;

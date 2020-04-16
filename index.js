@@ -1,7 +1,4 @@
 
-//* TODO: make visible user manual from notes and examples.
-//* TODO: keep all parameters single-word if possible.
-
 //* source file data:
 //* TODO: lazy loading only needed images in ORA one by one, as in PSD, after new tree structure is finished.
 //* TODO: save as ORA.
@@ -15,13 +12,16 @@
 //* TODO: <select multiple> <optgroup> <option>?</option> </optgroup> </select>.
 
 //* rendering:
+//* TODO: fix invalid clipping-passthrough interactions.
 //* TODO: arithmetic emulation of all blending operations, not native to JS.
 //* TODO: arithmetic emulation of all operations in 16/32-bit until final result; to be optionally available as checkbox/selectbox.
 //* TODO: decode layer data (PSD/PNG/etc) manually without using canvas, to avoid premultiplied-alpha (PMA - in Firefox, not in Chrome) while rendering.
 //* TODO: for files without merged image data - render ignoring options, but respecting layer visibility properties. Or buttons to show embedded and/or rendered image regardless of options. Or add this as top-most option for any project, with or without options.
-//* TODO: save batch to a single tileset image.
+//* TODO: save batch to a single collage/tileset image.
 
 //* other:
+//* TODO: make visible user manual from notes and examples.
+//* TODO: keep all parameters single-word if possible.
 //* TODO: split functionality into modules to reuse with drawpad, etc.
 
 //* Config *-------------------------------------------------------------------
@@ -264,7 +264,7 @@ examples of 'multi_select':
 ,	URL_API = window.URL || window.webkitURL
 ,	BLOB_PREFIX = 'blob:'
 ,	DATA_PREFIX = 'data:'
-,	TYPE_TP = 'text/plain'
+,	TYPE_TEXT = 'text/plain'
 ,	TOS = ['object', 'string']
 ,	VIEW_SIDES = ['front', 'back']
 ,	NAME_PARTS_PERCENTAGES = ['zoom', 'opacities']
@@ -1020,7 +1020,7 @@ function readFilePromiseFromURL(url, responseType) {
 
 function dataToBlob(data) {
 	if (URL_API && URL_API.createObjectURL) {
-	var	type = TYPE_TP;
+	var	type = TYPE_TEXT;
 		if (data.slice(0, k = DATA_PREFIX.length) == DATA_PREFIX) {
 		var	i = data.indexOf(',')
 		,	meta = data.slice(k,i)
@@ -1050,7 +1050,7 @@ function dataToBlob(data) {
 }
 
 function saveDL(data, fileName, ext, addTime, jsonReplacerFunc) {
-var	type = TYPE_TP
+var	type = TYPE_TEXT
 ,	data = (
 		typeof data === 'object'
 		? JSON.stringify(
@@ -5814,7 +5814,8 @@ var	supportedFileTypesText = (
 	+	'</p>'
 	);
 
-	HTMLparts.examples = (
+var	tabsCountMax = 0
+,	examplesHTML = (
 		exampleProjectFiles.map(
 			v => {
 			var	headerHTML = (
@@ -5906,6 +5907,7 @@ var	supportedFileTypesText = (
 							;
 
 							tabsCount = Math.max(tabsCount, tabs.length);
+							tabsCountMax = Math.max(tabsCount, tabsCountMax);
 
 							return (
 								'<tr class="example-file">'
@@ -5959,16 +5961,29 @@ var	supportedFileTypesText = (
 			var	batchButtonsHTML = getRightButtonsRow(la.menu.examples.batch_buttons, tabsCount)
 
 				return (
-					'<div class="example-file-type">'
-				+		headerHTML
-				+		'<table class="example-files">'
-				+			fileListHTML
-				+			batchButtonsHTML
-				+		'</table>'
-				+	'</div>'
+					'<tbody class="example-file-type">'
+				+		'<tr>'
+				+			'<th colspan="' + tabsCount + '">'
+				+				headerHTML
+				+			'</th>'
+				+		'</tr>'
+				+		fileListHTML
+				+		batchButtonsHTML
+				+		'<tr>'
+				+			'<th colspan="' + tabsCount + '">'
+				+				'<hr>'
+				+			'</th>'
+				+		'</tr>'
+				+	'</tbody>'
 				);
 			}
-		).join('<hr>')
+		).join('')
+	);
+
+	HTMLparts.examples = (
+		'<table class="example-files">'
+	+		examplesHTML
+	+	'</table>'
 	);
 
 	if (
@@ -5976,8 +5991,7 @@ var	supportedFileTypesText = (
 	&&	(v = la.menu.examples.notice)
 	) {
 		HTMLparts.examples += (
-			'<hr>'
-		+	'<p class="warning">'
+			'<p class="warning">'
 		+		(v.join ? v.join('<br>') : v)
 		+	'</p>'
 		);
