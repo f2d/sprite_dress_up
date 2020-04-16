@@ -20,6 +20,7 @@
 //* TODO: save batch to a single collage/tileset image.
 
 //* other:
+//* TODO: global job list for WIP cancelling instead of spaghetti-coded flag checks.
 //* TODO: make visible user manual from notes and examples.
 //* TODO: keep all parameters single-word if possible.
 //* TODO: split functionality into modules to reuse with drawpad, etc.
@@ -1806,6 +1807,8 @@ async function addProjectView(sourceFile) {
 		sourceFile.ext = getFileExt(sourceFile.name);
 	}
 
+//* prepare detached branch of DOM:
+
 var	buttonTab = cre('div', id('loaded-files-selection'));
 	buttonTab.className = 'button loading';
 
@@ -1849,11 +1852,8 @@ var	buttonClose = cre('button', buttonTab);
 		}
 
 		if (container) {
-		var	fileID = 'loaded-file: ' + sourceFile.name;
-
-			removeProjectView(fileID);
-
-		var	childKeys = ['layers']
+		var	fileID = 'loaded-file: ' + sourceFile.name
+		,	childKeys = ['layers']
 		,	keysToRemove = [
 				'loading'
 			,	'toPng'
@@ -1868,13 +1868,10 @@ var	buttonClose = cre('button', buttonTab);
 			}
 			cleanupObjectTree(project, childKeys, keysToRemove);
 
-			container.id = buttonTab.id = fileID;
 			container.className = 'loaded-file';
 
 			project.container = container;
 			container.project = project;
-
-			id('loaded-files-view').appendChild(container);
 
 		var	result = !(isStopRequested || project.isStopRequested || buttonTab.isStopRequested);
 
@@ -1890,17 +1887,25 @@ var	buttonClose = cre('button', buttonTab);
 				}
 			}
 
+//* attach prepared branch to document:
+
 			if (result) {
+				removeProjectView(fileID);
+
+				container.id = buttonTab.id = fileID;
+				id('loaded-files-view').appendChild(container);
+
 				buttonText.setAttribute('onclick', 'selectProject(this)');
 				buttonThumb.setAttribute('onclick', 'selectProject(this)');
 
 				buttonText.click();
 
 				return true;
-			} else {
-				removeProjectView(fileID);
 			}
 		}
+
+//* cleanup on errors or cancel:
+
 	} catch (error) {
 		console.log(error);
 	}
@@ -3779,7 +3784,6 @@ var	buffer = project.renderingBuffer;
 
 	return new Uint8Array(buffer);
 }
-
 
 function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
 
