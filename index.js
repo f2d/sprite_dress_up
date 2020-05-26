@@ -2313,7 +2313,8 @@ async function getProjectViewMenu(project) {
 			if (
 				layer.opacity > 0
 			&&	(
-					(
+					params.color_code
+				||	(
 						layer.mask
 					&&	layer.mask.maskData
 					)
@@ -2382,6 +2383,11 @@ async function getProjectViewMenu(project) {
 		return new Promise(
 			(resolve, reject) => {
 				if (layer.layers) {
+					if (TESTING) console.log(
+						'No image loaded because it is folder at: '
+					+	getLayerPathText(layer)
+					);
+
 					resolve(true);
 					return;
 				}
@@ -2392,42 +2398,20 @@ async function getProjectViewMenu(project) {
 					colorCode
 				&&	!VERIFY_PARAM_COLOR_VS_LAYER_CONTENT
 				) {
+					if (TESTING) console.log(
+						'got color code in param: '
+					+	getColorTextFromArray(colorCode)
+					+	', layer content not checked at: '
+					+	getLayerPathText(layer)
+					);
+
 					layer.img = colorCode;
 
 					resolve(true);
 					return;
 				}
 
-			var	img, onImgLoad = async function(e) {
-					if (layer.isColor) {
-						layer.img = getFirstPixelRGBA(img);
-
-						if (colorCode) {
-						var	colorCodeText = getColorTextFromArray(colorCode)
-						,	layerRGBAText = getColorTextFromArray(layer.img)
-							;
-
-							if (layerRGBAText != colorCodeText) {
-								console.log(
-									'got color code in param: '
-								+	colorCodeText
-								+	', prefered instead of layer content: '
-								+	layerRGBAText
-								+	', at:'
-								+	getLayerPathText(layer)
-								);
-
-								layer.img = colorCode;
-							}
-						}
-					} else {
-					var	i = layer.img = await getImgOptimized(img);
-						i.top  = layer.top;
-						i.left = layer.left;
-					}
-
-					resolve(true);
-				};
+			var	img = null;
 
 				try {
 					img = project.toPng(layer);
@@ -2435,11 +2419,43 @@ async function getProjectViewMenu(project) {
 					console.log(error);
 				}
 
-				if (img) {
-					if (
-						isImgElement(img)
-					&&	!img.complete
-					) {
+				if (
+					img
+				&&	isImgElement(img)
+				) {
+				var	onImgLoad = async function(e) {
+						if (layer.isColor) {
+							layer.img = getFirstPixelRGBA(img);
+
+							if (colorCode) {
+							var	colorCodeText = getColorTextFromArray(colorCode)
+							,	layerRGBAText = getColorTextFromArray(layer.img)
+								;
+
+								if (layerRGBAText != colorCodeText) {
+									console.log(
+										'got color code in param: '
+									+	colorCodeText
+									+	', prefered instead of layer content: '
+									+	layerRGBAText
+									+	', at:'
+									+	getLayerPathText(layer)
+									);
+
+								}
+
+								layer.img = colorCode;
+							}
+						} else {
+						var	i = layer.img = await getImgOptimized(img);
+							i.top  = layer.top;
+							i.left = layer.left;
+						}
+
+						resolve(true);
+					};
+
+					if (!img.complete) {
 						img.onload = onImgLoad;
 					} else {
 						onImgLoad();
