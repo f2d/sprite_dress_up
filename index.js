@@ -12,17 +12,21 @@
 //* TODO: <select multiple> <optgroup> <option>?</option> </optgroup> </select>.
 
 //* rendering:
-//* TODO: fix invalid clipping-passthrough interactions.
+//* TODO: fix invalid clipping-passthrough interactions (ignore clipping if base layer is in passthrough mode, etc).
+//* TODO: fix hiding of clipping group with skipped/invisible/empty base layer.
+//* TODO: fix blending mode of base layer in clipping group.
+//* TODO: keep track of current root of (possibly nested) copy-pasted layer in array property with push-pop while rendering.
 //* TODO: arithmetic emulation of all blending operations, not native to JS.
 //* TODO: arithmetic emulation of all operations in 16/32-bit until final result; to be optionally available as checkbox/selectbox.
 //* TODO: decode layer data (PSD/PNG/etc) manually without using canvas, to avoid premultiplied-alpha (PMA - in Firefox, not in Chrome) while rendering.
 //* TODO: for files without merged image data - render ignoring options, but respecting layer visibility properties. Or buttons to show embedded and/or rendered image regardless of options. Or add this as top-most option for any project, with or without options.
 //* TODO: save batch to a single collage/tileset image.
+//* TODO: autocrop options, separate for view/save/collage.
 
 //* other:
-//* TODO: global job list for WIP cancelling instead of spaghetti-coded flag checks.
-//* TODO: make visible user manual from notes and examples.
 //* TODO: keep all parameters single-word if possible.
+//* TODO: make visible user manual from notes and examples.
+//* TODO: global job list for WIP cancelling instead of spaghetti-coded flag checks.
 //* TODO: split functionality into modules to reuse with drawpad, etc.
 
 //* Config *-------------------------------------------------------------------
@@ -69,6 +73,8 @@ var	regLayerNameToSkip		= /^(skip)$/i
 
 	,	'side':		/^(front|back|reverse(?:\W+(h[orizontal]*|v[ertical]*))?)$/i
 	,	'separate':	/^(separate|split)$/i
+
+	,	'layout':	/^(rows|view|save|collage)(?:\W(.*))?$/i
 
 	,	'multi_select':	/^(x(\d[\d\W]*)|optional)$/i
 /*
@@ -133,8 +139,8 @@ examples of 'paddings', 'radius':
 
 examples of 'wireframe':
 
-	[frame]
-	[wireframe]
+	[frame]		(TODO)
+	[wireframe]	(TODO)
 	[wire-frame]	(TODO: recolor this layer into black)
 
 	Note: when rendering wireframe mask, unmarked layers will be recolored into white.
@@ -172,9 +178,17 @@ examples of 'side':
 
 examples of 'separate':
 
-	[separate]	layers in the top-most non-single-layer folder will be rendered into series of separate images.
+	[separate]	(layers in the top-most non-single-layer folder will be rendered into series of separate images)
 
 	Note: like zoom, this option works only globally.
+
+examples of 'layout':
+
+	[rows]				(TODO: separate row of images in a batch for each value of associated options)
+	[view-autocrop/top-left]	(TODO: remove same-fill areas around, align images in a row to top, align rows to left side)
+	[collage-1px/transparent]	(TODO: add 1px transparent padding between images when joining into one collage image)
+
+	Note: alignment has no effect without autocrop, because all images in a project render with the same canvas size.
 
 examples of 'multi_select':
 
@@ -2529,8 +2543,12 @@ async function getProjectViewMenu(project) {
 			,	items = optionList.items
 			,	params = optionList.params
 			,	addEmpty = !(
-					'' in items
-				||	sectionName === 'side'
+					sectionName === 'side'
+				||	'' in items
+				||	(
+						sectionName === 'zoom'
+					&&	'100%' in items
+					)
 				) && (
 					params.multi_select
 				&&	params.multi_select.min <= 0
