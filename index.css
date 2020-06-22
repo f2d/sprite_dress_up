@@ -206,6 +206,14 @@ img.larger {
 	display: inline-flex;
 	margin: 0.5em;
 }
+#loaded-files-selection .button::-moz-focus-inner,
+#loaded-files-selection .button > *::-moz-focus-inner {
+	border: none;	/* <- https://stackoverflow.com/a/199319 */
+}
+#loaded-files-selection .button,
+#loaded-files-selection .button > * {
+	outline: none;	/* <- https://stackoverflow.com/a/47002717 */
+}
 #loaded-files-selection,
 #loaded-files-view {
 	margin: 1em;

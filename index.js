@@ -5,13 +5,21 @@
 //* TODO: whole config in JSON-format?
 
 //* menu:
+//* TODO: symbolic batch buttons:
+//*	single	= "•" &#x2022; "⸱" &#x2E31;
+//*	all	= "⁂" &#x2042; "⸬" &#x2E2C; "⁘" &#x2058; "⁛" &#x205B;
+//*	row	= "⋯" &#x22EF;
+//*	column	= "⋮" &#x22EE;
+//* TODO: empty or 0% zoom = 100%; empty opacity = use value from document, 0% = hide, 100% = overwrite with 100%.
+//* TODO: zoom format in filenames: [x1, x1.00, x100%].
 //* TODO: progress/status panel + [stop operation] button.
 //* TODO: options menu: add/remove/copy/edit colors and outlines, or all list(s), maybe in textarea.
-//* TODO: zoom format in filenames: [x1, x1.00, x100%].
-//* TODO: store batch counts and lists per project, under keys like this: batch_checkboxes.map(checked?1:0).join().
+//* TODO: remember already calculated batch counts and valid lists per project, in a dict with keys like joined list of all options and checkboxes.
 //* TODO: <select multiple> <optgroup> <option>?</option> </optgroup> </select>.
 
 //* rendering:
+//* TODO: save batch to a single collage/tileset image.
+//* TODO: autocrop options, separate for view/save/collage.
 //* TODO: fix invalid clipping-passthrough interactions (ignore clipping if base layer is in passthrough mode, etc).
 //* TODO: fix hiding of clipping group with skipped/invisible/empty base layer.
 //* TODO: fix blending mode of base layer in clipping group.
@@ -20,8 +28,6 @@
 //* TODO: arithmetic emulation of all operations in 16/32-bit until final result; to be optionally available as checkbox/selectbox.
 //* TODO: decode layer data (PSD/PNG/etc) manually without using canvas, to avoid premultiplied-alpha (PMA - in Firefox, not in Chrome) while rendering.
 //* TODO: for files without merged image data - render ignoring options, but respecting layer visibility properties. Or buttons to show embedded and/or rendered image regardless of options. Or add this as top-most option for any project, with or without options.
-//* TODO: save batch to a single collage/tileset image.
-//* TODO: autocrop options, separate for view/save/collage.
 
 //* other:
 //* TODO: keep all parameters single-word if possible.
@@ -709,6 +715,7 @@ function encodeTagAttr(t) {
 	return String(t).replace(/"/g, '&quot;');
 }
 
+//* propNameForIE:
 function dashedToCamelCase(n) {
 	return (
 		n
@@ -722,6 +729,13 @@ function dashedToCamelCase(n) {
 		)
 		.join('')
 	);
+}
+
+function getStyleValue(e, prop) {
+var	o;
+	if (o = e.currentStyle) return o[dashedToCamelCase(prop)];
+	if (o = window.getComputedStyle) return o(e).getPropertyValue(prop);
+	return null;
 }
 
 function toggleClass(e,c,keep) {
@@ -805,7 +819,7 @@ var	t = tagName || 'div'
 	;
 	return	a+'menu-head"'
 	+	getTagAttrIfNotEmpty('id', id || '')
-	+	'>'
+	+	' onmouseover="onResize()">'
 	+	(
 			head[0] === '<'
 		&&	head.slice(-1) === '>'
@@ -836,6 +850,71 @@ var	p = getParentByClass(e, regClassMenuBar);
 		);
 	}
 	toggleClass(e, 'show');
+}
+
+function getOffsetXY(e) {
+var	x = 0
+,	y = 0
+	;
+	while (e) {
+		x += e.offsetLeft;
+		y += e.offsetTop;
+		e = e.offsetParent;
+	}
+	return {x:x, y:y};
+}
+
+function putInView(e,x,y, changeOnlyX, changeOnlyY) {
+var	offsetParentX = 0
+,	offsetParentY = 0
+,	positionType = getStyleValue(e, 'position')
+	;
+
+	if (
+		positionType === 'absolute'
+	&&	(o = e.offsetParent)
+	) {
+		o = getOffsetXY(o);
+		offsetParentX = o.x;
+		offsetParentY = o.y;
+	}
+
+	if (isNaN(x)) {
+		o = getOffsetXY(e);
+		x = o.x;
+		y = o.y;
+	} else {
+		x = orz(x) + offsetParentX;
+		y = orz(y) + offsetParentY;
+	}
+
+var	o = window.visualViewport
+,	isPositionFixed = (positionType === 'fixed')
+	;
+
+	if (!changeOnlyY) {
+	var	x0 = orz(isPositionFixed ? (document.body.scrollLeft || document.documentElement.scrollLeft) : 0)
+	,	x1 = x0 + (o ? o.width : window.innerWidth) - e.offsetWidth
+		;
+
+		if (x > x1) x = x1;
+		if (x < x0) x = x0;
+
+		e.style.left = (x - offsetParentX) + 'px';
+	}
+
+	if (!changeOnlyX) {
+	var	y0 = orz(isPositionFixed ? (document.body.scrollTop || document.documentElement.scrollTop) : 0)
+	,	y1 = y0 + (o ? o.height : window.innerHeight) - e.offsetHeight
+		;
+
+		if (y > y1) y = y1;
+		if (y < y0) y = y0;
+
+		e.style.top  = (y - offsetParentY) + 'px';
+	}
+
+	return e;
 }
 
 function trim(t) {
@@ -5468,6 +5547,14 @@ function onBeforeUnload(evt) {
 	}
 }
 
+function onResize(evt) {
+	eventStop(evt,1);
+
+	gc('menu-hid').forEach(
+		e => putInView(e, 0,0, true)
+	);
+}
+
 function onPageKeyPress(evt) {
 	if (evt.keyCode === 27) {	//* Esc
 		gn('stop').forEach(
@@ -5482,15 +5569,15 @@ function onPageKeyPress(evt) {
 }
 
 function onProjectButtonClick(evt) {
+var	e = evt;
+
 	if (
 		evt
 	&&	evt.type
 	&&	evt.type === 'click'
 	&&	evt.target
 	) {
-	var	e = evt.target;
-	} else {
-		e = evt;
+		e = evt.target;
 	}
 
 	if (
@@ -5535,15 +5622,15 @@ var	container = getProjectContainer(e)
 }
 
 function onProjectMenuUpdate(evt) {
+var	e = evt;
+
 	if (
 		evt
 	&&	evt.type
 	&&	evt.type === 'change'
 	&&	evt.target
 	) {
-	var	e = evt.target;
-	} else {
-		e = evt;
+		e = evt.target;
 	}
 
 	if (
@@ -6141,6 +6228,7 @@ var	topMenuHTML = (
 	,	['dragover',	onPageDragOver]
 	,	['drop',	onPageDrop]
 	,	['keypress',	onPageKeyPress]
+	,	['resize',	onResize]
 	].forEach(
 		([k, v]) => window.addEventListener(k, v, false)
 	);
