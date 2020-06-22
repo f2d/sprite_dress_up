@@ -1,5 +1,7 @@
 html {
 	background-color: #ddd;
+	margin-left: calc(100vw - 100%);	/* <- https://css-tricks.com/elegant-fix-jumping-scrollbar-issue/ */
+	margin-right: 0;			/* <- https://aykevl.nl/2014/09/fix-jumping-scrollbar */
 }
 a {
 	color: #888;
