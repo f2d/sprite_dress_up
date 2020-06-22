@@ -1,7 +1,11 @@
 html {
 	background-color: #ddd;
-	margin-left: calc(100vw - 100%);	/* <- https://css-tricks.com/elegant-fix-jumping-scrollbar-issue/ */
-	margin-right: 0;			/* <- https://aykevl.nl/2014/09/fix-jumping-scrollbar */
+	margin-left: 0;
+	margin-right: calc(100% - 100vw);	/* <- Prevent page elements from jumping due to page width changing when vertical scrollbar appears.
+Source:
+https://css-tricks.com/elegant-fix-jumping-scrollbar-issue/
+https://aykevl.nl/2014/09/fix-jumping-scrollbar
+*/
 }
 a {
 	color: #888;
