@@ -296,12 +296,17 @@ examples of 'multi_select':
 ,	FLAG_FLIP_HORIZONTAL = 1
 ,	FLAG_FLIP_VERTICAL = 2
 
+,	FLAG_RENDER_SAVE_TO_FILE = 1
+,	FLAG_RENDER_SHOW_ON_PAGE = 2
+,	FLAG_RENDER_AS_ONE_JOINED_IMAGE = 4
+
 ,	SPLIT_SEC = 60
 ,	MAX_OPACITY = 255
 ,	MAX_BATCH_PRECOUNT = 1000
 ,	PADDING_ALPHA_THRESHOLD_DEFAULT = 16
 ,	THUMBNAIL_SIZE = 16
 ,	PREVIEW_SIZE = 64
+,	JOINED_IMAGE_PADDING = 1
 
 ,	ADD_PAUSE_BEFORE_EACH_FOLDER	= true	//* <- when loading file and rendering
 ,	ADD_PAUSE_BEFORE_EACH_LAYER	= false
@@ -521,6 +526,7 @@ function hex2rgbArray(v) {
 var	j = v = ''+v
 ,	i = v.length
 	;
+
 	if (i === 1) j = repeat(v, 6); else
 	if (i === 2) j = repeat(v, 3); else
 	if (i === 3 || i === 4) {
@@ -561,6 +567,7 @@ function getPropByNameChain() {
 var	a = Array.from(arguments)
 ,	o = a.shift()
 	;
+
 	while (a.length > 0) {
 	var	k = a.shift();
 
@@ -580,6 +587,7 @@ function getPropByAnyOfNamesChain() {
 var	a = Array.from(arguments)
 ,	o = a.shift()
 	;
+
 	deeper: while (typeof o === 'object') {
 		prop_names: for (var k of a) if (k in o) {
 			o = o[k];
@@ -632,6 +640,7 @@ function nextValidHeapSize(realSize) {
 var	SIZE_64_KB = 65536	// 0x10000
 ,	SIZE_64_MB = 67108864	// 0x4000000
 	;
+
 	if (realSize <= SIZE_64_KB) {
 		return SIZE_64_KB;
 	} else if (realSize <= SIZE_64_MB) {
@@ -745,6 +754,7 @@ var	j = orz(keep)
 ,	a = old.split(regSpace).filter(arrayFilterNonEmptyValues)
 ,	i = a.indexOf(c)
 	;
+
 	if (i < 0) {
 		if (j >= 0) a.push(c);
 	} else {
@@ -817,6 +827,7 @@ var	t = tagName || 'div'
 ,	b = '</'+t+'>'
 ,	head = ''+head
 	;
+
 	return	a+'menu-head"'
 	+	getTagAttrIfNotEmpty('id', id || '')
 	+	' onmouseover="onResize()">'
@@ -856,6 +867,7 @@ function getOffsetXY(e) {
 var	x = 0
 ,	y = 0
 	;
+
 	while (e) {
 		x += e.offsetLeft;
 		y += e.offsetTop;
@@ -984,6 +996,7 @@ var	t = orz(msec)
 ,	a = [0, 0, Math.floor(Math.abs(t) / 1000)]
 ,	i = a.length
 	;
+
 	while (--i) {
 		if (a[i] >= SPLIT_SEC) {
 			a[i - 1] = Math.floor(a[i] / SPLIT_SEC);
@@ -1001,6 +1014,7 @@ var	t = sec;
 	var	text = '' + t
 	,	n = orz(sec)
 		;
+
 		if (typeof t === 'string' && Date.parse) {
 			t = Date.parse(t.replace(regHMS, '$1:$2:$3'));
 		} else {
@@ -1021,6 +1035,7 @@ var	d = (t ? new Date(t+(t > 0 ? 0 : new Date())) : new Date())
 ,	YMD = a.slice(0,3).join('-')
 ,	HIS = a.slice(3).join(for_filename?'-':':') + (for_log?'.'+((+d) % 1000):'')
 	;
+
 	return (
 		for_log || for_filename || plain
 		? YMD + (for_filename?'_':' ') + HIS
@@ -1121,6 +1136,7 @@ function dataToBlob(data) {
 		,	data = data.slice(i+1)
 		,	k = meta.indexOf(';')
 			;
+
 			if (k < 0) {
 				type = meta;
 				data = decodeURIComponent(data);
@@ -1133,6 +1149,7 @@ function dataToBlob(data) {
 	,	size = data.length
 	,	url = URL_API.createObjectURL(new Blob([data], {'type': type}))
 		;
+
 		if (url) {
 			return {
 				size: size
@@ -1168,6 +1185,7 @@ var	type = TYPE_TEXT
 var	size = dataURI.length
 ,	a = cre('a', document.body)
 	;
+
 	logTime('saving "' + fileName + '", data = ' + data.length + ' bytes, dataURI = ' + size + ' bytes');
 
 	if ('download' in a) {
@@ -1201,6 +1219,7 @@ var	size = dataURI.length
 			)()
 		,	fileName = baseName + (ext ? '.' + ext : '')
 			;
+
 			a.href = ''+dataURI;
 			a.download = fileName;
 			a.click();
@@ -1243,6 +1262,7 @@ function loadLib(lib) {
 		var	dir = lib.dir || ''
 		,	scripts = lib.files || (lib.join ? lib : Array.from(arguments))
 			;
+
 			addNextScript();
 		}
 	);
@@ -1266,6 +1286,7 @@ var	varName = lib.varName || '';
 var	dir = lib.dir || ''
 ,	scripts = Array.from(lib.files || [])
 	;
+
 	if (!scripts.length) {
 		return false;
 	}
@@ -1298,6 +1319,7 @@ var	depends = lib.depends || null;
 								dir + zlibAsmSubDir + 'zlib.js',
 								dir + 'zlib-asm/codecs.js',
 							];
+
 							zip.workerScripts = {
 								deflater: zipWorkerScripts,
 								inflater: zipWorkerScripts,
@@ -1470,6 +1492,7 @@ function getImageSrcPlaceholder() {
 	,	h = canvas.height = THUMBNAIL_SIZE
 	,	textHeight = THUMBNAIL_SIZE - 2
 		;
+
 		ctx.fillStyle = 'lightgray';
 		ctx.fillRect(0,0, w,h);
 
@@ -1488,6 +1511,7 @@ function getImageSrcPlaceholder() {
 	,	x = Math.round((w - textWidth) / 2)
 	,	y = Math.round((h - textHeight) / 2)
 		;
+
 		ctx.fillText(text, x,y);
 
 		thumbnailPlaceholder = canvas.toDataURL();
@@ -1516,6 +1540,7 @@ function getCanvasFromByteArray(bytes, w,h) {
 var	canvas = cre('canvas')
 ,	ctx = canvas.getContext('2d')
 	;
+
 	canvas.width = w;
 	canvas.height = h;
 
@@ -1563,6 +1588,7 @@ var	canvas = cre('canvas')
 		var	widthToUp  = widthTo
 		,	heightToUp = heightTo
 			;
+
 			while (
 				widthTo  < widthFrom
 			&&	heightTo < heightFrom
@@ -1592,6 +1618,7 @@ var	canvas = cre('canvas')
 	var	xOffset = 0
 	,	yOffset = 0
 		;
+
 		canvas.width = widthTo;
 		canvas.height = heightTo;
 
@@ -1616,6 +1643,7 @@ var	canvas = cre('canvas')
 ,	w = canvas.width  = 1
 ,	h = canvas.height = 1
 	;
+
 	ctx.drawImage(img, 0,0);
 
 	return ctx.getImageData(0,0, w,h);
@@ -1796,6 +1824,7 @@ function getImgOptimized(img) {
 			,	h = canvas.height = img.height
 			,	ctx
 				;
+
 				if (ctx = canvas.getContext('2d')) {
 					ctx.drawImage(img, 0,0);
 					checkResult(canvas, img);
@@ -1814,6 +1843,7 @@ var	arrayBuffer = await readFilePromiseFromURL(url)
 ,	img  = UPNG.decode(arrayBuffer)
 ,	rgba = UPNG.toRGBA8(img)[0]	//* <- UPNG.toRGBA8 returns array of frames, size: width * height * 4 bytes.
 	;
+
 	return {
 		width: img.width
 	,	height: img.height
@@ -1827,6 +1857,7 @@ function thisToPng(targetLayer) {
 	,	e = t.sourceData || t
 	,	i = e.prerendered || e.thumbnail
 		;
+
 		if (i) return i;
 
 		if (isImgElement(e = e.image || e)) {
@@ -1951,6 +1982,7 @@ var	buttonClose = cre('button', buttonTab);
 				'loading'
 			,	'toPng'
 			];
+
 			if (!TESTING) {
 				keysToRemove = keysToRemove.concat([
 					'blendModeOriginal'
@@ -2033,6 +2065,7 @@ var	fileName = sourceFile.name
 ,	ext      = sourceFile.ext
 ,	actionLabel = 'processing document structure';
 	;
+
 	logTime('"' + fileName + '" started ' + actionLabel);
 
 var	startTime = +new Date;
@@ -2096,6 +2129,7 @@ async function getProjectViewMenu(project) {
 		var	options = getProjectOptions(project)
 		,	n = project.fileName
 			;
+
 			if (options) {
 			var	l_a = project.loading.images
 			,	l_i = project.loading.imagesCount = l_a.length
@@ -2176,6 +2210,7 @@ async function getProjectViewMenu(project) {
 				,	'items': {}
 				}))
 				;
+
 				return optionGroup;
 			}
 
@@ -2197,6 +2232,7 @@ async function getProjectViewMenu(project) {
 			,	optionParams = optionGroup.params
 			,	i,j,k,o
 				;
+
 				checkBatchParams(optionParams);
 
 				if (j = params[k = 'multi_select']) {
@@ -2228,6 +2264,7 @@ async function getProjectViewMenu(project) {
 			var	optionItems = getOptionGroup(sectionName, listName).items
 			,	optionItemLayers = (optionItems[optionName] || (optionItems[optionName] = []))
 				;
+
 				if (optionName !== '') {
 					optionItemLayers.push(layer);
 				}
@@ -2242,6 +2279,7 @@ async function getProjectViewMenu(project) {
 			,	optionItems = optionGroup.items
 			,	i,j,k = sectionName
 				;
+
 				checkBatchParams(optionParams);
 
 				if (sectionName === 'separate') {
@@ -2288,6 +2326,7 @@ async function getProjectViewMenu(project) {
 							+	'px'
 							+	(j?'-'+j:'')
 							);
+
 							optionItems[k] = v;
 						});
 					}
@@ -2534,7 +2573,6 @@ async function getProjectViewMenu(project) {
 									+	', at:'
 									+	getLayerPathText(layer)
 									);
-
 								}
 
 								layer.img = colorCode;
@@ -2570,7 +2608,6 @@ async function getProjectViewMenu(project) {
 				}
 			}
 		);
-
 	}
 
 	function getLayerMaskLoadPromise(layer) {
@@ -2588,6 +2625,7 @@ async function getProjectViewMenu(project) {
 				,	blob = dataToBlob(data)
 				,	img = layer.mask = cre('img')
 					;
+
 					img.top = mask.top;
 					img.left = mask.left;
 					img.defaultColor = orz(mask.defaultColor);
@@ -2632,6 +2670,7 @@ async function getProjectViewMenu(project) {
 					params.multi_select
 				&&	params.multi_select.min <= 0
 				);
+
 				params[c] = !(params[b] = (typeof params[c] === 'undefined'));
 
 			var	tr = cre('tr', table);
@@ -2649,6 +2688,7 @@ async function getProjectViewMenu(project) {
 			,	label = cre('label', td)
 			,	i = cre('input', label)
 				;
+
 				i.type = 'checkbox';
 				i.checked = i.initialValue = params.preselect;
 				i.params = params;
@@ -2657,6 +2697,7 @@ async function getProjectViewMenu(project) {
 				var	j = batch_settings[i]
 				,	t = cre('span', label)
 					;
+
 					t.className = i;
 					t.textContent = j.label;
 					t.title = j.hint;
@@ -2668,6 +2709,7 @@ async function getProjectViewMenu(project) {
 				var	n = optionName
 				,	v = n
 					;
+
 					if (sectionName === 'separate' && n !== '') {
 						project.layersTopSeparated.forEach(
 							(layer, i) => {
@@ -2717,6 +2759,7 @@ async function getProjectViewMenu(project) {
 			var	header = sections.header
 			,	sections = sections.select
 				;
+
 				for (var sectionName in sections) {
 					if (options[sectionName]) {
 						if (header) {
@@ -2752,6 +2795,7 @@ var	sourceFile = project.loading.data.file || {}
 ,	container = cre('div')
 ,	header = cre('header', container)
 	;
+
 	header.className = 'project-header';
 
 //* show overall project info:
@@ -2759,6 +2803,7 @@ var	sourceFile = project.loading.data.file || {}
 var	e = cre('section', header)
 ,	h = cre('header', e)
 	;
+
 	h.className = 'filename';
 	h.textContent = project.fileName;
 
@@ -2783,6 +2828,7 @@ var	i = (
 ,	i = project.loading.imagesCount
 ,	j = project.layersCount
 	;
+
 	if (j) t.push(j + ' ' + la.project.layers);
 	if (i) t.push(i + ' ' + la.project.images);
 
@@ -2806,6 +2852,7 @@ var	i = (
 		,	h = cre('header', e)
 		,	f = cre('footer', e)
 			;
+
 			h.textContent = j.header + ':';
 
 			for (var k in b) addButton(f, b[k]).name = k;
@@ -2868,6 +2915,7 @@ function getProjectViewImage(project, img) {
 		)
 	,	d = cre('div', e)
 		;
+
 		t.textContent = la.error.options;
 		d.className = 'preview';
 		d.appendChild(img);
@@ -2956,6 +3004,7 @@ var	checkVirtualPath = (
 	var	subLayer = layer
 	,	isSubLayerFolder = isLayerFolder
 		;
+
 		isLayerFolder = true;
 		name          = m[1].replace(regTrimCommaSpace, '');
 		subLayer.name = m[4].replace(regTrimCommaSpace, '');
@@ -2969,6 +3018,7 @@ var	checkVirtualPath = (
 		,	opacity: 1
 		,	layers: []
 		};
+
 		subLayer.isClipped = false;
 
 		break;
@@ -3021,24 +3071,29 @@ var	checkVirtualPath = (
 								x = x.split('x', 2).map(
 									y => {
 										if (y.length == 0) return null;
+
 										y = y.split(':', 2).map(
 											z => orzFloat(
 												z.replace(regTrimNaNorSign, '')
 											)
 										);
+
 										if (y.length == 0) return {'out': 1};
 										if (y.length == 1) return {'out': y[0]};
+
 										return {
 											'in': Math.min(...y)
 										,	'out': Math.max(...y)
 										};
 									}
 								);
+
 								if (x.length == 0) return {'radius': 1};
 								if (x.length == 1) return {'radius': x[0]};
 								if (x[0] === null) x[0] = x[1];
 								if (x[1] === null) x[1] = x[0];
 								if (x[1] === null) x[1] = x[0] = 1;
+
 								return {
 									'x': x[0]
 								,	'y': x[1]
@@ -3051,6 +3106,7 @@ var	checkVirtualPath = (
 							}
 						)
 					);
+
 					params[k] = v.concat(params[k] || []);
 				} else
 				if (k === 'copypaste') {
@@ -3059,6 +3115,7 @@ var	checkVirtualPath = (
 				,	o = params[k] || (params[k] = {})
 				,	a = o[j] || (o[j] = [])
 					;
+
 					if (a.indexOf(v) < 0) {
 						a.push(v);
 					}
@@ -3090,6 +3147,7 @@ var	checkVirtualPath = (
 						? [0,1]
 						: getNumbersArray(m[2], 2)
 					);
+
 					params[k] = {
 						'min': Math.max(0, v[0])
 					,	'max': Math.max(1, v[v.length > 1?1:0])
@@ -3479,6 +3537,7 @@ async function loadPSDLIB(project) {
 		,	layer
 		,	d,k,n,t
 			;
+
 			while (l_i--) if (layer = l_a[l_i]) {
 				if (isStopRequested || project.isStopRequested) {
 					return;
@@ -3495,6 +3554,7 @@ async function loadPSDLIB(project) {
 				var	isLayerFolder = false
 				,	ali = layer.additionalLayerInfo || []
 					;
+
 					if (ali) {
 					var	a_i = ali.length;
 						while (a_i--) if (
@@ -3562,6 +3622,7 @@ var	o = getProjectOptionValue(project, sectionName, listName, optionName);
 	,	optionNameChanged = (oldOptionName !== optionName)
 	,	result = false
 		;
+
 		if (optionNameChanged) {
 			section[listName] = optionName;
 		}
@@ -3664,6 +3725,7 @@ function setAllValues(project, valuePos) {
 					? i.initialValue
 					: true
 				);
+
 				updateCheckBox(i);
 			}
 		);
@@ -3682,6 +3744,7 @@ var	values = {};
 		,	listName    = s.name
 		,	optionLists = (values[sectionName] || (values[sectionName] = {}))
 			;
+
 			optionLists[listName] = (
 				(
 					checkPreselected
@@ -3727,6 +3790,7 @@ function getAllValueSets(project, checkPreselected, onlyNames, stopAtMaxCount) {
 			var	values = JSON.parse(JSON.stringify(partialValueSet || {}))
 			,	section = (values[sectionName] || (values[sectionName] = {}))
 				;
+
 				section[listName] = optionName;
 
 				if (optionsLeft) {
@@ -3826,11 +3890,13 @@ var	values = {};
 			,	selectedValueHidden = false
 			,	allHidden = true
 				;
+
 				gt('option', s).forEach(
 					o => {
 					var	optionName = o.value || ''
 					,	hide = !isOptionRelevant(project, updatedValues, sectionName, listName, optionName)
 						;
+
 						if (hide) {
 							if (optionName === selectedValue) {
 								selectedValueHidden = true;
@@ -3851,10 +3917,12 @@ var	values = {};
 						}
 					}
 				);
+
 			var	hide = (allHidden ? 'none' : '')
 			,	container = getParentByClass(s, 'project-option') || s.parentNode
 			,	style = container.style
 				;
+
 				selectValue(s, (
 					!hide && selectedValueHidden
 					? fallbackValue
@@ -4009,6 +4077,7 @@ function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
 			,	heap = uint8array.buffer
 			,	compute = CompositionModule(window, env, heap)
 				;
+
 				uint8array.set(b, 0);
 				uint8array.set(a, i);
 
@@ -4086,6 +4155,7 @@ function padCanvas(ctx, padding) {
 	,	radius = Math.abs(radius)
 	,	radiusPixels = Math.ceil(radius)
 		;
+
 		for (var y = h; y--;) next_result_pixel:
 		for (var x = w; x--;) {
 		var	pos = getAlphaDataIndex(x,y,w);
@@ -4141,6 +4211,7 @@ function padCanvas(ctx, padding) {
 	,	i = resultPixels.length
 	,	pos
 		;
+
 		while (i) {
 			pos = i|3;
 			resultPixels[pos] = Math.min(resultPixels[pos], referencePixels[pos]);
@@ -4156,6 +4227,7 @@ function padCanvas(ctx, padding) {
 	,	i = resultPixels.length
 	,	pos
 		;
+
 		while (i) {
 			pos = i|3;
 			resultPixels[pos] = Math.max(resultPixels[pos], referencePixels[pos]);
@@ -4170,6 +4242,7 @@ function padCanvas(ctx, padding) {
 	,	i = resultPixels.length
 	,	pos
 		;
+
 		while (i) {
 			pos = i|3;
 			resultPixels[pos] = 255 - resultPixels[pos];
@@ -4250,6 +4323,7 @@ var	canvas = cre('canvas')
 ,	d = img.data
 ,	i = d.length
 	;
+
 	canvas.getContext('2d').putImageData(img, 0,0);
 
 	while (i) d[i|3] = 255, i -= 4;
@@ -4267,6 +4341,7 @@ function addDebugImage(project, canvas, comment, highLightColor) {
 		var	layers = project.rendering.nestedLayers
 		,	layer = layers[layers.length - 1]
 			;
+
 			img.alt = img.title = [
 				'render name: ' + project.rendering.fileName
 			,	'render nesting level: ' + layers.length
@@ -4320,6 +4395,7 @@ var	canvas = getNewCanvasForImg(project, img)
 ,	w = canvas.width
 ,	h = canvas.height
 	;
+
 	if (img.getContext) {
 		ctx.putImageData(img.getContext('2d').getImageData(0,0, w,h), 0,0);
 	} else {
@@ -4393,6 +4469,7 @@ var	canvas = getNewCanvas(project)
 ,	fillColor = Math.max(0, Math.min(255, orz(fillColor)))
 ,	flatColorData = ctx.createImageData(w,h)
 	;
+
 	flatColorData.data.fill(fillColor);
 	ctx.putImageData(flatColorData, 0,0);
 
@@ -4401,6 +4478,7 @@ var	w = orz(img.width)  || project.width
 ,	x = orz(img.left)
 ,	y = orz(img.top)
 	;
+
 	ctx.clearRect(x,y, w,h);
 	ctx.drawImage(img, x,y);
 
@@ -4411,6 +4489,7 @@ function getCanvasBlended(project, imgBelow, imgAbove, mode, maskOpacity) {
 var	canvas = getNewCanvas(project)
 ,	ctx = canvas.getContext('2d')
 	;
+
 	if (imgBelow) drawImageOrColor(project, ctx, imgBelow);
 	if (imgAbove) drawImageOrColor(project, ctx, imgAbove, mode || BLEND_MODE_CLIP, maskOpacity);
 
@@ -4422,6 +4501,7 @@ var	color
 ,	optionalColors
 ,	selectedColors = project.rendering.colors
 	;
+
 	if (selectedColors) {
 		if (listName in selectedColors) {
 			color = selectedColors[listName];
@@ -4545,8 +4625,8 @@ var	isVisible = !!(
 	);
 
 	if (layer.isOnlyForOneSide) {
-	var	selectedName = getPropBySameNameChain(values, 'side')
-		;
+	var	selectedName = getPropBySameNameChain(values, 'side');
+
 		if (layer.params.side !== selectedName) {
 			return 0;
 		} else {
@@ -4614,6 +4694,7 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 		,	g_i = l_i
 		,	g_l
 			;
+
 			while (
 				(g_i-- > 0)
 			&&	(g_l = l_a[g_i])
@@ -4708,6 +4789,7 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 					.concat(layers || [])
 					.filter(arrayFilterNonEmptyValues)
 				);
+
 				aliases.forEach(
 					alias => (
 						getPropByNameChain(project, 'layersForCopyPaste', 'copy', alias)
@@ -5165,36 +5247,54 @@ function getFileNameByValuesToSave(project, values, namingParam) {
 
 async function getOrCreateRender(project, render) {
 	if (!render) render = {};
+
 var	values    = render.values    || (render.values    = getUpdatedMenuValues(project))
 ,	refValues = render.refValues || (render.refValues = JSON.parse(JSON.stringify(values, replaceJSONpartsFromNameToCache)))
 ,	refName   = render.refName   || (render.refName   = getFileNameByValuesToSave(project, refValues))
 ,	fileName  = render.fileName  || (render.fileName  = getFileNameByValuesToSave(project, values))
 ,	img       = render.img       || (render.img       = await getOrCreateRenderedImg(project, render))
 	;
+
 	return render;
+}
+
+function getImgElementPromise(canvas, fileName, w,h, callback) {
+	if (!canvas) return;
+
+	return new Promise(
+		(resolve, reject) => {
+		var	data = canvas.toDataURL()
+		,	blob = dataToBlob(data)
+		,	img = cre('img')
+			;
+
+			if (w > 0) img.width = w;
+			if (h > 0) img.height = h;
+
+			img.title = img.alt = fileName;
+			img.onload = () => resolve(img);
+			img.src = (blob ? blob.url : data);
+
+			if (callback) callback(img);
+		}
+	);
 }
 
 async function getOrCreateRenderedImg(project, render) {
 
-	function getAndCacheRenderedImgElement(canvas, fileName, w,h) {
-		if (!canvas) return;
+	function getAndCacheRenderedImgElementPromise(canvas, fileName, w,h) {
+		return getImgElementPromise(
+			canvas
+		,	fileName
+		,	w || project.width
+		,	h || project.height
+		,	(img) => {
+			var	ms = canvas.renderingTime;
 
-		return new Promise(
-			(resolve, reject) => {
-			var	data = canvas.toDataURL()
-			,	blob = dataToBlob(data)
-			,	img = cre('img')
-			,	ms = canvas.renderingTime
-			,	fileInfo = fileName + (
-					typeof ms !== 'undefined'
-					? ' \r\n(' + (ms / 1000) + 's)'
-					: ''
-				);
-				img.title = img.alt = fileInfo;
-				img.width  = w || project.width;
-				img.height = h || project.height;
-				img.onload = () => resolve(img);
-				img.src = (blob ? blob.url : data);
+				if (typeof ms !== 'undefined') {
+					img.alt += ' \r\n(' + (ms / 1000) + 's)';
+					img.title = img.alt;
+				}
 
 				prerenders[fileName] = img;
 			}
@@ -5230,7 +5330,7 @@ var	img = prerenders[refName];
 			}
 
 			if (canvas) {
-				img = await getAndCacheRenderedImgElement(canvas, refName);
+				img = await getAndCacheRenderedImgElementPromise(canvas, refName);
 			} else {
 				prerenders[fileName] = null;
 			}
@@ -5255,17 +5355,24 @@ var	img = prerenders[refName];
 	,	h = canvas.height = Math.max(1, Math.round(x * project.height))
 	,	ctx = canvas.getContext('2d')
 		;
+
 		ctx.drawImage(img, 0,0, w,h);
 
-		img = await getAndCacheRenderedImgElement(canvas, fileName, w,h);
+		img = await getAndCacheRenderedImgElementPromise(canvas, fileName, w,h);
 	}
 
 	return img;
 }
 
-async function renderAll(project, saveToFile, showOnPage) {
-	if (!(saveToFile || showOnPage)) {
-		return;
+async function renderAll(project, flags) {
+var	flags = orz(flags)
+,	showOnPage = flags & FLAG_RENDER_SHOW_ON_PAGE
+,	saveToFile = flags & FLAG_RENDER_SAVE_TO_FILE
+,	asOneJoinedImage = flags & FLAG_RENDER_AS_ONE_JOINED_IMAGE
+	;
+
+	if (!saveToFile) {
+		showOnPage = FLAG_RENDER_SHOW_ON_PAGE;
 	}
 
 	setProjectWIPstate(project, true);
@@ -5282,6 +5389,7 @@ var	startTime = +new Date
 ,	setsCountTotal = Object.keys(sets).length
 ,	setsCount = 0
 ,	totalTime = 0
+,	renderedImages = []
 ,	batchContainer = (showOnPage ? getEmptyRenderContainer(project) : null)
 	;
 
@@ -5302,19 +5410,26 @@ var	startTime = +new Date
 			,	'fileName': fileName
 			}
 		);
-		if (showOnPage) await showImg(project, render, batchContainer);
-		if (saveToFile) await saveImg(
-			project,
-			render,
-			getFileNameByValuesToSave(
+
+		if (asOneJoinedImage) {
+			if (img = await getRenderedImg(project, render)) {
+				renderedImages.push(img);
+			}
+		} else {
+			if (showOnPage) await showImg(project, render, batchContainer);
+			if (saveToFile) await saveImg(
 				project,
-				values,
-				{
-					checkPreselected: true,
-					skipDefaultPercent: true,
-				}
-			)
-		);
+				render,
+				getFileNameByValuesToSave(
+					project,
+					values,
+					{
+						checkPreselected: true,
+						skipDefaultPercent: true,
+					}
+				)
+			);
+		}
 
 	var	endTime = +new Date;
 
@@ -5341,6 +5456,50 @@ var	startTime = +new Date
 		}
 	}
 
+	if (asOneJoinedImage) {
+	var	w = 0
+	,	h = 0
+		;
+
+		for (var img of renderedImages) {
+			w += img.width + JOINED_IMAGE_PADDING;
+			h = Math.max(h, img.height);
+		}
+
+		if (w > 0) w -= JOINED_IMAGE_PADDING;
+
+		if (TESTING) console.log([
+			'images:', renderedImages,
+			'total width:', w,
+			'total height:', h,
+		]);
+
+		if (w > 0 && h > 0) {
+		var	canvas = cre('canvas')
+		,	ctx = canvas.getContext('2d')
+		,	x = 0
+		,	y = 0
+			;
+
+			canvas.width = w;
+			canvas.height = h;
+
+			for (var img of renderedImages) {
+				ctx.drawImage(img, x,y);
+				x += img.width + JOINED_IMAGE_PADDING;
+			}
+
+		var	img = await getImgElementPromise(
+				canvas
+			,	project.fileName + ' \r\n(' + (totalTime / 1000) + 's)'
+			,	w,h
+			);
+
+			if (showOnPage) getEmptyRenderContainer(project).appendChild(img);
+			if (saveToFile) saveDL(img.src, project.fileName, 'png', 1);
+		}
+	}
+
 	logTime(
 		'"' + project.fileName + '"'
 	+	' finished rendering ' + setsCount
@@ -5355,8 +5514,10 @@ var	startTime = +new Date
 	setProjectWIPstate(project, false);
 }
 
-function saveAll(project) {renderAll(project,1,0);}
-function showAll(project) {renderAll(project,0,1);}
+function showAll(project) {renderAll(project, FLAG_RENDER_SHOW_ON_PAGE);}
+function saveAll(project) {renderAll(project, FLAG_RENDER_SAVE_TO_FILE);}
+function showJoin(project) {renderAll(project, FLAG_RENDER_SHOW_ON_PAGE | FLAG_RENDER_AS_ONE_JOINED_IMAGE);}
+function saveJoin(project) {renderAll(project, FLAG_RENDER_SAVE_TO_FILE | FLAG_RENDER_AS_ONE_JOINED_IMAGE);}
 
 async function showImg(project, render, container) {
 	if (!render) var isSingleWIP = setProjectWIPstate(project, true);
@@ -5413,6 +5574,22 @@ async function saveImg(project, render, fileName) {
 	if (isSingleWIP) setProjectWIPstate(project, false);
 
 	return !!render;
+}
+
+async function getRenderedImg(project, render) {
+	if (!render) var isSingleWIP = setProjectWIPstate(project, true);
+
+	try {
+	var	img = await getOrCreateRenderedImg(project, render);
+	} catch (error) {
+		console.log(error);
+
+		project.rendering = null;
+	}
+
+	if (isSingleWIP) setProjectWIPstate(project, false);
+
+	return img;
 }
 
 function getEmptyRenderContainer(project) {
@@ -5560,6 +5737,7 @@ function onPageKeyPress(evt) {
 		gn('stop').forEach(
 			e => e.click()
 		);
+
 		gc('loading', id('loaded-files-selection')).forEach(
 			e => {
 				(e.project || e).isStopRequested = true;
@@ -5588,6 +5766,8 @@ var	e = evt;
 		return;
 	}
 
+	eventStop(evt,1);
+
 var	container = getProjectContainer(e)
 ,	project = container.project
 ,	action = e.name
@@ -5601,6 +5781,8 @@ var	container = getProjectContainer(e)
 	if (action === 'save') saveImg(project); else
 	if (action === 'show_all') showAll(project); else
 	if (action === 'save_all') saveAll(project); else
+	if (action === 'show_join') showJoin(project); else
+	if (action === 'save_join') saveJoin(project); else
 	if (action.substr(0, resetPrefix.length) === resetPrefix) {
 		setAllValues(project, action.substr(resetPrefix.length));
 	} else
@@ -5673,6 +5855,7 @@ var	d = evt.dataTransfer
 ,	files = d.files
 ,	items = d.items
 	;
+
 	d.dropEffect = (
 		(files && files.length)
 	||	(items && items.length && isThereAnyFile(items))

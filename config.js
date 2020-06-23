@@ -5,7 +5,7 @@
 
 // var TESTING = true;
 
-// var EXAMPLE_NOTICE = true;
+var EXAMPLE_NOTICE = false;
 
 var PREVIEW_SIZE = 80;
 
