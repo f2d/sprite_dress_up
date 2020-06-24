@@ -5272,10 +5272,12 @@ function getImgElementPromise(canvas, fileName, w,h, callback) {
 			if (h > 0) img.height = h;
 
 			img.title = img.alt = fileName;
-			img.onload = () => resolve(img);
-			img.src = (blob ? blob.url : data);
+			img.onload = () => {
+				if (callback) callback(img);
 
-			if (callback) callback(img);
+				resolve(img);
+			}
+			img.src = (blob ? blob.url : data);
 		}
 	);
 }
@@ -5285,14 +5287,20 @@ async function getOrCreateRenderedImg(project, render) {
 	function getAndCacheRenderedImgElementPromise(canvas, fileName, w,h) {
 		return getImgElementPromise(
 			canvas
-		,	fileName
+		,	fileName + '.png'
 		,	w || project.width
 		,	h || project.height
 		,	(img) => {
 			var	ms = canvas.renderingTime;
 
 				if (typeof ms !== 'undefined') {
-					img.alt += ' \r\n(' + (ms / 1000) + 's)';
+					img.alt += (
+						' \r\n('
+					+	img.width + 'x' + img.height + ', '
+					+	la.hint.took + ' '
+					+	(ms / 1000) + ' '
+					+	la.hint.sec + ')'
+					);
 					img.title = img.alt;
 				}
 
@@ -5391,6 +5399,7 @@ var	startTime = +new Date
 ,	totalTime = 0
 ,	renderedImages = []
 ,	batchContainer = (showOnPage ? getEmptyRenderContainer(project) : null)
+,	needWaitBetweenDL = (saveToFile && !asOneJoinedImage)
 	;
 
 	logTime(
@@ -5441,10 +5450,12 @@ var	startTime = +new Date
 //* must wait at least 1 second between each 10 downloads in Chrome:
 
 		if (
-			(setsCountWithoutPause > 9)
-		||	(endTime - lastPauseTime > 500)
+			needWaitBetweenDL
+			? (setsCountWithoutPause > 9)
+			: (endTime - lastPauseTime > 500)
 		) {
-			await pause(saveToFile ? (100 * setsCountWithoutPause) : 100);
+			await pause(needWaitBetweenDL ? (100 * setsCountWithoutPause) : 100);
+
 			lastPauseTime = +new Date;
 			setsCountWithoutPause = 0;
 		}
@@ -5491,12 +5502,21 @@ var	startTime = +new Date
 
 		var	img = await getImgElementPromise(
 				canvas
-			,	project.fileName + ' \r\n(' + (totalTime / 1000) + 's)'
+			,	(
+					project.fileName + '.png'
+				+	' \r\n('
+				+	la.hint.images + ': '
+				+	renderedImages.length + ', '
+				+	w + 'x' + h + ', '
+				+	la.hint.took + ' '
+				+	(totalTime / 1000) + ' '
+				+	la.hint.sec + ')'
+				)
 			,	w,h
 			);
 
 			if (showOnPage) getEmptyRenderContainer(project).appendChild(img);
-			if (saveToFile) saveDL(img.src, project.fileName, 'png', 1);
+			if (saveToFile) saveDL(img.src, project.fileName + '_' + renderedImages.length, 'png', 1);
 		}
 	}
 
