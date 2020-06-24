@@ -80,7 +80,9 @@ var	regLayerNameToSkip		= /^(skip)$/i
 	,	'side':		/^(front|back|reverse(?:\W+(h[orizontal]*|v[ertical]*))?)$/i
 	,	'separate':	/^(separate|split)$/i
 
-	,	'layout':	/^(rows|view|save|collage|autocrop)(?:\W(.*))?$/i
+	,	'autocrop':	/^(autocrop)(?:\W(.*))?$/i
+	,	'collage':	/^(collage)(?:\W(.*))?$/i
+	,	'layout':	/^(rows)$/i
 
 	,	'multi_select':	/^(x(\d[\d\W]*)|optional)$/i
 /*
@@ -100,9 +102,10 @@ examples of 'copypaste':
 
 	[copy]
 	[copy=alias]
-	[paste=]	(copypaste-specific ID = empty string)
-	[paste=alias]	(copypaste-specific ID = "alias")
-	[copy:1 copy:2]	(copypaste-specific ID = any of "1" or "2")
+	[paste=]		(copypaste-specific ID = empty string)
+	[paste=alias]		(copypaste-specific ID = "alias")
+	[copy=1 copy=2]		(copypaste-specific ID = any of "1" or "2")
+	[paste=1 paste=2]	(create a folder with pasted copies inside for each given ID)
 
 	Note: layer content or children are not copied in the project layer tree, only referenced during relevance checking or rendering.
 	Note: for relevance - all paste targets under given aliases are checked.
@@ -189,14 +192,33 @@ examples of 'separate':
 
 	Note: like zoom, this option works only globally.
 
+examples of 'autocrop':
+
+	[autocrop]			(TODO: remove same-fill bar areas around a copy of rendered image)
+	[autocrop=rgb-255-123-0]	(TODO: remove border areas colored as given value; see 'color_code' examples for syntax)
+	[autocrop=top-left]		(TODO: remove border areas colored same as pixel in given corner)
+	[autocrop=top-left/top-right/bottom-left/bottom-right/transparent]
+
+	Note: default = transparent (pixels with zero alpha value).
+
+examples of 'collage':
+
+	[collage=padding-1px]		(TODO: add 1px transparent padding between joined images)
+	[collage=border-2px]		(TODO: add 2px transparent padding around the whole collage)
+	[collage=3px/rgb-255-123-0]	(TODO: add 3px colored padding around and between; see 'color_code' examples for syntax)
+	[collage=top-left]		(TODO: align images in a row to top, align rows to left side)
+	[collage=top/bottom]		(TODO: horizontally-centered rows)
+	[collage=left/right]		(TODO: vertically-centered rows)
+	[collage=top-left/top-right/bottom-left/bottom-right/transparent]
+
+	Note: default = top-left alignment, transparent 1px border + 2px padding (for neighbour texture edge interpolation).
+	Note: if multiple variants are given, all are added as options.
+	Note: alignment has no effect without autocrop, because all images in a project will render with the same canvas size.
+
 examples of 'layout':
 
-	[rows]				(TODO: separate row of images in a batch for each value of associated options)
-	[autocrop]			(TODO: remove same-fill areas around a copy of rendered image)
-	[collage-top-left]		(TODO: align images in a row to top, align rows to left side)
-	[collage-1px/transparent]	(TODO: add 1px transparent padding between images when joining into one collage image)
-
-	Note: alignment has no effect without autocrop, because all images in a project will render with the same canvas size.
+	[rows]		(TODO: separate row of images in a batch for each value of options associated with marked layer)
+	[columns]	(TODO: separate row of images in a batch for each value of options not associated with marked layer)
 
 examples of 'multi_select':
 
@@ -308,7 +330,8 @@ examples of 'multi_select':
 ,	PADDING_ALPHA_THRESHOLD_DEFAULT = 16
 ,	THUMBNAIL_SIZE = 16
 ,	PREVIEW_SIZE = 64
-,	JOINED_IMAGE_PADDING = 1
+,	JOINED_IMAGE_BORDER = 1
+,	JOINED_IMAGE_PADDING = 2
 
 ,	ADD_PAUSE_BEFORE_EACH_FOLDER	= true	//* <- when loading file and rendering
 ,	ADD_PAUSE_BEFORE_EACH_LAYER	= false
@@ -511,6 +534,13 @@ var	exampleRootDir = ''
 
 //* Common utility functions *-------------------------------------------------
 
+function isNotEmptyString(v) {
+	return (
+		TOS.indexOf(typeof v) >= 0
+	&&	v.length > 0
+	);
+}
+
 function pause(msec) {
 	return new Promise(
 		(resolve, reject) => {
@@ -522,6 +552,7 @@ function pause(msec) {
 function dist(x,y) {return Math.sqrt(x*x + y*y)};
 function getAlphaDataIndex(x,y,w) {return ((y*w + x) << 2) | 3;}
 function repeat(t,n) {return new Array(n+1).join(t);}
+
 function hex2rgbArray(v) {
 
 //* extend shortcut notation:
@@ -683,6 +714,7 @@ function gy(n,p) {return getElementsArray('getElementsByType', n,p);}
 function gn(n,p) {return getElementsArray('getElementsByName', n,p);}
 function gi(n,p) {return getElementsArray('getElementsById', n,p);}
 function id(i) {return document.getElementById(i);}
+
 function cre(e,p,b) {
 	e = document.createElement(e);
 	if (b) p.insertBefore(e, b); else
@@ -946,6 +978,7 @@ function trim(t) {
 function trimOrz(n,d) {return orz(n.replace(regTrimNaN, ''), d);}
 function orz(n,d) {return (isNaN(d) ? parseInt(n||0) : parseFloat(n||d))||0;}
 function orzFloat(n) {return orz(n, 0.0);}
+
 function leftPad(n, len, pad) {
 	n = '' + orz(n);
 	len = orz(len) || 2;
@@ -976,6 +1009,7 @@ function getFileName(n) {return n.split(/\//g).pop();}
 function getFileBaseName(n) {var i = n.lastIndexOf('.'); return (i > 0 ? n.substr(0, i) : n);}
 function getFilePathFromUrl(n) {return n.split(/\#/g).shift().split(/\?/g).shift();}
 function getFormattedFileNamePart(n) {return (n.length > 0 ? '[' + n + ']' : n);}
+
 function getFormattedFileSize(shortened, bytes) {
 	if (bytes) {
 		bytes += ' ' + la.project.bytes;
@@ -1011,9 +1045,10 @@ var	t = orz(msec)
 }
 
 function getLogTime() {return getFormattedTime(0,0,1);}
+
 function getFormattedTime(sec, for_filename, for_log, plain, only_ymd) {
 var	t = sec;
-	if (TOS.indexOf(typeof t) > -1) {
+	if (TOS.indexOf(typeof t) >= 0) {
 	var	text = '' + t
 	,	n = orz(sec)
 		;
@@ -4571,8 +4606,33 @@ function getProjectOptionValue(project, sectionName, listName, optionName) {
 }
 
 function getSelectedOptionValue(project, values, sectionName, listName) {
-var	selectedName = getPropByNameChain(values, sectionName, listName);
-	return getProjectOptionValue(project, sectionName, listName, selectedName);
+var	selectedName = getPropByNameChain(values, sectionName, listName)
+,	selectedValue = getProjectOptionValue(project, sectionName, listName, selectedName)
+	;
+
+	return selectedValue;
+}
+
+function getSelectedMenuValue(project, sectionName, listName, defaultValue) {
+var	selectedValue = gt('select', project.container).find(
+		(s) => {
+		var	selectedValue = s.value;
+
+			if (
+				isNotEmptyString(selectedValue)
+			&&	sectionName === s.getAttribute('data-section')
+			&&	listName === s.name
+			) {
+				return selectedValue;
+			}
+		}
+	);
+
+	return (
+		isNotEmptyString(selectedValue)
+		? selectedValue
+		: defaultValue
+	);
 }
 
 function getLayerPathVisibilityByValues(project, layer, values, listName) {
@@ -5348,6 +5408,7 @@ async function getOrCreateRenderedImg(project, render) {
 					+	(ms / 1000) + ' '
 					+	la.hint.sec + ')'
 					);
+
 					img.title = img.alt;
 				}
 
@@ -5514,17 +5575,32 @@ var	startTime = +new Date
 		}
 	}
 
+	logTime(
+		'"' + project.fileName + '"'
+	+	' finished rendering ' + setsCount
+	+	' / ' + setsCountTotal
+	+	' sets, took ' + totalTime
+	+	' ms total (excluding pauses)'
+	);
+
 	if (asOneJoinedImage) {
-	var	w = 0
+	var	startTime = +new Date
+	,	w = 0
 	,	h = 0
+	,	joinedBorder = Math.max(0, orz(getSelectedMenuValue(project, 'collage', 'border', JOINED_IMAGE_BORDER)))
+	,	joinedPadding = Math.max(0, orz(getSelectedMenuValue(project, 'collage', 'padding', JOINED_IMAGE_PADDING)))
 		;
 
 		for (var img of renderedImages) {
-			w += img.width + JOINED_IMAGE_PADDING;
+			w += img.width + joinedPadding;
 			h = Math.max(h, img.height);
 		}
 
-		if (w > 0) w -= JOINED_IMAGE_PADDING;
+		if (w > 0 && h > 0) {
+			w -= joinedPadding;
+			w += joinedBorder << 1;
+			h += joinedBorder << 1;
+		}
 
 		if (TESTING) console.log([
 			'images:', renderedImages,
@@ -5535,45 +5611,54 @@ var	startTime = +new Date
 		if (w > 0 && h > 0) {
 		var	canvas = cre('canvas')
 		,	ctx = canvas.getContext('2d')
-		,	x = 0
-		,	y = 0
+		,	x = joinedBorder
+		,	y = joinedBorder
 			;
 
 			canvas.width = w;
 			canvas.height = h;
 
-			for (var img of renderedImages) {
-				ctx.drawImage(img, x,y);
-				x += img.width + JOINED_IMAGE_PADDING;
+			if (
+				canvas.width != w
+			||	canvas.height != h
+			) {
+				alert(
+					la.error.canvas_size + '\n'
+				+	w + 'x' + h
+				);
+			} else {
+				for (var img of renderedImages) {
+					ctx.drawImage(img, x,y);
+					x += img.width + joinedPadding;
+				}
+
+			var	img = await getImgElementPromise(
+					canvas
+				,	project.fileName + '.png'
+				,	w,h
+				,	(img) => {
+						endTime = +new Date;
+						totalTime = (endTime - startTime);
+
+						img.alt += (
+							' \r\n('
+						+	la.hint.images + ': '
+						+	renderedImages.length + ', '
+						+	w + 'x' + h + ', '
+						+	la.hint.took + ' '
+						+	(totalTime / 1000) + ' '
+						+	la.hint.sec + ')'
+						);
+
+						img.title = img.alt;
+					}
+				);
+
+				if (showOnPage) getEmptyRenderContainer(project).appendChild(img);
+				if (saveToFile) saveDL(img.src, project.fileName + '_' + renderedImages.length, 'png', 1);
 			}
-
-		var	img = await getImgElementPromise(
-				canvas
-			,	(
-					project.fileName + '.png'
-				+	' \r\n('
-				+	la.hint.images + ': '
-				+	renderedImages.length + ', '
-				+	w + 'x' + h + ', '
-				+	la.hint.took + ' '
-				+	(totalTime / 1000) + ' '
-				+	la.hint.sec + ')'
-				)
-			,	w,h
-			);
-
-			if (showOnPage) getEmptyRenderContainer(project).appendChild(img);
-			if (saveToFile) saveDL(img.src, project.fileName + '_' + renderedImages.length, 'png', 1);
 		}
 	}
-
-	logTime(
-		'"' + project.fileName + '"'
-	+	' finished rendering ' + setsCount
-	+	' / ' + setsCountTotal
-	+	' sets, took ' + totalTime
-	+	' ms total (excluding pauses)'
-	);
 
 	console.groupEnd(logLabel);
 	console.timeEnd(logLabel);
