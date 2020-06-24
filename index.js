@@ -80,7 +80,7 @@ var	regLayerNameToSkip		= /^(skip)$/i
 	,	'side':		/^(front|back|reverse(?:\W+(h[orizontal]*|v[ertical]*))?)$/i
 	,	'separate':	/^(separate|split)$/i
 
-	,	'layout':	/^(rows|view|save|collage)(?:\W(.*))?$/i
+	,	'layout':	/^(rows|view|save|collage|autocrop)(?:\W(.*))?$/i
 
 	,	'multi_select':	/^(x(\d[\d\W]*)|optional)$/i
 /*
@@ -154,12 +154,13 @@ examples of 'wireframe':
 examples of 'opacities':
 
 	[100-50%]	(set opacity of this layer/folder to exactly 100 or 50%)
-	[0/30/60/90%1]	(exactly (none or 30 or 60 or 90)%, preselect format version 1)
+	[0/30/60/90%1]	(TODO: exactly (0 or 30 or 60 or 90)%, preselect format version 1)
+	[optional 0%]	(TODO: optionally hide, otherwise leave default opacity of each layer from document)
 
 examples of 'zoom':
 
 	[x50/100/200%]	(scale to (50 or 100 or 200)%, default shortest format in filenames)
-	[x100-50-25%2]	(scale to (100 or 50 or 25)%, preselect format version 2)
+	[x100-50-25%2]	(TODO: scale to (100 or 50 or 25)%, preselect format version 2)
 
 	Note: applied to whole result image, so if needed - put this on topmost root layer for clarity.
 	Note: first one listed is shown by default.
@@ -191,10 +192,11 @@ examples of 'separate':
 examples of 'layout':
 
 	[rows]				(TODO: separate row of images in a batch for each value of associated options)
-	[view-autocrop/top-left]	(TODO: remove same-fill areas around, align images in a row to top, align rows to left side)
+	[autocrop]			(TODO: remove same-fill areas around a copy of rendered image)
+	[collage-top-left]		(TODO: align images in a row to top, align rows to left side)
 	[collage-1px/transparent]	(TODO: add 1px transparent padding between images when joining into one collage image)
 
-	Note: alignment has no effect without autocrop, because all images in a project render with the same canvas size.
+	Note: alignment has no effect without autocrop, because all images in a project will render with the same canvas size.
 
 examples of 'multi_select':
 
@@ -290,7 +292,7 @@ examples of 'multi_select':
 ,	VIEW_SIDES = ['front', 'back']
 ,	NAME_PARTS_PERCENTAGES = ['zoom', 'opacities']
 ,	NAME_PARTS_FOLDERS = ['parts', 'colors']
-,	NAME_PARTS_ORDER = ['parts', 'colors', 'paddings', 'opacities', 'side', 'separate', 'zoom']
+,	NAME_PARTS_ORDER = ['parts', 'colors', 'paddings', 'opacities', 'side', 'separate', 'zoom', 'autocrop']
 ,	NAME_PARTS_SEPARATOR = ''
 
 ,	FLAG_FLIP_HORIZONTAL = 1
@@ -318,6 +320,7 @@ examples of 'multi_select':
 ,	TESTING_RENDER		= false
 ,	USE_ZLIB_ASM		= true
 ,	VERIFY_PARAM_COLOR_VS_LAYER_CONTENT	= false
+,	ZERO_PERCENT_EQUALS_EMPTY		= false
 
 ,	thumbnailPlaceholder
 ,	isStopRequested
@@ -1445,10 +1448,12 @@ function replaceJSONpartsFromNameToCache(key, value) {
 			if (z >= d) break;
 			x = d;
 		}
+
 		if (x <= 0 || x == 100) return;
 
 		return ''+x+'%';
 	}
+
 	return value;
 }
 
@@ -2659,13 +2664,13 @@ async function getProjectViewMenu(project) {
 			var	listLabel = text || listName
 			,	items = optionList.items
 			,	params = optionList.params
+			,	isZeroSameAsEmpty = (
+					ZERO_PERCENT_EQUALS_EMPTY
+				&&	NAME_PARTS_PERCENTAGES.indexOf(sectionName) >= 0
+				)
 			,	addEmpty = !(
 					sectionName === 'side'
 				||	'' in items
-				||	(
-						sectionName === 'zoom'
-					&&	'100%' in items
-					)
 				) && (
 					params.multi_select
 				&&	params.multi_select.min <= 0
@@ -2706,34 +2711,58 @@ async function getProjectViewMenu(project) {
 //* list item = each part:
 
 				for (var optionName in items) {
-				var	n = optionName
-				,	v = n
-					;
+					if (
+						optionName === ''
+					||	(
+							isZeroSameAsEmpty
+						&&	orz(optionName) == 0
+						)
+					) {
+						addEmpty = true;
 
-					if (sectionName === 'separate' && n !== '') {
+						continue;
+					}
+
+					if (sectionName === 'separate') {
 						project.layersTopSeparated.forEach(
-							(layer, i) => {
-								v = i + 1;
-								n = v + ': ' + layer.name;
-								addOption(s,n,n);
+							(layer, layerIndex) => {
+								addOption(s, (layerIndex + 1) + ': ' + layer.name);
 							}
 						);
-					} else {
-						if (sectionName === 'side') {
-							n = view_sides[n] || n;
-						} else
-						if (NAME_PARTS_PERCENTAGES.indexOf(sectionName) >= 0) {
-							if (n === '0%') {
-								n = '';
-								addEmpty = false;
+					} else
+					if (sectionName === 'zoom') {
+						if (
+							orz(optionName) == 100
+						||	orz(optionName) <= 0
+						) {
+							if (addedDefaultZoom) {
+								continue;
 							}
+
+						var	addedDefaultZoom = true;
+							addEmpty = false;
+
+							addOption(s, '100%');
+
+							continue;
 						}
-						addOption(s,n,v);
+
+						addOption(s, optionName);
+					} else {
+					var	optionLabel = optionName
+					,	optionValue = optionName
+						;
+
+						if (sectionName === 'side') {
+							optionLabel = view_sides[optionName] || optionName;
+						}
+
+						addOption(s, optionLabel, optionValue);
 					}
 				}
 
 				if (addEmpty) {
-					addOption(s, '');
+					addOption(s, '', isZeroSameAsEmpty ? '0%' : '');
 				}
 
 				s.initialValue = selectValueByPos(s, params.last ? 'bottom' : 'top');
@@ -3700,12 +3729,20 @@ var	v = s.value;
 
 function selectValue(s, valueContent) {
 	s.value = valueContent || '';
-	s.setAttribute('value', (
-		s.getAttribute('data-section') === 'opacities'
-	&&	s.value === '0%'
-		? ''
-		: s.value)
-	);	//* <- for CSS
+
+//* Set attribute for CSS:
+
+	s.setAttribute(
+		'value'
+	,	(
+			ZERO_PERCENT_EQUALS_EMPTY
+		&&	NAME_PARTS_PERCENTAGES.indexOf(s.getAttribute('data-section')) >= 0
+		&&	s.value === '0%'
+			? ''
+			: s.value
+		)
+	);
+
 	return s.value;
 }
 
@@ -5183,8 +5220,18 @@ function getFileNameByValues(project, values, namingParam) {
 
 				if (namingParam.skipDefaultPercent) {
 					if (
-						(sectionName == 'zoom'      && orz(optionName) == 100)
-					||	(sectionName == 'opacities' && orz(optionName) == 0)
+						(
+							sectionName == 'zoom'
+						&&	(
+								orz(optionName) == 100
+							||	orz(optionName) <= 0
+							)
+						)
+					||	(
+							ZERO_PERCENT_EQUALS_EMPTY
+						&&	NAME_PARTS_PERCENTAGES.indexOf(sectionName) >= 0
+						&&	orz(optionName) == 0
+						)
 					) {
 						return;
 					}
