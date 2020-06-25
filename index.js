@@ -82,31 +82,39 @@ var	regLayerNameToSkip		= /^(skip)$/i
 
 	,	'autocrop':	/^(autocrop)(?:\W(.*))?$/i
 	,	'collage':	/^(collage)(?:\W(.*))?$/i
-	,	'layout':	/^(rows)$/i
+	,	'layout':	/^(inline|newline|rows|columns)$/i
 
-	,	'multi_select':	/^(x(\d[\d\W]*)|optional)$/i
+	,	'multi_select':	/^(optional|x(\d[\d\W]*))$/i
+	,	'preselect':	/^(preselect|initial|last)$/i
+	,	'batch':	/^(batch|no-batch|single)?$/i
+
+	,	'no_prefix':	/^(no-prefix)$/i
+	}
 /*
 examples of layer folder names with parameter syntax:
 
-	"[if not any parts] body" = render contents of this folder if "parts: body" select box value is empty.
-	"[if     any parts] body" = render contents of this folder if "parts: body" select box value is non-empty.
-	"[if not colors] eyes, hair" = render only those subfolders/layers, which have no names selected in "colors: hair" AND "colors: eyes" select boxes.
-	"[if     colors] eyes, hair" = render only those subfolders/layers, which have any of names selected in "colors: hair" OR "colors: eyes" select boxes.
+	"[if not any parts] body"	render contents of this folder if "parts: body" select box value is empty.
+	"[if     any parts] body"	render contents of this folder if "parts: body" select box value is non-empty.
+	"[if not colors] eyes, hair"	render only those subfolders/layers, which have no names selected in "colors: hair" AND "colors: eyes" select boxes.
+	"[if     colors] eyes, hair"	render only those subfolders/layers, which have any of names selected in "colors: hair" OR "colors: eyes" select boxes.
 
-	Note: any amount of whitespace is ok.
+	Note: any amount of whitespace is automatically trimmed around and collapsed inside to single spaces.
 	Note: [none] adds empty name to the list of layer's option IDs. Comma-separated empty IDs are discarded.
 	Note: [parts/colors] folder with [if/not/any] are intended for logical dependencies, and do not add options to selectable list.
-	Note: [colors] folder without [if/not/any] gets replaced with selected color, or skipped if empty value is selected. Any layer inside it is added as option regardless of nesting depth, which is intended for logical dependencies and overwriting color value under same name.
+	Note: [colors] folder without [if/not/any] gets replaced with selected color, or skipped if empty value is selected. Any layer inside it is added as option regardless of nesting depth, which is intended for logical-dependent inclusion and same-name overwrites. First one found passing logical criteria from top to bottom is used.
 
 examples of 'copypaste':
 
-	[copy]
-	[copy=alias]
-	[paste=]		(copypaste-specific ID = empty string)
-	[paste=alias]		(copypaste-specific ID = "alias")
-	[copy=1 copy=2]		(copypaste-specific ID = any of "1" or "2")
-	[paste=1 paste=2]	(create a folder with pasted copies inside for each given ID)
+	[copy]			(ID = empty string)
+	[paste=]
 
+	[copy=alias]		(ID = "alias")
+	[paste=alias]
+
+	[copy=1 copy=2]		(ID = any of "1" or "2")
+	[paste=1 paste=2]	(create a folder with pasted copies inside for each given ID - both "1" and "2")
+
+	Note: copypaste-specific IDs are unrelated to option IDs.
 	Note: layer content or children are not copied in the project layer tree, only referenced during relevance checking or rendering.
 	Note: for relevance - all paste targets under given aliases are checked.
 	Note: for rendering - all copy sources under given aliases are pasted in order of encounter.
@@ -119,6 +127,7 @@ examples of 'color_code':
 	[#112233]
 	[#11223344]
 	[hex-1F2F3F4F]
+
 	[rgb-255-123-0]
 	[rgba-10-20-30-40]
 
@@ -156,18 +165,19 @@ examples of 'wireframe':
 
 examples of 'opacities':
 
+	[opacity-50/100%]
 	[100-50%]	(set opacity of this layer/folder to exactly 100 or 50%)
 	[0/30/60/90%1]	(TODO: exactly (0 or 30 or 60 or 90)%, preselect format version 1)
 	[optional 0%]	(TODO: optionally hide, otherwise leave default opacity of each layer from document)
 
 examples of 'zoom':
 
+	[zoom-50/100%]
 	[x50/100/200%]	(scale to (50 or 100 or 200)%, default shortest format in filenames)
 	[x100-50-25%2]	(TODO: scale to (100 or 50 or 25)%, preselect format version 2)
 
-	Note: applied to whole result image, so if needed - put this on topmost root layer for clarity.
-	Note: first one listed is shown by default.
-	Note: 100% is rendered first regardless of selection, then scaled up/down repeatedly by up to x2, until target scale is met.
+	Note: this option works globally (applied to whole result image), so putting this on topmost root layer for clarity is advised.
+	Note: internally, 100% is rendered first regardless of selection, then scaled up/down repeatedly by up to x2, until target scale is met.
 	Note: all intermediate results are cached and reused.
 
 examples of 'side':
@@ -190,7 +200,7 @@ examples of 'separate':
 
 	[separate]	(layers in the top-most non-single-layer folder will be rendered into series of separate images)
 
-	Note: like zoom, this option works only globally.
+	Note: this option works globally (like zoom), not on the layer where it's written.
 
 examples of 'autocrop':
 
@@ -199,6 +209,7 @@ examples of 'autocrop':
 	[autocrop=top-left]		(TODO: remove border areas colored same as pixel in given corner)
 	[autocrop=top-left/top-right/bottom-left/bottom-right/transparent]
 
+	Note: this option works globally.
 	Note: default = transparent (pixels with zero alpha value).
 
 examples of 'collage':
@@ -211,14 +222,20 @@ examples of 'collage':
 	[collage=left/right]		(TODO: vertically-centered rows)
 	[collage=top-left/top-right/bottom-left/bottom-right/transparent]
 
+	Note: this option works globally.
 	Note: default = top-left alignment, transparent 1px border + 2px padding (for neighbour texture edge interpolation).
 	Note: if multiple variants are given, all are added as options.
 	Note: alignment has no effect without autocrop, because all images in a project will render with the same canvas size.
 
 examples of 'layout':
 
-	[rows]		(TODO: separate row of images in a batch for each value of options associated with marked layer)
-	[columns]	(TODO: separate row of images in a batch for each value of options not associated with marked layer)
+	[rows]
+	[newline]	(TODO: separate row of images in a batch for each value of options associated with marked layer)
+
+	[columns]
+	[inline]	(TODO: separate row of images in a batch for each value of options not associated with marked layer)
+
+	Note: this option works globally.
 
 examples of 'multi_select':
 
@@ -230,19 +247,29 @@ examples of 'multi_select':
 
 	Note: [parts] cannot be selected more than 1 at once currently.
 	Note: [colors] cannot be selected more than 1 at once (they will overwrite anyway).
+
+examples of 'preselect':
+
+	[preselect]	(TODO: preselect this option initially)
+	[initial]
+	[last]		(preselect last option in the list; may be empty value, depending on 'multi_select' param)
+
+	Note: default = preselect first option in the list.
+
+examples of 'batch':
+
+	[batch]		(in batch export - iterate the whole option list)
+	[no-batch]	(in batch export - use only the single selected option)
+	[single]
+
+	Note: first found explicit setting makes the other to be default.
+	Note: if all omitted, default = initialize all to batch.
+
+examples of 'no_prefix':
+
+	[no-prefix]	(for export filename - omit option list title)
+			(TODO: add prefix automatically only if option names collide?)
 */
-
-//* preselect last (may be empty or not, depending on 'multi_select' param):
-	,	'last':		/^(last)$/i
-
-//* for batch export - iterate this list or only use selected variant (first found makes another to be default):
-	,	'batch':	/^(batch)$/i
-	,	'preselect':	/^(batch-fix|batch-single|no-batch|pre-?select)(-last)?$/i
-
-//* for export filename - omit this list title:
-//* TODO: add prefix automatically only if option names collide?
-	,	'no_prefix':	/^(no-prefix)$/i
-	}
 
 ,	regLayerBlendModePass	= /^pass[-through]*$/i
 ,	regLayerBlendModeAlpha	= /^(source|destination)-(\w+)$/i
@@ -316,13 +343,13 @@ examples of 'multi_select':
 ,	NAME_PARTS_FOLDERS = ['parts', 'colors']
 ,	NAME_PARTS_ORDER = ['parts', 'colors', 'paddings', 'opacities', 'side', 'separate', 'zoom', 'autocrop']
 ,	NAME_PARTS_SEPARATOR = ''
+,	SWITCH_NAMES_BY_TYPE = {
+		'batch': ['batch', 'single']
+	,	'layout': ['inline', 'newline']
+	}
 
 ,	FLAG_FLIP_HORIZONTAL = 1
 ,	FLAG_FLIP_VERTICAL = 2
-
-,	FLAG_RENDER_SAVE_TO_FILE = 1
-,	FLAG_RENDER_SHOW_ON_PAGE = 2
-,	FLAG_RENDER_AS_ONE_JOINED_IMAGE = 4
 
 ,	SPLIT_SEC = 60
 ,	MAX_OPACITY = 255
@@ -808,28 +835,58 @@ var	j = orz(keep)
 function getClassReg(c) {return new RegExp('(^|\\s)('+c+')($|\\s)', 'i');}
 function getTrimReg(c) {return new RegExp('^['+c+']+|['+c+']+$', 'gi');}
 
+function getChildByAttr(e,k,v) {
+	if (e) {
+		e = e.firstElementChild;
+	}
+
+	while (e) {
+		if (e.getAttribute(k) === v) break;
+		e = e.nextElementSibling;
+	}
+
+	return e;
+}
+
 function getPreviousSiblingByClass(e,c) {
 var	r = (c.test ? c : getClassReg(c));
+
 	while (e && (e = e.previousElementSibling)) {
 		if (e.className && r.test(e.className)) break;
 	}
+
 	return e;
 }
 
 function getNextSiblingByClass(e,c) {
 var	r = (c.test ? c : getClassReg(c));
+
 	while (e && (e = e.nextElementSibling)) {
 		if (e.className && r.test(e.className)) break;
 	}
+
 	return e;
 }
 
-function getParentByClass(e,c) {
+function getThisOrParentByClass(e,c) {
 var	r = (c.test ? c : getClassReg(c));
+
 	while (e) {
 		if (e.className && r.test(e.className)) break;
 		e = e.parentNode;
 	}
+
+	return e;
+}
+
+function getThisOrParentByTagName(e,t) {
+var	t = t.toLowerCase();
+
+	while (e) {
+		if (e.tagName && e.tagName.toLowerCase() === t) break;
+		e = e.parentNode;
+	}
+
 	return e;
 }
 
@@ -838,7 +895,7 @@ function getTargetParentByClass(e, c) {
 		e = e.target;
 	}
 
-	e = getParentByClass(e, c);
+	e = getThisOrParentByClass(e, c);
 
 	if (e && e.tagName) {
 		return e;
@@ -884,7 +941,7 @@ var	t = tagName || 'div'
 }
 
 function toggleDropdownMenu(e) {
-var	p = getParentByClass(e, regClassMenuBar);
+var	p = getThisOrParentByClass(e, regClassMenuBar);
 	if (p) {
 		gc('menu-head', p).forEach(
 			v => {
@@ -1718,8 +1775,9 @@ function trimParam(v) {
 	return v.replace(regLayerNameParamTrim, '');
 }
 
-function getOtherBatchParam(b) {
-	return (b !== 'batch' ? 'batch' : 'preselect');
+function getOtherSwitchParamName(switchType, switchName) {
+var	a = SWITCH_NAMES_BY_TYPE[switchType];
+	return a[1 - a.indexOf(switchName)];
 }
 
 function getTruthyValue(v) {
@@ -2116,7 +2174,6 @@ var	startTime = +new Date;
 	var	project = {
 			fileName: fileName
 		,	baseName: baseName
-		,	batch: {}
 		,	loading: {
 				startTime: +new Date
 			,	data: sourceFile
@@ -2254,16 +2311,19 @@ async function getProjectViewMenu(project) {
 				return optionGroup;
 			}
 
-			function checkBatchParams(globalOptionParams) {
-				for (var k of [
-					'batch',
-					'preselect',
-				]) if (params[k]) {
-					if (!project.batch.paramNameDefault) {
-						project.batch.paramNameMarked = k;
-						project.batch.paramNameDefault = getOtherBatchParam(k);
+			function checkSwitchParams(globalOptionParams) {
+				for (var switchType in SWITCH_NAMES_BY_TYPE)
+				for (var switchName of SWITCH_NAMES_BY_TYPE[switchType]) if (params[switchName]) {
+				var	o = (project.switchParamNames || (project.switchParamNames = {}))
+				,	o = (o[switchType] || (o[switchType] = {}))
+					;
+
+					if (!o.implicit) {
+						o.implicit = getOtherSwitchParamName(switchType, switchName);
+						o.explicit = switchName;
 					}
-					globalOptionParams[k] = true;
+
+					globalOptionParams[switchName] = true;
 				}
 			}
 
@@ -2273,7 +2333,7 @@ async function getProjectViewMenu(project) {
 			,	i,j,k,o
 				;
 
-				checkBatchParams(optionParams);
+				checkSwitchParams(optionParams);
 
 				if (j = params[k = 'multi_select']) {
 					if (o = optionParams[k]) {
@@ -2291,6 +2351,7 @@ async function getProjectViewMenu(project) {
 				]) {
 					if (params[k]) optionParams[k] = true;
 				}
+
 				return optionGroup;
 			}
 
@@ -2320,7 +2381,7 @@ async function getProjectViewMenu(project) {
 			,	i,j,k = sectionName
 				;
 
-				checkBatchParams(optionParams);
+				checkSwitchParams(optionParams);
 
 				if (sectionName === 'separate') {
 					optionItems[k] = k;
@@ -2540,12 +2601,20 @@ async function getProjectViewMenu(project) {
 			);
 		}
 
-	var	options, k;
+	var	options;
+
 		project.layers = getUnskippedProcessedLayers(project.layers);
 
-		if (!project.batch.paramNameDefault) {
-			project.batch.paramNameDefault = k = 'batch';
-			project.batch.paramNameMarked = getOtherBatchParam(k);
+		for (var switchType in SWITCH_NAMES_BY_TYPE) {
+		var	o = (project.switchParamNames || (project.switchParamNames = {}))
+		,	o = (o[switchType] || (o[switchType] = {}))
+			;
+
+			if (!o.implicit) {
+			var	switchNames = SWITCH_NAMES_BY_TYPE[switchType];
+				o.implicit = switchNames[0];
+				o.explicit = switchNames[1];
+			}
 		}
 
 		return options;
@@ -2711,8 +2780,6 @@ async function getProjectViewMenu(project) {
 				&&	params.multi_select.min <= 0
 				);
 
-				params[c] = !(params[b] = (typeof params[c] === 'undefined'));
-
 			var	tr = cre('tr', table);
 				tr.className = 'project-option';
 
@@ -2724,23 +2791,31 @@ async function getProjectViewMenu(project) {
 				s.name = listName;
 				s.setAttribute('data-section', sectionName);
 
-			var	td = cre('td', tr)
-			,	label = cre('label', td)
-			,	i = cre('input', label)
-				;
-
-				i.type = 'checkbox';
-				i.checked = i.initialValue = params.preselect;
-				i.params = params;
-
-				for (var i in batch_settings) {
-				var	j = batch_settings[i]
-				,	t = cre('span', label)
+				for (var switchType in SWITCH_NAMES_BY_TYPE) {
+				var	b = getPropByNameChain(project, 'switchParamNames', switchType, 'implicit')
+				,	c = getPropByNameChain(project, 'switchParamNames', switchType, 'explicit')
+				,	la_switches = la.project_option_switches[switchType]
+				,	td = cre('td', tr)
+				,	label = cre('label', td)
+				,	i = cre('input', label)
 					;
 
-					t.className = i;
-					t.textContent = j.label;
-					t.title = j.hint;
+					params[c] = !(params[b] = (typeof params[c] === 'undefined'));
+
+					i.type = 'checkbox';
+					i.className = switchType + '-checkbox';
+					i.setAttribute('data-switch-type', switchType);
+					i.checked = i.initialValue = !params[SWITCH_NAMES_BY_TYPE[switchType][0]];
+					i.params = params;
+
+					for (var i in la_switches) {
+					var	j = la_switches[i]
+					,	t = cre('span', label)
+						;
+
+						t.className = switchType + '-' + i;
+						t.title = j.label + ': \r\n' + j.hint;
+					}
 				}
 
 //* list item = each part:
@@ -2800,7 +2875,11 @@ async function getProjectViewMenu(project) {
 					addOption(s, '', isZeroSameAsEmpty ? '0%' : '');
 				}
 
-				s.initialValue = selectValueByPos(s, params.last ? 'bottom' : 'top');
+				if (i = s.initialValue) {
+					selectValue(s, i);
+				} else {
+					s.initialValue = selectValueByPos(s, params.last ? 'bottom' : 'top');
+				}
 
 			var	tabCount = gt('td', tr).length;
 				if (maxTabCount < tabCount) maxTabCount = tabCount;
@@ -2808,9 +2887,6 @@ async function getProjectViewMenu(project) {
 		}
 
 	var	options = project.options
-	,	b = project.batch.paramNameDefault
-	,	c = project.batch.paramNameMarked
-	,	batch_settings = la.project_option_batch_setting
 	,	view_sides = la.project_option_side
 	,	sectionBatches = la.project_option_sections
 	,	sections
@@ -3114,6 +3190,7 @@ var	checkVirtualPath = (
 
 		for (var param of paramList) {
 			for (var k in regLayerNameParamType) if (m = param.match(regLayerNameParamType[k])) {
+
 				if (NAME_PARTS_FOLDERS.indexOf(k) >= 0) {
 					layer.type = k;
 					layer.isVisibilityOptional = true;
@@ -3219,10 +3296,16 @@ var	checkVirtualPath = (
 				} else
 				if (k === 'check_order') {
 					params[k] = m[1];
+				} else
+				if (k === 'preselect') {
+					params[param.indexOf('last') >= 0 ? 'last' : 'initial'] = true;
+				} else
+				if (k === 'batch') {
+					params[param === k ? k : 'single'] = true;
+				} else
+				if (k === 'layout') {
+					params[param === 'rows' || param === 'newline' ? 'newline' : 'inline'] = true;
 				} else {
-					if (k === 'preselect' && param.indexOf('last') >= 0) {
-						params.last = true;
-					}
 					if (k === 'side') {
 						layer.isVisibilityOptional = true;
 						if (
@@ -3235,6 +3318,7 @@ var	checkVirtualPath = (
 					}
 					params[k] = param || k;
 				}
+
 				break;
 			}
 		}
@@ -3807,7 +3891,7 @@ function setAllValues(project, valuePos) {
 	showImg(project);
 }
 
-function getAllMenuValues(project, checkPreselected) {
+function getAllMenuValues(project, checkSelectedValue) {
 var	values = {};
 
 	gt('select', project.container).forEach(
@@ -3819,8 +3903,8 @@ var	values = {};
 
 			optionLists[listName] = (
 				(
-					checkPreselected
-				&&	getPropByNameChain(project, 'options', sectionName, listName, 'params', 'preselect')
+					checkSelectedValue
+				&&	getPropByNameChain(project, 'options', sectionName, listName, 'params', 'single')
 				)
 				? [s.value]
 				: gt('option', s).map(o => o.value)
@@ -3831,7 +3915,7 @@ var	values = {};
 	return values;
 }
 
-function getAllValueSets(project, checkPreselected, onlyNames, stopAtMaxCount) {
+function getAllValueSets(project, checkSelectedValue, onlyNames, stopAtMaxCount) {
 
 	function goDeeper(optionLists, partialValueSet) {
 		if (
@@ -3891,7 +3975,7 @@ function getAllValueSets(project, checkPreselected, onlyNames, stopAtMaxCount) {
 		}
 	}
 
-var	values = getAllMenuValues(project, checkPreselected)
+var	values = getAllMenuValues(project, checkSelectedValue)
 ,	resultSets = onlyNames ? [] : {}
 ,	optionLists = []
 ,	section
@@ -3991,7 +4075,7 @@ var	values = {};
 				);
 
 			var	hide = (allHidden ? 'none' : '')
-			,	container = getParentByClass(s, 'project-option') || s.parentNode
+			,	container = getThisOrParentByClass(s, 'project-option') || s.parentNode
 			,	style = container.style
 				;
 
@@ -5269,9 +5353,9 @@ function getFileNameByValues(project, values, namingParam) {
 
 		var	params = getPropByNameChain(project, 'options', sectionName, listName, 'params');
 			if (params) {
-				if (namingParam.checkPreselected) {
+				if (namingParam.checkSelectedValue) {
 					if (
-						params.preselect
+						params.single
 					||	!params.batch
 					) {
 						return;
@@ -5404,9 +5488,7 @@ async function getOrCreateRenderedImg(project, render) {
 					img.alt += (
 						' \r\n('
 					+	img.width + 'x' + img.height + ', '
-					+	la.hint.took + ' '
-					+	(ms / 1000) + ' '
-					+	la.hint.sec + ')'
+					+	la.hint.took_sec.render.replace('$t', ms / 1000) + ')'
 					);
 
 					img.title = img.alt;
@@ -5480,18 +5562,67 @@ var	img = prerenders[refName];
 	return img;
 }
 
-async function renderAll(project, flags) {
-var	flags = orz(flags)
-,	showOnPage = flags & FLAG_RENDER_SHOW_ON_PAGE
-,	saveToFile = flags & FLAG_RENDER_SAVE_TO_FILE
-,	asOneJoinedImage = flags & FLAG_RENDER_AS_ONE_JOINED_IMAGE
+function getNewLineOptionLists(project) {
+var	options = project.options
+,	optionsForNewLines = {}
 	;
 
-	if (!saveToFile) {
-		showOnPage = FLAG_RENDER_SHOW_ON_PAGE;
+	for (var sectionName in options) {
+	var	section = options[sectionName];
+
+		for (var listName in section) {
+		var	optionList = section[listName];
+
+			if (getPropByNameChain(optionList, 'params', 'newline')) {
+			var	o = optionsForNewLines;
+				o = o[sectionName] || (o[sectionName] = []);
+
+				if (o.indexOf(listName) < 0) {
+					o.push(listName);
+				}
+			}
+		}
 	}
 
+	return optionsForNewLines;
+}
+
+function getNewLineSubcontainer(container, values, options) {
+	if (!values || !options) return container;
+
+	for (var sectionName in options) {
+	var	section = options[sectionName];
+
+		for (var listName of section) {
+		var	optionName = getPropByNameChain(values, sectionName, listName);
+
+			if (optionName !== null) {
+			var	optionID = [
+					sectionName
+				,	listName
+				,	optionName
+				].join('\n');
+
+			var	e = getChildByAttr(container, 'data-option-id', optionID);
+
+				if (!e) {
+					e = cre('div', container);
+					e.setAttribute('data-option-id', optionID);
+				}
+
+				container = e;
+			}
+		}
+	}
+
+	return container;
+}
+
+async function renderAll(project, flags) {
 	setProjectWIPstate(project, true);
+
+	if (!flags) flags = {};
+	if (!flags.saveToFile) flags.showOnPage = true;
 
 var	logLabel = 'Render all: ' + project.fileName;
 
@@ -5506,8 +5637,9 @@ var	startTime = +new Date
 ,	setsCount = 0
 ,	totalTime = 0
 ,	renderedImages = []
-,	batchContainer = (showOnPage ? getEmptyRenderContainer(project) : null)
-,	needWaitBetweenDL = (saveToFile && !asOneJoinedImage)
+,	batchContainer = (flags.showOnPage ? getEmptyRenderContainer(project) : null)
+,	needWaitBetweenDL = (flags.saveToFile && !flags.asOneJoinedImage)
+,	optionsForNewLines = getNewLineOptionLists(project)
 	;
 
 	logTime(
@@ -5528,20 +5660,25 @@ var	startTime = +new Date
 			}
 		);
 
-		if (asOneJoinedImage) {
+		if (flags.asOneJoinedImage) {
 			if (img = await getRenderedImg(project, render)) {
 				renderedImages.push(img);
 			}
 		} else {
-			if (showOnPage) await showImg(project, render, batchContainer);
-			if (saveToFile) await saveImg(
+			if (flags.showOnPage) await showImg(
+				project,
+				render,
+				getNewLineSubcontainer(batchContainer, values, optionsForNewLines)
+			);
+
+			if (flags.saveToFile) await saveImg(
 				project,
 				render,
 				getFileNameByValuesToSave(
 					project,
 					values,
 					{
-						checkPreselected: true,
+						checkSelectedValue: true,
 						skipDefaultPercent: true,
 					}
 				)
@@ -5583,7 +5720,7 @@ var	startTime = +new Date
 	+	' ms total (excluding pauses)'
 	);
 
-	if (asOneJoinedImage) {
+	if (flags.asOneJoinedImage) {
 	var	startTime = +new Date
 	,	w = 0
 	,	h = 0
@@ -5642,20 +5779,20 @@ var	startTime = +new Date
 
 						img.alt += (
 							' \r\n('
-						+	la.hint.images + ': '
-						+	renderedImages.length + ', '
 						+	w + 'x' + h + ', '
-						+	la.hint.took + ' '
-						+	(totalTime / 1000) + ' '
-						+	la.hint.sec + ')'
+						+	(
+								la.hint.took_sec.collage
+								.replace('$t', totalTime / 1000)
+								.replace('$n', renderedImages.length)
+							) + ')'
 						);
 
 						img.title = img.alt;
 					}
 				);
 
-				if (showOnPage) getEmptyRenderContainer(project).appendChild(img);
-				if (saveToFile) saveDL(img.src, project.fileName + '_' + renderedImages.length, 'png', 1);
+				if (flags.showOnPage) getEmptyRenderContainer(project).appendChild(img);
+				if (flags.saveToFile) saveDL(img.src, project.fileName + '_' + renderedImages.length, 'png', 1);
 			}
 		}
 	}
@@ -5666,10 +5803,10 @@ var	startTime = +new Date
 	setProjectWIPstate(project, false);
 }
 
-function showAll(project) {renderAll(project, FLAG_RENDER_SHOW_ON_PAGE);}
-function saveAll(project) {renderAll(project, FLAG_RENDER_SAVE_TO_FILE);}
-function showJoin(project) {renderAll(project, FLAG_RENDER_SHOW_ON_PAGE | FLAG_RENDER_AS_ONE_JOINED_IMAGE);}
-function saveJoin(project) {renderAll(project, FLAG_RENDER_SAVE_TO_FILE | FLAG_RENDER_AS_ONE_JOINED_IMAGE);}
+function showAll(project) {renderAll(project);}
+function saveAll(project) {renderAll(project, {saveToFile: true});}
+function showJoin(project) {renderAll(project, {asOneJoinedImage: true});}
+function saveJoin(project) {renderAll(project, {saveToFile: true, asOneJoinedImage: true});}
 
 async function showImg(project, render, container) {
 	if (!render) var isSingleWIP = setProjectWIPstate(project, true);
@@ -5770,7 +5907,11 @@ async function updateMenuAndShowImg(project) {
 
 function updateCheckBox(e, params) {
 	if (params || (params = e.params)) {
-		params.batch = !(params.preselect = !!e.checked);
+	var	switchType = e.getAttribute('data-switch-type')
+	,	a = SWITCH_NAMES_BY_TYPE[switchType]
+		;
+
+		params[a[0]] = !(params[a[1]] = !!e.checked);
 	}
 }
 
@@ -5779,7 +5920,7 @@ function updateBatchCount(project) {
 var	precounts = (project.renderBatchCounts || (project.renderBatchCounts = {}))
 ,	key = (
 		(
-			gy('checkbox', project.container)
+			gc('batch-checkbox', project.container)
 			.map(e => (e.checked ? 1 : 0))
 			.join('')
 		)
@@ -5913,7 +6054,7 @@ var	e = evt;
 	if (
 		!e
 	||	!e.tagName
-	||	e.tagName.toLowerCase() !== 'button'
+	||	!(e = getThisOrParentByTagName(e, 'button'))
 	) {
 		return;
 	}
@@ -5974,13 +6115,17 @@ var	e = evt;
 		return;
 	}
 
+	if (e.type === 'checkbox') {
+		updateCheckBox(e);
+
+		if (e.getAttribute('data-switch-type') !== 'batch') {
+			return;
+		}
+	}
+
 var	container = getProjectContainer(e)
 ,	project = container.project
 	;
-
-	if (e.type === 'checkbox') {
-		updateCheckBox(e);
-	}
 
 	updateBatchCount(project);
 
@@ -6109,7 +6254,7 @@ async function loadFromButton(e, inBatch) {
 var	action, url;
 
 	if (action = e.name || e.getAttribute('data-action')) {
-	var	p = getParentByClass(e, regClassExampleFiles);
+	var	p = getThisOrParentByClass(e, regClassExampleFiles);
 
 		if (action === 'stop') {
 			isStopRequested = true;
@@ -6152,7 +6297,7 @@ var	action, url;
 //* show loading status:
 
 	var	c = 'loading'
-	,	p = getParentByClass(e, regClassExampleFile)
+	,	p = getThisOrParentByClass(e, regClassExampleFile)
 		;
 
 		if (p && p.className) {

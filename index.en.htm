@@ -131,14 +131,26 @@
 					},
 				},
 			},
-			'project_option_batch_setting': {
-				'single': {
-					'label': 'single',
-					'hint': 'Use only one selected option for batch view/save.',
+			'project_option_switches': {
+				'batch': {
+					'single': {
+						'label': 'single',
+						'hint': 'Use only one selected option for batch view/save.',
+					},
+					'all': {
+						'label': 'all',
+						'hint': 'Use this whole list for batch view/save.',
+					},
 				},
-				'all': {
-					'label': 'all',
-					'hint': 'Use this whole list for batch view/save.',
+				'layout': {
+					'inline': {
+						'label': 'inline',
+						'hint': 'Keep images in collage for each options in this batch in one row.',
+					},
+					'newline': {
+						'label': 'newline',
+						'hint': 'Make a new row of images in collage for each option in this batch.',
+					},
 				},
 			},
 			'project_option_sections': {
@@ -194,9 +206,10 @@
 				'console_log': 'Show internal details',
 				'see_console': 'See in the browser console.',
 				'too_much': 'Too much',
-				'images': 'images',
-				'took': 'took',
-				'sec': 'sec.',
+				'took_sec': {
+					'render': 'rendering this image took $t sec.',
+					'collage': 'joining $n images took $t sec.',
+				}
 			},
 			'error': {
 				'canvas': 'HTML5 Canvas is not supported in your web browser program.',

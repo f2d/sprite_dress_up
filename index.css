@@ -237,14 +237,13 @@ img.larger {
 .loaded-file:empty {
 	display: none;
 }
-.loaded-file td div,
+.loaded-file div[data-option-id] > img,
 .loaded-file td > img,
 .loaded-file td > section {
 	padding: 0.5em;
 	margin: 0.5em;
 }
 .project-options th *,
-.loaded-file td div,
 .loaded-file td section {
 	background-color: rgba(0,0,0, 0.1);
 }
@@ -306,30 +305,38 @@ img.larger {
 }
 .project-options label {
 	display: block;
-	min-width: 50px;
+	width: 50px;
+	height: 20px;
 }
 .project-options label :not(input) {
 	display: block;
+	height: 100%;
 	padding: 0 0.5em;
 	text-align: center;
 }
-.project-options .all {
-	background-color: #eda;
-}
-.project-options .all:hover {
-	background-color: #feb;
-}
-.project-options .single {
-	background-color: #ace;
-}
-.project-options .single:hover {
-	background-color: #bdf;
-}
+.project-options .batch-all::before {		content: "\2E2C";}
+.project-options .batch-all {			background-color: #eda;}
+.project-options .batch-all:hover {		background-color: #feb;}
+
+.project-options .batch-single::before {	content: "\2E30";}
+.project-options .batch-single {		background-color: #ace;}
+.project-options .batch-single:hover {		background-color: #bdf;}
+
+.project-options .layout-inline::before {	content: "\22EF";}
+.project-options .layout-inline {		background-color: #ace;}
+.project-options .layout-inline:hover {		background-color: #bdf;}
+
+.project-options .layout-newline::before {	content: "\22EE";}
+.project-options .layout-newline {		background-color: #cea;}
+.project-options .layout-newline:hover {	background-color: #dfc;}
+
 .project-options label input:disabled ~ :not(input) {
 	background-color: gray;
 }
-.project-options label input:checked ~ .all,
-.project-options label input:not(:checked) ~ .single,
+.project-options label input:checked ~ .batch-all,
+.project-options label input:checked ~ .layout-inline,
+.project-options label input:not(:checked) ~ .batch-single,
+.project-options label input:not(:checked) ~ .layout-newline,
 .project-options label input[type="checkbox"] {
 	display: none;
 }
