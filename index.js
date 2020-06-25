@@ -5,12 +5,6 @@
 //* TODO: whole config in JSON-format?
 
 //* menu:
-//* TODO: symbolic batch buttons:
-//*	single	= "•" &#x2022; "⸱" &#x2E31;
-//*	all	= "⁂" &#x2042; "⸬" &#x2E2C; "⁘" &#x2058; "⁛" &#x205B;
-//*	row	= "⋯" &#x22EF;
-//*	column	= "⋮" &#x22EE;
-//* TODO: empty or 0% zoom = 100%; empty opacity = use value from document, 0% = hide, 100% = overwrite with 100%.
 //* TODO: zoom format in filenames: [x1, x1.00, x100%].
 //* TODO: progress/status panel + [stop operation] button.
 //* TODO: options menu: add/remove/copy/edit colors and outlines, or all list(s), maybe in textarea.
@@ -18,12 +12,12 @@
 //* TODO: <select multiple> <optgroup> <option>?</option> </optgroup> </select>.
 
 //* rendering:
-//* TODO: save batch to a single collage/tileset image.
-//* TODO: autocrop options, separate for view/save/collage.
+//* TODO: save batch to a single collage/tileset image, optionally arrange and align images.
+//* TODO: autocrop options - not batchable (?), project defines default selection and extra options (specific color, etc.).
 //* TODO: fix invalid clipping-passthrough interactions (ignore clipping if base layer is in passthrough mode, etc).
 //* TODO: fix hiding of clipping group with skipped/invisible/empty base layer.
 //* TODO: fix blending mode of base layer in clipping group.
-//* TODO: keep track of current root of (possibly nested) copy-pasted layer in array property with push-pop while rendering.
+//* TODO: keep track of current root of (possibly nested) copy-pasted layer (in array property with push-pop?) while rendering.
 //* TODO: arithmetic emulation of all blending operations, not native to JS.
 //* TODO: arithmetic emulation of all operations in 16/32-bit until final result; to be optionally available as checkbox/selectbox.
 //* TODO: decode layer data (PSD/PNG/etc) manually without using canvas, to avoid premultiplied-alpha (PMA - in Firefox, not in Chrome) while rendering.
@@ -331,7 +325,7 @@ examples of 'no_prefix':
 	,	'undefined'
 	]
 
-,	RUNNING_FROM_DISK = (location.protocol.substr(0,4).toLowerCase() === 'file')
+,	RUNNING_FROM_DISK = (location.protocol.split(':', 1)[0].toLowerCase() === 'file')
 // ,	LS = window.localStorage || localStorage
 ,	URL_API = window.URL || window.webkitURL
 ,	BLOB_PREFIX = 'blob:'
@@ -566,6 +560,21 @@ function isNotEmptyString(v) {
 		TOS.indexOf(typeof v) >= 0
 	&&	v.length > 0
 	);
+}
+
+function isURLFromDisk(url) {
+var	match = url.match(/^(\w+):\/+/)
+,	protocol = (
+		(
+			match
+			? match[1]
+			: location.protocol
+		)
+		.split(':', 1)[0]
+		.toLowerCase()
+	);
+
+	return (protocol === 'file');
 }
 
 function pause(msec) {
@@ -1985,6 +1994,19 @@ function thisToPng(targetLayer) {
 
 //* Page-specific functions: internal, loading *-------------------------------
 
+function isStopRequestedAnywhere() {
+	return (
+		isStopRequested
+	||	Array.from(arguments).find(
+			(o) => (
+				typeof o === 'object'
+			&&	o
+			&&	o.isStopRequested
+			)
+		)
+	);
+}
+
 async function removeProjectView(fileID) {
 var	countDeleted = gi(fileID).reduce(
 		(count, e) => {
@@ -2057,7 +2079,7 @@ var	buttonClose = cre('button', buttonTab);
 		if (project) {
 			buttonTab.project = project;
 
-			if (isStopRequested || project.isStopRequested || buttonTab.isStopRequested) {
+			if (isStopRequestedAnywhere(project, buttonTab)) {
 				project.isStopRequested = true;
 			} else {
 				project.thumbnail = thumbImg;
@@ -2068,7 +2090,7 @@ var	buttonClose = cre('button', buttonTab);
 				);
 			}
 
-			if (isStopRequested || project.isStopRequested || buttonTab.isStopRequested) {
+			if (isStopRequestedAnywhere(project, buttonTab)) {
 				container = null;
 			}
 		}
@@ -2096,7 +2118,7 @@ var	buttonClose = cre('button', buttonTab);
 			project.container = container;
 			container.project = project;
 
-		var	result = !(isStopRequested || project.isStopRequested || buttonTab.isStopRequested);
+		var	result = !isStopRequestedAnywhere(project, buttonTab);
 
 			if (result) {
 				if (project.options) {
@@ -2187,7 +2209,7 @@ var	startTime = +new Date;
 			project = null;
 		}
 
-		if (isStopRequested || project.isStopRequested || button.isStopRequested) {
+		if (isStopRequestedAnywhere(project, button)) {
 			 break;
 		}
 	}
@@ -2200,7 +2222,7 @@ var	tookTime = +new Date - startTime;
 			project
 			? ' finished ' + actionLabel + ', took '
 			: (
-				isStopRequested || project.isStopRequested || button.isStopRequested
+				isStopRequestedAnywhere(project, button)
 				? ' stopped by request '
 				: ' failed '
 			) + actionLabel + ' after '
@@ -2209,7 +2231,7 @@ var	tookTime = +new Date - startTime;
 	+	' ms total'
 	);
 
-	if (isStopRequested || project.isStopRequested || button.isStopRequested) {
+	if (isStopRequestedAnywhere(project, button)) {
 		return null;
 	}
 
@@ -2243,7 +2265,7 @@ async function getProjectViewMenu(project) {
 				while (
 					l_a.length > 0
 				&&	(layer = l_a.pop())
-				&&	(result = !(isStopRequested || project.isStopRequested))
+				&&	(result = !isStopRequestedAnywhere(project))
 				&&	(result = await getLayerImgLoadPromise(layer))
 				&&	(result = await getLayerMaskLoadPromise(layer))
 				);
@@ -2256,7 +2278,7 @@ async function getProjectViewMenu(project) {
 						result
 						? ' finished ' + actionLabel + ', took '
 						: (
-							isStopRequested || project.isStopRequested
+							isStopRequestedAnywhere(project)
 							? ' stopped by request '
 							: ' failed '
 						) + actionLabel + ' after '
@@ -2265,7 +2287,7 @@ async function getProjectViewMenu(project) {
 				+	' ms'
 				);
 
-				if (isStopRequested || project.isStopRequested) {
+				if (isStopRequestedAnywhere(project)) {
 					return;
 				}
 
@@ -3396,7 +3418,7 @@ var	checkVirtualPath = (
 async function addLayerGroupCommonWrapper(project, parentGroup, layers, callback) {
 	for (var v of layers) {
 
-		if (isStopRequested || project.isStopRequested) {
+		if (isStopRequestedAnywhere(project)) {
 			return false;
 		}
 
@@ -3436,7 +3458,7 @@ var	actionLabel = 'opening with ' + libName;
 			sourceData
 			? ' finished ' + actionLabel + ', took '
 			: (
-				isStopRequested || project.isStopRequested
+				isStopRequestedAnywhere(project)
 				? ' stopped by request '
 				: ' failed '
 			) + actionLabel + ' after '
@@ -3445,7 +3467,7 @@ var	actionLabel = 'opening with ' + libName;
 	+	' ms'
 	);
 
-	if (isStopRequested || project.isStopRequested) {
+	if (isStopRequestedAnywhere(project)) {
 		return;
 	}
 
@@ -3696,7 +3718,7 @@ async function loadPSDLIB(project) {
 			;
 
 			while (l_i--) if (layer = l_a[l_i]) {
-				if (isStopRequested || project.isStopRequested) {
+				if (isStopRequestedAnywhere(project)) {
 					return;
 				}
 				n = layer.name || '';
@@ -3759,7 +3781,7 @@ async function loadPSDLIB(project) {
 				}
 			}
 
-			return !(isStopRequested || project.isStopRequested);
+			return !isStopRequestedAnywhere(project);
 		}
 	);
 }
@@ -5220,7 +5242,11 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 		return onReturnCleanup();
 	}
 
-	if (!project || !project.layers || isStopRequested || project.isStopRequested) {
+	if (
+		!project
+	||	!project.layers
+	||	isStopRequestedAnywhere(project)
+	) {
 		return;
 	}
 
@@ -5292,7 +5318,7 @@ var	l_a = layersToRenderOne || layersBatch || project.layers
 			await pause(1);
 		}
 
-		if (isStopRequested || project.isStopRequested) {
+		if (isStopRequestedAnywhere(project)) {
 			canvas = ctx = null;
 
 			break;
@@ -5323,7 +5349,7 @@ var	l_a = layersToRenderOne || layersBatch || project.layers
 	,	renderName = project.rendering.fileName
 		;
 
-		if (isStopRequested || project.isStopRequested) {
+		if (isStopRequestedAnywhere(project)) {
 			canvas = ctx = null;
 
 			logTime('getRenderByValues - stopped by request after ' + (renderingTime / 1000) + ' seconds spent.', renderName);
@@ -5530,11 +5556,11 @@ var	prerenders = (project.renders || (project.renders = {}))
 
 var	img = prerenders[refName];
 
-	if (!(img || isStopRequested || project.isStopRequested)) {
+	if (!(img || isStopRequestedAnywhere(project))) {
 		if (fileName == refName) {
 		var	canvas = await getRenderByValues(project, values);
 
-			if (isStopRequested || project.isStopRequested) {
+			if (isStopRequestedAnywhere(project)) {
 				return;
 			}
 
@@ -5716,7 +5742,7 @@ var	startTime = +new Date
 			setsCountWithoutPause = 0;
 		}
 
-		if (isStopRequested || project.isStopRequested) {
+		if (isStopRequestedAnywhere(project)) {
 			project.isStopRequested = false;
 
 			break;
@@ -5770,8 +5796,11 @@ var	startTime = +new Date
 				canvas.width != w
 			||	canvas.height != h
 			) {
+			var	t = la.error.canvas_size;
+				if (t.join) t = t.join('\n');
+
 				alert(
-					la.error.canvas_size + '\n'
+					t + '\n'
 				+	w + 'x' + h
 				);
 			} else {
@@ -6254,6 +6283,21 @@ var	isProjectLoaded = await addProjectView({
 }
 
 async function loadFromButton(e, inBatch) {
+
+	function getButtonURL(e) {
+	var	url = e.getAttribute('data-url');
+
+		if (
+			!url
+		&&	(e = getThisOrParentByClass(e, 'example-file'))
+		&&	(e = gt('a', e)[0])
+		) {
+			url = e.href;
+		}
+
+		return url;
+	}
+
 	if (!inBatch) {
 		if (e.disabled) {
 			return;
@@ -6288,8 +6332,16 @@ var	action, url;
 		if (action === 'load_all') {
 			setGlobalWIPstate(true);
 
-			for (var b of gt('button', p)) if (b.getAttribute('data-url')) {
-				await loadFromButton(b, true);
+		var	isProjectLoaded = 0
+		,	urls = []
+			;
+
+			for (var b of gt('button', p)) if (url = getButtonURL(b)) {
+				urls.push(url);
+
+				if (await loadFromButton(b, true)) {
+					++isProjectLoaded;
+				}
 
 				if (isStopRequested) {
 					isStopRequested = false;
@@ -6303,7 +6355,7 @@ var	action, url;
 			console.log([e, p, 'Unknown action: ' + action]);
 		}
 	} else
-	if (url = e.getAttribute('data-url')) {
+	if (url = getButtonURL(e)) {
 
 //* show loading status:
 
@@ -6328,11 +6380,32 @@ var	action, url;
 		if (p && p.className) {
 			toggleClass(p,c,-1);
 		}
+
 	}
 
 	if (!inBatch) {
 		e.disabled = false;
 	}
+
+//* report error to user:
+
+	if (
+		!inBatch
+	&&	!isProjectLoaded
+	&&	(urls || url)
+	&&	(
+			urls && urls.length > 0
+			? urls.find((url) => isURLFromDisk(url))
+			: isURLFromDisk(url)
+		)
+	) {
+	var	t = la.error.file_protocol;
+		if (t.join) t = t.join('\n');
+
+		alert(t);
+	}
+
+	return isProjectLoaded;
 }
 
 function selectProject(e) {
@@ -6549,8 +6622,9 @@ var	tabsCountMax = 0
 							+	'</a>'
 							)
 						,	loadButton = (
-								'<button onclick="return loadFromButton(this)" data-url="'
-							+		pathAttr
+								'<button onclick="return loadFromButton(this)'
+							// +	'" data-url="'
+							// +		pathAttr
 							+	'">'
 							+		dict.load
 							+	'</button>'
@@ -6723,6 +6797,9 @@ var	topMenuHTML = (
 	].forEach(
 		([k, v]) => window.addEventListener(k, v, false)
 	);
+
+	toggleClass(document.body, 'loading', -1);
+	toggleClass(document.body, 'ready', 1);
 
 	logTime('ready to work');
 }

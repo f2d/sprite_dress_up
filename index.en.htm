@@ -8,17 +8,20 @@
 	<link rel="alternate" hreflang="en" href="index.en.htm">
 	<link rel="alternate" hreflang="ru" href="index.ru.htm">
 	<script>
-	var	la_notes = 'Notes:';
-	var	la_notice = 'Notice:';
-	var	la_stop = 'Stop (Esc)';
+	var	la = {
+			'notes': 'Notes:',
+			'notice': 'Notice:',
+			'stop': 'Stop (Esc)',
+			'file_header': 'File',
+		};
 	var	la = {
 			'menu': {
 				'file': {
-					'header': 'File',
+					'header': la.file_header,
 					'project': 'Drag and drop a project file onto this page, or select here',
 					'formats': 'Supported file types',
 					'notes': [
-						la_notes,
+						la.notes,
 						'ZIP-files are loaded as ORA, if their content is conforming.',
 						'If multiple files with same name are opened, earlier ones will close.',
 					],
@@ -38,7 +41,7 @@
 								'ora': 'Save to ORA',
 								'png': 'Save to PNG',
 								'batch': 'Save all variants to PNG',
-								'stop': la_stop,
+								'stop': la.stop,
 							},
 						},
 						'close_all': {
@@ -68,11 +71,11 @@
 							'load_all': 'Show all',
 						},
 						{
-							'stop': la_stop,
+							'stop': la.stop,
 						},
 					],
 					'notice': [
-						la_notice,
+						la.notice,
 						'The files here are only for reference.',
 						'Do not reuse without permission.',
 					],
@@ -85,7 +88,7 @@
 					'source': 'Source code, discuss issues and requests',
 					'page_lang': 'This page in different languages',
 					'notes': [
-						la_notes,
+						la.notes,
 						'Chrome-based browsers are recommended for this page.',,
 						'Firefox, for example, stores colors on canvas as premultiplied with alpha for faster display,',
 						'which hurts blending precision and results in color-banded gradients, which were supposed to be smooth.',,
@@ -127,7 +130,7 @@
 						'save_all': 'Save all',
 						'show_join': 'Show collage',
 						'save_join': 'Save collage',
-						'stop': la_stop,
+						'stop': la.stop,
 					},
 				},
 			},
@@ -213,7 +216,14 @@
 			},
 			'error': {
 				'canvas': 'HTML5 Canvas is not supported in your web browser program.',
-				'canvas_size': 'Cannot create a canvas of required size. Try selecting less images.',
+				'canvas_size': [
+					'Cannot create a canvas of required size.'
+				,	'Try selecting less images.'
+				],
+				'file_protocol': [
+					'Cannot load files from disk via page request, because of security concerns.'
+				,	'Try using the "' + la.file_header + '" menu in the top of the page.'
+				],
 				'file': 'No suitable files found.',
 				'project': 'Project composition error.',
 				'options': 'Project without options.',
@@ -223,7 +233,7 @@
 	</script>
 	<script src="index.js"></script>
 </head>
-<body>
+<body class="loading">
 	Loading page...
 </body>
 </html>
