@@ -2362,11 +2362,19 @@ async function getProjectViewMenu(project) {
 					layer.type = sectionName.replace(regLayerTypeSingleTrim, '');
 				}
 
-			var	optionItems = getOptionGroup(sectionName, listName).items
+			var	optionGroup = getOptionGroup(sectionName, listName)
+			,	optionParams = optionGroup.params
+			,	optionItems = optionGroup.items
 			,	optionItemLayers = (optionItems[optionName] || (optionItems[optionName] = []))
 				;
 
 				if (optionName !== '') {
+					for (k of [
+						'preselect',
+					]) {
+						if (params[k]) optionParams[k] = optionName;
+					}
+
 					optionItemLayers.push(layer);
 				}
 			}
@@ -2875,8 +2883,8 @@ async function getProjectViewMenu(project) {
 					addOption(s, '', isZeroSameAsEmpty ? '0%' : '');
 				}
 
-				if (i = s.initialValue) {
-					selectValue(s, i);
+				if (i = getPropByNameChain(project, 'options', sectionName, listName, 'params', 'preselect')) {
+					s.initialValue = selectValue(s, i);
 				} else {
 					s.initialValue = selectValueByPos(s, params.last ? 'bottom' : 'top');
 				}
@@ -3298,7 +3306,8 @@ var	checkVirtualPath = (
 					params[k] = m[1];
 				} else
 				if (k === 'preselect') {
-					params[param.indexOf('last') >= 0 ? 'last' : 'initial'] = true;
+					v = 'last';
+					params[param.indexOf(v) >= 0 ? v : k] = true;
 				} else
 				if (k === 'batch') {
 					params[param === k ? k : 'single'] = true;
@@ -3826,6 +3835,7 @@ var	section, optionName, o, resultSet;
 
 function selectValueByPos(s, valuePos) {
 var	v = s.value;
+
 	if (valuePos === 'top') {
 		v = s.options[0].value;
 	} else
@@ -3843,6 +3853,7 @@ var	v = s.value;
 			break;
 		}
 	}
+
 	return selectValue(s, v);
 }
 
