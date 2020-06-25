@@ -305,14 +305,17 @@ img.larger {
 }
 .project-options label {
 	display: block;
-	width: 50px;
+	min-width: 40px;
 	height: 20px;
 }
 .project-options label :not(input) {
 	display: block;
 	height: 100%;
-	padding: 0 0.5em;
 	text-align: center;
+}
+.project-options label :not(input):not(:empty) {
+	min-width: 50px;
+	padding: 0 0.5em;
 }
 .project-options .batch-all::before {		content: "\2E2C";}
 .project-options .batch-all {			background-color: #eda;}
@@ -330,8 +333,10 @@ img.larger {
 .project-options .layout-newline {		background-color: #cea;}
 .project-options .layout-newline:hover {	background-color: #dfc;}
 
+.project-options label input:disabled ~ :not(input):hover,
 .project-options label input:disabled ~ :not(input) {
 	background-color: gray;
+	cursor: not-allowed;
 }
 .project-options label input:checked ~ .batch-all,
 .project-options label input:checked ~ .layout-inline,
