@@ -12,6 +12,7 @@
 //* TODO: <select multiple> <optgroup> <option>?</option> </optgroup> </select>.
 
 //* rendering:
+//* TODO: set zero-alpha pixels to average of all non-zero-alpha of 8 surrounding rgb values (in asm?).
 //* TODO: save batch to a single collage/tileset image, optionally arrange and align images.
 //* TODO: autocrop options - not batchable (?), project defines default selection and extra options (specific color, etc.).
 //* TODO: fix invalid clipping-passthrough interactions (ignore clipping if base layer is in passthrough mode, etc).
@@ -1231,7 +1232,7 @@ function readFilePromiseFromURL(url, responseType) {
 	);
 }
 
-function dataToBlob(data) {
+function dataToBlob(data, trackList) {
 	if (URL_API && URL_API.createObjectURL) {
 	var	type = TYPE_TEXT;
 		if (data.slice(0, k = DATA_PREFIX.length) == DATA_PREFIX) {
@@ -1255,6 +1256,17 @@ function dataToBlob(data) {
 		;
 
 		if (url) {
+			if (
+				trackList
+			&&	typeof trackList === 'object'
+			) {
+				if (!trackList.push) {
+					trackList = trackList.blobTrackList || (trackList.blobTrackList = []);
+				}
+
+				trackList.push(url);
+			}
+
 			return {
 				size: size
 			,	type: type
@@ -1897,7 +1909,7 @@ function isLayerSkipped(layer) {
 	);
 }
 
-function getImgOptimized(img) {
+function getImgOptimized(img, project) {
 	return img || new Promise(
 		(resolve, reject) => {
 
@@ -1907,7 +1919,7 @@ function getImgOptimized(img) {
 			var	oldSrc = img.src
 			,	newSrc = canvas.toDataURL()
 			,	isOldBetter = (newSrc.length >= oldSrc.length)
-			,	blob = dataToBlob(isOldBetter ? oldSrc : newSrc)
+			,	blob = dataToBlob(isOldBetter ? oldSrc : newSrc, project)
 				;
 
 				if (blob) newSrc = blob.url; else
@@ -2266,8 +2278,8 @@ async function getProjectViewMenu(project) {
 					l_a.length > 0
 				&&	(layer = l_a.pop())
 				&&	(result = !isStopRequestedAnywhere(project))
-				&&	(result = await getLayerImgLoadPromise(layer))
-				&&	(result = await getLayerMaskLoadPromise(layer))
+				&&	(result = await getLayerImgLoadPromise(layer, project))
+				&&	(result = await getLayerMaskLoadPromise(layer, project))
 				);
 
 			var	tookTime = +new Date - startTime;
@@ -2650,7 +2662,7 @@ async function getProjectViewMenu(project) {
 		return options;
 	}
 
-	function getLayerImgLoadPromise(layer) {
+	function getLayerImgLoadPromise(layer, project) {
 		return new Promise(
 			(resolve, reject) => {
 				if (layer.layers) {
@@ -2717,7 +2729,7 @@ async function getProjectViewMenu(project) {
 								layer.img = colorCode;
 							}
 						} else {
-						var	i = layer.img = await getImgOptimized(img);
+						var	i = layer.img = await getImgOptimized(img, project);
 							i.top  = layer.top;
 							i.left = layer.left;
 						}
@@ -2749,7 +2761,7 @@ async function getProjectViewMenu(project) {
 		);
 	}
 
-	function getLayerMaskLoadPromise(layer) {
+	function getLayerMaskLoadPromise(layer, project) {
 		return new Promise(
 			(resolve, reject) => {
 				if (
@@ -2761,7 +2773,7 @@ async function getProjectViewMenu(project) {
 				,	h = mask.height
 				,	canvas = getCanvasFromByteArray(maskData, w,h)
 				,	data = canvas.toDataURL()
-				,	blob = dataToBlob(data)
+				,	blob = dataToBlob(data, project)
 				,	img = layer.mask = cre('img')
 					;
 
@@ -5486,15 +5498,18 @@ var	values    = render.values    || (render.values    = getUpdatedMenuValues(pro
 	return render;
 }
 
-function getImgElementPromise(canvas, fileName, w,h, callback) {
+function getImgElementPromise(canvas, fileName, w,h, callback, project) {
 	if (!canvas) return;
 
 	return new Promise(
 		(resolve, reject) => {
 		var	data = canvas.toDataURL()
-		,	blob = dataToBlob(data)
+		,	blob = dataToBlob(data, project)
 		,	img = cre('img')
 			;
+
+			w = orz(w || (project ? project.width : 0));
+			h = orz(h || (project ? project.height : 0));
 
 			if (w > 0) img.width = w;
 			if (h > 0) img.height = h;
@@ -5516,8 +5531,7 @@ async function getOrCreateRenderedImg(project, render) {
 		return getImgElementPromise(
 			canvas
 		,	fileName + '.png'
-		,	w || project.width
-		,	h || project.height
+		,	w,h || project.height
 		,	(img) => {
 			var	ms = canvas.renderingTime;
 
@@ -5533,6 +5547,7 @@ async function getOrCreateRenderedImg(project, render) {
 
 				prerenders[fileName] = img;
 			}
+		,	project
 		);
 	}
 
@@ -5829,6 +5844,7 @@ var	startTime = +new Date
 
 						img.title = img.alt;
 					}
+				,	project
 				);
 
 				if (flags.showOnPage) getEmptyRenderContainer(project).appendChild(img);
@@ -6426,7 +6442,9 @@ function selectProject(e) {
 
 function closeProject(e) {
 	if (e = getProjectButton(e)) {
-	var	c = e.className || '';
+	var	c = e.className || ''
+	,	project = e.project
+		;
 
 		if (regClassShow.test(c)) {
 			selectProject(
@@ -6440,13 +6458,22 @@ function closeProject(e) {
 
 			e.isStopRequested = true;
 
-			if (e.project) {
-				e.project.isStopRequested = true;
+			if (project) {
+				project.isStopRequested = true;
 			}
 		}
 
 		if (regClassLoaded.test(c)) {
 			removeProjectView(e.id) && del(e);
+		}
+
+		if (
+			project
+		&&	project.blobTrackList
+		) {
+			for (var blob of project.blobTrackList) if (blob) {
+				URL_API.revokeObjectURL(blob.url || blob);
+			}
 		}
 	}
 }
@@ -6608,7 +6635,7 @@ var	tabsCountMax = 0
 							+	'</div>'
 							)
 						,	filePath = arrayFilteredJoin([exampleRootDir, v.subdir, fileName], '/')
-						,	fileURL = filePath + '?t=' + file.modtime.replace(/\W+/g, '_')
+						,	fileURL = filePath + '?version=' + file.modtime.replace(/\W+/g, '_')
 						,	nameAttr = encodeTagAttr(fileName)
 						,	pathAttr = encodeTagAttr(fileURL)
 						,	dict = la.menu.examples.buttons
