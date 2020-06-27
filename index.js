@@ -13,7 +13,6 @@
 
 //* rendering:
 //* TODO: set zero-alpha pixels to average of all non-zero-alpha of 8 surrounding rgb values (in asm?).
-//* TODO: save batch to a single collage/tileset image, optionally arrange and align images.
 //* TODO: autocrop options - not batchable (?), project defines default selection and extra options (specific color, etc.).
 //* TODO: fix invalid clipping-passthrough interactions (ignore clipping if base layer is in passthrough mode, etc).
 //* TODO: fix hiding of clipping group with skipped/invisible/empty base layer.
@@ -60,7 +59,7 @@ var	regLayerNameToSkip		= /^(skip)$/i
 	,	'any':		/^(\?|any|some)$/i
 
 	,	'copypaste':	/^(copy|paste)(?:\W(.*))?$/i
-	,	'color_code':	/^(?:rgba?\W*(\w.+)|(?:hex\W*|#)(\w+))$/i
+	,	'color_code':	/^(?:rgba?\W*(\w.+)|(?:hex\W*|#)(\w+(\W+\w+)*))$/i
 
 	,	'colors':	/^(colou?r)s$/i
 	,	'parts':	/^(option|part|type)s$/i
@@ -116,12 +115,16 @@ examples of 'copypaste':
 
 examples of 'color_code':
 
-	[#1]
-	[#123]
-	[#1234]
-	[#112233]
-	[#11223344]
+	[#1]		( = hex-11-11-11    = rgb-17-17-17)
+	[#12]		( = hex-12-12-12    = rgb-18-18-18)
+	[#123]		( = hex-11-22-33    = rgb-17-34-51)
+	[#1234]		( = hex-11-22-33-44 = rgba-17-34-51-68)
+	[#12345]	( = hex-12-34-5     = rgb-18-52-5)
+	[#123456]	( = hex-12-34-56    = rgb-18-52-86)
+	[#1234567]	( = hex-12-34-56-7  = rgba-18-52-86-7)
+	[#12345678]	( = hex-12-34-56-78 = rgba-18-52-86-120)
 	[hex-1F2F3F4F]
+	[hex-1F-2F-3F-4F]
 
 	[rgb-255-123-0]
 	[rgba-10-20-30-40]
@@ -195,7 +198,7 @@ examples of 'separate':
 
 	[separate]	(layers in the top-most non-single-layer folder will be rendered into series of separate images)
 
-	Note: this option works globally (like zoom), not on the layer where it's written.
+	Note: this option works globally (like zoom), not on the marked layer.
 
 examples of 'autocrop':
 
@@ -225,12 +228,13 @@ examples of 'collage':
 examples of 'layout':
 
 	[rows]
-	[newline]	(TODO: separate row of images in a batch for each value of options associated with marked layer)
+	[newline]	(separate row of images in a batch/collage for each value in marked option list)
 
 	[columns]
-	[inline]	(TODO: separate row of images in a batch for each value of options not associated with marked layer)
+	[inline]	(keep images in one row while all option lists marked with 'newline' keep their values)
 
-	Note: this option works globally.
+	Note: first found explicit setting makes the inverse to be global default.
+	Note: if none found, default = all inline.
 
 examples of 'multi_select':
 
@@ -245,20 +249,22 @@ examples of 'multi_select':
 
 examples of 'preselect':
 
-	[preselect]	(TODO: preselect this option initially)
-	[initial]
+	[preselect]
+	[initial]	(preselect marked option initially)
+
 	[last]		(preselect last option in the list; may be empty value, depending on 'multi_select' param)
 
 	Note: default = preselect first option in the list.
 
 examples of 'batch':
 
-	[batch]		(in batch export - iterate the whole option list)
-	[no-batch]	(in batch export - use only the single selected option)
-	[single]
+	[batch]		(in batch/collage operations - iterate the whole option list)
 
-	Note: first found explicit setting makes the other to be default.
-	Note: if all omitted, default = initialize all to batch.
+	[no-batch]
+	[single]	(in batch/collage operations - use only the single selected option)
+
+	Note: first found explicit setting makes the inverse to be global default.
+	Note: if none found, default = all batch.
 
 examples of 'no_prefix':
 
@@ -272,6 +278,7 @@ examples of 'no_prefix':
 ,	regHasDigit		= /\d/
 ,	regNaN			= /\D+/g
 ,	regNonWord		= /\W+/g
+,	regNonHex		= /[^0-9a-f]+/gi
 ,	regSpace		= /\s+/g
 ,	regCommaSpace		= /\,+s*/g
 ,	regSplitLayerNames	= /[\/,]+/g
@@ -608,16 +615,19 @@ var	j = v = ''+v
 			.join('')
 		);
 	}
+
 	if (v !== j) v = j;
 
-//* parse string into numbers:
+//* parse string into array of numbers, taking up to 2 chars from left at each step:
 
 var	a = [];
+
 	while (i = v.length) {
 	var	j = Math.min(2, i);
 		a.push(parseInt(v.substr(0, j), 16));
 		v = v.substr(j);
 	}
+
 	return a;
 }
 
@@ -3306,7 +3316,7 @@ var	checkVirtualPath = (
 				if (k === 'color_code') {
 					v = [0,0,0,255];
 
-//* RGB(A):
+//* split RGB(A):
 
 					if (m[1]) {
 						getNumbersArray(m[1], 4).forEach(
@@ -3314,7 +3324,17 @@ var	checkVirtualPath = (
 						);
 					} else
 
-//* hex:
+//* split hex:
+
+					if (m[3]) {
+						getNumbersArray(m[2], 4, regNonHex,
+							(v) => parseInt(v.substr(0, 2), 16)
+						).forEach(
+							(n,i) => (v[i] = n)
+						);
+					} else
+
+//* solid hex:
 
 					if (m[2]) {
 						hex2rgbArray(m[2]).forEach(
