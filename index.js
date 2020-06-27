@@ -5689,10 +5689,13 @@ var	startTime = +new Date
 ,	setsCount = 0
 ,	totalTime = 0
 ,	renderedImages = []
-,	batchContainer = (flags.showOnPage ? getEmptyRenderContainer(project) : null)
 ,	needWaitBetweenDL = (flags.saveToFile && !flags.asOneJoinedImage)
 ,	optionsForNewLines = getNewLineOptionLists(project)
+,	batchContainer, subContainer, img
 	;
+
+	if (flags.showOnPage) batchContainer = getEmptyRenderContainer(project); else
+	if (flags.asOneJoinedImage) batchContainer = cre('div');
 
 	logTime(
 		'"' + project.fileName + '"'
@@ -5712,18 +5715,29 @@ var	startTime = +new Date
 			}
 		);
 
+		if (batchContainer) {
+			subContainer = getNewLineSubcontainer(batchContainer, values, optionsForNewLines);
+		}
+
+		if (flags.showOnPage) {
+			await showImg(
+				project,
+				render,
+				subContainer
+			);
+		}
+
 		if (flags.asOneJoinedImage) {
 			if (img = await getRenderedImg(project, render)) {
 				renderedImages.push(img);
-			}
-		} else {
-			if (flags.showOnPage) await showImg(
-				project,
-				render,
-				getNewLineSubcontainer(batchContainer, values, optionsForNewLines)
-			);
 
-			if (flags.saveToFile) await saveImg(
+				if (!flags.showOnPage) {
+					subContainer.appendChild(img);
+				}
+			}
+		} else
+		if (flags.saveToFile) {
+			await saveImg(
 				project,
 				render,
 				getFileNameByValuesToSave(
@@ -5773,22 +5787,82 @@ var	startTime = +new Date
 	);
 
 	if (flags.asOneJoinedImage) {
-	var	startTime = +new Date
-	,	w = 0
-	,	h = 0
-	,	joinedBorder = Math.max(0, orz(getSelectedMenuValue(project, 'collage', 'border', JOINED_IMAGE_BORDER)))
-	,	joinedPadding = Math.max(0, orz(getSelectedMenuValue(project, 'collage', 'padding', JOINED_IMAGE_PADDING)))
-		;
 
-		for (var img of renderedImages) {
-			w += img.width + joinedPadding;
-			h = Math.max(h, img.height);
+		function getBatchCanvasSize(rootContainer) {
+		var	x = 0
+		,	y = 0
+		,	w = 0
+		,	h = 0
+		,	e = rootContainer.firstElementChild
+			;
+
+			while (e) {
+
+				//* image:
+
+				if (e.getAttribute('data-option-id') === null) {
+					e.batchOffsetX = x;
+					e.batchOffsetY = y;
+
+					w = Math.max(w, x + e.width);
+					h = Math.max(h, y + e.height);
+
+					x += e.width + joinedPadding;
+				} else {
+
+				//* subcontainer:
+
+				var	size = getBatchCanvasSize(e);
+
+					e.batchOffsetX = x = 0;
+					e.batchOffsetY = y = (h > 0 ? h + joinedPadding : 0);
+
+					w = Math.max(w, x + size.w);
+					h = Math.max(h, y + size.h);
+
+					y = h + joinedPadding;
+				}
+
+				e = e.nextElementSibling;
+			}
+
+			return {w:w, h:h};
 		}
 
+		function getBatchOffsetXY(e) {
+		var	x = 0
+		,	y = 0
+			;
+
+			while (e) {
+				x += orz(e.batchOffsetX);
+				y += orz(e.batchOffsetY);
+
+				if (
+					(e = e.parentNode)
+				&&	e.getAttribute('data-option-id') === null
+				) {
+					break;
+				}
+			}
+
+			return {
+				x: x + joinedBorder
+			,	y: y + joinedBorder
+			};
+		}
+
+	var	startTime = +new Date
+	,	joinedBorder = Math.max(0, orz(getSelectedMenuValue(project, 'collage', 'border', JOINED_IMAGE_BORDER)))
+	,	joinedPadding = Math.max(0, orz(getSelectedMenuValue(project, 'collage', 'padding', JOINED_IMAGE_PADDING)))
+	,	size = getBatchCanvasSize(batchContainer)
+	,	w = size.w
+	,	h = size.h
+		;
+
 		if (w > 0 && h > 0) {
-			w -= joinedPadding;
-			w += joinedBorder << 1;
-			h += joinedBorder << 1;
+			w += joinedBorder * 2;
+			h += joinedBorder * 2;
 		}
 
 		if (TESTING) console.log([
@@ -5800,8 +5874,6 @@ var	startTime = +new Date
 		if (w > 0 && h > 0) {
 		var	canvas = cre('canvas')
 		,	ctx = canvas.getContext('2d')
-		,	x = joinedBorder
-		,	y = joinedBorder
 			;
 
 			canvas.width = w;
@@ -5820,8 +5892,9 @@ var	startTime = +new Date
 				);
 			} else {
 				for (var img of renderedImages) {
-					ctx.drawImage(img, x,y);
-					x += img.width + joinedPadding;
+				var	pos = getBatchOffsetXY(img);
+
+					ctx.drawImage(img, pos.x, pos.y);
 				}
 
 			var	img = await getImgElementPromise(
