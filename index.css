@@ -364,6 +364,9 @@ img.larger {
 	overflow: hidden;
 	text-overflow: ellipsis;	/* <- requires max-width */
 }
+.project-options > table {
+	max-width: 300px;
+}
 .project-options {
 	width: 0;	/* <- take the least possible width without line-wrap */
 }

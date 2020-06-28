@@ -13,7 +13,6 @@
 
 //* rendering:
 //* TODO: set zero-alpha pixels to average of all non-zero-alpha of 8 surrounding rgb values (in asm?).
-//* TODO: autocrop options - not batchable (?), project defines default selection and extra options (specific color, etc.).
 //* TODO: fix invalid clipping-passthrough interactions (ignore clipping if base layer is in passthrough mode, etc).
 //* TODO: fix hiding of clipping group with skipped/invisible/empty base layer.
 //* TODO: fix blending mode of base layer in clipping group.
@@ -43,8 +42,10 @@ var	regLayerNameToSkip		= /^(skip)$/i
 	+		'(.*?)'				//* <- [4] remainder for next step
 	+	'$'
 	)
-,	regLayerNameParamSplit		= /[\s,_]+/g
-,	regLayerNameParamTrim		= getTrimReg('\\s,_')
+,	regLayerNameParamSplit	= /[\s,_]+/g
+,	regLayerNameParamTrim	= getTrimReg('\\s,_')
+,	regColorCode		= /^(?:rgba?\W*(\w.+)|(?:hex\W*|#)(\w+(\W+\w+)*))$/i
+,	regCropArea		= /^x=?(\d+)\W*y=?(\d+)\W*w=?(\d+)\W*h=?(\d+)$/i
 
 //* examples of comments: "... (1) ... (copy 2) (etc)"
 //* examples of params: "... [param] ... [param,param param_param]"
@@ -59,7 +60,7 @@ var	regLayerNameToSkip		= /^(skip)$/i
 	,	'any':		/^(\?|any|some)$/i
 
 	,	'copypaste':	/^(copy|paste)(?:\W(.*))?$/i
-	,	'color_code':	/^(?:rgba?\W*(\w.+)|(?:hex\W*|#)(\w+(\W+\w+)*))$/i
+	,	'color_code':	regColorCode
 
 	,	'colors':	/^(colou?r)s$/i
 	,	'parts':	/^(option|part|type)s$/i
@@ -205,24 +206,25 @@ examples of 'autocrop':
 	[autocrop]			(TODO: remove same-fill bar areas around a copy of rendered image)
 	[autocrop=rgb-255-123-0]	(TODO: remove border areas colored as given value; see 'color_code' examples for syntax)
 	[autocrop=top-left]		(TODO: remove border areas colored same as pixel in given corner)
-	[autocrop=top-left/top-right/bottom-left/bottom-right/transparent]
+	[autocrop=top-left/top-right/bottom-left/bottom-right/transparent/all/etc]
 
 	Note: this option works globally.
-	Note: default = transparent (pixels with zero alpha value).
+	Note: all given variants are added as options.
+	Note: default = none (pixels with zero alpha value).
 
 examples of 'collage':
 
-	[collage=padding-1px]		(TODO: add 1px transparent padding between joined images)
-	[collage=border-2px]		(TODO: add 2px transparent padding around the whole collage)
+	[collage=border-1px]		(TODO: add 1px transparent padding around the whole collage)
+	[collage=padding-2px]		(TODO: add 2px transparent padding between joined images)
 	[collage=3px/rgb-255-123-0]	(TODO: add 3px colored padding around and between; see 'color_code' examples for syntax)
 	[collage=top-left]		(TODO: align images in a row to top, align rows to left side)
 	[collage=top/bottom]		(TODO: horizontally-centered rows)
 	[collage=left/right]		(TODO: vertically-centered rows)
-	[collage=top-left/top-right/bottom-left/bottom-right/transparent]
+	[collage=top-left/top-right/bottom-left/bottom-right/transparent/all/etc]
 
 	Note: this option works globally.
+	Note: all given variants are added as options.
 	Note: default = top-left alignment, transparent 1px border + 2px padding (for neighbour texture edge interpolation).
-	Note: if multiple variants are given, all are added as options.
 	Note: alignment has no effect without autocrop, because all images in a project will render with the same canvas size.
 
 examples of 'layout':
@@ -340,6 +342,8 @@ examples of 'no_prefix':
 ,	DATA_PREFIX = 'data:'
 ,	TYPE_TEXT = 'text/plain'
 ,	TOS = ['object', 'string']
+,	ALL_KEYWORDS = ['all', 'etc']
+,	AUTOCROP_KEYWORDS = ['transparent', 'topleft', 'topright', 'bottomleft', 'bottomright']
 ,	VIEW_SIDES = ['front', 'back']
 ,	NAME_PARTS_PERCENTAGES = ['zoom', 'opacities']
 ,	NAME_PARTS_FOLDERS = ['parts', 'colors']
@@ -476,7 +480,7 @@ var	exampleRootDir = ''
 					'inflate.js',
 					'deflate.js',
 				]
-			) : []).concat()
+			) : [])
 		},
 
 		'ora.js': {
@@ -601,7 +605,7 @@ function hex2rgbArray(v) {
 
 //* extend shortcut notation:
 
-var	j = v = ''+v
+var	j = v = (''+v).replace(regNonHex, '')
 ,	i = v.length
 	;
 
@@ -618,17 +622,55 @@ var	j = v = ''+v
 
 	if (v !== j) v = j;
 
-//* parse string into array of numbers, taking up to 2 chars from left at each step:
+//* parse string into array of up to 4 numbers, taking up to 2 chars from left at each step:
 
-var	a = [];
+var	rgba = [0,0,0,255];
 
-	while (i = v.length) {
-	var	j = Math.min(2, i);
-		a.push(parseInt(v.substr(0, j), 16));
+	for (var i = 0; i < 4 && v.length > 0; i++) {
+	var	j = Math.min(2, v.length);
+		rgba[i] = parseInt(v.substr(0, j), 16);
 		v = v.substr(j);
 	}
 
-	return a;
+	return rgba;
+}
+
+function getRGBAFromColorCode(m) {
+	if (m && m.match) {
+		m = m.match(regColorCode);
+	}
+
+	if (m) {
+	var	rgba = [0,0,0,255];
+
+//* split RGB(A):
+
+		if (m[1]) {
+			getNumbersArray(m[1], 4).forEach(
+				(v,i) => (rgba[i] = v)
+			);
+		} else
+
+//* split hex:
+
+		if (m[3]) {
+			getNumbersArray(m[2], 4, regNonHex,
+				(v) => parseInt(v.substr(0, 2), 16)
+			).forEach(
+				(v,i) => (rgba[i] = v)
+			);
+		} else
+
+//* solid hex:
+
+		if (m[2]) {
+			hex2rgbArray(m[2]).forEach(
+				(v,i) => (rgba[i] = v)
+			);
+		}
+
+		return rgba;
+	}
 }
 
 function getColorTextFromArray(img) {
@@ -642,6 +684,10 @@ function getColorTextFromArray(img) {
 		)
 		: img
 	);
+}
+
+function getPatchedObject(obj, jsonReplacerFunc) {
+	return JSON.parse(JSON.stringify(obj, jsonReplacerFunc || null));
 }
 
 function getPropByNameChain() {
@@ -1064,17 +1110,17 @@ function leftPad(n, len, pad) {
 	return n;
 }
 
-function getNumbersArray(t,n,s,f) {
+function getNumbersArray(text, maxCount, splitBy, transformFunction) {
 	return (
-		t
-		.split(s || regNaN, orz(n) || -1)
-		.map(f || orz)
+		text
+		.split(splitBy || regNaN, orz(maxCount) || -1)
+		.map(transformFunction || orz)
 	);
 }
 
-function getUniqueNumbersArray(t) {
+function getUniqueNumbersArray(text) {
 	return (
-		t
+		text
 		.split(regNaN)
 		.map(orz)
 		.filter(arrayFilterUniqueValues)
@@ -1291,9 +1337,10 @@ var	type = TYPE_TEXT
 ,	data = (
 		typeof data === 'object'
 		? JSON.stringify(
-			data,
-			jsonReplacerFunc || null
-			, '\t')
+			data
+		,	jsonReplacerFunc || null
+		,	'\t'
+		)
 		: ''+data
 	);
 
@@ -1555,14 +1602,26 @@ function replaceJSONpartsFromTree(key, value) {
 	return value;
 }*/
 
-function replaceJSONpartsFromNameToCache(key, value) {
+function replaceJSONpartsToCrop(key, value) {
+	if (key === 'autocrop') {
+		return;
+	}
+
+	return value;
+}
+
+function replaceJSONpartsToRef(key, value) {
+	if (key === 'autocrop') {
+		return;
+	}
+
 	if (
 		key === 'zoom'
 	&&	value.substr
 	) {
 	var	z = orz(value);
 
-		if (z <= 0 || z == 100) return;
+		if (z <= 0 || z === 100) return;
 
 	var	x = 100;
 
@@ -1572,7 +1631,7 @@ function replaceJSONpartsFromNameToCache(key, value) {
 			x = d;
 		}
 
-		if (x <= 0 || x == 100) return;
+		if (x <= 0 || x === 100) return;
 
 		return ''+x+'%';
 	}
@@ -1765,24 +1824,227 @@ var	canvas = cre('canvas')
 	}
 }
 
-function getFirstPixelImageData(img) {
-var	canvas = cre('canvas')
-,	ctx = canvas.getContext('2d')
-,	w = canvas.width  = 1
-,	h = canvas.height = 1
-	;
+function getImageData(img, x,y, w,h) {
+	if (isCanvasElement(img)) {
+	var	canvas = img
+	,	ctx = canvas.getContext('2d')
+		;
 
-	ctx.drawImage(img, 0,0);
+		x = orz(x);
+		y = orz(y);
+		w = orz(w) || (canvas.width  - x);
+		h = orz(h) || (canvas.height - y);
+	} else
+	if (isImgElement(img)) {
+	var	canvas = cre('canvas')
+	,	ctx = canvas.getContext('2d')
+		;
 
-	return ctx.getImageData(0,0, w,h);
+		canvas.width  = w = orz(w || img.width)  - orz(x);
+		canvas.height = h = orz(h || img.height) - orz(y);
+		x = 0;
+		y = 0;
+
+		ctx.drawImage(img, x,y);
+	}
+
+	if (ctx) {
+		return ctx.getImageData(x,y, w,h);
+	}
 }
 
 function getFirstPixelRGBA(img) {
-	return (
-		isImgElement(img)
-		? getFirstPixelImageData(img).data.slice(0,4)
-		: (img.slice ? img.slice(0,4) : null)
-	);
+	if (isImgElement(img)) {
+		img = getImageData(img, 0,0, 1,1).data;
+	}
+
+	if (img && img.slice) {
+		return img.slice(0,4);
+	}
+}
+
+function getAutoCropArea(img, bgCheck) {
+	if (!(img = getImageData(img))) {
+		return;
+	}
+
+var	data = img.data
+,	totalBytes = data.length
+,	w = img.width
+,	h = img.height
+,	horizontalBytes = w << 2
+,	bgRGBA, bgPixelIndex, i,j,x,y
+,	foundTop, foundLeft, foundBottom, foundRight
+	;
+
+	if (
+		bgCheck
+	&&	bgCheck.length
+	&&	bgCheck !== 'transparent'
+	) {
+		if (bgCheck === 'topleft') bgPixelIndex = 0; else
+		if (bgCheck === 'topright') bgPixelIndex = w - 1; else
+		if (bgCheck === 'bottomleft') bgPixelIndex = w*(h - 1); else
+		if (bgCheck === 'bottomright') bgPixelIndex = (w*h) - 1;
+
+		if (typeof bgPixelIndex !== 'undefined') {
+		var	bgByteIndex = bgPixelIndex << 2;
+			bgRGBA = data.slice(bgByteIndex, bgByteIndex + 4);
+		} else {
+			if (bgCheck.match) {
+				bgCheck = getRGBAFromColorCode(bgCheck);
+			}
+			if (bgCheck.concat) {
+				i = bgCheck.length;
+				bgRGBA = (
+					i >= 4
+					? bgCheck.slice(0,4)
+					: bgCheck.concat([0,0,0,255].slice(i))
+				);
+			}
+		}
+	}
+
+	bgRGBA = (bgRGBA ? Array.from(bgRGBA) : [0,0,0,0]);
+
+//* find fully transparent areas:
+
+	if (bgRGBA[3] === 0) {
+
+	//* find top:
+
+		for (i = 3; i < totalBytes; i += 4) {
+			if (data[i]) {
+				foundTop = Math.floor(i / horizontalBytes);
+				break;
+			}
+		}
+
+	//* found no content:
+
+		if (typeof foundTop === 'undefined') {
+			return;
+		}
+
+	//* find bottom:
+
+		for (i = totalBytes - 1; i >= 0; i -= 4) {
+			if (data[i]) {
+				foundBottom = Math.floor(i / horizontalBytes);
+				break;
+			}
+		}
+
+	//* reduce field of search:
+
+	var	foundTopIndex = (foundTop * horizontalBytes) + 3
+	,	foundBottomIndex = (foundBottom * horizontalBytes) + 3
+		;
+
+	//* find left:
+
+		loop_x:
+		for (x = 0; x < w; ++x)
+		for (i = (x << 2) + foundTopIndex; i <= foundBottomIndex; i += horizontalBytes) {
+			if (data[i]) {
+				foundLeft = x;
+				break loop_x;
+			}
+		}
+
+	//* find right:
+
+		loop_x:
+		for (x = w-1; x >= 0; --x)
+		for (i = (x << 2) + foundTopIndex; i <= foundBottomIndex; i += horizontalBytes) {
+			if (data[i]) {
+				foundRight = x;
+				break loop_x;
+			}
+		}
+	} else {
+
+//* find same RGBA filled areas:
+
+	//* find bottom:
+
+		i = totalBytes;
+
+		while (i--) {
+			if (data[i] !== bgRGBA[i & 3]) {
+				foundBottom = Math.floor(i / horizontalBytes);
+				break;
+			}
+		}
+
+	//* found no content:
+
+		if (typeof foundBottom === 'undefined') {
+			return;
+		}
+
+	//* find top:
+
+		for (i = 0; i < totalBytes; i++) {
+			if (data[i] !== bgRGBA[i & 3]) {
+				foundTop = Math.floor(i / horizontalBytes);
+				break;
+			}
+		}
+
+	//* reduce field of search:
+
+	var	foundTopIndex = (foundTop * horizontalBytes)
+	,	foundBottomIndex = (foundBottom * horizontalBytes)
+		;
+
+	//* find left:
+
+		loop_x:
+		for (x = 0; x < w; ++x) {
+		for (i = (x << 2) + foundTopIndex; i <= foundBottomIndex; i += horizontalBytes) {
+			if (
+				data[i  ] !== bgRGBA[0]
+			||	data[i|1] !== bgRGBA[1]
+			||	data[i|2] !== bgRGBA[2]
+			||	data[i|3] !== bgRGBA[3]
+			) {
+				foundLeft = x;
+				break loop_x;
+			}
+		}
+
+	//* find right:
+
+		loop_x:
+		for (x = w-1; x >= 0; --x) {
+		for (i = (x << 2) + foundTopIndex; i <= foundBottomIndex; i += horizontalBytes) {
+			if (
+				data[i  ] !== bgRGBA[0]
+			||	data[i|1] !== bgRGBA[1]
+			||	data[i|2] !== bgRGBA[2]
+			||	data[i|3] !== bgRGBA[3]
+			) {
+				foundRight = x;
+				break loop_x;
+			}
+		}
+	}
+
+var	foundWidth = foundRight - foundLeft + 1
+,	foundHeight = foundBottom - foundTop + 1
+	;
+
+	return {
+		'left': foundLeft
+	,	'right': foundRight
+
+	,	'top': foundTop
+	,	'bottom': foundBottom
+
+	,	'width': foundWidth
+	,	'height': foundHeight
+	};
 }
 
 function getProjectContainer(e) {return getTargetParentByClass(e, regClassLoadedFile);}
@@ -1967,7 +2229,7 @@ function getImgOptimized(img, project) {
 	);
 }
 
-async function getImgDataFromUrl(url) {
+async function getImageDataFromUrl(url) {
 var	arrayBuffer = await readFilePromiseFromURL(url)
 ,	img  = UPNG.decode(arrayBuffer)
 ,	rgba = UPNG.toRGBA8(img)[0]	//* <- UPNG.toRGBA8 returns array of frames, size: width * height * 4 bytes.
@@ -2430,20 +2692,22 @@ async function getProjectViewMenu(project) {
 			var	optionGroup = addOptionGroup(sectionName, listName || sectionName)
 			,	optionParams = optionGroup.params
 			,	optionItems = optionGroup.items
-			,	i,j,k = sectionName
+			,	i,j,k
 				;
 
 				checkSwitchParams(optionParams);
 
 				if (sectionName === 'separate') {
-					optionItems[k] = k;
+					optionItems[sectionName] = sectionName;
 				} else
 				if (sectionName === 'side') {
-					for (k in (j = la.project_option_side)) {
+				var	j = la.project_option_side;
+
+					for (var k in j) {
 						optionItems[k] = j[k];
 					}
 
-					j = VIEW_SIDES.indexOf(param);
+				var	j = VIEW_SIDES.indexOf(param);
 
 					if (j >= 0) {
 						params[sectionName] = (
@@ -2484,6 +2748,23 @@ async function getProjectViewMenu(project) {
 						});
 					}
 					layer.isMaskGenerated = true;
+				} else
+				if (sectionName === 'autocrop') {
+					param.forEach(v => {
+					var	k = v.replace(regNonWord, '').toLowerCase();
+
+						if (ALL_KEYWORDS.indexOf(k) >= 0) {
+							AUTOCROP_KEYWORDS.forEach(v => {
+								optionItems[v] = v;
+							});
+						} else
+						if (AUTOCROP_KEYWORDS.indexOf(k) >= 0) {
+							optionItems[k] = k;
+						} else
+						if (regColorCode.test(v)) {
+							optionItems[v] = v;
+						}
+					});
 				} else {
 					if ((i = 'format') in param) {
 						optionParams[i] = param[i];
@@ -2491,7 +2772,11 @@ async function getProjectViewMenu(project) {
 					if ((i = 'values') in param) {
 						param[i].forEach(v => {
 						var	k = v + '%';	//* <- pad bare numbers to avoid autosorting in <select>
-							if (sectionName == 'opacities') v = (orz(v) / 100);
+
+							if (sectionName == 'opacities') {
+								v = (orz(v) / 100);
+							}
+
 							optionItems[k] = v;
 						});
 					}
@@ -2538,9 +2823,11 @@ async function getProjectViewMenu(project) {
 				}
 			}
 
-			addOptionsFromParam('zoom');
-			addOptionsFromParam('side');
+			addOptionsFromParam('autocrop');
+			addOptionsFromParam('collage');
 			addOptionsFromParam('separate');
+			addOptionsFromParam('side');
+			addOptionsFromParam('zoom');
 
 			m.forEach(
 				listName => {
@@ -2915,8 +3202,18 @@ async function getProjectViewMenu(project) {
 					,	optionValue = optionName
 						;
 
+						if (sectionName === 'autocrop') {
+							optionLabel = la_autocrop[optionName] || (
+								la_autocrop.by_color
+							+	': '
+							+	optionName
+							+	' ('
+							+	getRGBAFromColorCode(optionName)
+							+	')'
+							);
+						} else
 						if (sectionName === 'side') {
-							optionLabel = view_sides[optionName] || optionName;
+							optionLabel = la_view_sides[optionName] || optionName;
 						}
 
 						addOption(s, optionLabel, optionValue);
@@ -2939,14 +3236,15 @@ async function getProjectViewMenu(project) {
 		}
 
 	var	options = project.options
-	,	view_sides = la.project_option_side
-	,	sectionBatches = la.project_option_sections
-	,	sections
+	,	la_autocrop = la.project_option_autocrop
+	,	la_view_sides = la.project_option_side
+	,	la_section_batches = la.project_option_sections
 	,	table = cre('table', container)
 	,	maxTabCount = 0
+	,	sections
 		;
 
-		for (var i in sectionBatches) if (sections = sectionBatches[i]) {
+		for (var i in la_section_batches) if (sections = la_section_batches[i]) {
 			if (sections.header) {
 			var	header = sections.header
 			,	sections = sections.select
@@ -3300,7 +3598,7 @@ var	checkVirtualPath = (
 						)
 					);
 
-					params[k] = v.concat(params[k] || []);
+					params[k] = (params[k] || []).concat(v);
 				} else
 				if (k === 'copypaste') {
 				var	j = m[1]
@@ -3314,35 +3612,7 @@ var	checkVirtualPath = (
 					}
 				} else
 				if (k === 'color_code') {
-					v = [0,0,0,255];
-
-//* split RGB(A):
-
-					if (m[1]) {
-						getNumbersArray(m[1], 4).forEach(
-							(n,i) => (v[i] = n)
-						);
-					} else
-
-//* split hex:
-
-					if (m[3]) {
-						getNumbersArray(m[2], 4, regNonHex,
-							(v) => parseInt(v.substr(0, 2), 16)
-						).forEach(
-							(n,i) => (v[i] = n)
-						);
-					} else
-
-//* solid hex:
-
-					if (m[2]) {
-						hex2rgbArray(m[2]).forEach(
-							(n,i) => (v[i] = n)
-						);
-					}
-
-					params[k] = v;
+					params[k] = getRGBAFromColorCode(m);
 				} else
 				if (k === 'multi_select') {
 					v = (
@@ -3365,6 +3635,22 @@ var	checkVirtualPath = (
 				} else
 				if (k === 'batch') {
 					params[param === k ? k : 'single'] = true;
+				} else
+				if (k === 'autocrop') {
+					v = (
+						m[2]
+					||	'transparent'
+					).split('/');
+
+					params[k] = (params[k] || []).concat(v);
+				} else
+				if (k === 'collage') {
+					v = (
+						m[2]
+					||	'top-left/transparent/border-1px/padding-2px'
+					).split('/');
+
+					params[k] = (params[k] || []).concat(v);
 				} else
 				if (k === 'layout') {
 					params[param === 'rows' || param === 'newline' ? 'newline' : 'inline'] = true;
@@ -4547,7 +4833,10 @@ var	canvas = cre('canvas')
 
 	canvas.getContext('2d').putImageData(img, 0,0);
 
-	while (i) d[i|3] = 255, i -= 4;
+	do {
+		i -= 4;
+		d[i|3] = 255;
+	} while (i);
 
 	ctx.putImageData(img, 0,0);
 
@@ -4785,6 +5074,9 @@ var	selectedValue = gt('select', project.container).find(
 }
 
 function getLayerPathVisibilityByValues(project, layer, values, listName) {
+	if (!layer.params) {
+		if (TESTING) console.log([project, layer, values, listName]);
+	}
 	if (layer.params.check_order === 'up') {
 		if (getLayerVisibilityChain(layer).find(
 			layer => !getLayerVisibilityByValues(project, layer, values, listName)
@@ -5031,8 +5323,8 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 
 			if (aliases = getPropByNameChain(params, 'copypaste', 'paste')) {
 				layers = (
-					[layer.img]
-					.concat(layers || [])
+					(layers || [])
+					.concat([layer.img])
 					.filter(arrayFilterNonEmptyValues)
 				);
 
@@ -5509,7 +5801,7 @@ async function getOrCreateRender(project, render) {
 	if (!render) render = {};
 
 var	values    = render.values    || (render.values    = getUpdatedMenuValues(project))
-,	refValues = render.refValues || (render.refValues = JSON.parse(JSON.stringify(values, replaceJSONpartsFromNameToCache)))
+,	refValues = render.refValues || (render.refValues = getPatchedObject(values, replaceJSONpartsToRef))
 ,	refName   = render.refName   || (render.refName   = getFileNameByValuesToSave(project, refValues))
 ,	fileName  = render.fileName  || (render.fileName  = getFileNameByValuesToSave(project, values))
 ,	img       = render.img       || (render.img       = await getOrCreateRenderedImg(project, render))
@@ -5551,21 +5843,24 @@ async function getOrCreateRenderedImg(project, render) {
 		return getImgElementPromise(
 			canvas
 		,	fileName + '.png'
-		,	w,h || project.height
+		,	w,h
 		,	(img) => {
 			var	ms = canvas.renderingTime;
 
-				if (typeof ms !== 'undefined') {
-					img.alt += (
-						' \r\n('
-					+	img.width + 'x' + img.height + ', '
-					+	la.hint.took_sec.render.replace('$t', ms / 1000) + ')'
-					);
-
-					img.title = img.alt;
-				}
-
+				img.alt += (
+					' \r\n('
+				+	img.width + 'x' + img.height
+				+	(
+						typeof ms !== 'undefined'
+						? ', ' + la.hint.took_sec.render.replace('$t', ms / 1000)
+						: ''
+					)
+				+	')'
+				);
+				img.title = img.alt;
 				prerenders[fileName] = img;
+
+				// clearCanvasBeforeGC(canvas);
 			}
 		,	project
 		);
@@ -5573,7 +5868,9 @@ async function getOrCreateRenderedImg(project, render) {
 
 	if (!render) render = await getOrCreateRender(project);
 
-	if (img = render.img) return img;
+	if (img = render.img) {
+		return img;
+	}
 
 var	prerenders = (project.renders || (project.renders = {}))
 ,	fileName   = render.fileName
@@ -5629,6 +5926,56 @@ var	img = prerenders[refName];
 		ctx.drawImage(img, 0,0, w,h);
 
 		img = await getAndCacheRenderedImgElementPromise(canvas, fileName, w,h);
+	}
+
+	if (
+		img
+	&&	(autocrop = getPropBySameNameChain(values, 'autocrop'))
+	&&	isNotEmptyString(autocrop)
+	) {
+	var	autocrop
+	,	crop = getAutoCropArea(img, autocrop)
+		;
+
+		if (crop) {
+		var	cropID = [
+				'x=' + crop.left
+			,	'y=' + crop.top
+			,	'w=' + crop.width
+			,	'h=' + crop.height
+			].join(',');
+		}
+
+		if (
+			crop
+		&&	crop.width > 0
+		&&	crop.height > 0
+		) {
+		var	cropValues = getPatchedObject(values, replaceJSONpartsToCrop);
+			cropValues.autocrop = {'autocrop': cropID};
+
+		var	cropName = getFileNameByValuesToSave(project, cropValues);
+
+			if (cropName in prerenders) {
+				img = prerenders[fileName] = prerenders[cropName];
+			} else
+			if (
+				crop.width < img.width
+			||	crop.height < img.height
+			) {
+			var	canvas = cre('canvas')
+			,	w = canvas.width  = crop.width
+			,	h = canvas.height = crop.height
+			,	ctx = canvas.getContext('2d')
+				;
+
+				ctx.drawImage(img, -crop.left, -crop.top);
+
+				prerenders[cropName] = img = await getAndCacheRenderedImgElementPromise(canvas, fileName, w,h);
+			} else {
+				prerenders[fileName] = prerenders[cropName] = img;
+			}
+		}
 	}
 
 	return img;
@@ -5726,6 +6073,7 @@ var	startTime = +new Date
 
 	for (var fileName in sets) {
 	var	startTime = +new Date
+	,	img = null
 	,	values = sets[fileName]
 	,	render = await getOrCreateRender(
 			project
@@ -5740,7 +6088,7 @@ var	startTime = +new Date
 		}
 
 		if (flags.showOnPage) {
-			await showImg(
+			img = await showImg(
 				project,
 				render,
 				subContainer
@@ -5748,7 +6096,10 @@ var	startTime = +new Date
 		}
 
 		if (flags.asOneJoinedImage) {
-			if (img = await getRenderedImg(project, render)) {
+			if (!img) {
+				img = await getRenderedImg(project, render);
+			}
+			if (img && renderedImages.indexOf(img) < 0) {
 				renderedImages.push(img);
 
 				if (!flags.showOnPage) {
@@ -5757,7 +6108,7 @@ var	startTime = +new Date
 			}
 		} else
 		if (flags.saveToFile) {
-			await saveImg(
+			img = await saveImg(
 				project,
 				render,
 				getFileNameByValuesToSave(
@@ -5885,12 +6236,6 @@ var	startTime = +new Date
 			h += joinedBorder * 2;
 		}
 
-		if (TESTING) console.log([
-			'images:', renderedImages,
-			'total width:', w,
-			'total height:', h,
-		]);
-
 		if (w > 0 && h > 0) {
 		var	canvas = cre('canvas')
 		,	ctx = canvas.getContext('2d')
@@ -5934,7 +6279,6 @@ var	startTime = +new Date
 								.replace('$n', renderedImages.length)
 							) + ')'
 						);
-
 						img.title = img.alt;
 					}
 				,	project
@@ -5994,7 +6338,7 @@ async function showImg(project, render, container) {
 
 	if (isSingleWIP) setProjectWIPstate(project, false);
 
-	return !!img;
+	return img;
 }
 
 async function saveImg(project, render, fileName) {
@@ -6002,7 +6346,8 @@ async function saveImg(project, render, fileName) {
 
 	try {
 		render = await getOrCreateRender(project, render);
-		saveDL(render.img.src, fileName || render.fileName, 'png');
+	var	img = render.img;
+		saveDL(img.src, fileName || render.fileName, 'png');
 	} catch (error) {
 		console.log(error);
 
@@ -6011,7 +6356,7 @@ async function saveImg(project, render, fileName) {
 
 	if (isSingleWIP) setProjectWIPstate(project, false);
 
-	return !!render;
+	return img;
 }
 
 async function getRenderedImg(project, render) {
