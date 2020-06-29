@@ -1911,12 +1911,11 @@ var	data = img.data
 
 	if (bgRGBA[3] === 0) {
 
-	//* find top:
-
+		find_top:
 		for (i = 3; i < totalBytes; i += 4) {
 			if (data[i]) {
 				foundTop = Math.floor(i / horizontalBytes);
-				break;
+				break find_top;
 			}
 		}
 
@@ -1926,12 +1925,13 @@ var	data = img.data
 			return;
 		}
 
-	//* find bottom:
+	//* found something:
 
+		find_bottom:
 		for (i = totalBytes - 1; i >= 0; i -= 4) {
 			if (data[i]) {
 				foundBottom = Math.floor(i / horizontalBytes);
-				break;
+				break find_bottom;
 			}
 		}
 
@@ -1941,39 +1941,34 @@ var	data = img.data
 	,	foundBottomIndex = (foundBottom * horizontalBytes) + 3
 		;
 
-	//* find left:
-
-		loop_x:
+		find_left:
 		for (x = 0; x < w; ++x)
 		for (i = (x << 2) + foundTopIndex; i <= foundBottomIndex; i += horizontalBytes) {
 			if (data[i]) {
 				foundLeft = x;
-				break loop_x;
+				break find_left;
 			}
 		}
 
-	//* find right:
-
-		loop_x:
+		find_right:
 		for (x = w-1; x >= 0; --x)
 		for (i = (x << 2) + foundTopIndex; i <= foundBottomIndex; i += horizontalBytes) {
 			if (data[i]) {
 				foundRight = x;
-				break loop_x;
+				break find_right;
 			}
 		}
 	} else {
 
 //* find same RGBA filled areas:
 
-	//* find bottom:
-
 		i = totalBytes;
 
+		find_bottom:
 		while (i--) {
 			if (data[i] !== bgRGBA[i & 3]) {
 				foundBottom = Math.floor(i / horizontalBytes);
-				break;
+				break find_bottom;
 			}
 		}
 
@@ -1983,12 +1978,13 @@ var	data = img.data
 			return;
 		}
 
-	//* find top:
+	//* found something:
 
+		find_top:
 		for (i = 0; i < totalBytes; i++) {
 			if (data[i] !== bgRGBA[i & 3]) {
 				foundTop = Math.floor(i / horizontalBytes);
-				break;
+				break find_top;
 			}
 		}
 
@@ -1998,10 +1994,8 @@ var	data = img.data
 	,	foundBottomIndex = (foundBottom * horizontalBytes)
 		;
 
-	//* find left:
-
-		loop_x:
-		for (x = 0; x < w; ++x) {
+		find_left:
+		for (x = 0; x < w; ++x)
 		for (i = (x << 2) + foundTopIndex; i <= foundBottomIndex; i += horizontalBytes) {
 			if (
 				data[i  ] !== bgRGBA[0]
@@ -2010,14 +2004,12 @@ var	data = img.data
 			||	data[i|3] !== bgRGBA[3]
 			) {
 				foundLeft = x;
-				break loop_x;
+				break find_left;
 			}
 		}
 
-	//* find right:
-
-		loop_x:
-		for (x = w-1; x >= 0; --x) {
+		find_right:
+		for (x = w-1; x >= 0; --x)
 		for (i = (x << 2) + foundTopIndex; i <= foundBottomIndex; i += horizontalBytes) {
 			if (
 				data[i  ] !== bgRGBA[0]
@@ -2026,7 +2018,7 @@ var	data = img.data
 			||	data[i|3] !== bgRGBA[3]
 			) {
 				foundRight = x;
-				break loop_x;
+				break find_right;
 			}
 		}
 	}
@@ -2765,15 +2757,16 @@ async function getProjectViewMenu(project) {
 							optionItems[v] = v;
 						}
 					});
-				} else {
-					if ((i = 'format') in param) {
-						optionParams[i] = param[i];
+				} else
+				if (sectionName === 'zoom' || sectionName === 'opacities') {
+					if (j = param.format) {
+						optionParams.format = j;
 					}
-					if ((i = 'values') in param) {
-						param[i].forEach(v => {
+					if (j = param.values) {
+						j.forEach(v => {
 						var	k = v + '%';	//* <- pad bare numbers to avoid autosorting in <select>
 
-							if (sectionName == 'opacities') {
+							if (sectionName === 'opacities') {
 								v = (orz(v) / 100);
 							}
 
