@@ -1602,7 +1602,7 @@ function replaceJSONpartsFromTree(key, value) {
 	return value;
 }*/
 
-function replaceJSONpartsToCrop(key, value) {
+function replaceJSONpartsForCropRef(key, value) {
 	if (key === 'autocrop') {
 		return;
 	}
@@ -1610,7 +1610,7 @@ function replaceJSONpartsToCrop(key, value) {
 	return value;
 }
 
-function replaceJSONpartsToRef(key, value) {
+function replaceJSONpartsForZoomRef(key, value) {
 	if (key === 'autocrop') {
 		return;
 	}
@@ -5794,7 +5794,16 @@ async function getOrCreateRender(project, render) {
 	if (!render) render = {};
 
 var	values    = render.values    || (render.values    = getUpdatedMenuValues(project))
-,	refValues = render.refValues || (render.refValues = getPatchedObject(values, replaceJSONpartsToRef))
+,	refValues = render.refValues || (
+		render.refValues = getPatchedObject(
+			values
+		,	(
+				isNotEmptyString(getPropBySameNameChain(values, 'autocrop'))
+				? replaceJSONpartsForCropRef
+				: replaceJSONpartsForZoomRef
+			)
+		)
+	)
 ,	refName   = render.refName   || (render.refName   = getFileNameByValuesToSave(project, refValues))
 ,	fileName  = render.fileName  || (render.fileName  = getFileNameByValuesToSave(project, values))
 ,	img       = render.img       || (render.img       = await getOrCreateRenderedImg(project, render))
@@ -5944,9 +5953,10 @@ var	img = prerenders[refName];
 		&&	crop.width > 0
 		&&	crop.height > 0
 		) {
-		var	cropValues = getPatchedObject(values, replaceJSONpartsToCrop);
-			cropValues.autocrop = {'autocrop': cropID};
+		var	cropValues = getPatchedObject(values, replaceJSONpartsForCropRef);
+		var	cropRefName = getFileNameByValuesToSave(project, cropValues);
 
+			cropValues.autocrop = {'autocrop': cropID};
 		var	cropName = getFileNameByValuesToSave(project, cropValues);
 
 			if (cropName in prerenders) {
@@ -5964,7 +5974,10 @@ var	img = prerenders[refName];
 
 				ctx.drawImage(img, -crop.left, -crop.top);
 
-				prerenders[cropName] = img = await getAndCacheRenderedImgElementPromise(canvas, fileName, w,h);
+				img = prerenders[cropName] = await getAndCacheRenderedImgElementPromise(canvas, fileName, w,h);
+			} else
+			if (cropRefName in prerenders) {
+				img = prerenders[fileName] = prerenders[cropName] = prerenders[cropRefName];
 			} else {
 				prerenders[fileName] = prerenders[cropName] = img;
 			}
