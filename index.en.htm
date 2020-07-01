@@ -215,7 +215,10 @@
 				}
 			},
 			'error': {
-				'canvas': 'HTML5 Canvas is not supported in your web browser program.',
+				'js_features': [
+					'HTML5 Canvas or some other required JS features are not supported in your web browser program.'
+				,	'Project rendering will not work, but you still can browse the links or download example files.'
+				],
 				'canvas_size': [
 					'Cannot create a canvas of required size.'
 				,	'Try selecting less images or splitting long rows.'
@@ -229,11 +232,12 @@
 				'options': 'Project without options.',
 				'unknown_button': 'Unknown button.',
 			},
+			'loading': 'Loading page...',
 		};
 	</script>
 	<script src="index.js"></script>
 </head>
-<body class="loading">
-	Loading page...
+<body>
+	This page requires modern JavaScript support to work (ECMAScript 2017 standard or newer).
 </body>
 </html>

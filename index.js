@@ -5,6 +5,8 @@
 //* TODO: whole config in JSON-format?
 
 //* menu:
+//* TODO: save as WebP? https://bugs.chromium.org/p/chromium/issues/detail?id=170565#c77 - toDataURL/toBlob quality 1.0 = lossless.
+//* TODO: add default/zero/non-specific collage options if none specified.
 //* TODO: zoom format in filenames: [x1, x1.00, x100%].
 //* TODO: progress/status panel + [stop operation] button.
 //* TODO: options menu: add/remove/copy/edit colors and outlines, or all list(s), maybe in textarea.
@@ -12,7 +14,7 @@
 //* TODO: <select multiple> <optgroup> <option>?</option> </optgroup> </select>.
 
 //* rendering:
-//* TODO: set zero-alpha pixels to average of all non-zero-alpha of 8 surrounding rgb values (in asm?).
+//* TODO: stop images moving to hidden container when save collage button was clicked.
 //* TODO: fix invalid clipping-passthrough interactions (ignore clipping if base layer is in passthrough mode, etc).
 //* TODO: fix hiding of clipping group with skipped/invisible/empty base layer.
 //* TODO: fix blending mode of base layer in clipping group.
@@ -20,7 +22,11 @@
 //* TODO: arithmetic emulation of all blending operations, not native to JS.
 //* TODO: arithmetic emulation of all operations in 16/32-bit until final result; to be optionally available as checkbox/selectbox.
 //* TODO: decode layer data (PSD/PNG/etc) manually without using canvas, to avoid premultiplied-alpha (PMA - in Firefox, not in Chrome) while rendering.
+//* TODO: set zero-alpha pixels to average of all non-zero-alpha of 8 surrounding rgb values (in asm?).
 //* TODO: for files without merged image data - render ignoring options, but respecting layer visibility properties. Or buttons to show embedded and/or rendered image regardless of options. Or add this as top-most option for any project, with or without options.
+//* TODO: use ImageBitmaps for speed?
+//* TODO: revoke collage blob urls when cleaning view container?
+//* TODO: revoke any image blob urls right after image element's loading, without ever tracking/listing them?
 
 //* other:
 //* TODO: keep all parameters single-word if possible.
@@ -28,9 +34,38 @@
 //* TODO: global job list for WIP cancelling instead of spaghetti-coded flag checks.
 //* TODO: split functionality into modules to reuse with drawpad, etc.
 
-//* Config *-------------------------------------------------------------------
+//* Config: defaults, safe to redefine in external config file *---------------
 
-var	regLayerNameToSkip		= /^(skip)$/i
+var	exampleRootDir = ''
+,	exampleProjectFiles = []
+
+,	DEFAULT_JOINED_IMAGE_BORDER = 1
+,	DEFAULT_JOINED_IMAGE_PADDING = 2
+,	DEFAULT_ALPHA_MASK_THRESHOLD = 16
+,	PREVIEW_SIZE = 64
+,	THUMBNAIL_SIZE = 16
+,	THUMBNAIL_ZOOM_STEP_MAX_FACTOR = 4	//* <- one-step scaling result is too blocky, stepping by factor of 2 is too blurry, 4 looks okay
+,	ZOOM_STEP_MAX_FACTOR = 2
+
+,	ADD_PAUSE_BEFORE_EACH_FOLDER	= true	//* <- when loading file and rendering
+,	ADD_PAUSE_BEFORE_EACH_LAYER	= false
+,	DOWNSCALE_BY_MAX_FACTOR_FIRST	= true
+,	EXAMPLE_NOTICE			= false
+,	FILE_NAME_ADD_PARAM_KEY		= true
+,	TAB_THUMBNAIL_ZOOM		= true
+,	TESTING				= false
+,	TESTING_RENDER			= false
+,	USE_ZLIB_ASM			= true
+,	VERIFY_PARAM_COLOR_VS_LAYER_CONTENT	= false
+,	ZERO_PERCENT_EQUALS_EMPTY		= false
+	;
+
+//* Config: internal, do not change *------------------------------------------
+
+const	configFilePath = 'config.js'
+
+// ,	regLayerNameToSkip		= /^(skip)$/i
+,	regLayerNameToSkip		= null
 ,	regLayerNameParamOrComment	= new RegExp(
 		'^'
 	+		'([^/\\[(]*)'			//* <- [1] layer identity names, e.g. "name1, name2"
@@ -66,13 +101,13 @@ var	regLayerNameToSkip		= /^(skip)$/i
 	,	'parts':	/^(option|part|type)s$/i
 
 	,	'paddings':	/^(outline|pad[ding]*)$/i
-	,	'radius':	/^(.*?\d.*)px(?:\W+(.*))?$/i
+	,	'radius':	/^(.*?\d.*)px(?:\W(.*))?$/i
 	,	'wireframe':	/^(?:wire\W*)?(frame|fill)$/i
 
 	,	'opacities':	/^(?:(?:opacit[yies]*)\W*)?(\d[\d\W]*)%(\d*)$/i
 	,	'zoom':		/^(?:(?:zoom|scale|x)\W*)(\d[\d\W]*)%(\d*)$/i
 
-	,	'side':		/^(front|back|reverse(?:\W+(h[orizontal]*|v[ertical]*))?)$/i
+	,	'side':		/^(front|back|reverse(?:\W(.*))?)$/i
 	,	'separate':	/^(separate|split)$/i
 
 	,	'autocrop':	/^(autocrop)(?:\W(.*))?$/i
@@ -84,7 +119,7 @@ var	regLayerNameToSkip		= /^(skip)$/i
 	,	'batch':	/^(batch|no-batch|single)?$/i
 
 	,	'no_prefix':	/^(no-prefix)$/i
-	}
+	};
 /*
 examples of layer folder names with parameter syntax:
 
@@ -274,7 +309,7 @@ examples of 'no_prefix':
 			(TODO: add prefix automatically only if option names collide?)
 */
 
-,	regLayerBlendModePass	= /^pass[-through]*$/i
+const	regLayerBlendModePass	= /^pass[-through]*$/i
 ,	regLayerBlendModeAlpha	= /^(source|destination)-(\w+)$/i
 ,	regLayerTypeSingleTrim	= /s+$/i
 ,	regHasDigit		= /\d/
@@ -314,14 +349,43 @@ examples of 'no_prefix':
 		layerNameEndOfFolder	: /^<\/Layer[\s_]group>$/i
 	,	layerTypeFolder		: /^(open|closed)[\s_]folder$/i
 	,	layerUnicodeName	: /^Unicode[\s_]layer[\s_]name$/i
-	}
+	};
 
-,	QUERY_SELECTOR = {
-		getElementsByClassName:	['.', ''],
-		getElementsByTagName:	['', ''],
-		getElementsByName:	['*[name="', '"]'],
-		getElementsByType:	['*[type="', '"]'],
-		getElementsById:	['*[id="', '"]'],
+const	LS = window.localStorage || localStorage
+,	URL = window.URL || window.webkitURL || URL
+
+,	CAN_CAST_TO_ARRAY = (typeof Array.from === 'function')
+,	CAN_EXPORT_BLOB = (typeof HTMLCanvasElement.prototype.toBlob === 'function')
+,	CAN_EXPORT_WEBP = isImageTypeExportSupported('image/webp')
+,	RUNNING_FROM_DISK = isURLFromDisk('/')
+
+,	SPLIT_SEC = 60
+,	MAX_OPACITY = 255
+,	MAX_BATCH_PRECOUNT = 1000
+
+,	FLAG_FLIP_HORIZONTAL = 1
+,	FLAG_FLIP_VERTICAL = 2
+
+,	BLOB_PREFIX = 'blob:'
+,	DATA_PREFIX = 'data:'
+,	TYPE_TEXT = 'text/plain'
+,	TOS = ['object', 'string']
+,	TIME_PARTS_3 = ['FullYear', 'Month', 'Date']
+,	TIME_PARTS_6 = ['FullYear', 'Month', 'Date', 'Hours', 'Minutes', 'Seconds']
+
+,	ALL_KEYWORDS = ['all', 'etc']
+,	AUTOCROP_KEYWORDS = ['transparent', 'topleft', 'topright', 'bottomleft', 'bottomright']
+,	COLLAGE_KEYWORDS = AUTOCROP_KEYWORDS.concat(['top', 'bottom', 'left', 'right', 'border', 'padding'])
+,	VIEW_SIDES = ['front', 'back']
+
+,	NAME_PARTS_PERCENTAGES = ['zoom', 'opacities']
+,	NAME_PARTS_FOLDERS = ['parts', 'colors']
+,	NAME_PARTS_ORDER = ['parts', 'colors', 'paddings', 'opacities', 'side', 'separate', 'zoom', 'autocrop']
+,	NAME_PARTS_SEPARATOR = ''
+
+,	SWITCH_NAMES_BY_TYPE = {
+		'batch': ['batch', 'single']
+	,	'layout': ['inline', 'newline']
 	}
 
 ,	FALSY_STRINGS = [
@@ -335,52 +399,13 @@ examples of 'no_prefix':
 	,	'undefined'
 	]
 
-,	RUNNING_FROM_DISK = (location.protocol.split(':', 1)[0].toLowerCase() === 'file')
-// ,	LS = window.localStorage || localStorage
-,	URL_API = window.URL || window.webkitURL
-,	BLOB_PREFIX = 'blob:'
-,	DATA_PREFIX = 'data:'
-,	TYPE_TEXT = 'text/plain'
-,	TOS = ['object', 'string']
-,	ALL_KEYWORDS = ['all', 'etc']
-,	AUTOCROP_KEYWORDS = ['transparent', 'topleft', 'topright', 'bottomleft', 'bottomright']
-,	VIEW_SIDES = ['front', 'back']
-,	NAME_PARTS_PERCENTAGES = ['zoom', 'opacities']
-,	NAME_PARTS_FOLDERS = ['parts', 'colors']
-,	NAME_PARTS_ORDER = ['parts', 'colors', 'paddings', 'opacities', 'side', 'separate', 'zoom', 'autocrop']
-,	NAME_PARTS_SEPARATOR = ''
-,	SWITCH_NAMES_BY_TYPE = {
-		'batch': ['batch', 'single']
-	,	'layout': ['inline', 'newline']
+,	QUERY_SELECTOR = {
+		getElementsByClassName:	['.', ''],
+		getElementsByTagName:	['', ''],
+		getElementsByName:	['*[name="', '"]'],
+		getElementsByType:	['*[type="', '"]'],
+		getElementsById:	['*[id="', '"]'],
 	}
-
-,	FLAG_FLIP_HORIZONTAL = 1
-,	FLAG_FLIP_VERTICAL = 2
-
-,	SPLIT_SEC = 60
-,	MAX_OPACITY = 255
-,	MAX_BATCH_PRECOUNT = 1000
-,	PADDING_ALPHA_THRESHOLD_DEFAULT = 16
-,	THUMBNAIL_SIZE = 16
-,	PREVIEW_SIZE = 64
-,	JOINED_IMAGE_BORDER = 1
-,	JOINED_IMAGE_PADDING = 2
-
-,	ADD_PAUSE_BEFORE_EACH_FOLDER	= true	//* <- when loading file and rendering
-,	ADD_PAUSE_BEFORE_EACH_LAYER	= false
-,	DOWNSCALE_BY_MAX_FACTOR_FIRST	= true
-,	EXAMPLE_NOTICE		= false
-,	FILE_NAME_ADD_PARAM_KEY	= true
-,	TAB_THUMBNAIL_ZOOM	= true
-,	TESTING			= false
-,	TESTING_RENDER		= false
-,	USE_ZLIB_ASM		= true
-,	VERIFY_PARAM_COLOR_VS_LAYER_CONTENT	= false
-,	ZERO_PERCENT_EQUALS_EMPTY		= false
-
-,	thumbnailPlaceholder
-,	isStopRequested
-,	isBatchWIP
 
 ,	BLEND_MODE_NORMAL = 'source-over'
 ,	BLEND_MODE_CLIP = 'source-atop'
@@ -433,11 +458,9 @@ examples of 'no_prefix':
 	,	'Lab'
 	];
 
-//* Config: loaders of project files *-----------------------------------------
+//* Config: internal, loaders of project files *-------------------------------
 
-var	exampleRootDir = ''
-,	exampleProjectFiles = []
-,	libRootDir = 'lib/'
+const	libRootDir = 'lib/'
 ,	libFormatsDir = libRootDir + 'formats/'
 
 //* source: https://github.com/ukyo/zlib-asm
@@ -559,23 +582,46 @@ var	exampleRootDir = ''
 				// loadPSDLIB,
 			]
 		},
-	]
-,	ora, zip, PSD, PSD_JS, PSDLIB	//* <- external variable names, do not change, except "PSD_JS"
+	];
+
+//* To be figured on the go *--------------------------------------------------
+
+var	ora, zip, PSD, PSD_JS, PSDLIB	//* <- external variable names, do not change, except "PSD_JS"
+
 ,	CompositionModule
 ,	CompositionFuncList
+
+,	thumbnailPlaceholder
+,	isStopRequested
+,	isBatchWIP
 	;
 
 //* Common utility functions *-------------------------------------------------
 
+//* type-checking, e.g. "isString(value)":
+//* https://stackoverflow.com/a/17772086
+[
+	'Function',
+	'String',
+	'HTMLCanvasElement',
+	'HTMLImageElement',
+].forEach(
+	(typeName) => {
+		window['is' + typeName.replace('HTML', '')] = function(obj) {
+			return (toString.call(obj).slice(8, -1) === typeName);
+		};
+	}
+);
+
 function isNotEmptyString(v) {
 	return (
-		TOS.indexOf(typeof v) >= 0
+		isString(v)
 	&&	v.length > 0
 	);
 }
 
 function isURLFromDisk(url) {
-var	match = url.match(/^(\w+):\/+/)
+var	match = url.match(/^(\w+):(\/\/|$)/)
 ,	protocol = (
 		(
 			match
@@ -587,6 +633,19 @@ var	match = url.match(/^(\w+):\/+/)
 	);
 
 	return (protocol === 'file');
+}
+
+//* https://stackoverflow.com/a/55896125
+function isImageTypeExportSupported(type) {
+var	canvas = cre('canvas');
+	canvas.width = 1;
+	canvas.height = 1;
+
+	return (
+		canvas
+		.toDataURL(type)
+		.indexOf(type) > -1
+	);
 }
 
 function pause(msec) {
@@ -605,7 +664,7 @@ function hex2rgbArray(v) {
 
 //* extend shortcut notation:
 
-var	j = v = (''+v).replace(regNonHex, '')
+var	j = v = String(v).replace(regNonHex, '')
 ,	i = v.length
 	;
 
@@ -615,7 +674,7 @@ var	j = v = (''+v).replace(regNonHex, '')
 		j = (
 			v
 			.split('')
-			.map(v => repeat(v, 2))
+			.map((v) => repeat(v, 2))
 			.join('')
 		);
 	}
@@ -626,7 +685,7 @@ var	j = v = (''+v).replace(regNonHex, '')
 
 var	rgba = [0,0,0,255];
 
-	for (var i = 0; i < 4 && v.length > 0; i++) {
+	for (let i = 0; i < 4 && v.length > 0; i++) {
 	var	j = Math.min(2, v.length);
 		rgba[i] = parseInt(v.substr(0, j), 16);
 		v = v.substr(j);
@@ -673,17 +732,28 @@ function getRGBAFromColorCode(m) {
 	}
 }
 
-function getColorTextFromArray(img) {
-	return '' + (
-		img && img.join
-		? (
-			(img.length > 3 ? 'rgba' : 'rgb')
-		+	'('
-		+		img.slice(0,4).map(orzFloat).join(',')
+function getColorTextFromArray(a) {
+	if (
+		a
+	&&	a.slice
+	&&	!isString(a)
+	) {
+	var	i = a.length;
+
+		if (i >= 4) return (
+			'rgba('
+		+		a.slice(0,4).map(orzFloat).join(',')
 		+	')'
-		)
-		: img
-	);
+		);
+
+		return (
+			'rgb('
+		+		Array.from(a).concat([0,0,0].slice(i)).map(orz).join(',')
+		+	')'
+		);
+	}
+
+	return String(a);
 }
 
 function getPatchedObject(obj, jsonReplacerFunc) {
@@ -707,6 +777,7 @@ var	a = Array.from(arguments)
 
 		o = o[k];
 	}
+
 	return o;
 }
 
@@ -715,25 +786,38 @@ var	a = Array.from(arguments)
 ,	o = a.shift()
 	;
 
-	deeper: while (typeof o === 'object') {
-		prop_names: for (var k of a) if (k in o) {
+	deeper:
+	while (typeof o === 'object') {
+
+		prop_names:
+		for (let k of a) if (k in o) {
 			o = o[k];
+
 			continue deeper;
 		}
+
 		break;
 	}
+
 	return o;
 }
 
 function getPropBySameNameChain(o,n,p) {
-	while (o && (p = o[n])) o = p;
+	while (
+		typeof o === 'object'
+	&&	o
+	&&	(p = o[n])
+	) {
+		o = p;
+	}
+
 	return o;
 }
 
 function cleanupObjectTree(obj, childKeys, keysToRemove) {
 	if (obj) {
 		Array.from(keysToRemove).forEach(
-			k => {
+			(k) => {
 				if (k in obj) {
 					obj[k] = null;
 					delete obj[k];
@@ -742,11 +826,11 @@ function cleanupObjectTree(obj, childKeys, keysToRemove) {
 		);
 
 		Array.from(childKeys).forEach(
-			k => {
+			(k) => {
 			var	v = obj[k];
 				if (v) {
 					if (v.forEach) {
-						v.forEach(v => cleanupObjectTree(v, childKeys, keysToRemove));
+						v.forEach((v) => cleanupObjectTree(v, childKeys, keysToRemove));
 					} else {
 						cleanupObjectTree(v, childKeys, keysToRemove);
 					}
@@ -758,7 +842,7 @@ function cleanupObjectTree(obj, childKeys, keysToRemove) {
 	return obj;
 }
 
-function arrayFilterNonEmptyValues(v) {return (typeof v === 'string' ? (v.length > 0) : !!v);}
+function arrayFilterNonEmptyValues(v) {return (isString(v) ? (v.length > 0) : !!v);}
 function arrayFilterUniqueValues(v,i,a) {return a.indexOf(v) === i;}
 function arrayFilteredJoin(a,j) {return a.filter(arrayFilterNonEmptyValues).join(j);}
 
@@ -777,6 +861,7 @@ var	SIZE_64_KB = 65536	// 0x10000
 	}
 }
 
+//* This function must work even in older browsers, so extra care is taken:
 function getElementsArray(by, value, parent) {
 	if (!parent) {
 		parent = document;
@@ -784,13 +869,13 @@ function getElementsArray(by, value, parent) {
 
 	try {
 	var	a = (
-			parent[by]
+			isFunction(parent[by])
 			? parent[by](value)
 			: parent.querySelectorAll(QUERY_SELECTOR[by].join(value))
 		) || [];
 
 		return (
-			Array.from
+			CAN_CAST_TO_ARRAY
 			? Array.from(a)
 			: Array.prototype.slice.call(a)
 		);
@@ -983,7 +1068,7 @@ function getDropdownMenuHTML(head, list, id, tagName) {
 var	t = tagName || 'div'
 ,	a = '<'+t+' class="'
 ,	b = '</'+t+'>'
-,	head = ''+head
+,	head = String(head)
 	;
 
 	return	a+'menu-head"'
@@ -1010,8 +1095,9 @@ function toggleDropdownMenu(e) {
 var	p = getThisOrParentByClass(e, regClassMenuBar);
 	if (p) {
 		gc('menu-head', p).forEach(
-			v => {
+			(v) => {
 			var	h = gt('header', v)[0];
+
 				if (h && h !== e) {
 					toggleClass(h, 'show', -1);
 				}
@@ -1031,6 +1117,7 @@ var	x = 0
 		y += e.offsetTop;
 		e = e.offsetParent;
 	}
+
 	return {x:x, y:y};
 }
 
@@ -1092,9 +1179,11 @@ function trim(t) {
 		typeof t === 'undefined'
 	||	t === null
 		? ''
-		: ('' + t)
+		: (
+			String(t)
 			.replace(regTrim, '')
 			.replace(regTrimNewLine, '\n')
+		)
 	);
 }
 
@@ -1102,11 +1191,11 @@ function trimOrz(n,d) {return orz(n.replace(regTrimNaN, ''), d);}
 function orz(n,d) {return (isNaN(d) ? parseInt(n||0) : parseFloat(n||d))||0;}
 function orzFloat(n) {return orz(n, 0.0);}
 
-function leftPad(n, len, pad) {
-	n = '' + orz(n);
+function leftPadNum(n, len, pad) {
+	n = String(orz(n));
 	len = orz(len) || 2;
-	pad = '' + (pad || 0);
-	while (n.length < len) n = pad+n;
+	pad = String(pad || 0);
+	while (n.length < len) n = pad + n;
 	return n;
 }
 
@@ -1146,7 +1235,7 @@ function getFormattedFileSize(shortened, bytes) {
 function getFormattedTimezoneOffset(t) {
 	return (
 		(t = (t && t.getTimezoneOffset ? t : new Date()).getTimezoneOffset())
-		? (t < 0?(t = -t, '+'):'-') + leftPad(Math.floor(t/SPLIT_SEC)) + ':' + leftPad(t%SPLIT_SEC)
+		? (t < 0?(t = -t, '+'):'-') + leftPadNum(Math.floor(t / SPLIT_SEC)) + ':' + leftPadNum(t % SPLIT_SEC)
 		: 'Z'
 	);
 }
@@ -1164,6 +1253,7 @@ var	t = orz(msec)
 		}
 		if (a[i] < 10) a[i] = '0' + a[i];
 	}
+
 	return (t < 0?'-':'') + a.join(':');
 }
 
@@ -1172,11 +1262,11 @@ function getLogTime() {return getFormattedTime(0,0,1);}
 function getFormattedTime(sec, for_filename, for_log, plain, only_ymd) {
 var	t = sec;
 	if (TOS.indexOf(typeof t) >= 0) {
-	var	text = '' + t
+	var	text = String(t)
 	,	n = orz(sec)
 		;
 
-		if (typeof t === 'string' && Date.parse) {
+		if (isString(t) && Date.parse) {
 			t = Date.parse(t.replace(regHMS, '$1:$2:$3'));
 		} else {
 			t = n * 1000;
@@ -1186,12 +1276,12 @@ var	t = sec;
 var	d = (t ? new Date(t+(t > 0 ? 0 : new Date())) : new Date())
 ,	a = (
 		only_ymd
-		? ['FullYear', 'Month', 'Date']
-		: ['FullYear', 'Month', 'Date', 'Hours', 'Minutes', 'Seconds']
+		? TIME_PARTS_3
+		: TIME_PARTS_6
 	).map(function(v,i) {
 		v = d['get'+v]();
 		if (i == 1) ++v;
-		return leftPad(v);
+		return leftPadNum(v);
 	})
 ,	YMD = a.slice(0,3).join('-')
 ,	HIS = a.slice(3).join(for_filename?'-':':') + (for_log?'.'+((+d) % 1000):'')
@@ -1289,7 +1379,7 @@ function readFilePromiseFromURL(url, responseType) {
 }
 
 function dataToBlob(data, trackList) {
-	if (URL_API && URL_API.createObjectURL) {
+	if (URL && URL.createObjectURL) {
 	var	type = TYPE_TEXT;
 		if (data.slice(0, k = DATA_PREFIX.length) == DATA_PREFIX) {
 		var	i = data.indexOf(',')
@@ -1306,9 +1396,9 @@ function dataToBlob(data, trackList) {
 				if (meta.slice(k+1) == 'base64') data = atob(data);
 			}
 		}
-	var	data = Uint8Array.from(TOS.map.call(data, (v => v.charCodeAt(0))))
+	var	data = Uint8Array.from(Array.prototype.map.call(data, ((v) => v.charCodeAt(0))))
 	,	size = data.length
-	,	url = URL_API.createObjectURL(new Blob([data], {'type': type}))
+	,	url = URL.createObjectURL(new Blob([data], {'type': type}))
 		;
 
 		if (url) {
@@ -1333,6 +1423,12 @@ function dataToBlob(data, trackList) {
 }
 
 function saveDL(data, fileName, ext, addTime, jsonReplacerFunc) {
+
+	function cleanUpAfterDL() {
+		if (a) del(a);
+		if (blob) URL.revokeObjectURL(blob.url);
+	}
+
 var	type = TYPE_TEXT
 ,	data = (
 		typeof data === 'object'
@@ -1341,7 +1437,7 @@ var	type = TYPE_TEXT
 		,	jsonReplacerFunc || null
 		,	'\t'
 		)
-		: ''+data
+		: String(data)
 	);
 
 	if (data.slice(0, BLOB_PREFIX.length) == BLOB_PREFIX) {
@@ -1393,8 +1489,9 @@ var	size = dataURI.length
 		,	fileName = baseName + (ext ? '.' + ext : '')
 			;
 
-			a.href = ''+dataURI;
+			a.onclick = cleanUpAfterDL;	//* <- https://stackoverflow.com/a/26643754
 			a.download = fileName;
+			a.href = String(dataURI);
 			a.click();
 
 			logTime('saving "' + fileName + '"');
@@ -1407,11 +1504,8 @@ var	size = dataURI.length
 		logTime('opened file to save');
 	}
 
-	setTimeout(
-		function() {
-			if (blob) URL_API.revokeObjectURL(blob.url);
-			del(a);
-		}
+	if (a) setTimeout(
+		cleanUpAfterDL
 	,	Math.max(Math.ceil(size / 1000), 12345)
 	);
 
@@ -1433,8 +1527,11 @@ function loadLib(lib) {
 			}
 
 		var	dir = lib.dir || ''
-		,	scripts = lib.files || (lib.join ? lib : Array.from(arguments))
-			;
+		,	scripts = lib.files || (
+				Array.isArray(lib)
+				? lib
+				: Array.from(arguments)
+			);
 
 			addNextScript();
 		}
@@ -1452,7 +1549,7 @@ var	lib = fileTypeLibs[libName] || {};
 	}
 
 var	varName = lib.varName || '';
-	if (window[varName]) {
+	if (varName && window[varName]) {
 		return true;
 	}
 
@@ -1466,7 +1563,7 @@ var	dir = lib.dir || ''
 
 var	depends = lib.depends || null;
 	if (depends) {
-		for (var name of Array.from(depends)) if (name) {
+		for (let name of Array.from(depends)) if (name) {
 			if (!(await loadLibOnDemand(name))) {
 				return false;
 			}
@@ -1568,7 +1665,7 @@ var	depends = lib.depends || null;
 		if (value && typeof value.length !== 'undefined' && value.length > 123) {
 			return '<skipped [' + value.length + ' items]>';
 		}
-		if ((i = (''+value).length) > 456) {
+		if ((i = String(value).length) > 456) {
 			return '<skipped (' + i + ' chars)>';
 		}
 	}
@@ -1594,7 +1691,7 @@ function replaceJSONpartsFromTree(key, value) {
 	&&	typeof value.length === 'undefined'
 	) {
 	var	o = {};
-		for (var i in value) {
+		for (let i in value) {
 			if (regJSONstringify.showFromTree.test(i)) o[i] = value[i];
 		}
 		return o || undefined;
@@ -1615,25 +1712,39 @@ function replaceJSONpartsForZoomRef(key, value) {
 		return;
 	}
 
-	if (
-		key === 'zoom'
-	&&	value.substr
-	) {
-	var	z = orz(value);
+	if (key === 'zoom') {
 
-		if (z <= 0 || z === 100) return;
+//* remove invalid values, reassure the percent sign:
 
-	var	x = 100;
+		if (isString(value)) {
+		var	z = orz(value);
 
-		while (z < x && x > 0) {
-		var	d = Math.floor(x / 2);
-			if (z >= d) break;
-			x = d;
+			if (z <= 0 || z === 100) {
+				return;
+			}
+
+//* zoom in steps, downscale by no more than x2, starting from 100 to nearest-sized reference:
+
+		var	x = 100;
+
+			while (z < x && x > 0) {
+			var	d = Math.floor(x / ZOOM_STEP_MAX_FACTOR);
+				if (z >= d) break;
+				x = d;
+			}
+
+			if (x <= 0 || x === 100) {
+				return;
+			}
+
+			return String(x) + '%';
+		} else
+
+//* keep as is the same-key object parent, throw away anything else:
+
+		if (typeof value !== 'object') {
+			return;
 		}
-
-		if (x <= 0 || x === 100) return;
-
-		return ''+x+'%';
 	}
 
 	return value;
@@ -1653,22 +1764,6 @@ function clearCanvasBeforeGC(e) {
 
 		return e;
 	}
-}
-
-function isCanvasElement(e) {
-	return (
-		e
-	&&	e.tagName
-	&&	e.tagName.toLowerCase() === 'canvas'
-	);
-}
-
-function isImgElement(e) {
-	return (
-		e
-	&&	e.tagName
-	&&	e.tagName.toLowerCase() === 'img'
-	);
 }
 
 function getImageSrcPlaceholder() {
@@ -1708,7 +1803,7 @@ function getImageSrcPlaceholder() {
 }
 
 function setImageSrc(img, data) {
-	if (isImgElement(img)) {
+	if (isImageElement(img)) {
 		if (data || !img.src) {
 			img.src = data || getImageSrcPlaceholder();
 		}
@@ -1748,19 +1843,18 @@ var	canvas = cre('canvas')
 ,	heightTo = h || w || heightFrom || 1
 ,	widthRatio  = widthFrom/widthTo
 ,	heightRatio = heightFrom/heightTo
-,	maxScaleFactor = 4	//* <- one-step scaling result is too blocky, stepping by factor of 2 is too blurry, 4 looks okay
 	;
 
 	if (
-		widthRatio  > maxScaleFactor
-	||	heightRatio > maxScaleFactor
+		widthRatio  > THUMBNAIL_ZOOM_STEP_MAX_FACTOR
+	||	heightRatio > THUMBNAIL_ZOOM_STEP_MAX_FACTOR
 	) {
 
 //* caclulate nearest scale factor top down:
 
 		if (DOWNSCALE_BY_MAX_FACTOR_FIRST) {
-			canvas.width  = widthTo  = Math.round(widthFrom  / maxScaleFactor);
-			canvas.height = heightTo = Math.round(heightFrom / maxScaleFactor);
+			canvas.width  = widthTo  = Math.round(widthFrom  / THUMBNAIL_ZOOM_STEP_MAX_FACTOR);
+			canvas.height = heightTo = Math.round(heightFrom / THUMBNAIL_ZOOM_STEP_MAX_FACTOR);
 		} else {
 
 //* caclulate nearest scale factor bottom up - more complex, but result is not better:
@@ -1780,8 +1874,8 @@ var	canvas = cre('canvas')
 				widthTo  < widthFrom
 			&&	heightTo < heightFrom
 			) {
-				widthToUp  *= maxScaleFactor;
-				heightToUp *= maxScaleFactor;
+				widthToUp  *= THUMBNAIL_ZOOM_STEP_MAX_FACTOR;
+				heightToUp *= THUMBNAIL_ZOOM_STEP_MAX_FACTOR;
 
 				if (
 					widthToUp  < widthFrom
@@ -1835,7 +1929,7 @@ function getImageData(img, x,y, w,h) {
 		w = orz(w) || (canvas.width  - x);
 		h = orz(h) || (canvas.height - y);
 	} else
-	if (isImgElement(img)) {
+	if (isImageElement(img)) {
 	var	canvas = cre('canvas')
 	,	ctx = canvas.getContext('2d')
 		;
@@ -1854,7 +1948,7 @@ function getImageData(img, x,y, w,h) {
 }
 
 function getFirstPixelRGBA(img) {
-	if (isImgElement(img)) {
+	if (isImageElement(img)) {
 		img = getImageData(img, 0,0, 1,1).data;
 	}
 
@@ -2068,8 +2162,8 @@ var	a = SWITCH_NAMES_BY_TYPE[switchType];
 function getTruthyValue(v) {
 	return !(
 		!v
-	||	!(v = ('' + v).toLowerCase())
-	||	FALSY_STRINGS.indexOf(v) >= 0
+	||	!(v = String(v))
+	||	FALSY_STRINGS.indexOf(v.toLowerCase()) >= 0
 	);
 }
 
@@ -2078,7 +2172,7 @@ function getNormalizedOpacity(a) {
 }
 
 function getNormalizedBlendMode(b) {
-var	r,b = ('' + b).toLowerCase();
+var	r,b = String(b).toLowerCase();
 
 	return (
 		BLEND_MODES_REMAP[b]
@@ -2142,7 +2236,6 @@ var	layers = [];
 function getLayersTopSeparated(layers) {
 	while (
 		layers
-	&&	layers.length
 	&&	layers.length > 0
 	) {
 	var	layersToRender = layers.filter(isLayerRendered);
@@ -2168,7 +2261,7 @@ function isLayerRendered(layer) {
 function isLayerSkipped(layer) {
 	return (
 		layer.params.skip
-	// ||	regLayerNameToSkip.test(layer.name)
+	||	(regLayerNameToSkip && regLayerNameToSkip.test(layer.name))
 	||	(layer.clippingLayer && isLayerSkipped(layer.clippingLayer))
 	);
 }
@@ -2198,22 +2291,19 @@ function getImgOptimized(img, project) {
 			}
 
 			if (
-				isImgElement(img)
+				isImageElement(img)
 			&&	img.width > 0
 			&&	img.height > 0
 			) {
 			var	canvas = cre('canvas')
-			,	w = canvas.width  = img.width
-			,	h = canvas.height = img.height
-			,	ctx
+			,	ctx = canvas.getContext('2d')
 				;
 
-				if (ctx = canvas.getContext('2d')) {
-					ctx.drawImage(img, 0,0);
-					checkResult(canvas, img);
-				} else {
-					reject();
-				}
+				canvas.width = img.width;
+				canvas.height = img.height;
+
+				ctx.drawImage(img, 0,0);
+				checkResult(canvas, img);
 			} else {
 				resolve(img);
 			}
@@ -2243,7 +2333,7 @@ function thisToPng(targetLayer) {
 
 		if (i) return i;
 
-		if (isImgElement(e = e.image || e)) {
+		if (isImageElement(e = e.image || e)) {
 			return e;
 		}
 
@@ -2273,7 +2363,7 @@ function thisToPng(targetLayer) {
 function isStopRequestedAnywhere() {
 	return (
 		isStopRequested
-	||	Array.from(arguments).find(
+	||	Array.from(arguments).some(
 			(o) => (
 				typeof o === 'object'
 			&&	o
@@ -2467,8 +2557,8 @@ var	fileName = sourceFile.name
 var	startTime = +new Date;
 
 	try_loaders:
-	for (var ftl of fileTypeLoaders) if (ftl.dropFileExts.indexOf(ext) >= 0)
-	for (var f of ftl.handlerFuncs) {
+	for (let ftl of fileTypeLoaders) if (ftl.dropFileExts.indexOf(ext) >= 0)
+	for (let f of ftl.handlerFuncs) {
 	var	project = {
 			fileName: fileName
 		,	baseName: baseName
@@ -2596,8 +2686,8 @@ async function getProjectViewMenu(project) {
 		function getProcessedLayerInBranch(layer) {
 
 			function getOptionGroup(sectionName, listName) {
-			var	sectionName = ''+sectionName
-			,	listName    = ''+listName
+			var	sectionName = String(sectionName)
+			,	listName    = String(listName)
 			,	o = (options || (options = {}))
 			,	o = (o[sectionName] || (o[sectionName] = {}))
 			,	optionGroup = (o[listName] || (o[listName] = {
@@ -2610,8 +2700,8 @@ async function getProjectViewMenu(project) {
 			}
 
 			function checkSwitchParams(globalOptionParams) {
-				for (var switchType in SWITCH_NAMES_BY_TYPE)
-				for (var switchName of SWITCH_NAMES_BY_TYPE[switchType]) if (params[switchName]) {
+				for (let switchType in SWITCH_NAMES_BY_TYPE)
+				for (let switchName of SWITCH_NAMES_BY_TYPE[switchType]) if (params[switchName]) {
 				var	o = (project.switchParamNames || (project.switchParamNames = {}))
 				,	o = (o[switchType] || (o[switchType] = {}))
 					;
@@ -2695,7 +2785,7 @@ async function getProjectViewMenu(project) {
 				if (sectionName === 'side') {
 				var	j = la.project_option_side;
 
-					for (var k in j) {
+					for (let k in j) {
 						optionItems[k] = j[k];
 					}
 
@@ -2720,58 +2810,68 @@ async function getProjectViewMenu(project) {
 				} else
 				if (sectionName === 'paddings') {
 					if (param = params['radius']) {
-						param.forEach(v => {
-						var	j = v.threshold
-						,	k = (
-								(
-									typeof v.x !== 'undefined'
-									? [v.x, v.y]
-									: [v.radius]
-								).map(x => (
-									typeof x.in !== 'undefined'
-									? x.in + ':' + x.out
-									: x.out
-								)).join('x')
-							+	'px'
-							+	(j?'-'+j:'')
-							);
+						param.forEach(
+							(v) => {
+							var	j = v.threshold
+							,	k = (
+									(
+										typeof v.x !== 'undefined'
+										? [v.x, v.y]
+										: [v.radius]
+									).map(
+										(x) => (
+											typeof x.in !== 'undefined'
+											? x.in + ':' + x.out
+											: x.out
+										)
+									).join('x')
+								+	'px'
+								+	(j?'-'+j:'')
+								);
 
-							optionItems[k] = v;
-						});
+								optionItems[k] = v;
+							}
+						);
 					}
 					layer.isMaskGenerated = true;
 				} else
 				if (sectionName === 'autocrop') {
-					param.forEach(v => {
-					var	k = v.replace(regNonWord, '').toLowerCase();
+					param.forEach(
+						(v) => {
+						var	k = v.replace(regNonWord, '').toLowerCase();
 
-						if (ALL_KEYWORDS.indexOf(k) >= 0) {
-							AUTOCROP_KEYWORDS.forEach(v => {
+							if (ALL_KEYWORDS.indexOf(k) >= 0) {
+								AUTOCROP_KEYWORDS.forEach(
+									(v) => {
+										optionItems[v] = v;
+									}
+								);
+							} else
+							if (AUTOCROP_KEYWORDS.indexOf(k) >= 0) {
+								optionItems[k] = k;
+							} else
+							if (regColorCode.test(v)) {
 								optionItems[v] = v;
-							});
-						} else
-						if (AUTOCROP_KEYWORDS.indexOf(k) >= 0) {
-							optionItems[k] = k;
-						} else
-						if (regColorCode.test(v)) {
-							optionItems[v] = v;
+							}
 						}
-					});
+					);
 				} else
 				if (sectionName === 'zoom' || sectionName === 'opacities') {
 					if (j = param.format) {
 						optionParams.format = j;
 					}
 					if (j = param.values) {
-						j.forEach(v => {
-						var	k = v + '%';	//* <- pad bare numbers to avoid autosorting in <select>
+						j.forEach(
+							(v) => {
+							var	k = v + '%';	//* <- pad bare numbers to avoid autosorting in <select>
 
-							if (sectionName === 'opacities') {
-								v = (orz(v) / 100);
+								if (sectionName === 'opacities') {
+									v = (orz(v) / 100);
+								}
+
+								optionItems[k] = v;
 							}
-
-							optionItems[k] = v;
-						});
+						);
 					}
 				}
 			}
@@ -2803,11 +2903,11 @@ async function getProjectViewMenu(project) {
 			if (layerCP) {
 			var	allCP = project[j] || (project[j] = {});
 
-				for (var t in layerCP) {
+				for (let t in layerCP) {
 				var	allAliases = allCP[t] || (allCP[t] = {});
 
 					layerCP[t].forEach(
-						alias => {
+						(alias) => {
 						var	allByAlias = allAliases[alias] || (allAliases[alias] = []);
 
 							allByAlias.push(layer);
@@ -2823,7 +2923,7 @@ async function getProjectViewMenu(project) {
 			addOptionsFromParam('zoom');
 
 			m.forEach(
-				listName => {
+				(listName) => {
 					addOptionsFromParam('opacities', listName);
 					addOptionsFromParam('paddings', listName);
 				}
@@ -2831,7 +2931,7 @@ async function getProjectViewMenu(project) {
 
 			if (layer.isOptionList) {
 				m.forEach(
-					listName => addOptionGroup(layer.type, listName)
+					(listName) => addOptionGroup(layer.type, listName)
 				);
 			} else {
 			var	parent = getParentLayer(layer);
@@ -2857,8 +2957,8 @@ async function getProjectViewMenu(project) {
 				&&	(layer.isColor || !layer.isInsideColorList)
 				) {
 					parent.names.forEach(
-						listName => m.forEach(
-							optionName => addOptionItem(layer, parent.type, listName, optionName)
+						(listName) => m.forEach(
+							(optionName) => addOptionItem(layer, parent.type, listName, optionName)
 						)
 					);
 				}
@@ -2919,16 +3019,18 @@ async function getProjectViewMenu(project) {
 
 			return (
 				layers
-				.filter(layer => {
-					if (isLayerSkipped(layer)) {
-						return false;
-					} else {
-						if (isInsideColorList) {
-							layer.isInsideColorList = true;
+				.filter(
+					(layer) => {
+						if (isLayerSkipped(layer)) {
+							return false;
+						} else {
+							if (isInsideColorList) {
+								layer.isInsideColorList = true;
+							}
+							return true;
 						}
-						return true;
 					}
-				})
+				)
 				.map(getProcessedLayerInBranch)
 			);
 		}
@@ -2937,7 +3039,7 @@ async function getProjectViewMenu(project) {
 
 		project.layers = getUnskippedProcessedLayers(project.layers);
 
-		for (var switchType in SWITCH_NAMES_BY_TYPE) {
+		for (let switchType in SWITCH_NAMES_BY_TYPE) {
 		var	o = (project.switchParamNames || (project.switchParamNames = {}))
 		,	o = (o[switchType] || (o[switchType] = {}))
 			;
@@ -2994,7 +3096,7 @@ async function getProjectViewMenu(project) {
 
 				if (
 					img
-				&&	isImgElement(img)
+				&&	isImageElement(img)
 				) {
 				var	onImgLoad = async function(e) {
 						if (layer.isColor) {
@@ -3096,7 +3198,7 @@ async function getProjectViewMenu(project) {
 
 //* list box = set of parts:
 
-			for (var listName in section) if (optionList = section[listName]) {
+			for (let listName in section) if (optionList = section[listName]) {
 			var	listLabel = text || listName
 			,	items = optionList.items
 			,	params = optionList.params
@@ -3123,7 +3225,7 @@ async function getProjectViewMenu(project) {
 				s.name = listName;
 				s.setAttribute('data-section', sectionName);
 
-				for (var switchType in SWITCH_NAMES_BY_TYPE) {
+				for (let switchType in SWITCH_NAMES_BY_TYPE) {
 				var	b = getPropByNameChain(project, 'switchParamNames', switchType, 'implicit')
 				,	c = getPropByNameChain(project, 'switchParamNames', switchType, 'explicit')
 				,	la_switches = la.project_option_switches[switchType]
@@ -3140,7 +3242,7 @@ async function getProjectViewMenu(project) {
 					i.checked = i.initialValue = !params[SWITCH_NAMES_BY_TYPE[switchType][0]];
 					i.params = params;
 
-					for (var i in la_switches) {
+					for (let i in la_switches) {
 					var	j = la_switches[i]
 					,	t = cre('span', label)
 						;
@@ -3152,7 +3254,7 @@ async function getProjectViewMenu(project) {
 
 //* list item = each part:
 
-				for (var optionName in items) {
+				for (let optionName in items) {
 					if (
 						optionName === ''
 					||	(
@@ -3237,13 +3339,13 @@ async function getProjectViewMenu(project) {
 	,	sections
 		;
 
-		for (var i in la_section_batches) if (sections = la_section_batches[i]) {
+		for (let i in la_section_batches) if (sections = la_section_batches[i]) {
 			if (sections.header) {
 			var	header = sections.header
 			,	sections = sections.select
 				;
 
-				for (var sectionName in sections) {
+				for (let sectionName in sections) {
 					if (options[sectionName]) {
 						if (header) {
 							addHeader(header);
@@ -3253,7 +3355,7 @@ async function getProjectViewMenu(project) {
 					}
 				}
 			} else {
-				for (var sectionName in sections) {
+				for (let sectionName in sections) {
 					if (options[sectionName]) {
 						addHeader(sections[sectionName]);
 						addOptions(sectionName);
@@ -3263,7 +3365,7 @@ async function getProjectViewMenu(project) {
 		}
 
 		gt('th', table).forEach(
-			th => {
+			(th) => {
 				th.colSpan = maxTabCount;
 			}
 		);
@@ -3328,7 +3430,7 @@ var	i = (
 //* add batch controls:
 
 	if (project.options) {
-		for (var i in (t = la.project_controls)) {
+		for (let i in (t = la.project_controls)) {
 		var	j = t[i]
 		,	b = j.buttons
 		,	e = cre('section', header)
@@ -3338,7 +3440,7 @@ var	i = (
 
 			h.textContent = j.header + ':';
 
-			for (var k in b) addButton(f, b[k]).name = k;
+			for (let k in b) addButton(f, b[k]).name = k;
 		}
 
 		container.addEventListener('change', onProjectMenuUpdate, false);
@@ -3517,7 +3619,7 @@ var	checkVirtualPath = (
 			.split(regLayerNameParamSplit)
 			.map(trimParam)
 			.filter(arrayFilterNonEmptyValues)
-			.forEach(v => paramList.push(v.toLowerCase()));
+			.forEach((v) => paramList.push(v.toLowerCase()));
 		}
 
 		name = (
@@ -3531,8 +3633,8 @@ var	checkVirtualPath = (
 	if (paramList.length > 0) {
 		paramList = paramList.filter(arrayFilterUniqueValues);
 
-		for (var param of paramList) {
-			for (var k in regLayerNameParamType) if (m = param.match(regLayerNameParamType[k])) {
+		for (let param of paramList) {
+			for (let k in regLayerNameParamType) if (m = param.match(regLayerNameParamType[k])) {
 
 				if (NAME_PARTS_FOLDERS.indexOf(k) >= 0) {
 					layer.type = k;
@@ -3549,15 +3651,15 @@ var	checkVirtualPath = (
 					v = (
 						m[1]
 						.split('/')
-						.filter(v => regHasDigit.test(v))
+						.filter((v) => regHasDigit.test(v))
 						.map(
-							x => {
+							(x) => {
 								x = x.split('x', 2).map(
-									y => {
+									(y) => {
 										if (y.length == 0) return null;
 
 										y = y.split(':', 2).map(
-											z => orzFloat(
+											(z) => orzFloat(
 												z.replace(regTrimNaNorSign, '')
 											)
 										);
@@ -3584,7 +3686,7 @@ var	checkVirtualPath = (
 								};
 							}
 						).map(
-							v => {
+							(v) => {
 								v.threshold = m[2];
 								return v;
 							}
@@ -3727,7 +3829,7 @@ var	checkVirtualPath = (
 }
 
 async function addLayerGroupCommonWrapper(project, parentGroup, layers, callback) {
-	for (var v of layers) {
+	for (let v of layers) {
 
 		if (isStopRequestedAnywhere(project)) {
 			return false;
@@ -4117,7 +4219,7 @@ var	o = getProjectOptionValue(project, sectionName, listName, optionName);
 			section[listName] = optionName;
 		}
 
-		for (var layer of o) {
+		for (let layer of o) {
 			if (getLayerPathVisibilityByValues(project, layer, values, listName)) {
 				result = true;
 				break;
@@ -4139,8 +4241,8 @@ var	o = getProjectOptionValue(project, sectionName, listName, optionName);
 function isSetOfValuesOK(project, values) {
 var	section, optionName;
 
-	for (var sectionName in values) if (section = values[sectionName])
-	for (var listName in section) if (optionName = section[listName]) {
+	for (let sectionName in values) if (section = values[sectionName])
+	for (let listName in section) if (optionName = section[listName]) {
 		if (!isOptionRelevant(project, values, sectionName, listName, optionName)) {
 			return false;
 		}
@@ -4152,8 +4254,8 @@ var	section, optionName;
 function getSetOfRelevantValues(project, values) {
 var	section, optionName, o, resultSet;
 
-	for (var sectionName in values) if (section = values[sectionName])
-	for (var listName in section) if (optionName = section[listName]) {
+	for (let sectionName in values) if (section = values[sectionName])
+	for (let listName in section) if (optionName = section[listName]) {
 		o = resultSet || (resultSet = {});
 		o = o[sectionName] || (o[sectionName] = {});
 		o[listName] = (
@@ -4178,7 +4280,7 @@ var	v = s.value;
 	if (valuePos === 'init') {
 		v = s.initialValue;
 	} else {
-		for (var o of s.options) if (
+		for (let o of s.options) if (
 			'' === o.value
 		||	'' === trim(o.textContent)
 		) {
@@ -4211,7 +4313,7 @@ function selectValue(s, valueContent) {
 
 function setAllValues(project, valuePos) {
 	gt('select', project.container).forEach(
-		s => selectValueByPos(s, valuePos)
+		(s) => selectValueByPos(s, valuePos)
 	);
 
 	if (
@@ -4219,7 +4321,7 @@ function setAllValues(project, valuePos) {
 	||	valuePos === 'empty'
 	) {
 		gt('input', project.container).forEach(
-			i => {
+			(i) => {
 				i.checked = (
 					valuePos === 'init'
 					? i.initialValue
@@ -4239,7 +4341,7 @@ function getAllMenuValues(project, checkSelectedValue) {
 var	values = {};
 
 	gt('select', project.container).forEach(
-		s => {
+		(s) => {
 		var	sectionName = s.getAttribute('data-section')
 		,	listName    = s.name
 		,	optionLists = (values[sectionName] || (values[sectionName] = {}))
@@ -4251,7 +4353,7 @@ var	values = {};
 				&&	getPropByNameChain(project, 'options', sectionName, listName, 'params', 'single')
 				)
 				? [s.value]
-				: gt('option', s).map(o => o.value)
+				: gt('option', s).map((o) => o.value)
 			);
 		}
 	);
@@ -4276,7 +4378,7 @@ function getAllValueSets(project, checkSelectedValue, onlyNames, stopAtMaxCount)
 				: null
 			);
 
-			for (var optionName of optionNames) {
+			for (let optionName of optionNames) {
 				if (
 					onlyNames
 				&&	stopAtMaxCount
@@ -4329,8 +4431,8 @@ var	values = getAllMenuValues(project, checkSelectedValue)
 ,	maxPossibleCount = 1
 	;
 
-	for (var sectionName in values) if (section = values[sectionName])
-	for (var listName in section) if (optionNames = section[listName]) {
+	for (let sectionName in values) if (section = values[sectionName])
+	for (let listName in section) if (optionNames = section[listName]) {
 		optionLists.push({
 			'sectionName': sectionName
 		,	'listName'   : listName
@@ -4373,7 +4475,7 @@ function getUpdatedMenuValues(project, updatedValues) {
 var	values = {};
 
 	gt('select', project.container).forEach(
-		s => {
+		(s) => {
 
 //* 1) check current selected values:
 
@@ -4392,7 +4494,7 @@ var	values = {};
 				;
 
 				gt('option', s).forEach(
-					o => {
+					(o) => {
 					var	optionName = o.value || ''
 					,	hide = !isOptionRelevant(project, updatedValues, sectionName, listName, optionName)
 						;
@@ -4472,7 +4574,6 @@ function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
 		if (
 			img.join
 		||	img.split
-		||	typeof img === 'string'
 		) {
 			ctx.fillStyle = getColorTextFromArray(img);
 			ctx.fillRect(0,0, w,h);
@@ -4488,7 +4589,7 @@ function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
 			if (TESTING_RENDER) {
 				console.log(['blendMode =', blendMode, 'opacity =', opacity, mask ? 'callback with mask' : 'callback']);
 
-			var	logLabelWrap = blendMode + ': ' + project.rendering.nestedLayers.map(v => v.name).join(' / ');
+			var	logLabelWrap = blendMode + ': ' + project.rendering.nestedLayers.map((v) => v.name).join(' / ');
 				console.time(logLabelWrap);
 				console.group(logLabelWrap);
 
@@ -4656,8 +4757,8 @@ function padCanvas(ctx, padding) {
 	,	radiusPixels = Math.ceil(radius)
 		;
 
-		for (var y = h; y--;) next_result_pixel:
-		for (var x = w; x--;) {
+		for (let y = h; y--;) next_result_pixel:
+		for (let x = w; x--;) {
 		var	pos = getAlphaDataIndex(x,y,w);
 
 			if (t_dist) {
@@ -4667,8 +4768,8 @@ function padCanvas(ctx, padding) {
 			}
 
 			look_around:
-			for (var ydy, dy = -radiusPixels; dy <= radiusPixels; dy++) if ((ydy = y + dy) >= 0 && ydy < h)
-			for (var xdx, dx = -radiusPixels; dx <= radiusPixels; dx++) if ((xdx = x + dx) >= 0 && xdx < w) {
+			for (let ydy, dy = -radiusPixels; dy <= radiusPixels; dy++) if ((ydy = y + dy) >= 0 && ydy < h)
+			for (let xdx, dx = -radiusPixels; dx <= radiusPixels; dx++) if ((xdx = x + dx) >= 0 && xdx < w) {
 			var	alpha = referencePixels[getAlphaDataIndex(xdx, ydy, w)];
 
 				if (t_min) {
@@ -4708,14 +4809,10 @@ function padCanvas(ctx, padding) {
 	function intersectMask(res, ref) {
 	var	referencePixels = ref.data
 	,	resultPixels = res.data
-	,	i = resultPixels.length
-	,	pos
 		;
 
-		while (i) {
-			pos = i|3;
-			resultPixels[pos] = Math.min(resultPixels[pos], referencePixels[pos]);
-			i -= 4;
+		for (let i = resultPixels.length - 1; i >= 0; i -= 4) {
+			resultPixels[i] = Math.min(resultPixels[i], referencePixels[i]);
 		}
 
 		return res;
@@ -4724,29 +4821,20 @@ function padCanvas(ctx, padding) {
 	function combineMask(res, ref) {
 	var	referencePixels = ref.data
 	,	resultPixels = res.data
-	,	i = resultPixels.length
-	,	pos
 		;
 
-		while (i) {
-			pos = i|3;
-			resultPixels[pos] = Math.max(resultPixels[pos], referencePixels[pos]);
-			i -= 4;
+		for (let i = resultPixels.length - 1; i >= 0; i -= 4) {
+			resultPixels[i] = Math.max(resultPixels[i], referencePixels[i]);
 		}
 
 		return res;
 	}
 
 	function invertAlpha(res) {
-	var	resultPixels = res.data
-	,	i = resultPixels.length
-	,	pos
-		;
+	var	resultPixels = res.data;
 
-		while (i) {
-			pos = i|3;
-			resultPixels[pos] = 255 - resultPixels[pos];
-			i -= 4;
+		for (let i = resultPixels.length - 1; i >= 0; i -= 4) {
+			resultPixels[i] = 255 - resultPixels[i];
 		}
 
 		return res;
@@ -4795,7 +4883,7 @@ var	r = padding.radius;
 	,	t_dist = !(t_min || t_max)
 	,	threshold = (
 			t_dist
-			? (orz(t) || PADDING_ALPHA_THRESHOLD_DEFAULT)
+			? (orz(t) || DEFAULT_ALPHA_MASK_THRESHOLD)
 			: 0
 		)
 	,	w = ctx.canvas.width
@@ -4820,16 +4908,13 @@ var	canvas = cre('canvas')
 ,	w = canvas.width  = ctx.canvas.width
 ,	h = canvas.height = ctx.canvas.height
 ,	img = ctx.getImageData(0,0, w,h)
-,	d = img.data
-,	i = d.length
 	;
 
 	canvas.getContext('2d').putImageData(img, 0,0);
 
-	do {
-		i -= 4;
-		d[i|3] = 255;
-	} while (i);
+	for (let data = img.data, i = data.length - 1; i >= 0; i -= 4) {
+		data[i] = 255;
+	}
 
 	ctx.putImageData(img, 0,0);
 
@@ -4848,7 +4933,7 @@ function addDebugImage(project, canvas, comment, highLightColor) {
 			img.alt = img.title = [
 				'render name: ' + project.rendering.fileName
 			,	'render nesting level: ' + layers.length
-			,	'render nesting path: ' + layers.map(v => v.name).join(' / ')
+			,	'render nesting path: ' + layers.map((v) => v.name).join(' / ')
 			,	'layer nesting path: ' + getLayerPathText(layer)
 			,	'layer name: ' + (layer ? layer.nameOriginal : layer)
 			,	'comment: ' + comment
@@ -5010,7 +5095,7 @@ var	color
 			color = selectedColors[listName];
 		} else
 		if (optionalColors = getSelectedOptionValue(project, values, 'colors', listName)) {
-			for (var layer of optionalColors) if (
+			for (let layer of optionalColors) if (
 				layer.isColor
 			&&	getLayerPathVisibilityByValues(project, layer, values, listName)
 			) {
@@ -5045,25 +5130,22 @@ var	selectedName = getPropByNameChain(values, sectionName, listName)
 }
 
 function getSelectedMenuValue(project, sectionName, listName, defaultValue) {
-var	selectedValue = gt('select', project.container).find(
-		(s) => {
-		var	selectedValue = s.value;
+var	s = gt('select', project.container).find(
+		(s) => (
+			sectionName === s.getAttribute('data-section')
+		&&	listName === s.name
+		)
+	);
 
-			if (
-				isNotEmptyString(selectedValue)
-			&&	sectionName === s.getAttribute('data-section')
-			&&	listName === s.name
-			) {
-				return selectedValue;
-			}
+	if (s) {
+	var	selectedValue = s.value;
+
+		if (isNotEmptyString(selectedValue)) {
+			return selectedValue;
 		}
-	);
+	}
 
-	return (
-		isNotEmptyString(selectedValue)
-		? selectedValue
-		: defaultValue
-	);
+	return defaultValue;
 }
 
 function getLayerPathVisibilityByValues(project, layer, values, listName) {
@@ -5071,8 +5153,8 @@ function getLayerPathVisibilityByValues(project, layer, values, listName) {
 		if (TESTING) console.log([project, layer, values, listName]);
 	}
 	if (layer.params.check_order === 'up') {
-		if (getLayerVisibilityChain(layer).find(
-			layer => !getLayerVisibilityByValues(project, layer, values, listName)
+		if (getLayerVisibilityChain(layer).some(
+			(layer) => !getLayerVisibilityByValues(project, layer, values, listName)
 		)) {
 			return false;
 		}
@@ -5123,7 +5205,7 @@ function getLayerVisibilityByValues(project, layer, values, listName) {
 	,	unselectable = false
 		;
 
-		for (var listName of listNames) {
+		for (let listName of listNames) {
 		var	v = getSelectedOptionValue(project, values, 'opacities', listName);
 
 			if (v === null) {
@@ -5322,11 +5404,11 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 				);
 
 				aliases.forEach(
-					alias => (
+					(alias) => (
 						getPropByNameChain(project, 'layersForCopyPaste', 'copy', alias)
 					||	[]
 					).forEach(
-						layer => {
+						(layer) => {
 							if (layers.indexOf(layer) < 0) {
 								layers.push(layer);
 							}
@@ -5344,7 +5426,7 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 				&&	layer.isColorList
 				) {
 					names.find(
-						listName => !!(
+						(listName) => !!(
 							img = getCanvasColored(project, values, listName)
 						)
 					);
@@ -5374,8 +5456,8 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 
 				var	isToRecolor = (
 						ignoreColors
-					||	!!names.find(
-							listName => (
+					||	names.some(
+							(listName) => (
 								listName in colors
 							&&	colors[listName]
 							)
@@ -5438,7 +5520,7 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 				var	padding = null;
 
 					names.find(
-						listName => !!(
+						(listName) => !!(
 							padding = getSelectedOptionValue(project, values, 'paddings', listName)
 						)
 					);
@@ -5501,7 +5583,7 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 				&&	!layer.isColorList	//* <- already got selected color fill
 				) {
 					names.forEach(
-						listName => {
+						(listName) => {
 							img = getCanvasColored(project, values, listName, img);
 						}
 					);
@@ -5992,10 +6074,10 @@ var	options = project.options
 ,	optionsForNewLines = {}
 	;
 
-	for (var sectionName in options) {
+	for (let sectionName in options) {
 	var	section = options[sectionName];
 
-		for (var listName in section) {
+		for (let listName in section) {
 		var	optionList = section[listName];
 
 			if (getPropByNameChain(optionList, 'params', 'newline')) {
@@ -6015,10 +6097,10 @@ var	options = project.options
 function getNewLineSubcontainer(container, values, options) {
 	if (!values || !options) return container;
 
-	for (var sectionName in options) {
+	for (let sectionName in options) {
 	var	section = options[sectionName];
 
-		for (var listName of section) {
+		for (let listName of section) {
 		var	optionName = getPropByNameChain(values, sectionName, listName);
 
 			if (optionName !== null) {
@@ -6077,7 +6159,7 @@ var	startTime = +new Date
 	+	' ms)'
 	);
 
-	for (var fileName in sets) {
+	for (let fileName in sets) {
 	var	startTime = +new Date
 	,	img = null
 	,	values = sets[fileName]
@@ -6230,8 +6312,8 @@ var	startTime = +new Date
 		}
 
 	var	startTime = +new Date
-	,	joinedBorder = Math.max(0, orz(getSelectedMenuValue(project, 'collage', 'border', JOINED_IMAGE_BORDER)))
-	,	joinedPadding = Math.max(0, orz(getSelectedMenuValue(project, 'collage', 'padding', JOINED_IMAGE_PADDING)))
+	,	joinedBorder = Math.max(0, orz(getSelectedMenuValue(project, 'collage', 'border', DEFAULT_JOINED_IMAGE_BORDER)))
+	,	joinedPadding = Math.max(0, orz(getSelectedMenuValue(project, 'collage', 'padding', DEFAULT_JOINED_IMAGE_PADDING)))
 	,	size = getBatchCanvasSize(batchContainer)
 	,	w = size.w
 	,	h = size.h
@@ -6262,7 +6344,7 @@ var	startTime = +new Date
 				+	w + 'x' + h
 				);
 			} else {
-				for (var img of renderedImages) {
+				for (let img of renderedImages) {
 				var	pos = getBatchOffsetXY(img);
 
 					ctx.drawImage(img, pos.x, pos.y);
@@ -6421,7 +6503,7 @@ var	precounts = (project.renderBatchCounts || (project.renderBatchCounts = {}))
 ,	key = (
 		(
 			gc('batch-checkbox', project.container)
-			.map(e => (e.checked ? 1 : 0))
+			.map((e) => (e.checked ? 1 : 0))
 			.join('')
 		)
 	+	'_'
@@ -6445,8 +6527,8 @@ var	precounts = (project.renderBatchCounts || (project.renderBatchCounts = {}))
 	}
 
 	['show_all', 'save_all'].forEach(
-		name => gn(name, project.container).forEach(
-			e => {
+		(name) => gn(name, project.container).forEach(
+			(e) => {
 				(e.lastElementChild || cre('span', e)).textContent = count;
 			}
 		)
@@ -6460,8 +6542,8 @@ var	state = !!isWIP;
 	project.isBatchWIP = state;
 
 	['button', 'select', 'input'].forEach(
-		tagName => gt(tagName, project.container).forEach(
-			e => (
+		(tagName) => gt(tagName, project.container).forEach(
+			(e) => (
 				e.disabled = (
 					tagName === 'button'
 				&&	e.name === 'stop'
@@ -6482,7 +6564,7 @@ var	state = !!isWIP;
 	isBatchWIP = state;
 
 	gt('button', gc('menu-bar')[0]).forEach(
-		e => {
+		(e) => {
 			if (e.name !== 'download_all') {
 				e.disabled = (
 					e.name === 'stop'
@@ -6521,18 +6603,18 @@ function onResize(evt) {
 	eventStop(evt,1);
 
 	gc('menu-hid').forEach(
-		e => putInView(e, 0,0, true)
+		(e) => putInView(e, 0,0, true)
 	);
 }
 
 function onPageKeyPress(evt) {
 	if (evt.keyCode === 27) {	//* Esc
 		gn('stop').forEach(
-			e => e.click()
+			(e) => e.click()
 		);
 
 		gc('loading', id('loaded-files-selection')).forEach(
-			e => {
+			(e) => {
 				(e.project || e).isStopRequested = true;
 			}
 		);
@@ -6635,17 +6717,6 @@ var	container = getProjectContainer(e)
 }
 
 function onPageDragOver(evt) {
-
-	function isThereAnyFile(items) {
-		for (var i = 0, k = items.length; i < k; i++) {
-			if (items[i].kind == 'file') {
-				return true;
-			}
-		}
-
-		return false;
-	}
-
 	eventStop(evt).preventDefault();
 
 var	d = evt.dataTransfer
@@ -6655,7 +6726,7 @@ var	d = evt.dataTransfer
 
 	d.dropEffect = (
 		(files && files.length)
-	||	(items && items.length && isThereAnyFile(items))
+	||	(items && items.length && Array.from(items).some((item) => (item.kind === 'file')))
 		? 'copy'
 		: 'none'
 	);
@@ -6669,12 +6740,12 @@ var	evt = eventStop(evt,0,1)
 
 //* get list of files to process:
 
-	for (var batch of [evt.dataTransfer, evt.target, evt.value, evt]) if (
+	for (let batch of [evt.dataTransfer, evt.target, evt.value, evt]) if (
 		batch
 	&&	(files = batch.files)
 	&&	files.length
 	) {
-		for (var file of files) if (
+		for (let file of files) if (
 			file
 		&&	(name = file.name).length > 0
 		&&	(ext = getFileExt(name)).length > 0
@@ -6698,14 +6769,14 @@ async function loadFromFileList(files, evt) {
 		files
 	&&	files.length > 0
 	) {
-	var	logLabel = 'Load ' + files.length + ' project files: ' + files.map(v => v.name).join(', ')
+	var	logLabel = 'Load ' + files.length + ' project files: ' + files.map((v) => v.name).join(', ')
 	,	loadedProjectsCount = 0
 		;
 
 		console.time(logLabel);
 		console.group(logLabel);
 
-		for (var file of files) {
+		for (let file of files) {
 			if (await addProjectView(file)) {
 				++loadedProjectsCount;
 			}
@@ -6777,7 +6848,7 @@ var	action, url;
 		if (action === 'download_all') {
 		var	countWithoutPause = 0;
 
-			for (var a of gt('a', p)) if (a.download) {
+			for (let a of gt('a', p)) if (a.download) {
 				a.click();
 
 //* https://stackoverflow.com/a/53841885
@@ -6796,7 +6867,7 @@ var	action, url;
 		,	urls = []
 			;
 
-			for (var b of gt('button', p)) if (url = getButtonURL(b)) {
+			for (let b of gt('button', p)) if (url = getButtonURL(b)) {
 				urls.push(url);
 
 				if (await loadFromButton(b, true)) {
@@ -6855,7 +6926,7 @@ var	action, url;
 	&&	(urls || url)
 	&&	(
 			urls && urls.length > 0
-			? urls.find((url) => isURLFromDisk(url))
+			? urls.some((url) => isURLFromDisk(url))
 			: isURLFromDisk(url)
 		)
 	) {
@@ -6876,7 +6947,7 @@ function selectProject(e) {
 		var	state = (button === e ? 1 : -1);
 
 			gi(button.id).forEach(
-				e => toggleClass(e, 'show', state)
+				(e) => toggleClass(e, 'show', state)
 			);
 
 			button = button.nextElementSibling;
@@ -6915,8 +6986,8 @@ function closeProject(e) {
 			project
 		&&	project.blobTrackList
 		) {
-			for (var blob of project.blobTrackList) if (blob) {
-				URL_API.revokeObjectURL(blob.url || blob);
+			for (let blob of project.blobTrackList) if (blob) {
+				URL.revokeObjectURL(blob.url || blob);
 			}
 		}
 	}
@@ -6925,16 +6996,44 @@ function closeProject(e) {
 //* Runtime: prepare UI *------------------------------------------------------
 
 async function init() {
-var	t = THUMBNAIL_SIZE
-,	e,a,i,k,v
-	;
+	toggleClass(document.body, 'loading', -1);
+	document.body.innerHTML = la.loading;
+
+var	configVarDefaults = {}
+,	configVarNames = [
+		'DEFAULT_JOINED_IMAGE_BORDER',
+		'DEFAULT_JOINED_IMAGE_PADDING',
+		'DEFAULT_ALPHA_MASK_THRESHOLD',
+		'PREVIEW_SIZE',
+		'THUMBNAIL_SIZE',
+		'THUMBNAIL_ZOOM_STEP_MAX_FACTOR',
+		'ZOOM_STEP_MAX_FACTOR',
+	];
+
+	configVarNames.forEach(
+		(k) => {
+			configVarDefaults[k] = window[k];
+		}
+	);
 
 	await loadLib(
-		'config.js',
+		configFilePath,
 		libRootDir + 'composition.asm.js',
 	);
 
-	THUMBNAIL_SIZE = Math.abs(orz(THUMBNAIL_SIZE)) || t;
+	configVarNames.forEach(
+		(k) => {
+		var	configuredValue = orz(window[k])
+		,	invalidBottom = (k.indexOf('FACTOR') < 0 ? 0 : 1)
+			;
+
+			window[k] = (
+				configuredValue > invalidBottom
+				? configuredValue
+				: configVarDefaults[k]
+			);
+		}
+	);
 
 	if (CompositionModule = AsmCompositionModule) {
 		CompositionFuncList = Object.keys(CompositionModule(window, null, new ArrayBuffer(nextValidHeapSize(0))));
@@ -6948,12 +7047,13 @@ var	supportedFileTypesText = (
 		)
 		.filter(arrayFilterUniqueValues)
 		.filter(arrayFilterNonEmptyValues)
-		.map(v => v.toUpperCase())
+		.map((v) => v.toUpperCase())
 		.sort()
 		.join(', ')
 	)
 ,	openingNotesText = la.menu.file.notes.join('<br>')
 ,	HTMLparts = {}
+,	e,a,i,k,v
 	;
 
 	HTMLparts.file = (
@@ -7027,7 +7127,7 @@ var	supportedFileTypesText = (
 var	tabsCountMax = 0
 ,	examplesHTML = (
 		exampleProjectFiles.map(
-			v => {
+			(v) => {
 			var	headerHTML = (
 					v.subdir
 					? '<header>'
@@ -7039,7 +7139,7 @@ var	tabsCountMax = 0
 			,	tabsCount = 0
 			,	fileListHTML = (
 					v.files.map(
-						file => {
+						(file) => {
 						var	fileName = (
 								file.length
 							&&	file.length > 0
