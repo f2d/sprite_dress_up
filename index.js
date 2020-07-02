@@ -5,7 +5,7 @@
 //* TODO: whole config in JSON-format?
 
 //* menu:
-//* TODO: add default/zero/non-specific collage options if none specified.
+//* TODO: checkbox (on project selection bar?) to sync all option/export actions in selected project onto all opened projects where possible.
 //* TODO: zoom format in filenames: [x1, x1.00, x100%].
 //* TODO: progress/status panel + [stop operation] button.
 //* TODO: options menu: add/remove/copy/edit colors and outlines, or all list(s), maybe in textarea.
@@ -38,8 +38,25 @@
 var	exampleRootDir = ''
 ,	exampleProjectFiles = []
 
-,	DEFAULT_AUTOCROP = 'transparent'
-,	DEFAULT_COLLAGE = 'top-left/transparent/border-1px/padding-2px'
+,	DEFAULT_AUTOCROP = 'top-left/transparent'
+,	DEFAULT_COLLAGE = [
+		'top-left/transparent'
+	,	'black'
+	,	'gray'
+	,	'lightgray'
+	,	'white'
+	,	'red'
+	,	'green'
+	,	'blue'
+	,	'purple'
+	,	'magenta'
+	,	'violet'
+	,	'salmon'
+	,	'lightgreen'
+	,	'lightblue'
+	,	'border-1px/padding-2px/0px'
+	].join('/')
+
 ,	DEFAULT_JOINED_IMAGE_BORDER = 1
 ,	DEFAULT_JOINED_IMAGE_PADDING = 2
 ,	DEFAULT_ALPHA_MASK_THRESHOLD = 16
@@ -80,8 +97,8 @@ const	configFilePath = 'config.js'
 	)
 ,	regLayerNameParamSplit	= /[\s,_]+/g
 ,	regLayerNameParamTrim	= getTrimReg('\\s,_')
+,	regPrefixNumPx		= /^(?:(.*?)\W+)?(\d+)px$/i
 ,	regColorCode		= /^(?:rgba?\W*(\w.+)|(?:hex\W*|#)(\w+(\W+\w+)*))$/i
-,	regCropArea		= /^x=?(\d+)\W*y=?(\d+)\W*w=?(\d+)\W*h=?(\d+)$/i
 
 //* examples of comments: "... (1) ... (copy 2) (etc)"
 //* examples of params: "... [param] ... [param,param param_param]"
@@ -115,7 +132,7 @@ const	configFilePath = 'config.js'
 	,	'collage':	/^(collage)(?:\W(.*))?$/i
 	,	'layout':	/^(inline|newline|rows|columns)$/i
 
-	,	'multi_select':	/^(optional|x(\d[\d\W]*))$/i
+	,	'multi_select':	/^(optional|x(\d[\d+-]*))$/i
 	,	'preselect':	/^(preselect|initial|last)$/i
 	,	'batch':	/^(batch|no-batch|single)?$/i
 
@@ -171,6 +188,7 @@ examples of 'color_code':
 
 examples of 'paddings', 'radius':
 
+	"name [outline 1px]"
 	"name [pad 1px]"		defaults to outline mode.
 	"name [pad 1px-outline]"	fills a padded mask behind layers above it in the same folder.
 	"name [pad 1px-inline]"		TODO: fills a padded mask over layers below it in the same folder.
@@ -374,9 +392,12 @@ const	LS = window.localStorage || localStorage
 ,	TIME_PARTS_3 = ['FullYear', 'Month', 'Date']
 ,	TIME_PARTS_6 = ['FullYear', 'Month', 'Date', 'Hours', 'Minutes', 'Seconds']
 
-,	ALL_KEYWORDS = ['all', 'etc']
-,	AUTOCROP_KEYWORDS = ['transparent', 'topleft', 'topright', 'bottomleft', 'bottomright']
-,	COLLAGE_KEYWORDS = AUTOCROP_KEYWORDS.concat(['top', 'bottom', 'left', 'right', 'border', 'padding'])
+,	PARAM_KEYWORDS_AUTOCROP = ['transparent', 'topleft', 'topright', 'bottomleft', 'bottomright']
+,	PARAM_KEYWORDS_COLLAGE_ALIGN = ['topleft', 'topright', 'bottomleft', 'bottomright', 'top', 'bottom', 'left', 'right']
+,	PARAM_KEYWORDS_COLLAGE_PAD = ['border', 'padding']
+,	PARAM_KEYWORDS_SHORTCUT_FOR_ALL = ['all', 'etc']
+,	PARAM_OPTIONS_FOR_EACH_NAME = ['opacities', 'paddings']
+,	PARAM_OPTIONS_GLOBAL = ['autocrop', 'collage', 'separate', 'side', 'zoom']
 ,	VIEW_SIDES = ['front', 'back']
 
 ,	NAME_PARTS_PERCENTAGES = ['zoom', 'opacities']
@@ -384,9 +405,25 @@ const	LS = window.localStorage || localStorage
 ,	NAME_PARTS_ORDER = ['parts', 'colors', 'paddings', 'opacities', 'side', 'separate', 'zoom', 'autocrop']
 ,	NAME_PARTS_SEPARATOR = ''
 
-,	SWITCH_NAMES_BY_TYPE = {
-		'batch': ['batch', 'single']
+,	PARAM_OPTIONS_ADD_BY_DEFAULT = {
+		'collage': ['optional', 'collage']
+	,	'autocrop': ['optional', 'autocrop', 'no-batch', 'last']
+	}
+
+,	SWITCH_CLASS_BY_INDEX = ['unchecked', 'checked']
+,	SWITCH_CLASS_BY_TYPE = {
+		'batch': ['single', 'all']
 	,	'layout': ['inline', 'newline']
+	}
+
+,	SWITCH_NAMES_BY_TYPE = {
+		'batch': ['single', 'batch']
+	,	'layout': ['inline', 'newline']
+	}
+
+,	SWITCH_NAMES_DEFAULT = {
+		'batch': 'batch'
+	,	'layout': 'inline'
 	}
 
 ,	FALSY_STRINGS = [
@@ -606,6 +643,7 @@ var	ora, zip, PSD, PSD_JS, PSDLIB	//* <- external variable names, do not change,
 	'String',
 	'HTMLCanvasElement',
 	'HTMLImageElement',
+	'HTMLSelectElement',
 ].forEach(
 	(typeName) => {
 		window['is' + typeName.replace('HTML', '')] = function(obj) {
@@ -695,26 +733,28 @@ var	rgba = [0,0,0,255];
 	return rgba;
 }
 
-function getRGBAFromColorCode(m) {
-	if (m && m.match) {
-		m = m.match(regColorCode);
+function getRGBAFromColorCode(match) {
+var	text = String(match);
+
+	if (!Array.isArray(match)) {
+		match = text.match(regColorCode);
 	}
 
-	if (m) {
+	if (match) {
 	var	rgba = [0,0,0,255];
 
 //* split RGB(A):
 
-		if (m[1]) {
-			getNumbersArray(m[1], 4).forEach(
+		if (match[1]) {
+			getNumbersArray(match[1], 4).forEach(
 				(v,i) => (rgba[i] = v)
 			);
 		} else
 
 //* split hex:
 
-		if (m[3]) {
-			getNumbersArray(m[2], 4, regNonHex,
+		if (match[3]) {
+			getNumbersArray(match[2], 4, regNonHex,
 				(v) => parseInt(v.substr(0, 2), 16)
 			).forEach(
 				(v,i) => (rgba[i] = v)
@@ -723,13 +763,36 @@ function getRGBAFromColorCode(m) {
 
 //* solid hex:
 
-		if (m[2]) {
-			hex2rgbArray(m[2]).forEach(
+		if (match[2]) {
+			hex2rgbArray(match[2]).forEach(
 				(v,i) => (rgba[i] = v)
 			);
 		}
 
 		return rgba;
+	}
+
+//* ask API what a color word means:
+
+var	canvas = cre('canvas')
+,	ctx = canvas.getContext('2d')
+	;
+
+	canvas.width = 1;
+	canvas.height = 1;
+	ctx.fillStyle = 'transparent';
+	ctx.fillStyle = text;
+
+	if (
+		ctx.fillStyle !== 'transparent'
+	||	ctx.fillStyle === text
+	) {
+		ctx.fillRect(0,0, 1,1);
+		rgba = ctx.getImageData(0,0, 1,1).data.slice(0,3);
+
+		return Array.from(rgba);
+	} else {
+		if (TESTING) console.log(['unknown color:', text, ctx.fillStyle]);
 	}
 }
 
@@ -739,17 +802,18 @@ function getColorTextFromArray(a) {
 	&&	a.slice
 	&&	!isString(a)
 	) {
-	var	i = a.length;
-
-		if (i >= 4) return (
-			'rgba('
-		+		a.slice(0,4).map(orzFloat).join(',')
-		+	')'
+	var	a = a.slice(0,4).map(
+			(v,i) => (i === 3 ? orzFloat : orz)(v)
 		);
 
+		while (a.length < 3) {
+			a.push(0);
+		}
+
 		return (
-			'rgb('
-		+		Array.from(a).concat([0,0,0].slice(i)).map(orz).join(',')
+			(a.length < 4 ? 'rgb' : 'rgba')
+		+	'('
+		+		a.join(',')
 		+	')'
 		);
 	}
@@ -1752,13 +1816,6 @@ function replaceJSONpartsForZoomRef(key, value) {
 	return value;
 }
 
-function clearFill(ctx) {
-	ctx.fillStyle = 'white';
-	ctx.fillRect(0,0, ctx.canvas.width, ctx.canvas.height);
-
-	return ctx;
-}
-
 function clearCanvasBeforeGC(e) {
 	if (e && isCanvasElement(e = e.canvas || e)) {
 		e.width = 1;
@@ -2157,8 +2214,11 @@ function trimParam(v) {
 }
 
 function getOtherSwitchParamName(switchType, switchName) {
-var	a = SWITCH_NAMES_BY_TYPE[switchType];
-	return a[1 - a.indexOf(switchName)];
+var	a = SWITCH_NAMES_BY_TYPE[switchType]
+,	i = a.indexOf(switchName)
+	;
+
+	return a[i < 0 ? 0 : 1-i];
 }
 
 function getTruthyValue(v) {
@@ -2261,6 +2321,10 @@ function isLayerRendered(layer) {
 }
 
 function isLayerSkipped(layer) {
+	if (TESTING && !layer.params) {
+		console.log(['No params:', layer, getLayerPathText(layer)]);
+	}
+
 	return !!(
 		layer.params.skip
 	||	(regLayerNameToSkip && regLayerNameToSkip.test(layer.name))
@@ -2770,8 +2834,47 @@ async function getProjectViewMenu(project) {
 			}
 
 			function addOptionsFromParam(sectionName, listName) {
+
+				function addOptionsFromParamKeywords(keywordsList, paramList) {
+					paramList.forEach(
+						(v) => {
+						var	k = String(v);
+
+							if (isNaN(v)) {
+								k = k.replace(regNonWord, '').toLowerCase();
+
+								if (PARAM_KEYWORDS_SHORTCUT_FOR_ALL.indexOf(k) >= 0) {
+									keywordsList.forEach(
+										(v) => {
+											optionItems[v] = v;
+										}
+									);
+								} else
+								if (keywordsList.indexOf(k) >= 0) {
+									optionItems[k] = k;
+								} else
+								if (regColorCode.test(v)) {
+									optionItems[v] = v;
+								}
+							} else {
+								optionItems[k] = v;
+							}
+						}
+					);
+				}
+
 			var	param = params[sectionName];
-				if (!param) return;
+
+				if (!param) {
+					return;
+				}
+
+				if (!listName && sectionName === 'collage') {
+					for (let listName in param) {
+						addOptionsFromParam(sectionName, listName);
+					}
+					return;
+				}
 
 			var	optionGroup = addOptionGroup(sectionName, listName || sectionName)
 			,	optionParams = optionGroup.params
@@ -2785,13 +2888,13 @@ async function getProjectViewMenu(project) {
 					optionItems[sectionName] = sectionName;
 				} else
 				if (sectionName === 'side') {
-				var	j = la.project_option_side;
+					j = la.project_option_side;
 
 					for (let k in j) {
 						optionItems[k] = j[k];
 					}
 
-				var	j = VIEW_SIDES.indexOf(param);
+					j = VIEW_SIDES.indexOf(param);
 
 					if (j >= 0) {
 						params[sectionName] = (
@@ -2838,25 +2941,18 @@ async function getProjectViewMenu(project) {
 					layer.isMaskGenerated = true;
 				} else
 				if (sectionName === 'autocrop') {
-					param.forEach(
-						(v) => {
-						var	k = v.replace(regNonWord, '').toLowerCase();
-
-							if (ALL_KEYWORDS.indexOf(k) >= 0) {
-								AUTOCROP_KEYWORDS.forEach(
-									(v) => {
-										optionItems[v] = v;
-									}
-								);
-							} else
-							if (AUTOCROP_KEYWORDS.indexOf(k) >= 0) {
-								optionItems[k] = k;
-							} else
-							if (regColorCode.test(v)) {
-								optionItems[v] = v;
+					addOptionsFromParamKeywords(PARAM_KEYWORDS_AUTOCROP, param);
+				} else
+				if (sectionName === 'collage') {
+					if (listName === 'align') {
+						addOptionsFromParamKeywords(PARAM_KEYWORDS_COLLAGE_ALIGN, param[listName]);
+					} else {
+						param[listName].forEach(
+							(v) => {
+								optionItems[String(v)] = v;
 							}
-						}
-					);
+						);
+					}
 				} else
 				if (sectionName === 'zoom' || sectionName === 'opacities') {
 					if (j = param.format) {
@@ -2879,9 +2975,9 @@ async function getProjectViewMenu(project) {
 			}
 
 		var	params = layer.params
-		,	n = layer.name
-		,	m = layer.names = (
-				n
+		,	name = layer.name
+		,	names = layer.names = (
+				name
 				.split(regSplitLayerNames)
 				.map(trim)
 				.filter(arrayFilterNonEmptyValues)
@@ -2892,8 +2988,8 @@ async function getProjectViewMenu(project) {
 				return;
 			}
 
-			if (!m.length || params.none) {
-				m.push('');
+			if (!names.length || params.none) {
+				names.push('');
 			}
 
 		var	layersInside = layer.layers
@@ -2918,21 +3014,18 @@ async function getProjectViewMenu(project) {
 				}
 			}
 
-			addOptionsFromParam('autocrop');
-			addOptionsFromParam('collage');
-			addOptionsFromParam('separate');
-			addOptionsFromParam('side');
-			addOptionsFromParam('zoom');
+			PARAM_OPTIONS_GLOBAL.forEach(
+				(sectionName) => addOptionsFromParam(sectionName)
+			);
 
-			m.forEach(
-				(listName) => {
-					addOptionsFromParam('opacities', listName);
-					addOptionsFromParam('paddings', listName);
-				}
+			PARAM_OPTIONS_FOR_EACH_NAME.forEach(
+				(sectionName) => names.forEach(
+					(listName) => addOptionsFromParam(sectionName, listName)
+				)
 			);
 
 			if (layer.isOptionList) {
-				m.forEach(
+				names.forEach(
 					(listName) => addOptionGroup(layer.type, listName)
 				);
 			} else {
@@ -2959,7 +3052,7 @@ async function getProjectViewMenu(project) {
 				&&	(layer.isColor || !layer.isInsideColorList)
 				) {
 					parent.names.forEach(
-						(listName) => m.forEach(
+						(listName) => names.forEach(
 							(optionName) => addOptionItem(layer, parent.type, listName, optionName)
 						)
 					);
@@ -3042,15 +3135,24 @@ async function getProjectViewMenu(project) {
 
 		project.layers = getUnskippedProcessedLayers(project.layers);
 
+		for (let sectionName in PARAM_OPTIONS_ADD_BY_DEFAULT) if (!options[sectionName]) {
+			getProcessedLayerInBranch(
+				getLayerWithParamsFromParamList(
+					PARAM_OPTIONS_ADD_BY_DEFAULT[sectionName]
+				)
+			);
+		}
+
 		for (let switchType in SWITCH_NAMES_BY_TYPE) {
 		var	o = (project.switchParamNames || (project.switchParamNames = {}))
 		,	o = (o[switchType] || (o[switchType] = {}))
 			;
 
 			if (!o.implicit) {
-			var	switchNames = SWITCH_NAMES_BY_TYPE[switchType];
-				o.implicit = switchNames[0];
-				o.explicit = switchNames[1];
+			var	switchName = SWITCH_NAMES_DEFAULT[switchType];
+
+				o.implicit = switchName;
+				o.explicit = getOtherSwitchParamName(switchType, switchName);
 			}
 		}
 
@@ -3191,18 +3293,41 @@ async function getProjectViewMenu(project) {
 			th.textContent = text + ':';
 		}
 
-		function addOptions(sectionName, text) {
+		function addOptions(sectionName, entry) {
+
+			function getOptionLabelFromColor(prefix, colorCode) {
+			var	rgba = getRGBAFromColorCode(colorCode)
+			,	text = (
+					prefix
+				+	': '
+				+	colorCode
+				);
+
+				if (rgba) {
+				var	colorStyle = getColorTextFromArray(rgba);
+					colorStyles.push(colorStyle);
+					text += ', ' + colorStyle;
+				}
+
+				return text;
+			}
 
 //* section = type of use (fill colors, draw parts, etc):
 
 		var	section = options[sectionName]
+		,	optionLists = section
 		,	optionList
 			;
 
+			if (entry && !isString(entry)) {
+				optionLists = entry;
+				entry = '';
+			}
+
 //* list box = set of parts:
 
-			for (let listName in section) if (optionList = section[listName]) {
-			var	listLabel = text || listName
+			for (let listName in optionLists) if (optionList = section[listName]) {
+			var	listLabel = entry || listName
 			,	items = optionList.items
 			,	params = optionList.params
 			,	isZeroSameAsEmpty = (
@@ -3228,6 +3353,7 @@ async function getProjectViewMenu(project) {
 				s.name = listName;
 				s.setAttribute('data-section', sectionName);
 
+				if (sectionName !== 'collage')
 				for (let switchType in SWITCH_NAMES_BY_TYPE) {
 				var	b = getPropByNameChain(project, 'switchParamNames', switchType, 'implicit')
 				,	c = getPropByNameChain(project, 'switchParamNames', switchType, 'explicit')
@@ -3245,12 +3371,13 @@ async function getProjectViewMenu(project) {
 					i.checked = i.initialValue = !params[SWITCH_NAMES_BY_TYPE[switchType][0]];
 					i.params = params;
 
-					for (let i in la_switches) {
-					var	j = la_switches[i]
+					for (let k in la_switches) {
+					var	i = SWITCH_CLASS_BY_TYPE[switchType].indexOf(k)
+					,	j = la_switches[k]
 					,	t = cre('div', label)
 						;
 
-						t.className = switchType + '-' + i;
+						t.className = switchType + '-' + k + ' ' + SWITCH_CLASS_BY_INDEX[i];
 						t.title = j.label + ': \r\n' + j.hint;
 					}
 				}
@@ -3298,23 +3425,56 @@ async function getProjectViewMenu(project) {
 					} else {
 					var	optionLabel = optionName
 					,	optionValue = optionName
+					,	colorStyles = []
 						;
 
 						if (sectionName === 'autocrop') {
-							optionLabel = la_autocrop[optionName] || (
-								la_autocrop.by_color
-							+	': '
-							+	optionName
-							+	' ('
-							+	getRGBAFromColorCode(optionName)
-							+	')'
+							optionLabel = (
+								la_autocrop[optionName]
+							||	getOptionLabelFromColor(la_autocrop.by_color, optionName)
 							);
+						} else
+						if (sectionName === 'collage') {
+						var	translatedLabel = getPropByNameChain(la_collage, listName, optionName);
+
+							if (translatedLabel) {
+								optionLabel = translatedLabel;
+							} else
+							if (listName === 'background') {
+								optionLabel = getOptionLabelFromColor(la_collage[listName].color, optionName);
+							}
 						} else
 						if (sectionName === 'side') {
 							optionLabel = la_view_sides[optionName] || optionName;
+						} else
+						if (sectionName === 'colors') {
+							items[optionName].forEach(
+								(layer) => {
+								var	rgba = layer.img;
+
+									if (rgba) {
+									var	colorStyle = getColorTextFromArray(rgba);
+
+										if (
+											colorStyle
+										&&	colorStyles.indexOf(colorStyle) < 0
+										) {
+											colorStyles.push(colorStyle);
+										}
+									}
+								}
+							);
 						}
 
-						addOption(s, optionLabel, optionValue);
+					var	o = addOption(s, optionLabel, optionValue);
+
+						colorStyles.forEach(
+							(colorStyle) => {
+							var	e = cre('div', o, o.lastChild);
+								e.setAttribute('data-color', colorStyle);
+								e.style.backgroundColor = colorStyle;
+							}
+						);
 					}
 				}
 
@@ -3335,6 +3495,7 @@ async function getProjectViewMenu(project) {
 
 	var	options = project.options
 	,	la_autocrop = la.project_option_autocrop
+	,	la_collage = la.project_option_collage
 	,	la_view_sides = la.project_option_side
 	,	la_section_batches = la.project_option_sections
 	,	table = cre('table', container)
@@ -3535,6 +3696,203 @@ function isParamInLayerName(name) {
 	return false;
 }
 
+function getLayerWithParamsFromParamList(paramList, layer) {
+
+	function addParamPartsToList(sectionName, listName, value) {
+	var	o = params[sectionName] || (params[sectionName] = {})
+	,	a = o[listName] || (o[listName] = [])
+		;
+
+		if (a.indexOf(value) < 0) {
+			a.push(value);
+		}
+	}
+
+	function getWIPLayerPathText() {
+		return getLayerPathText(layer.parent) + '"' + (layer.nameOriginal || layer.name) + '"';
+	}
+
+	if (!layer) {
+		layer = {name: 'dummy'};
+	}
+
+var	params = layer.params || (layer.params = {});
+
+	if (!Array.isArray(paramList)) {
+		return layer;
+	}
+
+	paramList = paramList.filter(arrayFilterUniqueValues);
+
+	param_list:
+	for (let param of paramList) {
+
+		param_types:
+		for (let paramType in regLayerNameParamType) if (m = param.match(regLayerNameParamType[paramType])) {
+			if (NAME_PARTS_FOLDERS.indexOf(paramType) >= 0) {
+				layer.type = paramType;
+				layer.isVisibilityOptional = true;
+			} else
+			if (paramType === 'zoom' || paramType === 'opacities') {
+				params[paramType] = {
+					'values': getUniqueNumbersArray(m[1])
+				,	'format': orz(m[2])
+				};
+			} else
+			if (paramType === 'radius') {
+				layer.isVisibilityOptional = true;
+				v = (
+					m[1]
+					.split('/')
+					.filter((v) => regHasDigit.test(v))
+					.map(
+						(x) => {
+							x = x.split('x', 2).map(
+								(y) => {
+									if (y.length == 0) return null;
+
+									y = y.split(':', 2).map(
+										(z) => orzFloat(
+											z.replace(regTrimNaNorSign, '')
+										)
+									);
+
+									if (y.length == 0) return {'out': 1};
+									if (y.length == 1) return {'out': y[0]};
+
+									return {
+										'in': Math.min(...y)
+									,	'out': Math.max(...y)
+									};
+								}
+							);
+
+							if (x.length == 0) return {'radius': 1};
+							if (x.length == 1) return {'radius': x[0]};
+							if (x[0] === null) x[0] = x[1];
+							if (x[1] === null) x[1] = x[0];
+							if (x[1] === null) x[1] = x[0] = 1;
+
+							return {
+								'x': x[0]
+							,	'y': x[1]
+							};
+						}
+					).map(
+						(v) => {
+							v.threshold = m[2];
+							return v;
+						}
+					)
+				);
+
+				params[paramType] = (params[paramType] || []).concat(v);
+			} else
+			if (paramType === 'copypaste') {
+				addParamPartsToList(paramType, m[1], m[2]);
+			} else
+			if (paramType === 'color_code') {
+				params[paramType] = getRGBAFromColorCode(m);
+			} else
+			if (paramType === 'multi_select') {
+				v = (
+					m[1] === 'optional'
+					? [0,1]
+					: getNumbersArray(m[2], 2)
+				);
+
+				params[paramType] = {
+					'min': Math.max(0, v[0])
+				,	'max': Math.max(1, v[v.length > 1?1:0])
+				};
+			} else
+			if (paramType === 'check_order') {
+				params[paramType] = m[1];
+			} else
+			if (paramType === 'preselect') {
+				v = 'last';
+				params[param.indexOf(v) >= 0 ? v : paramType] = true;
+			} else
+			if (paramType === 'batch') {
+				params[param === paramType ? paramType : 'single'] = true;
+			} else
+			if (paramType === 'autocrop') {
+				v = (
+					(m[2] || DEFAULT_AUTOCROP)
+					.split('/')
+					.filter(arrayFilterNonEmptyValues)
+				);
+
+				params[paramType] = (params[paramType] || []).concat(v);
+			} else
+			if (paramType === 'collage') {
+				v = (
+					(m[2] || DEFAULT_COLLAGE)
+					.split('/')
+					.filter(arrayFilterNonEmptyValues)
+				);
+
+				v.forEach(
+					(v) => {
+					var	m
+					,	listName = 'background'
+					,	keyword = v.replace(regNonWord, '').toLowerCase()
+						;
+
+						if (
+							PARAM_KEYWORDS_COLLAGE_ALIGN.indexOf(keyword) >= 0
+						||	PARAM_KEYWORDS_SHORTCUT_FOR_ALL.indexOf(keyword) >= 0
+						) {
+							listName = 'align';
+						} else
+						if (m = v.match(regPrefixNumPx)) {
+							if (
+								!(listName = m[1])
+							||	PARAM_KEYWORDS_COLLAGE_PAD.indexOf(listName) < 0
+							) {
+								listName = PARAM_KEYWORDS_COLLAGE_PAD;
+							}
+
+							v = orz(m[2]) + 'px';
+						}
+
+						if (listName) {
+							(Array.isArray(listName) ? listName : [listName]).forEach(
+								(listName) => addParamPartsToList(paramType, listName, v)
+							);
+						}
+					}
+				);
+			} else
+			if (paramType === 'layout') {
+				params[param === 'rows' || param === 'newline' ? 'newline' : 'inline'] = true;
+			} else {
+				if (paramType === 'side') {
+					layer.isVisibilityOptional = true;
+					if (
+						(v = m[2])
+					&&	(v = v[0])
+					) {
+						if (v === 'h') layer.flipSide = orz(layer.flipSide) | FLAG_FLIP_HORIZONTAL;
+						if (v === 'v') layer.flipSide = orz(layer.flipSide) | FLAG_FLIP_VERTICAL;
+					}
+				}
+
+				params[paramType] = param || paramType;
+			}
+
+			if (TESTING) console.log('param type [' + paramType + '], value = [' + param + '] at: ' + getWIPLayerPathText());
+
+			// break param_types;
+			continue param_list;
+		}
+
+		if (TESTING) console.log('param type unknown, value = [' + param + '] at: ' + getWIPLayerPathText());
+	}
+
+	return layer;
+}
+
 async function getNextParentAfterAddingLayerToTree(layer, sourceData, name, parentGroup, isLayerFolder, isInsideVirtualPath) {
 	if (
 		!isInsideVirtualPath
@@ -3547,9 +3905,9 @@ async function getNextParentAfterAddingLayerToTree(layer, sourceData, name, pare
 		await pause(1);
 	}
 
-var	m,k,v
-,	paramList = []
+var	paramList = []
 ,	params = {}
+,	a,i,j,k,m,o,v
 	;
 
 	if (typeof layer.sourceData   === 'undefined') layer.sourceData   = sourceData;
@@ -3633,142 +3991,12 @@ var	checkVirtualPath = (
 
 //* process params:
 
+	layer.name = name;
+	layer.params = params;
+	layer.parent = parentGroup;
+
 	if (paramList.length > 0) {
-		paramList = paramList.filter(arrayFilterUniqueValues);
-
-		for (let param of paramList) {
-			for (let k in regLayerNameParamType) if (m = param.match(regLayerNameParamType[k])) {
-
-				if (NAME_PARTS_FOLDERS.indexOf(k) >= 0) {
-					layer.type = k;
-					layer.isVisibilityOptional = true;
-				} else
-				if (k === 'zoom' || k === 'opacities') {
-					params[k] = {
-						'values': getUniqueNumbersArray(m[1])
-					,	'format': orz(m[2])
-					};
-				} else
-				if (k === 'radius') {
-					layer.isVisibilityOptional = true;
-					v = (
-						m[1]
-						.split('/')
-						.filter((v) => regHasDigit.test(v))
-						.map(
-							(x) => {
-								x = x.split('x', 2).map(
-									(y) => {
-										if (y.length == 0) return null;
-
-										y = y.split(':', 2).map(
-											(z) => orzFloat(
-												z.replace(regTrimNaNorSign, '')
-											)
-										);
-
-										if (y.length == 0) return {'out': 1};
-										if (y.length == 1) return {'out': y[0]};
-
-										return {
-											'in': Math.min(...y)
-										,	'out': Math.max(...y)
-										};
-									}
-								);
-
-								if (x.length == 0) return {'radius': 1};
-								if (x.length == 1) return {'radius': x[0]};
-								if (x[0] === null) x[0] = x[1];
-								if (x[1] === null) x[1] = x[0];
-								if (x[1] === null) x[1] = x[0] = 1;
-
-								return {
-									'x': x[0]
-								,	'y': x[1]
-								};
-							}
-						).map(
-							(v) => {
-								v.threshold = m[2];
-								return v;
-							}
-						)
-					);
-
-					params[k] = (params[k] || []).concat(v);
-				} else
-				if (k === 'copypaste') {
-				var	j = m[1]
-				,	v = m[2]
-				,	o = params[k] || (params[k] = {})
-				,	a = o[j] || (o[j] = [])
-					;
-
-					if (a.indexOf(v) < 0) {
-						a.push(v);
-					}
-				} else
-				if (k === 'color_code') {
-					params[k] = getRGBAFromColorCode(m);
-				} else
-				if (k === 'multi_select') {
-					v = (
-						m[1] === 'optional'
-						? [0,1]
-						: getNumbersArray(m[2], 2)
-					);
-
-					params[k] = {
-						'min': Math.max(0, v[0])
-					,	'max': Math.max(1, v[v.length > 1?1:0])
-					};
-				} else
-				if (k === 'check_order') {
-					params[k] = m[1];
-				} else
-				if (k === 'preselect') {
-					v = 'last';
-					params[param.indexOf(v) >= 0 ? v : k] = true;
-				} else
-				if (k === 'batch') {
-					params[param === k ? k : 'single'] = true;
-				} else
-				if (k === 'autocrop') {
-					v = (
-						m[2]
-					||	DEFAULT_AUTOCROP
-					).split('/');
-
-					params[k] = (params[k] || []).concat(v);
-				} else
-				if (k === 'collage') {
-					v = (
-						m[2]
-					||	DEFAULT_COLLAGE
-					).split('/');
-
-					params[k] = (params[k] || []).concat(v);
-				} else
-				if (k === 'layout') {
-					params[param === 'rows' || param === 'newline' ? 'newline' : 'inline'] = true;
-				} else {
-					if (k === 'side') {
-						layer.isVisibilityOptional = true;
-						if (
-							(v = m[2])
-						&&	(v = v[0])
-						) {
-							if (v === 'h') layer.flipSide = orz(layer.flipSide) | FLAG_FLIP_HORIZONTAL;
-							if (v === 'v') layer.flipSide = orz(layer.flipSide) | FLAG_FLIP_VERTICAL;
-						}
-					}
-					params[k] = param || k;
-				}
-
-				break;
-			}
-		}
+		getLayerWithParamsFromParamList(paramList, layer);
 
 		if (k = layer.type) {
 			if (params.if_only) {
@@ -3798,9 +4026,6 @@ var	checkVirtualPath = (
 
 //* place the layer into custom generic tree structure:
 
-	layer.name = name;
-	layer.params = params;
-	layer.parent = parentGroup;
 	parentGroup.push(layer);
 
 	if (
@@ -4334,7 +4559,7 @@ function setAllValues(project, valuePos) {
 				i.checked = (
 					valuePos === 'init'
 					? i.initialValue
-					: true
+					: false
 				);
 
 				updateCheckBox(i);
@@ -4357,7 +4582,8 @@ var	values = {};
 			;
 
 			optionLists[listName] = (
-				(
+				sectionName === 'collage'
+			||	(
 					checkSelectedValue
 				&&	getPropByNameChain(project, 'options', sectionName, listName, 'params', 'single')
 				)
@@ -4435,8 +4661,7 @@ function getAllValueSets(project, flags) {
 const	getOnlyNames		= !!flags.getOnlyNames
 ,	stopAtMaxCount		= !!flags.stopAtMaxCount
 ,	checkSelectedValue	= !!flags.checkSelectedValue
-,	values = getAllMenuValues(project, checkSelectedValue)
-	;
+,	values = getAllMenuValues(project, checkSelectedValue);
 
 var	resultSets = getOnlyNames ? [] : {}
 ,	optionLists = []
@@ -5167,9 +5392,10 @@ var	s = gt('select', project.container).find(
 }
 
 function getLayerPathVisibilityByValues(project, layer, values, listName) {
-	if (!layer.params) {
-		if (TESTING) console.log([project, layer, values, listName]);
+	if (TESTING && !layer.params) {
+		console.log(['No params:', project, layer, values, listName]);
 	}
+
 	if (layer.params.check_order === 'up') {
 		if (getLayerVisibilityChain(layer).some(
 			(layer) => !getLayerVisibilityByValues(project, layer, values, listName)
@@ -6273,10 +6499,7 @@ var	startTime = getTimeNow()
 			;
 
 			while (e) {
-
-				//* image:
-
-				if (e.getAttribute('data-option-id') === null) {
+				if (isImageElement(e)) {
 					e.batchOffsetX = x;
 					e.batchOffsetY = y;
 
@@ -6285,9 +6508,6 @@ var	startTime = getTimeNow()
 
 					x += e.width + joinedPadding;
 				} else {
-
-				//* subcontainer:
-
 				var	size = getBatchCanvasSize(e);
 
 					e.batchOffsetX = x = 0;
@@ -6329,6 +6549,7 @@ var	startTime = getTimeNow()
 		}
 
 	var	startTime = getTimeNow()
+	,	alignImages = getSelectedMenuValue(project, 'collage', 'align') || ''
 	,	joinedBorder = Math.max(0, orz(getSelectedMenuValue(project, 'collage', 'border', DEFAULT_JOINED_IMAGE_BORDER)))
 	,	joinedPadding = Math.max(0, orz(getSelectedMenuValue(project, 'collage', 'padding', DEFAULT_JOINED_IMAGE_PADDING)))
 	,	size = getBatchCanvasSize(batchContainer)
@@ -6339,9 +6560,7 @@ var	startTime = getTimeNow()
 		if (w > 0 && h > 0) {
 			w += joinedBorder * 2;
 			h += joinedBorder * 2;
-		}
 
-		if (w > 0 && h > 0) {
 		var	canvas = cre('canvas')
 		,	ctx = canvas.getContext('2d')
 			;
@@ -6361,6 +6580,17 @@ var	startTime = getTimeNow()
 				+	w + 'x' + h
 				);
 			} else {
+			var	backgroundFill = getSelectedMenuValue(project, 'collage', 'background');
+
+				if (
+					backgroundFill
+				&&	backgroundFill !== 'transparent'
+				&&	(backgroundFill = getColorTextFromArray(backgroundFill))
+				) {
+					ctx.fillStyle = backgroundFill;
+					ctx.fillRect(0,0, w,h);
+				}
+
 				for (let img of renderedImages) {
 				var	pos = getBatchOffsetXY(img);
 
@@ -6722,13 +6952,22 @@ var	e = evt;
 		}
 	}
 
+var	isSelect = isSelectElement(e);
+
+	if (
+		isSelect
+	&&	e.getAttribute('data-section') === 'collage'
+	) {
+		return;
+	}
+
 var	container = getProjectContainer(e)
 ,	project = container.project
 	;
 
 	updateBatchCount(project);
 
-	if (e.tagName.toLowerCase() === 'select') {
+	if (isSelect) {
 		updateMenuAndShowImg(project);
 	}
 }
