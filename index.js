@@ -1,37 +1,36 @@
 
 //* source file data:
+//* TODO: keep all layer-name parameters single-word if possible.
 //* TODO: lazy loading only needed images in ORA one by one, as in PSD, after new tree structure is finished.
-//* TODO: save as ORA.
 //* TODO: whole config in JSON-format?
 
 //* menu:
-//* TODO: save as WebP? https://bugs.chromium.org/p/chromium/issues/detail?id=170565#c77 - toDataURL/toBlob quality 1.0 = lossless.
 //* TODO: add default/zero/non-specific collage options if none specified.
 //* TODO: zoom format in filenames: [x1, x1.00, x100%].
 //* TODO: progress/status panel + [stop operation] button.
 //* TODO: options menu: add/remove/copy/edit colors and outlines, or all list(s), maybe in textarea.
 //* TODO: remember already calculated batch counts and valid lists per project, in a dict with keys like joined list of all options and checkboxes.
 //* TODO: <select multiple> <optgroup> <option>?</option> </optgroup> </select>.
+//* TODO: save opened project as restructured ORA/PSD.
+//* TODO: save rendered image as WebP. https://bugs.chromium.org/p/chromium/issues/detail?id=170565#c77 - toDataURL/toBlob quality 1.0 = lossless.
 
 //* rendering:
 //* TODO: stop images moving to hidden container when save collage button was clicked.
-//* TODO: fix invalid clipping-passthrough interactions (ignore clipping if base layer is in passthrough mode, etc).
 //* TODO: fix hiding of clipping group with skipped/invisible/empty base layer.
-//* TODO: fix blending mode of base layer in clipping group.
 //* TODO: keep track of current root of (possibly nested) copy-pasted layer (in array property with push-pop?) while rendering.
+//* TODO: decode layer data (PSD/PNG/etc) without using canvas, to avoid precision drop by premultiplied-alpha (PMA - in Firefox, not in Chrome).
 //* TODO: arithmetic emulation of all blending operations, not native to JS.
 //* TODO: arithmetic emulation of all operations in 16/32-bit until final result; to be optionally available as checkbox/selectbox.
-//* TODO: decode layer data (PSD/PNG/etc) manually without using canvas, to avoid premultiplied-alpha (PMA - in Firefox, not in Chrome) while rendering.
-//* TODO: set zero-alpha pixels to average of all non-zero-alpha of 8 surrounding rgb values (in asm?).
+//* TODO: set RGB of zero-alpha pixels to average of all non-zero-alpha neighbour RGB values ignoring alpha.
 //* TODO: for files without merged image data - render ignoring options, but respecting layer visibility properties. Or buttons to show embedded and/or rendered image regardless of options. Or add this as top-most option for any project, with or without options.
 //* TODO: use ImageBitmaps for speed?
 //* TODO: revoke collage blob urls when cleaning view container?
 //* TODO: revoke any image blob urls right after image element's loading, without ever tracking/listing them?
 
 //* other:
-//* TODO: keep all parameters single-word if possible.
 //* TODO: make visible user manual from notes and examples.
 //* TODO: global job list for WIP cancelling instead of spaghetti-coded flag checks.
+//* TODO: split JS files in a way that lets older browsers to use parts they can parse and execute (only show menu, or only load ORA, etc.).
 //* TODO: split functionality into modules to reuse with drawpad, etc.
 
 //* Config: defaults, safe to redefine in external config file *---------------
@@ -39,6 +38,8 @@
 var	exampleRootDir = ''
 ,	exampleProjectFiles = []
 
+,	DEFAULT_AUTOCROP = 'transparent'
+,	DEFAULT_COLLAGE = 'top-left/transparent/border-1px/padding-2px'
 ,	DEFAULT_JOINED_IMAGE_BORDER = 1
 ,	DEFAULT_JOINED_IMAGE_PADDING = 2
 ,	DEFAULT_ALPHA_MASK_THRESHOLD = 16
@@ -2260,7 +2261,7 @@ function isLayerRendered(layer) {
 }
 
 function isLayerSkipped(layer) {
-	return (
+	return !!(
 		layer.params.skip
 	||	(regLayerNameToSkip && regLayerNameToSkip.test(layer.name))
 	||	(layer.clippingLayer && isLayerSkipped(layer.clippingLayer))
@@ -3007,14 +3008,15 @@ async function getProjectViewMenu(project) {
 
 		function getUnskippedProcessedLayers(layers, isInsideColorList) {
 		var	i = layers.length
-		,	layer, clippingLayer
+		,	clippingLayer = null
+		,	layer
 			;
 
 			while (i--) if (layer = layers[i]) {
-				if (clippingLayer && layer.isClipped) {
+				if (layer.isClipped) {
 					layer.clippingLayer = clippingLayer;
 				} else {
-					clippingLayer = layer;
+					clippingLayer = (layer.isPassThrough ? null : layer);
 				}
 			}
 
@@ -3560,7 +3562,7 @@ var	checkVirtualPath = (
 	||	isParamInLayerName(name)
 	);
 
-//* common fixes:
+//* common sense and generalization fixes:
 
 	if (layer.blendMode === BLEND_MODE_CLIP) {
 		layer.blendMode = BLEND_MODE_NORMAL;
@@ -3735,7 +3737,7 @@ var	checkVirtualPath = (
 				if (k === 'autocrop') {
 					v = (
 						m[2]
-					||	'transparent'
+					||	DEFAULT_AUTOCROP
 					).split('/');
 
 					params[k] = (params[k] || []).concat(v);
@@ -3743,7 +3745,7 @@ var	checkVirtualPath = (
 				if (k === 'collage') {
 					v = (
 						m[2]
-					||	'top-left/transparent/border-1px/padding-2px'
+					||	DEFAULT_COLLAGE
 					).split('/');
 
 					params[k] = (params[k] || []).concat(v);
@@ -5319,7 +5321,7 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 			!clippingGroupWIP
 		&&	!ignoreColors
 		) {
-		var	g_a = [layer]
+		var	g_a = []
 		,	g_i = l_i
 		,	g_l
 			;
@@ -5328,13 +5330,17 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 				(g_i-- > 0)
 			&&	(g_l = l_a[g_i])
 			&&	g_l.isClipped
+			&&	g_l.clippingLayer
 			) {
 				g_a.push(g_l);
 			}
 
-			if (g_a.length > 1) {
+			if (g_a.length > 0) {
 				l_i = g_i + 1;
+
 				g_a.reverse();
+				g_a.push(layer);
+
 				clippingGroupResult = true;
 			}
 		}
@@ -5361,7 +5367,7 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 
 			if (
 				layer.isClipped
-			&&	layer !== bottomLayer
+			&&	layer.clippingLayer
 			&&	blendMode === BLEND_MODE_NORMAL
 			) {
 				return onReturnCleanup();
@@ -5435,7 +5441,7 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 
 			if (layers) {
 
-//* get a flat color fill staright from a list:
+//* get a flat color fill, using the first non-empty value found in associated lists:
 
 				if (
 					!skipColoring
@@ -5533,15 +5539,12 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 //* get mask of neighbour content, rendered before or after this layer:
 
 				if (layer.isMaskGenerated) {
-				var	padding = null;
+				var	paddings = names.map(
+						(listName) => getSelectedOptionValue(project, values, 'paddings', listName)
+					)
+					.filter(arrayFilterNonEmptyValues);
 
-					names.find(
-						(listName) => !!(
-							padding = getSelectedOptionValue(project, values, 'paddings', listName)
-						)
-					);
-
-					if (padding) {
+					if (paddings.length > 0) {
 						mask = await getRenderByValues(
 							project
 						,	values
@@ -5556,7 +5559,9 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 //* apply padding to generated mask:
 
 						if (mask) {
-							padCanvas(mask, padding);
+							paddings.forEach(
+								(padding) => padCanvas(mask, padding)
+							);
 
 							if (TESTING_RENDER) addDebugImage(project, mask, 'padCanvas: mask');
 						}
@@ -6032,27 +6037,21 @@ var	img = prerenders[refName];
 		img
 	&&	(autocrop = getPropBySameNameChain(values, 'autocrop'))
 	&&	isNotEmptyString(autocrop)
+	&&	(crop = getAutoCropArea(img, autocrop))
 	) {
-	var	autocrop
-	,	crop = getAutoCropArea(img, autocrop)
-		;
-
-		if (crop) {
-		var	cropID = [
+		if (
+			crop.width > 0
+		&&	crop.height > 0
+		) {
+		var	autocrop, crop
+		,	cropValues = getPatchedObject(values, replaceJSONpartsForCropRef)
+		,	cropRefName = getFileNameByValuesToSave(project, cropValues)
+		,	cropID = [
 				'x=' + crop.left
 			,	'y=' + crop.top
 			,	'w=' + crop.width
 			,	'h=' + crop.height
 			].join(',');
-		}
-
-		if (
-			crop
-		&&	crop.width > 0
-		&&	crop.height > 0
-		) {
-		var	cropValues = getPatchedObject(values, replaceJSONpartsForCropRef);
-		var	cropRefName = getFileNameByValuesToSave(project, cropValues);
 
 			cropValues.autocrop = {'autocrop': cropID};
 		var	cropName = getFileNameByValuesToSave(project, cropValues);
@@ -6079,6 +6078,8 @@ var	img = prerenders[refName];
 			} else {
 				prerenders[fileName] = prerenders[cropName] = img;
 			}
+		} else {
+			prerenders[fileName] = null;
 		}
 	}
 
@@ -7017,6 +7018,8 @@ async function init() {
 
 var	configVarDefaults = {}
 ,	configVarNames = [
+		'DEFAULT_AUTOCROP',
+		'DEFAULT_COLLAGE',
 		'DEFAULT_JOINED_IMAGE_BORDER',
 		'DEFAULT_JOINED_IMAGE_PADDING',
 		'DEFAULT_ALPHA_MASK_THRESHOLD',
