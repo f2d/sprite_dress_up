@@ -656,7 +656,7 @@ function pause(msec) {
 	);
 }
 
-function dist(x,y) {return Math.sqrt(x*x + y*y)};
+function dist(x,y) {return Math.sqrt(x*x + y*y);}
 function getAlphaDataIndex(x,y,w) {return ((y*w + x) << 2) | 3;}
 function repeat(t,n) {return new Array(n+1).join(t);}
 
@@ -1257,8 +1257,6 @@ var	t = orz(msec)
 	return (t < 0?'-':'') + a.join(':');
 }
 
-function getLogTime() {return getFormattedTime(0,0,1);}
-
 function getFormattedTime(sec, for_filename, for_log, plain, only_ymd) {
 var	t = sec;
 	if (TOS.indexOf(typeof t) >= 0) {
@@ -1305,6 +1303,9 @@ var	d = (t ? new Date(t+(t > 0 ? 0 : new Date())) : new Date())
 		)
 	);
 }
+
+function getTimeNow() {return +new Date();}
+function getLogTime() {return getFormattedTime(0,0,1);}
 
 function logTime(k, v) {
 var	t = getLogTime();
@@ -2554,7 +2555,7 @@ var	fileName = sourceFile.name
 
 	logTime('"' + fileName + '" started ' + actionLabel);
 
-var	startTime = +new Date;
+var	startTime = getTimeNow();
 
 	try_loaders:
 	for (let ftl of fileTypeLoaders) if (ftl.dropFileExts.indexOf(ext) >= 0)
@@ -2563,7 +2564,7 @@ var	startTime = +new Date;
 			fileName: fileName
 		,	baseName: baseName
 		,	loading: {
-				startTime: +new Date
+				startTime: getTimeNow()
 			,	data: sourceFile
 			,	images: []
 			}
@@ -2580,7 +2581,7 @@ var	startTime = +new Date;
 		}
 	}
 
-var	tookTime = +new Date - startTime;
+var	tookTime = getTimeNow() - startTime;
 
 	logTime(
 		'"' + fileName + '"'
@@ -2626,7 +2627,7 @@ async function getProjectViewMenu(project) {
 
 //* try loading one by one to avoid flood of errors:
 
-			var	startTime = +new Date;
+			var	startTime = getTimeNow();
 
 				while (
 					l_a.length > 0
@@ -2636,7 +2637,7 @@ async function getProjectViewMenu(project) {
 				&&	(result = await getLayerMaskLoadPromise(layer, project))
 				);
 
-			var	tookTime = +new Date - startTime;
+			var	tookTime = getTimeNow() - startTime;
 
 				logTime(
 					'"' + n + '"'
@@ -3244,7 +3245,7 @@ async function getProjectViewMenu(project) {
 
 					for (let i in la_switches) {
 					var	j = la_switches[i]
-					,	t = cre('span', label)
+					,	t = cre('div', label)
 						;
 
 						t.className = switchType + '-' + i;
@@ -3852,7 +3853,7 @@ var	actionLabel = 'opening with ' + libName;
 
 	logTime('"' + project.fileName + '" started ' + actionLabel);
 
-	project.loading.startParsingTime = +new Date;
+	project.loading.startParsingTime = getTimeNow();
 
 	try {
 	var	d = project.loading.data
@@ -3876,7 +3877,7 @@ var	actionLabel = 'opening with ' + libName;
 				: ' failed '
 			) + actionLabel + ' after '
 		)
-	+	(+new Date - project.loading.startParsingTime)
+	+	(getTimeNow() - project.loading.startParsingTime)
 	+	' ms'
 	);
 
@@ -4239,10 +4240,12 @@ var	o = getProjectOptionValue(project, sectionName, listName, optionName);
 }
 
 function isSetOfValuesOK(project, values) {
-var	section, optionName;
+var	section;
 
 	for (let sectionName in values) if (section = values[sectionName])
-	for (let listName in section) if (optionName = section[listName]) {
+	for (let listName in section) {
+	var	optionName = section[listName];
+
 		if (!isOptionRelevant(project, values, sectionName, listName, optionName)) {
 			return false;
 		}
@@ -4252,13 +4255,17 @@ var	section, optionName;
 }
 
 function getSetOfRelevantValues(project, values) {
-var	section, optionName, o, resultSet;
+var	section
+,	resultSet = {}
+	;
 
 	for (let sectionName in values) if (section = values[sectionName])
-	for (let listName in section) if (optionName = section[listName]) {
-		o = resultSet || (resultSet = {});
-		o = o[sectionName] || (o[sectionName] = {});
-		o[listName] = (
+	for (let listName in section) {
+	var	optionName = section[listName]
+	,	resultSection = resultSet[sectionName] || (resultSet[sectionName] = {})
+		;
+
+		resultSection[listName] = (
 			isOptionRelevant(project, values, sectionName, listName, optionName)
 			? optionName
 			: ''
@@ -4361,7 +4368,7 @@ var	values = {};
 	return values;
 }
 
-function getAllValueSets(project, checkSelectedValue, onlyNames, stopAtMaxCount) {
+function getAllValueSets(project, flags) {
 
 	function goDeeper(optionLists, partialValueSet) {
 		if (
@@ -4380,7 +4387,7 @@ function getAllValueSets(project, checkSelectedValue, onlyNames, stopAtMaxCount)
 
 			for (let optionName of optionNames) {
 				if (
-					onlyNames
+					getOnlyNames
 				&&	stopAtMaxCount
 				&&	resultSets.length > MAX_BATCH_PRECOUNT
 				) {
@@ -4407,7 +4414,7 @@ function getAllValueSets(project, checkSelectedValue, onlyNames, stopAtMaxCount)
 						}
 					);
 
-					if (onlyNames) {
+					if (getOnlyNames) {
 						if (resultSets.indexOf(fileName) < 0) {
 							resultSets.push(fileName);
 						}
@@ -4421,8 +4428,15 @@ function getAllValueSets(project, checkSelectedValue, onlyNames, stopAtMaxCount)
 		}
 	}
 
-var	values = getAllMenuValues(project, checkSelectedValue)
-,	resultSets = onlyNames ? [] : {}
+	if (!flags) flags = {};
+
+const	getOnlyNames		= !!flags.getOnlyNames
+,	stopAtMaxCount		= !!flags.stopAtMaxCount
+,	checkSelectedValue	= !!flags.checkSelectedValue
+,	values = getAllMenuValues(project, checkSelectedValue)
+	;
+
+var	resultSets = getOnlyNames ? [] : {}
 ,	optionLists = []
 ,	section
 ,	sectionName
@@ -4438,13 +4452,13 @@ var	values = getAllMenuValues(project, checkSelectedValue)
 		,	'listName'   : listName
 		,	'optionNames': optionNames
 		});
-		if (onlyNames) {
+		if (getOnlyNames) {
 			maxPossibleCount *= optionNames.length;
 		}
 	}
 
 	if (
-		onlyNames
+		getOnlyNames
 	&&	stopAtMaxCount
 	&&	maxPossibleCount > MAX_BATCH_PRECOUNT
 	) {
@@ -4459,9 +4473,11 @@ var	values = getAllMenuValues(project, checkSelectedValue)
 function getAllValueSetsCount(project) {
 var	a = getAllValueSets(
 		project
-	,	true
-	,	true
-	,	MAX_BATCH_PRECOUNT && MAX_BATCH_PRECOUNT > 0
+	,	{
+			getOnlyNames: true,
+			checkSelectedValue: true,
+			stopAtMaxCount: MAX_BATCH_PRECOUNT && MAX_BATCH_PRECOUNT > 0,
+		}
 	);
 
 	return (
@@ -5677,7 +5693,7 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 		}
 
 		project.rendering = {
-			startTime: +new Date
+			startTime: getTimeNow()
 		,	fileName: getFileNameByValues(project, values)
 		,	layersApplyCount: 0
 		,	layersBatchCount: 1
@@ -5744,7 +5760,7 @@ var	l_a = layersToRenderOne || layersBatch || project.layers
 //* end of layer tree:
 
 	if (!layersBatch) {
-	var	renderingTime = +new Date - project.rendering.startTime
+	var	renderingTime = getTimeNow() - project.rendering.startTime
 	,	renderName = project.rendering.fileName
 		;
 
@@ -6136,9 +6152,9 @@ var	logLabel = 'Render all: ' + project.fileName;
 	console.time(logLabel);
 	console.group(logLabel);
 
-var	startTime = +new Date
-,	sets = getAllValueSets(project, true)
-,	lastPauseTime = +new Date
+var	startTime = getTimeNow()
+,	sets = getAllValueSets(project, {checkSelectedValue: true})
+,	lastPauseTime = getTimeNow()
 ,	setsCountWithoutPause = 0
 ,	setsCountTotal = Object.keys(sets).length
 ,	setsCount = 0
@@ -6160,7 +6176,7 @@ var	startTime = +new Date
 	);
 
 	for (let fileName in sets) {
-	var	startTime = +new Date
+	var	startTime = getTimeNow()
 	,	img = null
 	,	values = sets[fileName]
 	,	render = await getOrCreateRender(
@@ -6210,7 +6226,7 @@ var	startTime = +new Date
 			);
 		}
 
-	var	endTime = +new Date;
+	var	endTime = getTimeNow();
 
 		totalTime += (endTime - startTime);
 		setsCount++;
@@ -6226,7 +6242,7 @@ var	startTime = +new Date
 		) {
 			await pause(needWaitBetweenDL ? (100 * setsCountWithoutPause) : 100);
 
-			lastPauseTime = +new Date;
+			lastPauseTime = getTimeNow();
 			setsCountWithoutPause = 0;
 		}
 
@@ -6311,7 +6327,7 @@ var	startTime = +new Date
 			};
 		}
 
-	var	startTime = +new Date
+	var	startTime = getTimeNow()
 	,	joinedBorder = Math.max(0, orz(getSelectedMenuValue(project, 'collage', 'border', DEFAULT_JOINED_IMAGE_BORDER)))
 	,	joinedPadding = Math.max(0, orz(getSelectedMenuValue(project, 'collage', 'padding', DEFAULT_JOINED_IMAGE_PADDING)))
 	,	size = getBatchCanvasSize(batchContainer)
@@ -6355,7 +6371,7 @@ var	startTime = +new Date
 				,	project.fileName + '.png'
 				,	w,h
 				,	(img) => {
-						endTime = +new Date;
+						endTime = getTimeNow();
 						totalTime = (endTime - startTime);
 
 						img.alt += (
