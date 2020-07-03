@@ -3295,13 +3295,14 @@ async function getProjectViewMenu(project) {
 
 		function addOptions(sectionName, entry) {
 
-			function getOptionLabelFromColor(prefix, colorCode) {
+			function getOptionLabelFromColor(colorCode, prefix) {
 			var	rgba = getRGBAFromColorCode(colorCode)
-			,	text = (
-					prefix
-				+	': '
-				+	colorCode
-				);
+			,	text = String(colorCode)
+				;
+
+				if (prefix) {
+					text = prefix + ', ' + text;
+				}
 
 				if (rgba) {
 				var	colorStyle = getColorTextFromArray(rgba);
@@ -3315,19 +3316,15 @@ async function getProjectViewMenu(project) {
 //* section = type of use (fill colors, draw parts, etc):
 
 		var	section = options[sectionName]
-		,	optionLists = section
+		,	isEntryList = (entry && !isString(entry))
+		,	optionLists = (isEntryList ? entry : section)
 		,	optionList
 			;
-
-			if (entry && !isString(entry)) {
-				optionLists = entry;
-				entry = '';
-			}
 
 //* list box = set of parts:
 
 			for (let listName in optionLists) if (optionList = section[listName]) {
-			var	listLabel = entry || listName
+			var	listLabel = (isEntryList ? optionLists[listName] : entry) || listName
 			,	items = optionList.items
 			,	params = optionList.params
 			,	isZeroSameAsEmpty = (
@@ -3431,7 +3428,10 @@ async function getProjectViewMenu(project) {
 						if (sectionName === 'autocrop') {
 							optionLabel = (
 								la_autocrop[optionName]
-							||	getOptionLabelFromColor(la_autocrop.by_color, optionName)
+							||	getOptionLabelFromColor(
+									optionName
+								,	la_autocrop.by_color
+								)
 							);
 						} else
 						if (sectionName === 'collage') {
@@ -3441,7 +3441,10 @@ async function getProjectViewMenu(project) {
 								optionLabel = translatedLabel;
 							} else
 							if (listName === 'background') {
-								optionLabel = getOptionLabelFromColor(la_collage[listName].color, optionName);
+								optionLabel = getOptionLabelFromColor(
+									optionName
+								// ,	la_collage[listName].color
+								);
 							}
 						} else
 						if (sectionName === 'side') {
