@@ -1,4 +1,5 @@
 html {
+	color: #000;
 	background-color: #ddd;
 	margin-left: 0;
 	margin-right: calc(100% - 100vw);	/* <- Prevent page elements from jumping due to page width changing when vertical scrollbar appears.
@@ -297,6 +298,7 @@ img.larger {
 }
 .project-options select,
 .project-options option {
+	color: #000;
 	background-color: #fff;
 }
 .project-options select[value][value=""],

@@ -819,13 +819,13 @@ var	canvas = cre('canvas')
 	}
 }
 
-function getColorTextFromArray(a) {
+function getColorTextFromArray(a, skipAlpha) {
 	if (
 		a
 	&&	a.slice
 	&&	!isString(a)
 	) {
-	var	a = a.slice(0,4).map(
+	var	a = a.slice(0, skipAlpha?3:4).map(
 			(v,i) => (i === 3 ? orzFloat : orz)(v)
 		);
 
@@ -1002,14 +1002,23 @@ function delAllChildNodes(p) {
 	return p;
 }
 
-function eventStop(e,i,d) {
-	if ((e && e.eventPhase !== null) ? e : (e = window.event)) {
-		if (d && e.preventDefault) e.preventDefault();
-		if (i && e.stopImmediatePropagation) e.stopImmediatePropagation();
-		if (e.stopPropagation) e.stopPropagation();
-		if (e.cancelBubble !== null) e.cancelBubble = true;
+function eventStop(evt, stopImmediatePropagation, preventDefault) {
+	if (
+		(
+			evt
+		&&	typeof evt.eventPhase !== 'undefined'
+		&&	evt.eventPhase !== null
+		)
+		? evt
+		: (evt = window.event)
+	) {
+		if (evt.cancelBubble !== null) evt.cancelBubble = true;
+		if (evt.stopPropagation) evt.stopPropagation();
+		if (stopImmediatePropagation && evt.stopImmediatePropagation) evt.stopImmediatePropagation();
+		if (preventDefault && evt.preventDefault) evt.preventDefault();
 	}
-	return e;
+
+	return evt;
 }
 
 function encodeHTMLSpecialChars(t) {
@@ -1161,7 +1170,7 @@ var	t = tagName || 'div'
 
 	return	a+'menu-head"'
 	+	getTagAttrIfNotEmpty('id', id || '')
-	+	' onmouseover="onResize()">'
+	+	' onmouseover="updateDropdownMenuPositions()">'
 	+	(
 			head[0] === '<'
 		&&	head.slice(-1) === '>'
@@ -3323,6 +3332,19 @@ async function getProjectViewMenu(project) {
 
 		function addOptions(sectionName, entry) {
 
+			function addOptionColor(rgba) {
+				if (rgba) {
+				var	colorStyle = getColorTextFromArray(rgba, true);
+
+					if (
+						colorStyle
+					&&	colorStyles.indexOf(colorStyle) < 0
+					) {
+						colorStyles.push(colorStyle);
+					}
+				}
+			}
+
 			function getOptionLabelFromColor(colorCode, prefix) {
 			var	rgba = getRGBAFromColorCode(colorCode)
 			,	text = String(colorCode)
@@ -3333,9 +3355,8 @@ async function getProjectViewMenu(project) {
 				}
 
 				if (rgba) {
-				var	colorStyle = getColorTextFromArray(rgba);
-					colorStyles.push(colorStyle);
-					text += ', ' + colorStyle;
+					addOptionColor(rgba);
+					text += ', ' + getColorTextFromArray(rgba);
 				}
 
 				return text;
@@ -3480,20 +3501,7 @@ async function getProjectViewMenu(project) {
 						} else
 						if (sectionName === 'colors') {
 							items[optionName].forEach(
-								(layer) => {
-								var	rgba = layer.img;
-
-									if (rgba) {
-									var	colorStyle = getColorTextFromArray(rgba);
-
-										if (
-											colorStyle
-										&&	colorStyles.indexOf(colorStyle) < 0
-										) {
-											colorStyles.push(colorStyle);
-										}
-									}
-								}
+								(layer) => addOptionColor(layer.img)
 							);
 						}
 
@@ -6891,6 +6899,8 @@ var	state = !!isWIP;
 //* Page-specific functions: UI-side *-----------------------------------------
 
 function onBeforeUnload(evt) {
+var	evt = eventStop(evt,1);
+
 	if (!TESTING && id('loaded-files-view').firstElementChild) {
 
 //* Note: given message text won't be used in modern browsers.
@@ -6910,6 +6920,12 @@ function onBeforeUnload(evt) {
 }
 
 function onResize(evt) {
+	updateDropdownMenuPositions(eventStop(evt,1));
+
+	thumbnailPlaceholder = null;
+}
+
+function updateDropdownMenuPositions(evt) {
 	eventStop(evt,1);
 
 	gc('menu-hid').forEach(
@@ -6918,6 +6934,8 @@ function onResize(evt) {
 }
 
 function onPageKeyPress(evt) {
+var	evt = evt || window.event;
+
 	if (evt.keyCode === 27) {	//* Esc
 		gn('stop').forEach(
 			(e) => e.click()
@@ -6932,7 +6950,9 @@ function onPageKeyPress(evt) {
 }
 
 function onProjectButtonClick(evt) {
-var	e = evt;
+var	evt = evt || window.event
+,	e = evt
+	;
 
 	if (
 		evt
@@ -6989,7 +7009,9 @@ var	container = getProjectContainer(e)
 }
 
 function onProjectMenuUpdate(evt) {
-var	e = evt;
+var	evt = evt || window.event
+,	e = evt
+	;
 
 	if (
 		evt
@@ -7006,6 +7028,8 @@ var	e = evt;
 	) {
 		return;
 	}
+
+	eventStop(evt,1);
 
 	if (e.type === 'checkbox') {
 		updateCheckBox(e);
@@ -7037,9 +7061,8 @@ var	container = getProjectContainer(e)
 }
 
 function onPageDragOver(evt) {
-	eventStop(evt).preventDefault();
-
-var	d = evt.dataTransfer
+var	evt = eventStop(evt,0,1)
+,	d = evt.dataTransfer
 ,	files = d.files
 ,	items = d.items
 	;
@@ -7060,7 +7083,12 @@ var	evt = eventStop(evt,0,1)
 
 //* get list of files to process:
 
-	for (let batch of [evt.dataTransfer, evt.target, evt.value, evt]) if (
+	for (let batch of [
+		evt.dataTransfer
+	,	evt.target
+	,	evt.value
+	,	evt
+	]) if (
 		batch
 	&&	(files = batch.files)
 	&&	files.length
