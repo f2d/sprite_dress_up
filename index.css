@@ -27,26 +27,6 @@ label:disabled,
 input[type="file"]:disabled {
 	cursor: not-allowed;
 }
-[data-color] {
-	display: inline-block;
-	height: 1em;
-	width: 1em;
-	vertical-align: middle;
-}
-[data-color]:last-of-type {
-	margin-right: 0.5em;
-}
-[data-color]:not(:only-of-type) {
-	width: 0.5em;
-}
-[data-color]:not([style]) {
-	width: 0;
-	height: 0;
-	border: 0.5em solid rgba(255,255,255, 0.5);
-	border-top-color:	rgba(0,0,0, 0.5);
-	border-bottom-color:	rgba(0,0,0, 0.5);
-	background-color:	rgba(0,0,0, 0.25);
-}
 body {
 	margin: 1em auto;
 	text-align: center;

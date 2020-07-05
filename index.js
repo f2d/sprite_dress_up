@@ -652,6 +652,14 @@ var	ora, zip, PSD, PSD_JS, PSDLIB	//* <- external variable names, do not change,
 	}
 );
 
+function getStringEmptyIfUndefined(v) {
+	return (
+		typeof v !== 'undefined'
+		? String(v)
+		: ''
+	);
+}
+
 function isNotEmptyString(v) {
 	return (
 		isString(v)
@@ -698,6 +706,17 @@ function pause(msec) {
 function dist(x,y) {return Math.sqrt(x*x + y*y);}
 function getAlphaDataIndex(x,y,w) {return ((y*w + x) << 2) | 3;}
 function repeat(t,n) {return new Array(n+1).join(t);}
+
+function isColorDark(color) {
+	return (
+		getRGBAFromColorCode(color)
+		.slice(0,3)
+		.reduce(
+			(sum, v) => (sum + v)
+		,	0
+		) < 400
+	);
+}
 
 function hex2rgbArray(v) {
 
@@ -788,9 +807,13 @@ var	canvas = cre('canvas')
 	||	ctx.fillStyle === text
 	) {
 		ctx.fillRect(0,0, 1,1);
-		rgba = ctx.getImageData(0,0, 1,1).data.slice(0,3);
+		rgba = Array.from(ctx.getImageData(0,0, 1,1).data.slice(0,4));
 
-		return Array.from(rgba);
+		if (rgba[3] === 255) {
+			rgba.length = 3;
+		}
+
+		return rgba;
 	} else {
 		if (TESTING) console.log(['unknown color:', text, ctx.fillStyle]);
 	}
@@ -1272,11 +1295,9 @@ function getNumbersArray(text, maxCount, splitBy, transformFunction) {
 	);
 }
 
-function getUniqueNumbersArray(text) {
+function getUniqueNumbersArray(text, maxCount, splitBy, transformFunction) {
 	return (
-		text
-		.split(regNaN)
-		.map(orz)
+		getNumbersArray(text, maxCount, splitBy, transformFunction)
 		.filter(arrayFilterUniqueValues)
 	);
 }
@@ -2197,15 +2218,22 @@ function getProjectButton(e) {return getTargetParentByClass(e, regClassButton);}
 
 function addButton(parent, text, func) {
 var	e = cre('button', parent);
+
 	e.textContent = text || e.tagName;
 	if (func) e.setAttribute('onclick', func);
+
 	return e;
 }
 
 function addOption(parent, text, value) {
-var	e = cre('option', parent);
-	e.value = (typeof value !== 'undefined' ? value : text) || '';
-	e.textContent = text || '';
+var	e = cre('option', parent)
+,	text = getStringEmptyIfUndefined(text)
+,	value = getStringEmptyIfUndefined(value) || text
+	;
+
+	e.value = value;
+	e.textContent = text;
+
 	return e;
 }
 
@@ -3469,13 +3497,19 @@ async function getProjectViewMenu(project) {
 							);
 						}
 
-					var	o = addOption(s, optionLabel, optionValue);
+					var	optionItem = addOption(s, optionLabel, optionValue);
 
 						colorStyles.forEach(
 							(colorStyle) => {
-							var	e = cre('div', o, o.lastChild);
-								e.setAttribute('data-color', colorStyle);
-								e.style.backgroundColor = colorStyle;
+
+							//* standard only allows minimal styling of options, no nested color boxes:
+
+								optionItem.style.backgroundColor = colorStyle;
+								optionItem.style.color = (
+									isColorDark(colorStyle)
+									? 'white'
+									: 'black'
+								);
 							}
 						);
 					}
@@ -4529,10 +4563,35 @@ var	v = s.value;
 	return selectValue(s, v);
 }
 
-function selectValue(s, valueContent) {
-	s.value = valueContent || '';
+function selectValue(s, v) {
+	v = getStringEmptyIfUndefined(v);
 
-//* Set attribute for CSS:
+	if (s.value !== v) {
+		s.value = v;
+	}
+
+	updateSelectStyle(s);
+
+	return s.value;
+}
+
+function updateSelectStyle(s) {
+var	optionItem = gt('option', s).find(
+		(o) => (
+			o.selected
+		||	o.value === s.value
+		)
+	);
+
+	if (optionItem) {
+		s.style.color = optionItem.style.color || '';
+		s.style.backgroundColor = optionItem.style.backgroundColor || '';
+	} else {
+		s.style.color = '';
+		s.style.backgroundColor = '';
+	}
+
+//* Set attribute for CSS selectors:
 
 	s.setAttribute(
 		'value'
@@ -4776,6 +4835,7 @@ var	values = {};
 					? fallbackValue
 					: selectedValue
 				));
+
 				if (style.display != hide) {
 					style.display = hide;
 				}
@@ -6957,11 +7017,12 @@ var	e = evt;
 
 var	isSelect = isSelectElement(e);
 
-	if (
-		isSelect
-	&&	e.getAttribute('data-section') === 'collage'
-	) {
-		return;
+	if (isSelect) {
+		updateSelectStyle(e);
+
+		if (e.getAttribute('data-section') === 'collage') {
+			return;
+		}
 	}
 
 var	container = getProjectContainer(e)
