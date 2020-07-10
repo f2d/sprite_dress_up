@@ -80,7 +80,8 @@ var	exampleRootDir = ''
 
 //* Config: internal, do not change *------------------------------------------
 
-const	configFilePath = 'config.js'
+const	configFilePath = 'config.js'			//* <- declarations-only file to redefine any of the above variables
+,	fetchTestFilePath = 'index.png'			//* <- smallest local file to test loading from disk
 
 // ,	regLayerNameToSkip		= /^(skip)$/i
 ,	regLayerNameToSkip		= null
@@ -388,14 +389,16 @@ const	LS = window.localStorage || localStorage
 ,	BLOB_PREFIX = 'blob:'
 ,	DATA_PREFIX = 'data:'
 ,	TYPE_TEXT = 'text/plain'
-,	TOS = ['object', 'string']
-,	TIME_PARTS_3 = ['FullYear', 'Month', 'Date']
-,	TIME_PARTS_6 = ['FullYear', 'Month', 'Date', 'Hours', 'Minutes', 'Seconds']
+
+,	TIME_PARTS_YMD = ['FullYear', 'Month', 'Date']
+,	TIME_PARTS_HMS = ['Hours', 'Minutes', 'Seconds']
 
 ,	PARAM_KEYWORDS_AUTOCROP = ['transparent', 'topleft', 'topright', 'bottomleft', 'bottomright']
 ,	PARAM_KEYWORDS_COLLAGE_ALIGN = ['topleft', 'topright', 'bottomleft', 'bottomright', 'top', 'bottom', 'left', 'right']
 ,	PARAM_KEYWORDS_COLLAGE_PAD = ['border', 'padding']
 ,	PARAM_KEYWORDS_SHORTCUT_FOR_ALL = ['all', 'etc']
+,	PARAM_KEYWORDS_VALUE_NAME = ['preselect']
+,	PARAM_KEYWORDS_VALUE_TRUE = ['last', 'no_prefix']
 ,	PARAM_OPTIONS_FOR_EACH_NAME = ['opacities', 'paddings']
 ,	PARAM_OPTIONS_GLOBAL = ['autocrop', 'collage', 'separate', 'side', 'zoom']
 ,	VIEW_SIDES = ['front', 'back']
@@ -436,6 +439,18 @@ const	LS = window.localStorage || localStorage
 	,	'disabled'
 	,	'undefined'
 	]
+
+,	CLEANUP_KEYS_TESTING = [
+		'loading'
+	,	'toPng'
+	]
+
+,	CLEANUP_KEYS = CLEANUP_KEYS_TESTING.concat([
+		'blendModeOriginal'
+	,	'nameOriginal'
+	,	'sourceData'
+	,	'maskData'
+	])
 
 ,	QUERY_SELECTOR = {
 		getElementsByClassName:	['.', ''],
@@ -630,41 +645,109 @@ var	ora, zip, PSD, PSD_JS, PSDLIB	//* <- external variable names, do not change,
 ,	CompositionFuncList
 
 ,	thumbnailPlaceholder
+,	canLoadFromDisk
 ,	isStopRequested
 ,	isBatchWIP
 	;
 
 //* Common utility functions *-------------------------------------------------
 
-//* type-checking, e.g. "isString(value)":
-//* https://stackoverflow.com/a/17772086
+//* create type-checking functions, e.g. "isString()" or "isImageElement()":
+//* source: https://stackoverflow.com/a/17772086
 [
+	'Date',
 	'Function',
+	'Number',
 	'String',
 	'HTMLCanvasElement',
 	'HTMLImageElement',
 	'HTMLSelectElement',
 ].forEach(
 	(typeName) => {
-		window['is' + typeName.replace('HTML', '')] = function(obj) {
-			return (toString.call(obj).slice(8, -1) === typeName);
+		window[
+			'is' + typeName.replace('HTML', '')
+		] = function(value) {
+			return (toString.call(value).slice(8, -1) === typeName);
 		};
 	}
 );
 
-function getStringEmptyIfUndefined(v) {
+function arrayFilterNonEmptyValues(value) {return (isString(value) ? (value.length > 0) : !!value);}
+function arrayFilterUniqueValues(value, index, array) {return (array.indexOf(value) === index);}
+function arrayFilteredJoin(array, joinText) {return array.filter(arrayFilterNonEmptyValues).join(joinText || '');}
+
+function orz(value) {return parseInt(value||0)||0;}
+function orzClamp(value, min, max) {return Math.max(min, Math.min(max, orz(value)));}
+function orzFloat(value) {return parseFloat(value||.0)||.0;}
+function orzTrim(value) {return orz(value.replace(regTrimNaN, ''));}
+
+function getDistance(x,y) {return Math.sqrt(x*x + y*y);}
+function getAlphaDataIndex(x,y, width) {return (((y*width + x) << 2) | 3);}
+function repeatText(text, numberOfTimes) {return (new Array(numberOfTimes + 1)).join(text);}
+
+function isNotEmptyString(value) {
 	return (
-		typeof v !== 'undefined'
-		? String(v)
-		: ''
+		isString(value)
+	&&	value.length > 0
 	);
 }
 
-function isNotEmptyString(v) {
+function getJoinedOrEmptyString(text, joinText) {
 	return (
-		isString(v)
-	&&	v.length > 0
+		typeof text === 'undefined'
+	||	text === null
+		? '' :
+		(
+			text
+		&&	text.join
+			? text.join(joinText)
+			: String(text)
+		)
 	);
+}
+
+function trim(text) {
+	return (
+		getJoinedOrEmptyString(text)
+		.replace(regTrim, '')
+		.replace(regTrimNewLine, '\n')
+	);
+}
+
+function pause(msec) {
+	return new Promise(
+		(resolve, reject) => {
+			setTimeout(resolve, msec || 1000);
+		}
+	);
+}
+
+function eventStop(evt, stopImmediatePropagation, preventDefault) {
+	if (
+		(
+			evt
+		&&	typeof evt.eventPhase !== 'undefined'
+		&&	evt.eventPhase !== null
+		)
+		? evt
+		: (evt = window.event)
+	) {
+		if (evt.cancelBubble !== null) evt.cancelBubble = true;
+		if (evt.stopPropagation) evt.stopPropagation();
+		if (stopImmediatePropagation && evt.stopImmediatePropagation) evt.stopImmediatePropagation();
+		if (preventDefault && evt.preventDefault) evt.preventDefault();
+	}
+
+	return evt;
+}
+
+function getErrorFromEvent(evt, message, callback) {
+var	error = new Error(message || 'Unknown error');
+	error.event = evt;
+
+	if (isFunction(callback)) callback(error);
+
+	return error;
 }
 
 function isURLFromDisk(url) {
@@ -682,7 +765,7 @@ var	match = url.match(/^(\w+):(\/\/|$)/)
 	return (protocol === 'file');
 }
 
-//* https://stackoverflow.com/a/55896125
+//* source: https://stackoverflow.com/a/55896125
 function isImageTypeExportSupported(type) {
 var	canvas = cre('canvas');
 	canvas.width = 1;
@@ -691,72 +774,67 @@ var	canvas = cre('canvas');
 	return (
 		canvas
 		.toDataURL(type)
-		.indexOf(type) > -1
+		.indexOf(type) >= 0
 	);
 }
-
-function pause(msec) {
-	return new Promise(
-		(resolve, reject) => {
-			setTimeout(resolve, msec || 1000);
-		}
-	);
-}
-
-function dist(x,y) {return Math.sqrt(x*x + y*y);}
-function getAlphaDataIndex(x,y,w) {return ((y*w + x) << 2) | 3;}
-function repeat(t,n) {return new Array(n+1).join(t);}
 
 function isColorDark(color) {
 	return (
-		getRGBAFromColorCode(color)
+		(
+			Array.isArray(color)
+			? color
+			: getRGBAFromColorCode(color)
+		)
 		.slice(0,3)
 		.reduce(
-			(sum, v) => (sum + v)
+			(sum, channelValue) => (sum + orz(channelValue))
 		,	0
 		) < 400
 	);
 }
 
-function hex2rgbArray(v) {
+function getRGBAFromHex(text) {
 
 //* extend shortcut notation:
 
-var	j = v = String(v).replace(regNonHex, '')
-,	i = v.length
+var	text = String(text).replace(regNonHex, '')
+,	charsNum = text.length
 	;
 
-	if (i === 1) j = repeat(v, 6); else
-	if (i === 2) j = repeat(v, 3); else
-	if (i === 3 || i === 4) {
-		j = (
-			v
+	if (charsNum === 1) text = repeatText(text, 6); else	//* #1 -> #111111
+	if (charsNum === 2) text = repeatText(text, 3); else	//* #12 -> #121212
+	if (charsNum === 3 || charsNum === 4) {
+		text = (
+			text
 			.split('')
-			.map((v) => repeat(v, 2))
+			.map((char) => repeatText(char, 2))	//* #123(4) -> #112233(44)
 			.join('')
 		);
 	}
-
-	if (v !== j) v = j;
 
 //* parse string into array of up to 4 numbers, taking up to 2 chars from left at each step:
 
 var	rgba = [0,0,0,255];
 
-	for (let i = 0; i < 4 && v.length > 0; i++) {
-	var	j = Math.min(2, v.length);
-		rgba[i] = parseInt(v.substr(0, j), 16);
-		v = v.substr(j);
+	for (let index = 0; index < rgba.length && text.length > 0; index++) {
+		charsNum = Math.min(2, text.length);
+		rgba[index] = parseInt(text.substr(0, charsNum), 16);
+		text = text.substr(charsNum);
 	}
 
 	return rgba;
 }
 
-function getRGBAFromColorCode(match) {
-var	text = String(match);
+function getRGBAFromColorCode(textOrMatch) {
 
-	if (!Array.isArray(match)) {
-		match = text.match(regColorCode);
+//* check arguments:
+
+	if (Array.isArray(textOrMatch)) {
+		match = textOrMatch;
+	} else {
+	var	text = String(textOrMatch)
+	,	match = text.match(regColorCode)
+		;
 	}
 
 	if (match) {
@@ -766,7 +844,7 @@ var	text = String(match);
 
 		if (match[1]) {
 			getNumbersArray(match[1], 4).forEach(
-				(v,i) => (rgba[i] = v)
+				(channelValue, index) => (rgba[index] = channelValue)
 			);
 		} else
 
@@ -774,17 +852,17 @@ var	text = String(match);
 
 		if (match[3]) {
 			getNumbersArray(match[2], 4, regNonHex,
-				(v) => parseInt(v.substr(0, 2), 16)
+				(channelValue) => parseInt(channelValue.substr(0, 2), 16)
 			).forEach(
-				(v,i) => (rgba[i] = v)
+				(channelValue, index) => (rgba[index] = channelValue)
 			);
 		} else
 
 //* solid hex:
 
 		if (match[2]) {
-			hex2rgbArray(match[2]).forEach(
-				(v,i) => (rgba[i] = v)
+			getRGBAFromHex(match[2]).forEach(
+				(channelValue, index) => (rgba[index] = channelValue)
 			);
 		}
 
@@ -819,67 +897,104 @@ var	canvas = cre('canvas')
 	}
 }
 
-function getColorTextFromArray(a, skipAlpha) {
+function getColorTextFromArray(rgba, maxCount) {
 	if (
-		a
-	&&	a.slice
-	&&	!isString(a)
+		rgba
+	&&	rgba.slice
+	&&	!isString(rgba)
 	) {
-	var	a = a.slice(0, skipAlpha?3:4).map(
-			(v,i) => (i === 3 ? orzFloat : orz)(v)
+	var	rgba = rgba.slice(0, orzClamp(maxCount || 4, 1,4)).map(
+			(channelValue, index) => (index === 3 ? getNormalizedOpacity : orz)(channelValue)
 		);
 
-		while (a.length < 3) {
-			a.push(0);
+		while (rgba.length < 3) {
+			rgba.push(0);
 		}
 
 		return (
-			(a.length < 4 ? 'rgb' : 'rgba')
+			(rgba.length < 4 ? 'rgb' : 'rgba')
 		+	'('
-		+		a.join(',')
+		+		rgba.join(',')
 		+	')'
 		);
 	}
 
-	return String(a);
+	return String(rgba);
 }
 
+//* source: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/assign#Deep_Clone
 function getPatchedObject(obj, jsonReplacerFunc) {
 	return JSON.parse(JSON.stringify(obj, jsonReplacerFunc || null));
 }
 
-function getPropByNameChain() {
-var	a = Array.from(arguments)
-,	o = a.shift()
+function getOrInitChild() {
+
+	function getInitChild(args) {
+	var	constructor = args.find(isFunction) || Object
+	,	keys = args.filter(isString)
+		;
+
+		if (keys.length > 0) {
+		var	child = {};
+
+			while (keys.length > 0) {
+			var	key = keys.shift();
+				child[key] = new constructor();
+			}
+		} else {
+			child = new constructor();
+		}
+
+		return child;
+	}
+
+var	args = Array.from(arguments)
+,	obj = args.shift()
+,	key = args.shift()
 	;
 
-	while (a.length > 0) {
-	var	k = a.shift();
+	if (typeof obj !== 'object') {
+		return;
+	}
+
+	return (
+		key in obj
+		? obj[key]
+		: (obj[key] = getInitChild(args))
+	);
+}
+
+function getPropByNameChain() {
+var	keys = Array.from(arguments)
+,	obj = keys.shift()
+	;
+
+	while (keys.length > 0) {
+	var	key = keys.shift();
 
 		if (
-			typeof k === 'undefined'
-		||	typeof o !== 'object'
+			typeof key === 'undefined'
+		||	typeof obj !== 'object'
 		) {
 			return null;
 		}
 
-		o = o[k];
+		obj = obj[key];
 	}
 
-	return o;
+	return obj;
 }
 
 function getPropByAnyOfNamesChain() {
-var	a = Array.from(arguments)
-,	o = a.shift()
+var	keys = Array.from(arguments)
+,	obj = keys.shift()
 	;
 
 	deeper:
-	while (typeof o === 'object') {
+	while (typeof obj === 'object') {
 
-		prop_names:
-		for (let k of a) if (k in o) {
-			o = o[k];
+		for (let key of keys) if (key in obj) {
+			obj = obj[key];
 
 			continue deeper;
 		}
@@ -887,40 +1002,40 @@ var	a = Array.from(arguments)
 		break;
 	}
 
-	return o;
+	return obj;
 }
 
-function getPropBySameNameChain(o,n,p) {
+function getPropBySameNameChain(obj, key) {
 	while (
-		typeof o === 'object'
-	&&	o
-	&&	(p = o[n])
+		typeof obj === 'object'
+	&&	obj
+	&&	key in obj
 	) {
-		o = p;
+		obj = obj[key];
 	}
 
-	return o;
+	return obj;
 }
 
 function cleanupObjectTree(obj, childKeys, keysToRemove) {
 	if (obj) {
 		Array.from(keysToRemove).forEach(
-			(k) => {
-				if (k in obj) {
-					obj[k] = null;
-					delete obj[k];
+			(key) => {
+				if (key in obj) {
+					obj[key] = null;
+					delete obj[key];
 				}
 			}
 		);
 
 		Array.from(childKeys).forEach(
-			(k) => {
-			var	v = obj[k];
-				if (v) {
-					if (v.forEach) {
-						v.forEach((v) => cleanupObjectTree(v, childKeys, keysToRemove));
+			(key) => {
+			var	child = obj[key];
+				if (child) {
+					if (child.forEach) {
+						child.forEach((child) => cleanupObjectTree(child, childKeys, keysToRemove));
 					} else {
-						cleanupObjectTree(v, childKeys, keysToRemove);
+						cleanupObjectTree(child, childKeys, keysToRemove);
 					}
 				}
 			}
@@ -930,11 +1045,7 @@ function cleanupObjectTree(obj, childKeys, keysToRemove) {
 	return obj;
 }
 
-function arrayFilterNonEmptyValues(v) {return (isString(v) ? (v.length > 0) : !!v);}
-function arrayFilterUniqueValues(v,i,a) {return a.indexOf(v) === i;}
-function arrayFilteredJoin(a,j) {return a.filter(arrayFilterNonEmptyValues).join(j);}
-
-//* https://gist.github.com/wellcaffeinated/5399067#gistcomment-1364265
+//* source: https://gist.github.com/wellcaffeinated/5399067#gistcomment-1364265
 function nextValidHeapSize(realSize) {
 var	SIZE_64_KB = 65536	// 0x10000
 ,	SIZE_64_MB = 67108864	// 0x4000000
@@ -950,355 +1061,359 @@ var	SIZE_64_KB = 65536	// 0x10000
 }
 
 //* This function must work even in older browsers, so extra care is taken:
-function getElementsArray(by, value, parent) {
+function getElementsArray(by, text, parent) {
 	if (!parent) {
 		parent = document;
 	}
 
 	try {
-	var	a = (
+	var	results = (
 			isFunction(parent[by])
-			? parent[by](value)
-			: parent.querySelectorAll(QUERY_SELECTOR[by].join(value))
+			? parent[by](text)
+			: parent.querySelectorAll(QUERY_SELECTOR[by].join(text))
 		) || [];
 
 		return (
 			CAN_CAST_TO_ARRAY
-			? Array.from(a)
-			: Array.prototype.slice.call(a)
+			? Array.from(results)
+			: Array.prototype.slice.call(results)
 		);
 	} catch (error) {
-		console.log(error);
+		logError(arguments, error);
 	}
 
 	return [];
 }
 
-function gc(n,p) {return getElementsArray('getElementsByClassName', n,p);}
-function gt(n,p) {return getElementsArray('getElementsByTagName', n,p);}
-function gy(n,p) {return getElementsArray('getElementsByType', n,p);}
-function gn(n,p) {return getElementsArray('getElementsByName', n,p);}
-function gi(n,p) {return getElementsArray('getElementsById', n,p);}
-function id(i) {return document.getElementById(i);}
+function gc(text, parent) {return getElementsArray('getElementsByClassName', text, parent);}
+function gt(text, parent) {return getElementsArray('getElementsByTagName', text, parent);}
+function gy(text, parent) {return getElementsArray('getElementsByType', text, parent);}
+function gn(text, parent) {return getElementsArray('getElementsByName', text, parent);}
+function gi(text, parent) {return getElementsArray('getElementsById', text, parent);}
+function id(text) {return document.getElementById(text);}
 
-function cre(e,p,b) {
-	e = document.createElement(e);
-	if (b) p.insertBefore(e, b); else
-	if (p) p.appendChild(e);
-	return e;
-}
+function cre(tagName, parent, before) {
+var	element = document.createElement(tagName);
 
-function del(e) {
-	var p;
-	if (!e) return;
-	if (e.map) e.map(del); else
-	if (p = e.parentNode) p.removeChild(e);
-	return p;
-}
-
-function delAllChildNodes(p) {
-	var e;
-	while (e = p.lastChild) del(e);
-	return p;
-}
-
-function eventStop(evt, stopImmediatePropagation, preventDefault) {
-	if (
-		(
-			evt
-		&&	typeof evt.eventPhase !== 'undefined'
-		&&	evt.eventPhase !== null
-		)
-		? evt
-		: (evt = window.event)
-	) {
-		if (evt.cancelBubble !== null) evt.cancelBubble = true;
-		if (evt.stopPropagation) evt.stopPropagation();
-		if (stopImmediatePropagation && evt.stopImmediatePropagation) evt.stopImmediatePropagation();
-		if (preventDefault && evt.preventDefault) evt.preventDefault();
+	if (parent) {
+		if (before) {
+			parent.insertBefore(element, before);
+		} else {
+			parent.appendChild(element);
+		}
 	}
 
-	return evt;
+	return element;
 }
 
-function encodeHTMLSpecialChars(t) {
-	return String(t)
-	.replace(/&/g, '&amp;')
-	.replace(/"/g, '&quot;')
-	.replace(/'/g, '&#39;')
-	.replace(/</g, '&lt;')
-	.replace(/>/g, '&gt;');
+function del(element) {
+	if (!element) return;
+
+	if (isFunction(element.map)) {
+		return element.map(del);
+	}
+
+var	parent = element.parentNode;
+	if (parent) {
+		parent.removeChild(element);
+
+		return parent;
+	}
 }
 
-function encodeTagAttr(t) {
-	return String(t).replace(/"/g, '&quot;');
+function delAllChildNodes(parent) {
+	while (del(parent.lastChild));
+
+	return parent;
+}
+
+function encodeHTMLSpecialChars(text) {
+	return (
+		String(text)
+		.replace(/&/g, '&amp;')
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&#39;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+	);
+}
+
+function encodeTagAttr(text) {
+	return (
+		String(text)
+		.replace(/"/g, '&quot;')
+	);
 }
 
 //* propNameForIE:
-function dashedToCamelCase(n) {
+function dashedToCamelCase(text) {
 	return (
-		n
+		String(text)
 		.split('-')
 		.map(
-			(v,i) => (
-				i == 0
-				? v
-				: v.slice(0,1).toUpperCase() + v.slice(1).toLowerCase()
+			(word, index) => (
+				index === 0
+				? word.toLowerCase()
+				: word.slice(0,1).toUpperCase() + word.slice(1).toLowerCase()
 			)
 		)
 		.join('')
 	);
 }
 
-function getStyleValue(e, prop) {
-var	o;
-	if (o = e.currentStyle) return o[dashedToCamelCase(prop)];
-	if (o = window.getComputedStyle) return o(e).getPropertyValue(prop);
+function getStyleValue(element, prop) {
+var	obj;
+	if (obj = element.currentStyle) return obj[dashedToCamelCase(prop)];
+	if (obj = window.getComputedStyle) return obj(element).getPropertyValue(prop);
 	return null;
 }
 
-function toggleClass(e,c,keep) {
-var	j = orz(keep)
-,	k = 'className'
-,	old = e[k] || e.getAttribute(k) || ''
-,	a = old.split(regSpace).filter(arrayFilterNonEmptyValues)
-,	i = a.indexOf(c)
+function toggleClass(element, className, keep) {
+	if (!className) return;
+
+var	keep = orz(keep)
+,	oldText = element.className || element.getAttribute('className') || ''
+,	classNames = oldText.split(regSpace).filter(arrayFilterNonEmptyValues)
+,	index = classNames.indexOf(className)
 	;
 
-	if (i < 0) {
-		if (j >= 0) a.push(c);
+	if (index < 0) {
+		if (keep >= 0) classNames.push(className);
 	} else {
-		if (j <= 0) a.splice(i, 1);
+		if (keep <= 0) classNames.splice(index, 1);
 	}
-	if (a.length) {
-		j = a.join(' ');
-		if (old != j) e[k] = j;
+
+	if (classNames.length > 0) {
+	var	newText = classNames.join(' ');
+		if (oldText != newText) element.className = newText;
 	} else
-	if (old) {
-		e[k] = '';
-		e.removeAttribute(k);
+	if (oldText) {
+		element.className = '';
+		element.removeAttribute('className');
 	}
 }
 
-function getClassReg(c) {return new RegExp('(^|\\s)('+c+')($|\\s)', 'i');}
-function getTrimReg(c) {return new RegExp('^['+c+']+|['+c+']+$', 'gi');}
+function getClassReg(className) {return new RegExp('(^|\\s)(' + className + ')($|\\s)', 'i');}
+function getTrimReg(chars) {return new RegExp('^[' + chars + ']+|[' + chars + ']+$', 'gi');}
 
-function getChildByAttr(e,k,v) {
-	if (e) {
-		e = e.firstElementChild;
+function getChildByAttr(element, attrName, attrValue) {
+	if (element) {
+		element = element.firstElementChild;
 	}
 
-	while (e) {
-		if (e.getAttribute(k) === v) break;
-		e = e.nextElementSibling;
+	while (element) {
+		if (element.getAttribute(attrName) === attrValue) break;
+		element = element.nextElementSibling;
 	}
 
-	return e;
+	return element;
 }
 
-function getPreviousSiblingByClass(e,c) {
-var	r = (c.test ? c : getClassReg(c));
+function getPreviousSiblingByClass(element, className) {
+var	regClassName = (className.test ? className : getClassReg(className));
 
-	while (e && (e = e.previousElementSibling)) {
-		if (e.className && r.test(e.className)) break;
+	while (element && (element = element.previousElementSibling)) {
+		if (element.className && regClassName.test(element.className)) {
+			break;
+		}
 	}
 
-	return e;
+	return element;
 }
 
-function getNextSiblingByClass(e,c) {
-var	r = (c.test ? c : getClassReg(c));
+function getNextSiblingByClass(element, className) {
+var	regClassName = (className.test ? className : getClassReg(className));
 
-	while (e && (e = e.nextElementSibling)) {
-		if (e.className && r.test(e.className)) break;
+	while (element && (element = element.nextElementSibling)) {
+		if (element.className && regClassName.test(element.className)) {
+			break;
+		}
 	}
 
-	return e;
+	return element;
 }
 
-function getThisOrParentByClass(e,c) {
-var	r = (c.test ? c : getClassReg(c));
+function getThisOrParentByClass(element, className) {
+var	regClassName = (className.test ? className : getClassReg(className));
 
-	while (e) {
-		if (e.className && r.test(e.className)) break;
-		e = e.parentNode;
+	while (element) {
+		if (element.className && regClassName.test(element.className)) {
+			break;
+		}
+
+		element = element.parentNode;
 	}
 
-	return e;
+	return element;
 }
 
-function getThisOrParentByTagName(e,t) {
-var	t = t.toLowerCase();
+function getThisOrParentByTagName(element, tagName) {
+	tagName = tagName.toLowerCase();
 
-	while (e) {
-		if (e.tagName && e.tagName.toLowerCase() === t) break;
-		e = e.parentNode;
+	while (element) {
+		if (element.tagName && element.tagName.toLowerCase() === tagName) {
+			break;
+		}
+
+		element = element.parentNode;
 	}
 
-	return e;
+	return element;
 }
 
-function getTargetParentByClass(e, c) {
-	if (e && e.target) {
-		e = e.target;
+function getTargetParentByClass(element, className) {
+	if (element && element.target) {
+		element = element.target;
 	}
 
-	e = getThisOrParentByClass(e, c);
+	element = getThisOrParentByClass(element, className);
 
-	if (e && e.tagName) {
-		return e;
+	if (element && element.tagName) {
+		return element;
 	}
 }
 
 function getTagAttrIfNotEmpty(name, values, delim) {
 	if (name) {
-	var	a = (values.filter ? values : [values]).filter(arrayFilterNonEmptyValues);
-		if (a.length) return ' '+name+'="'+encodeTagAttr(a.join(delim || ' '))+'"';
+		values = (
+			Array.isArray(values)
+			? values
+			: [values]
+		).filter(arrayFilterNonEmptyValues);
+
+		if (values.length > 0) {
+			return (
+				' '
+			+		name
+			+	'="'
+			+		encodeTagAttr(values.join(delim || ' '))
+			+	'"'
+			);
+		}
 	}
+
 	return '';
 }
 
-function getDropdownMenuHTML(head, list, id, tagName) {
-	if (head && head.map) {
-		[head, list, id, tagName] = head;
+function getDropdownMenuHTML(headContent, listContent, headId, tagName) {
+	if (Array.isArray(arguments[0])) {
+		[headContent, listContent, headId, tagName] = arguments[0];
 	}
-var	t = tagName || 'div'
-,	a = '<'+t+' class="'
-,	b = '</'+t+'>'
-,	head = String(head)
+
+var	tagName = tagName || 'div'
+,	openTag = '<' + tagName + ' class="'
+,	closeTag = '</' + tagName + '>'
+,	headContent = String(headContent)
 	;
 
-	return	a+'menu-head"'
-	+	getTagAttrIfNotEmpty('id', id || '')
+	return(
+		openTag + 'menu-head"'
+	+	getTagAttrIfNotEmpty('id', headId || '')
 	+	' onmouseover="updateDropdownMenuPositions()">'
 	+	(
-			head[0] === '<'
-		&&	head.slice(-1) === '>'
-			? head
+			headContent[0] === '<'
+		&&	headContent.slice(-1) === '>'
+			? headContent
 			: (
 				'<header class="button" onclick="toggleDropdownMenu(this)">'
-			+		head
+			+		headContent
 			+	'</header>'
 			)
 		)
-	+	a+'menu-drop">'
-	+	a+'menu-hid">'
-	+	a+'menu-list">'
-	+		(list || '')
-	+	b+b+b+b;
+	+	openTag + 'menu-drop">'
+	+	openTag + 'menu-hid">'
+	+	openTag + 'menu-list">'
+	+		(listContent || '')
+	+	closeTag
+	+	closeTag
+	+	closeTag
+	+	closeTag
+	);
 }
 
-function toggleDropdownMenu(e) {
-var	p = getThisOrParentByClass(e, regClassMenuBar);
-	if (p) {
-		gc('menu-head', p).forEach(
-			(v) => {
-			var	h = gt('header', v)[0];
+function toggleDropdownMenu(element) {
+var	parent = getThisOrParentByClass(element, regClassMenuBar);
 
-				if (h && h !== e) {
-					toggleClass(h, 'show', -1);
+	if (parent) {
+		gc('menu-head', parent).forEach(
+			(container) => {
+			var	header = gt('header', container)[0];
+
+				if (header && header !== element) {
+					toggleClass(header, 'show', -1);
 				}
 			}
 		);
 	}
-	toggleClass(e, 'show');
+
+	toggleClass(element, 'show');
 }
 
-function getOffsetXY(e) {
+function getOffsetXY(element) {
 var	x = 0
 ,	y = 0
 	;
 
-	while (e) {
-		x += e.offsetLeft;
-		y += e.offsetTop;
-		e = e.offsetParent;
+	while (element) {
+		x += element.offsetLeft;
+		y += element.offsetTop;
+		element = element.offsetParent;
 	}
 
 	return {x:x, y:y};
 }
 
-function putInView(e,x,y, changeOnlyX, changeOnlyY) {
-var	offsetParentX = 0
-,	offsetParentY = 0
-,	positionType = getStyleValue(e, 'position')
-	;
-
-	if (
-		positionType === 'absolute'
-	&&	(o = e.offsetParent)
-	) {
-		o = getOffsetXY(o);
-		offsetParentX = o.x;
-		offsetParentY = o.y;
-	}
-
-	if (isNaN(x)) {
-		o = getOffsetXY(e);
-		x = o.x;
-		y = o.y;
-	} else {
-		x = orz(x) + offsetParentX;
-		y = orz(y) + offsetParentY;
-	}
-
-var	o = window.visualViewport
+function putInView(element, x,y, changeOnlyX, changeOnlyY) {
+var	parentOffsetX = 0
+,	parentOffsetY = 0
+,	viewport = window.visualViewport
+,	positionType = getStyleValue(element, 'position')
 ,	isPositionFixed = (positionType === 'fixed')
 	;
 
+	if (positionType === 'absolute') {
+	var	offset = getOffsetXY(element.offsetParent);
+		parentOffsetX = offset.x;
+		parentOffsetY = offset.y;
+	}
+
+	if (isNaN(x)) {
+	var	offset = getOffsetXY(element);
+		x = offset.x;
+		y = offset.y;
+	} else {
+		x = orz(x) + parentOffsetX;
+		y = orz(y) + parentOffsetY;
+	}
+
 	if (!changeOnlyY) {
-	var	x0 = orz(isPositionFixed ? (document.body.scrollLeft || document.documentElement.scrollLeft) : 0)
-	,	x1 = x0 + (o ? o.width : window.innerWidth) - e.offsetWidth
+	var	xMin = orz(isPositionFixed ? (document.body.scrollLeft || document.documentElement.scrollLeft) : 0)
+	,	xMax = xMin + (viewport ? viewport.width : window.innerWidth) - element.offsetWidth
 		;
 
-		if (x > x1) x = x1;
-		if (x < x0) x = x0;
+		if (x > xMax) x = xMax;
+		if (x < xMin) x = xMin;
 
-		e.style.left = (x - offsetParentX) + 'px';
+		element.style.left = (x - parentOffsetX) + 'px';
 	}
 
 	if (!changeOnlyX) {
-	var	y0 = orz(isPositionFixed ? (document.body.scrollTop || document.documentElement.scrollTop) : 0)
-	,	y1 = y0 + (o ? o.height : window.innerHeight) - e.offsetHeight
+	var	yMin = orz(isPositionFixed ? (document.body.scrollTop || document.documentElement.scrollTop) : 0)
+	,	yMax = yMin + (viewport ? viewport.height : window.innerHeight) - element.offsetHeight
 		;
 
-		if (y > y1) y = y1;
-		if (y < y0) y = y0;
+		if (y > yMax) y = yMax;
+		if (y < yMin) y = yMin;
 
-		e.style.top  = (y - offsetParentY) + 'px';
+		element.style.top  = (y - parentOffsetY) + 'px';
 	}
 
-	return e;
-}
-
-function trim(t) {
-	return (
-		typeof t === 'undefined'
-	||	t === null
-		? ''
-		: (
-			String(t)
-			.replace(regTrim, '')
-			.replace(regTrimNewLine, '\n')
-		)
-	);
-}
-
-function trimOrz(n,d) {return orz(n.replace(regTrimNaN, ''), d);}
-function orz(n,d) {return (isNaN(d) ? parseInt(n||0) : parseFloat(n||d))||0;}
-function orzFloat(n) {return orz(n, 0.0);}
-
-function leftPadNum(n, len, pad) {
-	n = String(orz(n));
-	len = orz(len) || 2;
-	pad = String(pad || 0);
-	while (n.length < len) n = pad + n;
-	return n;
+	return element;
 }
 
 function getNumbersArray(text, maxCount, splitBy, transformFunction) {
 	return (
-		text
+		String(text)
 		.split(splitBy || regNaN, orz(maxCount) || -1)
 		.map(transformFunction || orz)
 	);
@@ -1311,11 +1426,11 @@ function getUniqueNumbersArray(text, maxCount, splitBy, transformFunction) {
 	);
 }
 
-function getFileExt(n) {return n.split(/\./g).pop().toLowerCase();}
-function getFileName(n) {return n.split(/\//g).pop();}
-function getFileBaseName(n) {var i = n.lastIndexOf('.'); return (i > 0 ? n.substr(0, i) : n);}
-function getFilePathFromUrl(n) {return n.split(/\#/g).shift().split(/\?/g).shift();}
-function getFormattedFileNamePart(n) {return (n.length > 0 ? '[' + n + ']' : n);}
+function getFileExt(name) {return name.split(/\./g).pop().toLowerCase();}
+function getFileName(path) {return path.split(/\//g).pop();}
+function getFileBaseName(name) {var index = name.lastIndexOf('.'); return (index > 0 ? name.substr(0, index) : name);}
+function getFilePathFromUrl(url) {return url.split(/\#/g).shift().split(/\?/g).shift();}
+function getFormattedFileNamePart(name) {return (name ? '[' + name + ']' : '');}
 
 function getFormattedFileSize(shortened, bytes) {
 	if (bytes) {
@@ -1327,152 +1442,346 @@ function getFormattedFileSize(shortened, bytes) {
 	return shortened || bytes;
 }
 
-function getFormattedTimezoneOffset(t) {
-	return (
-		(t = (t && t.getTimezoneOffset ? t : new Date()).getTimezoneOffset())
-		? (t < 0?(t = -t, '+'):'-') + leftPadNum(Math.floor(t / SPLIT_SEC)) + ':' + leftPadNum(t % SPLIT_SEC)
-		: 'Z'
-	);
+function leftPadNum(numValue, padToLength, paddingText) {
+var	text = String(orz(numValue));
+	padToLength = orz(padToLength) || 2;
+	paddingText = String(paddingText || 0);
+
+	while (text.length < padToLength) {
+		text = paddingText + text;
+	}
+
+	return text;
+}
+
+function getFormattedTimezoneOffset(date) {
+	if (!isDate(date)) {
+		date = new Date();
+	}
+
+var	offset = date.getTimezoneOffset();
+
+	if (offset) {
+		if (offset < 0) {
+			offset = -offset;
+		var	sign = '+';
+		} else {
+			sign = '-';
+		}
+
+	var	offsetHours = leftPadNum(Math.floor(offset / SPLIT_SEC))
+	,	offsetMinutes = leftPadNum(offset % SPLIT_SEC)
+		;
+
+		return sign + offsetHours + ':' + offsetMinutes;
+	} else {
+		return 'Z';
+	}
 }
 
 function getFormattedHMS(msec) {
-var	t = orz(msec)
-,	a = [0, 0, Math.floor(Math.abs(t) / 1000)]
-,	i = a.length
+var	msec = orz(msec)
+,	sign = (msec < 0?'-':'')
+,	values = [0, 0, Math.floor(Math.abs(msec) / 1000)]
+,	index = values.length
 	;
 
-	while (--i) {
-		if (a[i] >= SPLIT_SEC) {
-			a[i - 1] = Math.floor(a[i] / SPLIT_SEC);
-			a[i] %= SPLIT_SEC;
+	while (--index) {
+		if (values[index] >= SPLIT_SEC) {
+			values[index - 1] = Math.floor(values[index] / SPLIT_SEC);
+			values[index] %= SPLIT_SEC;
 		}
-		if (a[i] < 10) a[i] = '0' + a[i];
+		if (values[index] < 10) values[index] = '0' + values[index];
 	}
 
-	return (t < 0?'-':'') + a.join(':');
+	return sign + values.join(':');
 }
 
-function getFormattedTime(sec, for_filename, for_log, plain, only_ymd) {
-var	t = sec;
-	if (TOS.indexOf(typeof t) >= 0) {
-	var	text = String(t)
-	,	n = orz(sec)
-		;
+function getFormattedTime() {
 
-		if (isString(t) && Date.parse) {
-			t = Date.parse(t.replace(regHMS, '$1:$2:$3'));
-		} else {
-			t = n * 1000;
-		}
-		if (!t && text) return text;
+	function getDatePartText(name) {
+	var	num = date['get' + name]();
+		if (name === 'Month') ++num;
+
+		return leftPadNum(num);
 	}
-var	d = (t ? new Date(t+(t > 0 ? 0 : new Date())) : new Date())
-,	a = (
-		only_ymd
-		? TIME_PARTS_3
-		: TIME_PARTS_6
-	).map(function(v,i) {
-		v = d['get'+v]();
-		if (i == 1) ++v;
-		return leftPadNum(v);
-	})
-,	YMD = a.slice(0,3).join('-')
-,	HIS = a.slice(3).join(for_filename?'-':':') + (for_log?'.'+((+d) % 1000):'')
+
+//* check arguments out of order:
+
+var	flags = {}
+,	arg, date
 	;
 
-	return (
-		for_log || for_filename || plain
-		? YMD + (for_filename?'_':' ') + HIS
-		: (
+	for (let index in arguments) if (arg = arguments[index]) {
+		if (isDate(arg)) var argDate = arg; else
+		if (isNumber(arg)) var argNum = arg; else
+		if (isString(arg)) var argText = arg; else
+		if (typeof arg === 'object') {
+			for (let key in arg) {
+				flags[key] = !!arg[key];
+			}
+		}
+
+		// if (TESTING) console.log([index + ': ' + typeof arg, arg]);
+	}
+
+	if (!date && argText && isFunction(Date.parse)) {
+		date = Date.parse(argText.replace(regHMS, '$1:$2:$3'));
+	}
+	if (!date && argText) date = orz(argText);
+	if (!date && argDate) date = argDate;
+	if (!date && argNum) date = argNum;
+	if (!date) {
+		date = new Date();
+	} else
+	if (!isDate(date)) {
+		if (date < 0) date += getTimeNow();
+
+		date = new Date(date);
+	}
+
+//* get date text parts:
+
+var	textParts = [];
+
+	if (
+		flags.onlyYMD
+	||	!flags.onlyHMS
+	) {
+	var	YMD = (
+			TIME_PARTS_YMD
+			.map(getDatePartText)
+			.join('-')
+		);
+
+		textParts.push(YMD);
+	}
+
+	if (
+		flags.onlyHMS
+	||	!flags.onlyYMD
+	) {
+	var	HMS = (
+			TIME_PARTS_HMS
+			.map(getDatePartText)
+			.join(flags.fileNameFormat ? '-' : ':')
+		);
+
+		if (flags.logFormat) {
+		var	msec = (
+				isFunction(date.getMilliseconds)
+				? date.getMilliseconds()
+				: (date % 1000)
+			);
+
+			HMS += '.' + leftPadNum(msec, 0,3);
+		}
+
+		textParts.push(HMS);
+	}
+
+//* get date text:
+
+	if (
+		flags.logFormat
+	||	flags.fileNameFormat
+	||	flags.plainTextFormat
+	||	flags.onlyYMD
+	||	flags.onlyHMS
+	) {
+		return (
+			textParts
+			.join(flags.fileNameFormat ? '_' : ' ')
+		);
+	} else {
+
+//* get date HTML:
+
+		return (
 			'<time datetime="'
-		+	YMD + 'T'
-		+	HIS
-		+	getFormattedTimezoneOffset(t)
-		+	'" data-t="' + Math.floor(d/1000)
+		+		YMD + 'T'
+		+		HMS + getFormattedTimezoneOffset(date)
+		+	'" data-t="' + (
+				isFunction(date.getTime)
+				? date.getTime()
+				: Math.floor(date / 1000)
+			)
 		+	'">'
 		+		YMD
 		+		' <small>'
-		+			HIS
+		+			HMS
 		+		'</small>'
 		+	'</time>'
-		)
-	);
+		);
+	}
 }
 
 function getTimeNow() {return +new Date();}
-function getLogTime() {return getFormattedTime(0,0,1);}
+function getLogTime() {return getFormattedTime({logFormat: true});}
 
-function logTime(k, v) {
-var	t = getLogTime();
-	if (typeof k !== 'undefined') t += ' - ' + k;
-	if (typeof v !== 'undefined') {
-		if (v.join) v = v.join('\n');
-		if (v.indexOf && v.indexOf('\n') >= 0) {
+function logTime(argName, argValue) {
+var	text = getLogTime();
+
+	if (typeof argName !== 'undefined') {
+		text += ' - ' + argName;
+	}
+
+	if (typeof argValue !== 'undefined') {
+	var	textValue = getJoinedOrEmptyString(argValue, '\n');
+
+		if (textValue.indexOf('\n') >= 0) {
 			if (
-				(v[0] == '(' && ')' == v.slice(-1))
-			||	(v[0] == '{' && '}' == v.slice(-1))
-			||	(v[0] == '[' && ']' == v.slice(-1))
+				(textValue[0] == '(' && ')' == textValue.slice(-1))
+			||	(textValue[0] == '{' && '}' == textValue.slice(-1))
+			||	(textValue[0] == '[' && ']' == textValue.slice(-1))
 			) {
-				t += ':\n' + v;
+				text += ':\n' + textValue;
 			} else {
-				t += ':\n[\n' + v + '\n]';
+				text += ':\n[\n' + textValue + '\n]';
 			}
 		} else {
-			t += ' = "' + v + '"';
+			text += ' = "' + textValue + '"';
 		}
 	}
-	console.log(t);
+
+	console.log(text);
 }
 
-function readFilePromise(file) {
+function logError(args, error) {
+	console.log(['Error in "' + args.callee.name + '" with arguments:', args, error]);
+}
 
-//* "file" may be a blob object
+function getFilePromise(file) {
+
+//* Note: "file" may be a blob object.
 //* source: https://stackoverflow.com/a/15981017
 
 	return new Promise(
 		(resolve, reject) => {
-		var	r = new FileReader();
-			r.onload = (e) => resolve(e.target.result);
-			r.readAsArrayBuffer(file);
+		var	reader = new FileReader();
+
+			reader.addEventListener(
+				'error'
+			,	(evt) => getErrorFromEvent(evt, 'FileReader failed.', reject)
+			);
+
+			reader.addEventListener(
+				'load'
+			,	(evt) => {
+				var	result = evt.target.result;
+
+					if (result) {
+						resolve(result);
+					} else {
+						getErrorFromEvent(evt, 'FileReader completed, got empty or no result.', reject);
+					}
+				}
+			);
+
+			reader.readAsArrayBuffer(file);
 		}
 	);
 }
 
-function readFilePromiseFromURL(url, responseType) {
+function getFilePromiseFromURL(url, responseType) {
 
-//* "url" may be a "blob:" or "data:" url
+//* Note: "url" may be a "blob:" or "data:" url.
 //* source: https://www.mwguy.com/decoding-a-png-image-in-javascript/
 
 	return new Promise(
 		(resolve, reject) => {
-		var	r = new XMLHttpRequest();
+		var	request = new XMLHttpRequest();
 
-			r.responseType = responseType || 'arraybuffer';
-			r.addEventListener('load', (e) => {
-			var	response = e.target.response;
+			request.addEventListener(
+				'error'
+			,	(evt) => getErrorFromEvent(evt, 'Request failed.', reject)
+			);
 
-				if (response) {
-					resolve(response);
-				} else{
-				var	error = new Error('No response');
-					error.event = e;
+			request.addEventListener(
+				'load'
+			,	(evt) => {
+				var	response = evt.target.response;
 
-					reject(error);
+					if (response) {
+						resolve(response);
+					} else {
+						getErrorFromEvent(evt, 'Request completed, got empty or no response.', reject);
+					}
 				}
-			});
+			);
 
-			r.addEventListener('error', (e) => {
-			var	error = new Error('An error has occurred on request');
-				error.event = e;
-
-				reject(error);
-			});
-
-			r.open('GET', url, true);
-			r.send();
+			request.responseType = responseType || 'arraybuffer';
+			request.open('GET', url, true);
+			request.send();
 		}
 	);
 }
+
+function getImagePromiseFromCanvasToBlob(canvas, trackList, mimeType, quality) {
+	return new Promise(
+		(resolve, reject) => {
+			canvas.toBlob(
+				(blob) => {
+					if (!blob) {
+						reject(new Error('Canvas to blob: got empty or no blob.'));
+						return;
+					}
+
+				var	url = URL.createObjectURL(blob);
+
+					if (!url) {
+						reject(new Error('Canvas to blob: got empty or no URL.'));
+						return;
+					}
+
+					addURLToTrackList(trackList);
+
+				var	img = cre('img');
+
+					img.onload = function(evt) {
+						// URL.revokeObjectURL(url);
+
+						resolve(img);
+					};
+
+					img.onerror = (evt) => {
+						if (img.complete) {
+							resolve(img);
+							return;
+						}
+
+						if (TESTING) console.log(['img.onerror:', url, img, evt]); else
+						URL.revokeObjectURL(url);
+
+						getErrorFromEvent(evt, 'Canvas to blob: image loading failed.', reject);
+					}
+
+					img.src = url;
+				}
+			,	mimeType || ''
+			,	quality || 1
+			);
+		}
+	);
+}
+
+//* Note: cannot save image by revoked url, so better keep it.
+function addURLToTrackList(data, trackList) {
+	if (
+		trackList
+	&&	typeof trackList === 'object'
+	) {
+		if (!isFunction(trackList.push)){
+			trackList = getOrInitChild(trackList, 'blobTrackList', Array);
+		}
+
+		trackList.push(url);
+	}
+
+	return trackList;
+}
+
+//* legacy copypaste code to get things working, don't bother with readability, redo later:
 
 function dataToBlob(data, trackList) {
 	if (URL && URL.createObjectURL) {
@@ -1498,16 +1807,7 @@ function dataToBlob(data, trackList) {
 		;
 
 		if (url) {
-			if (
-				trackList
-			&&	typeof trackList === 'object'
-			) {
-				if (!trackList.push) {
-					trackList = trackList.blobTrackList || (trackList.blobTrackList = []);
-				}
-
-				trackList.push(url);
-			}
+			addURLToTrackList(trackList);
 
 			return {
 				size: size
@@ -1551,7 +1851,7 @@ var	size = dataURI.length
 ,	a = cre('a', document.body)
 	;
 
-	logTime('saving "' + fileName + '", data = ' + data.length + ' bytes, dataURI = ' + size + ' bytes');
+	logTime('saving "' + fileName + '", data = ' + data.length + ' bytes, dataURI = ' + size + ' bytes' + (blob ? ', URI = ' + dataURI : ''));
 
 	if ('download' in a) {
 		try {
@@ -1571,7 +1871,7 @@ var	size = dataURI.length
 
 		var	time = (
 				!fileName || addTime
-				? getFormattedTime(0,1)
+				? getFormattedTime({fileNameFormat: true})
 				: ''
 			)
 		,	baseName = (
@@ -1592,7 +1892,7 @@ var	size = dataURI.length
 
 			logTime('saving "' + fileName + '"');
 		} catch (error) {
-			console.log(error);
+			logError(arguments, error);
 		}
 	} else {
 		window.open(dataURI, '_blank');
@@ -1608,15 +1908,16 @@ var	size = dataURI.length
 	return size;
 }
 
-function loadLib(lib) {
+function loadLibPromise(lib) {
 	return new Promise(
 		(resolve, reject) => {
 
 			function addNextScript() {
 				if (scripts.length > 0) {
-				var	e = cre('script', document.head);
-					e.onload = addNextScript;
-					e.src = dir + scripts.shift();
+				var	script = cre('script', document.head);
+					script.onload = addNextScript;
+					script.onerror = (evt) => getErrorFromEvent(evt, 'Script loading failed.', reject);
+					script.src = dir + scripts.shift();
 				} else {
 					resolve(true);
 				}
@@ -1634,7 +1935,7 @@ function loadLib(lib) {
 	);
 }
 
-async function loadLibOnDemand(libName) {
+async function loadLibOnDemandPromise(libName) {
 	if (!libName) {
 		return false;
 	}
@@ -1660,7 +1961,7 @@ var	dir = lib.dir || ''
 var	depends = lib.depends || null;
 	if (depends) {
 		for (let name of Array.from(depends)) if (name) {
-			if (!(await loadLibOnDemand(name))) {
+			if (!(await loadLibOnDemandPromise(name))) {
 				return false;
 			}
 		}
@@ -1669,15 +1970,15 @@ var	depends = lib.depends || null;
 	return new Promise(
 		(resolve, reject) => {
 
-			function addNextScript(e) {
+			function addNextScript(evt) {
 
 //* some var init, no better place for this:
 
 				if (varName === 'zip' && window[varName]) {
 					if (zip.useWebWorkers = !RUNNING_FROM_DISK) {
 
-//* http://gildas-lormeau.github.io/zip.js/core-api.html#alternative-codecs
-//* Either zip.workerScripts or zip.workerScriptsPath may be set, not both.
+//* Note: either zip.workerScripts or zip.workerScriptsPath may be set, not both.
+//* source: http://gildas-lormeau.github.io/zip.js/core-api.html#alternative-codecs
 
 						if (USE_ZLIB_ASM) {
 						var	zipWorkerScripts = [
@@ -1702,17 +2003,18 @@ var	depends = lib.depends || null;
 					ora.scriptsPath = dir;
 				}
 
-				if (varName === 'PSD_JS' && !window[varName] && e) {
+				if (varName === 'PSD_JS' && !window[varName] && evt) {
 					window[varName] = require('psd');
 				}
 
 //* add scripts one by one:
 
 				if (scripts.length > 0) {
-				var	e = cre('script', document.head);
-					e.setAttribute('data-lib-name', libName);
-					e.onload = addNextScript;
-					e.src = dir + scripts.shift();
+				var	script = cre('script', document.head);
+					script.setAttribute('data-lib-name', libName);
+					script.onload = addNextScript;
+					script.onerror = (evt) => getErrorFromEvent(evt, 'Script loading failed.', reject);
+					script.src = dir + scripts.shift();
 				} else
 
 //* then check whether the required object is present:
@@ -1728,9 +2030,7 @@ var	depends = lib.depends || null;
 					del(
 						gt('script', document.head)
 						.filter(
-							function(e) {
-								return e.getAttribute('data-lib-name') === libName;
-							}
+							(script) => (script.getAttribute('data-lib-name') === libName)
 						)
 					);
 
@@ -1747,13 +2047,15 @@ var	depends = lib.depends || null;
 
 //* Page-specific functions: internal, utility *-------------------------------
 
+function getProjectContainer(element) {return getTargetParentByClass(element, regClassLoadedFile);}
+function getProjectButton(element) {return getTargetParentByClass(element, regClassButton);}
+
 /*function replaceJSONpartsFromPSD(key, value) {
 
 	function JSONtoFlatLine(v) {
 		return JSON.stringify(v, replaceJSONpartsFromPSD).replace(/"/g, "'");
 	}
 
-	var i;
 	if (regJSONstringify.skipByKey.test(key)) {
 		return '<skipped>';
 	}
@@ -1761,7 +2063,9 @@ var	depends = lib.depends || null;
 		if (value && typeof value.length !== 'undefined' && value.length > 123) {
 			return '<skipped [' + value.length + ' items]>';
 		}
-		if ((i = String(value).length) > 456) {
+
+	var	i = String(value).length;
+		if (i > 456) {
 			return '<skipped (' + i + ' chars)>';
 		}
 	}
@@ -1771,8 +2075,8 @@ var	depends = lib.depends || null;
 			if (value.map && value.length > 0) {
 				return value.map(JSONtoFlatLine);
 			} else {
-				var o = {};
-				for (i in value) o[i] = JSONtoFlatLine(value);
+			var	o = {};
+				for (let i in value) o[i] = JSONtoFlatLine(value);
 				return o;
 			}
 		}
@@ -1813,27 +2117,34 @@ function replaceJSONpartsForZoomRef(key, value) {
 //* remove invalid values, reassure the percent sign:
 
 		if (isString(value)) {
-		var	z = orz(value);
+		var	targetRefZoom = orz(value);
 
-			if (z <= 0 || z === 100) {
+			if (targetRefZoom <= 0 || targetRefZoom === 100) {
 				return;
 			}
 
 //* zoom in steps, downscale by no more than x2, starting from 100 to nearest-sized reference:
 
-		var	x = 100;
+		var	nearestRefZoom = 100;
 
-			while (z < x && x > 0) {
-			var	d = Math.floor(x / ZOOM_STEP_MAX_FACTOR);
-				if (z >= d) break;
-				x = d;
+			while (
+				nearestRefZoom > 0
+			&&	nearestRefZoom > targetRefZoom
+			) {
+			var	nextStepZoom = Math.floor(nearestRefZoom / ZOOM_STEP_MAX_FACTOR);
+
+				if (targetRefZoom >= nextStepZoom) {
+					break;
+				}
+
+				nearestRefZoom = nextStepZoom;
 			}
 
-			if (x <= 0 || x === 100) {
+			if (nearestRefZoom <= 0 || nearestRefZoom === 100) {
 				return;
 			}
 
-			return String(x) + '%';
+			return String(nearestRefZoom) + '%';
 		} else
 
 //* keep as is the same-key object parent, throw away anything else:
@@ -1846,12 +2157,15 @@ function replaceJSONpartsForZoomRef(key, value) {
 	return value;
 }
 
-function clearCanvasBeforeGC(e) {
-	if (e && isCanvasElement(e = e.canvas || e)) {
-		e.width = 1;
-		e.height = 1;
+function clearCanvasBeforeGC(canvas) {
+	if (
+		canvas
+	&&	isCanvasElement(canvas = canvas.canvas || canvas)
+	) {
+		canvas.width = 1;
+		canvas.height = 1;
 
-		return e;
+		return canvas;
 	}
 }
 
@@ -1905,22 +2219,6 @@ function setImageSrc(img, data) {
 	}
 
 	return img;
-}
-
-function getCanvasFromByteArray(bytes, w,h) {
-var	canvas = cre('canvas')
-,	ctx = canvas.getContext('2d')
-	;
-
-	canvas.width = w;
-	canvas.height = h;
-
-var	imageData = ctx.createImageData(w,h);
-	imageData.data.set(bytes);	//* <- RGBA array
-
-	ctx.putImageData(imageData, 0,0);
-
-	return canvas;
 }
 
 function getResizedCanvasFromImg(img, w,h) {
@@ -2007,6 +2305,22 @@ var	canvas = cre('canvas')
 	}
 }
 
+function getCanvasFromByteArray(rgbaArray, w,h) {
+var	canvas = cre('canvas')
+,	ctx = canvas.getContext('2d')
+	;
+
+	canvas.width = w;
+	canvas.height = h;
+
+var	imageData = ctx.createImageData(w,h);
+	imageData.data.set(rgbaArray);
+
+	ctx.putImageData(imageData, 0,0);
+
+	return canvas;
+}
+
 function getImageData(img, x,y, w,h) {
 	if (isCanvasElement(img)) {
 	var	canvas = img
@@ -2046,7 +2360,7 @@ function getFirstPixelRGBA(img) {
 	}
 }
 
-function getAutoCropArea(img, bgCheck) {
+function getAutoCropArea(img, bgToCheck) {
 	if (!(img = getImageData(img))) {
 		return;
 	}
@@ -2056,33 +2370,33 @@ var	data = img.data
 ,	w = img.width
 ,	h = img.height
 ,	horizontalBytes = w << 2
-,	bgRGBA, bgPixelIndex, i,j,x,y
+,	bgRGBA, bgPixelIndex, index, x
 ,	foundTop, foundLeft, foundBottom, foundRight
 	;
 
 	if (
-		bgCheck
-	&&	bgCheck.length
-	&&	bgCheck !== 'transparent'
+		bgToCheck
+	&&	bgToCheck.length
+	&&	bgToCheck !== 'transparent'
 	) {
-		if (bgCheck === 'topleft') bgPixelIndex = 0; else
-		if (bgCheck === 'topright') bgPixelIndex = w - 1; else
-		if (bgCheck === 'bottomleft') bgPixelIndex = w*(h - 1); else
-		if (bgCheck === 'bottomright') bgPixelIndex = (w*h) - 1;
+		if (bgToCheck === 'topleft') bgPixelIndex = 0; else
+		if (bgToCheck === 'topright') bgPixelIndex = w - 1; else
+		if (bgToCheck === 'bottomleft') bgPixelIndex = w*(h - 1); else
+		if (bgToCheck === 'bottomright') bgPixelIndex = (w*h) - 1;
 
 		if (typeof bgPixelIndex !== 'undefined') {
 		var	bgByteIndex = bgPixelIndex << 2;
 			bgRGBA = data.slice(bgByteIndex, bgByteIndex + 4);
 		} else {
-			if (bgCheck.match) {
-				bgCheck = getRGBAFromColorCode(bgCheck);
+			if (bgToCheck.match) {
+				bgToCheck = getRGBAFromColorCode(bgToCheck);
 			}
-			if (bgCheck.concat) {
-				i = bgCheck.length;
+			if (bgToCheck.concat) {
+				index = bgToCheck.length;
 				bgRGBA = (
-					i >= 4
-					? bgCheck.slice(0,4)
-					: bgCheck.concat([0,0,0,255].slice(i))
+					index >= 4
+					? bgToCheck.slice(0,4)
+					: bgToCheck.concat([0,0,0,255].slice(index))
 				);
 			}
 		}
@@ -2095,9 +2409,9 @@ var	data = img.data
 	if (bgRGBA[3] === 0) {
 
 		find_top:
-		for (i = 3; i < totalBytes; i += 4) {
-			if (data[i]) {
-				foundTop = Math.floor(i / horizontalBytes);
+		for (index = 3; index < totalBytes; index += 4) {
+			if (data[index]) {
+				foundTop = Math.floor(index / horizontalBytes);
 				break find_top;
 			}
 		}
@@ -2111,9 +2425,9 @@ var	data = img.data
 	//* found something:
 
 		find_bottom:
-		for (i = totalBytes - 1; i >= 0; i -= 4) {
-			if (data[i]) {
-				foundBottom = Math.floor(i / horizontalBytes);
+		for (index = totalBytes - 1; index >= 0; index -= 4) {
+			if (data[index]) {
+				foundBottom = Math.floor(index / horizontalBytes);
 				break find_bottom;
 			}
 		}
@@ -2126,8 +2440,8 @@ var	data = img.data
 
 		find_left:
 		for (x = 0; x < w; ++x)
-		for (i = (x << 2) + foundTopIndex; i <= foundBottomIndex; i += horizontalBytes) {
-			if (data[i]) {
+		for (index = (x << 2) + foundTopIndex; index <= foundBottomIndex; index += horizontalBytes) {
+			if (data[index]) {
 				foundLeft = x;
 				break find_left;
 			}
@@ -2135,8 +2449,8 @@ var	data = img.data
 
 		find_right:
 		for (x = w-1; x >= 0; --x)
-		for (i = (x << 2) + foundTopIndex; i <= foundBottomIndex; i += horizontalBytes) {
-			if (data[i]) {
+		for (index = (x << 2) + foundTopIndex; index <= foundBottomIndex; index += horizontalBytes) {
+			if (data[index]) {
 				foundRight = x;
 				break find_right;
 			}
@@ -2145,12 +2459,12 @@ var	data = img.data
 
 //* find same RGBA filled areas:
 
-		i = totalBytes;
+		index = totalBytes;
 
 		find_bottom:
-		while (i--) {
-			if (data[i] !== bgRGBA[i & 3]) {
-				foundBottom = Math.floor(i / horizontalBytes);
+		while (index--) {
+			if (data[index] !== bgRGBA[index & 3]) {
+				foundBottom = Math.floor(index / horizontalBytes);
 				break find_bottom;
 			}
 		}
@@ -2164,9 +2478,9 @@ var	data = img.data
 	//* found something:
 
 		find_top:
-		for (i = 0; i < totalBytes; i++) {
-			if (data[i] !== bgRGBA[i & 3]) {
-				foundTop = Math.floor(i / horizontalBytes);
+		for (index = 0; index < totalBytes; index++) {
+			if (data[index] !== bgRGBA[index & 3]) {
+				foundTop = Math.floor(index / horizontalBytes);
 				break find_top;
 			}
 		}
@@ -2179,12 +2493,12 @@ var	data = img.data
 
 		find_left:
 		for (x = 0; x < w; ++x)
-		for (i = (x << 2) + foundTopIndex; i <= foundBottomIndex; i += horizontalBytes) {
+		for (index = (x << 2) + foundTopIndex; index <= foundBottomIndex; index += horizontalBytes) {
 			if (
-				data[i  ] !== bgRGBA[0]
-			||	data[i|1] !== bgRGBA[1]
-			||	data[i|2] !== bgRGBA[2]
-			||	data[i|3] !== bgRGBA[3]
+				data[index  ] !== bgRGBA[0]
+			||	data[index|1] !== bgRGBA[1]
+			||	data[index|2] !== bgRGBA[2]
+			||	data[index|3] !== bgRGBA[3]
 			) {
 				foundLeft = x;
 				break find_left;
@@ -2193,12 +2507,12 @@ var	data = img.data
 
 		find_right:
 		for (x = w-1; x >= 0; --x)
-		for (i = (x << 2) + foundTopIndex; i <= foundBottomIndex; i += horizontalBytes) {
+		for (index = (x << 2) + foundTopIndex; index <= foundBottomIndex; index += horizontalBytes) {
 			if (
-				data[i  ] !== bgRGBA[0]
-			||	data[i|1] !== bgRGBA[1]
-			||	data[i|2] !== bgRGBA[2]
-			||	data[i|3] !== bgRGBA[3]
+				data[index  ] !== bgRGBA[0]
+			||	data[index|1] !== bgRGBA[1]
+			||	data[index|2] !== bgRGBA[2]
+			||	data[index|3] !== bgRGBA[3]
 			) {
 				foundRight = x;
 				break find_right;
@@ -2222,67 +2536,75 @@ var	foundWidth = foundRight - foundLeft + 1
 	};
 }
 
-function getProjectContainer(e) {return getTargetParentByClass(e, regClassLoadedFile);}
-function getProjectButton(e) {return getTargetParentByClass(e, regClassButton);}
-
 function addButton(parent, text, func) {
-var	e = cre('button', parent);
+var	button = cre('button', parent);
 
-	e.textContent = text || e.tagName;
-	if (func) e.setAttribute('onclick', func);
+	button.textContent = text || button.tagName;
+	if (func) button.setAttribute('onclick', func);
 
-	return e;
+	return button;
 }
 
 function addOption(parent, text, value) {
-var	e = cre('option', parent)
-,	text = getStringEmptyIfUndefined(text)
-,	value = getStringEmptyIfUndefined(value) || text
+var	option = cre('option', parent)
+,	text = getJoinedOrEmptyString(text)
+,	value = getJoinedOrEmptyString(value) || text
 	;
 
-	e.value = value;
-	e.textContent = text;
+	option.value = value;
+	option.textContent = text;
 
-	return e;
+	return option;
 }
 
-function trimParam(v) {
-	return v.replace(regLayerNameParamTrim, '');
-}
-
-function getOtherSwitchParamName(switchType, switchName) {
-var	a = SWITCH_NAMES_BY_TYPE[switchType]
-,	i = a.indexOf(switchName)
-	;
-
-	return a[i < 0 ? 0 : 1-i];
-}
-
-function getTruthyValue(v) {
-	return !(
-		!v
-	||	!(v = String(v))
-	||	FALSY_STRINGS.indexOf(v.toLowerCase()) >= 0
+function trimParam(text) {
+	return (
+		String(text)
+		.replace(regLayerNameParamTrim, '')
 	);
 }
 
-function getNormalizedOpacity(a) {
-	return Math.max(0, Math.min(1, orz(a) / MAX_OPACITY));
+function getOtherSwitchParamName(switchType, switchName) {
+var	names = SWITCH_NAMES_BY_TYPE[switchType]
+,	index = names.indexOf(switchName)
+	;
+
+	return names[
+		index < 0
+		? 0
+		: 1 - index
+	];
 }
 
-function getNormalizedBlendMode(b) {
-var	r,b = String(b).toLowerCase();
+function getTruthyValue(value) {
+	return !(
+		!value
+	||	!(value = String(value))
+	||	FALSY_STRINGS.indexOf(value.toLowerCase()) >= 0
+	);
+}
+
+function getNormalizedOpacity(numValue) {
+	return Math.max(0, Math.min(1, orz(numValue) / MAX_OPACITY));
+}
+
+function getNormalizedBlendMode(text) {
+var	blendMode = String(text).toLowerCase()
+,	replaced
+	;
 
 	return (
-		BLEND_MODES_REMAP[b]
+		BLEND_MODES_REMAP[blendMode]
 	||	BLEND_MODES_REMAP[
-			r = trim(BLEND_MODES_REPLACE.reduce(
-				(result, v,i,a) => result.replace(v[0], v[1] || '')
-			,	b
-			))
+			replaced = trim(
+				BLEND_MODES_REPLACE.reduce(
+					(text, fromTo) => text.replace(fromTo[0], fromTo[1] || '')
+				,	blendMode
+				)
+			)
 		]
-	||	r
-	||	b
+	||	replaced
+	||	blendMode
 	);
 }
 
@@ -2369,55 +2691,10 @@ function isLayerSkipped(layer) {
 	);
 }
 
-function getImgOptimized(img, project) {
-	return img || new Promise(
-		(resolve, reject) => {
-
-//* TODO: get array of pixels without premultiplied alpha; decode PNG manually?
-
-			function checkResult(canvas, img) {
-			var	oldSrc = img.src
-			,	newSrc = canvas.toDataURL()
-			,	isOldBetter = (newSrc.length >= oldSrc.length)
-			,	blob = dataToBlob(isOldBetter ? oldSrc : newSrc, project)
-				;
-
-				if (blob) newSrc = blob.url; else
-				if (isOldBetter) newSrc = null;
-
-				if (newSrc) {
-					img.onload = () => resolve(img);
-					img.src = newSrc;
-				} else {
-					resolve(img);
-				}
-			}
-
-			if (
-				isImageElement(img)
-			&&	img.width > 0
-			&&	img.height > 0
-			) {
-			var	canvas = cre('canvas')
-			,	ctx = canvas.getContext('2d')
-				;
-
-				canvas.width = img.width;
-				canvas.height = img.height;
-
-				ctx.drawImage(img, 0,0);
-				checkResult(canvas, img);
-			} else {
-				resolve(img);
-			}
-		}
-	);
-}
-
-async function getImageDataFromUrl(url) {
-var	arrayBuffer = await readFilePromiseFromURL(url)
+async function getImageDataFromURL(url) {
+var	arrayBuffer = await getFilePromiseFromURL(url)
 ,	img  = UPNG.decode(arrayBuffer)
-,	rgba = UPNG.toRGBA8(img)[0]	//* <- UPNG.toRGBA8 returns array of frames, size: width * height * 4 bytes.
+,	rgba = UPNG.toRGBA8(img)[0]	//* <- UPNG.toRGBA8 returns array of frames, size = width * height * 4 bytes.
 	;
 
 	return {
@@ -2426,6 +2703,8 @@ var	arrayBuffer = await readFilePromiseFromURL(url)
 	,	data: rgba
 	};
 }
+
+//* pile of hacks and glue to get things working, don't bother with readability, redo later:
 
 function thisToPng(targetLayer) {
 	try {
@@ -2454,7 +2733,7 @@ function thisToPng(targetLayer) {
 		if (i = targetLayer) {
 			logTime('cannot get layer image: ' + getLayerPathText(i));
 		} else {
-			console.log(error);
+			logError(arguments, error);
 		}
 	}
 
@@ -2467,22 +2746,23 @@ function isStopRequestedAnywhere() {
 	return (
 		isStopRequested
 	||	Array.from(arguments).some(
-			(o) => (
-				typeof o === 'object'
-			&&	o
-			&&	o.isStopRequested
+			(obj) => (
+				typeof obj === 'object'
+			&&	obj
+			&&	obj.isStopRequested
 			)
 		)
 	);
 }
 
-async function removeProjectView(fileID) {
-var	countDeleted = gi(fileID).reduce(
-		(count, e) => {
-			if (e.project) {
-				e.project.isStopRequested = true;
+async function removeProjectView(fileId) {
+var	countDeleted = gi(fileId).reduce(
+		(count, container) => {
+			if (container.project) {
+				container.project.isStopRequested = true;
 			}
-			if (del(e)) {
+
+			if (del(container)) {
 				++count;
 			}
 		}
@@ -2490,7 +2770,7 @@ var	countDeleted = gi(fileID).reduce(
 	);
 
 	if (countDeleted) {
-		logTime('"' + fileID + '" closed, ' + countDeleted + ' element(s) removed');
+		logTime('"' + fileId + '" closed, ' + countDeleted + ' element(s) removed');
 	}
 }
 
@@ -2565,22 +2845,11 @@ var	buttonClose = cre('button', buttonTab);
 		}
 
 		if (container) {
-		var	fileID = 'loaded-file: ' + sourceFile.name
+		var	fileId = 'loaded-file: ' + sourceFile.name
 		,	childKeys = ['layers']
-		,	keysToRemove = [
-				'loading'
-			,	'toPng'
-			];
+			;
 
-			if (!TESTING) {
-				keysToRemove = keysToRemove.concat([
-					'blendModeOriginal'
-				,	'nameOriginal'
-				,	'sourceData'
-				,	'maskData'
-				]);
-			}
-			cleanupObjectTree(project, childKeys, keysToRemove);
+			cleanupObjectTree(project, childKeys, TESTING ? CLEANUP_KEYS_TESTING : CLEANUP_KEYS);
 
 			container.className = 'loaded-file';
 
@@ -2601,12 +2870,12 @@ var	buttonClose = cre('button', buttonTab);
 				}
 			}
 
-//* attach prepared branch to document:
+//* attach prepared DOM branch to visible document:
 
 			if (result) {
-				removeProjectView(fileID);
+				removeProjectView(fileId);
 
-				container.id = buttonTab.id = fileID;
+				container.id = buttonTab.id = fileId;
 				id('loaded-files-view').appendChild(container);
 
 				buttonText.setAttribute('onclick', 'selectProject(this)');
@@ -2621,7 +2890,7 @@ var	buttonClose = cre('button', buttonTab);
 //* cleanup on errors or cancel:
 
 	} catch (error) {
-		console.log(error);
+		logError(arguments, error);
 	}
 
 	buttonTab.className = 'button loading failed';
@@ -2635,11 +2904,11 @@ var	buttonClose = cre('button', buttonTab);
 
 async function getNormalizedProjectData(sourceFile, button) {
 
-	async function tryFileParserFunc(f, project) {
+	async function tryFileParserFunc(func, project) {
 		try {
-			return await f(project);
+			return await func(project);
 		} catch (error) {
-			console.log(error);
+			logError(arguments, error);
 		}
 
 		return null;
@@ -2660,8 +2929,8 @@ var	fileName = sourceFile.name
 var	startTime = getTimeNow();
 
 	try_loaders:
-	for (let ftl of fileTypeLoaders) if (ftl.dropFileExts.indexOf(ext) >= 0)
-	for (let f of ftl.handlerFuncs) {
+	for (let loader of fileTypeLoaders) if (loader.dropFileExts.indexOf(ext) >= 0)
+	for (let func of loader.handlerFuncs) {
 	var	project = {
 			fileName: fileName
 		,	baseName: baseName
@@ -2672,7 +2941,7 @@ var	startTime = getTimeNow();
 			}
 		};
 
-		if (await tryFileParserFunc(f, project)) {
+		if (await tryFileParserFunc(func, project)) {
 			break try_loaders;
 		} else {
 			project = null;
@@ -2715,7 +2984,7 @@ async function getProjectViewMenu(project) {
 
 		try {
 		var	options = getProjectOptions(project)
-		,	n = project.fileName
+		,	fileName = project.fileName
 			;
 
 			if (options) {
@@ -2725,7 +2994,7 @@ async function getProjectViewMenu(project) {
 			,	result, layer
 				;
 
-				logTime('"' + n + '" started ' + actionLabel);
+				logTime('"' + fileName + '" started ' + actionLabel);
 
 //* try loading one by one to avoid flood of errors:
 
@@ -2742,7 +3011,7 @@ async function getProjectViewMenu(project) {
 			var	tookTime = getTimeNow() - startTime;
 
 				logTime(
-					'"' + n + '"'
+					'"' + fileName + '"'
 				+	(
 						result
 						? ' finished ' + actionLabel + ', took '
@@ -2770,10 +3039,10 @@ async function getProjectViewMenu(project) {
 					return container;
 				}
 			} else {
-				logTime('"' + n + '" has no options.');
+				logTime('"' + fileName + '" has no options.');
 			}
 		} catch (error) {
-			console.log(error);
+			logError(arguments, error);
 
 			if (project.options) {
 				project.options = null;
@@ -2789,14 +3058,14 @@ async function getProjectViewMenu(project) {
 		function getProcessedLayerInBranch(layer) {
 
 			function getOptionGroup(sectionName, listName) {
+				if (typeof options !== 'object') {
+					options = {};
+				}
+
 			var	sectionName = String(sectionName)
 			,	listName    = String(listName)
-			,	o = (options || (options = {}))
-			,	o = (o[sectionName] || (o[sectionName] = {}))
-			,	optionGroup = (o[listName] || (o[listName] = {
-					'params': {}
-				,	'items': {}
-				}))
+			,	sections    = getOrInitChild(options, sectionName)
+			,	optionGroup = getOrInitChild(sections, listName, 'params', 'items')
 				;
 
 				return optionGroup;
@@ -2805,8 +3074,8 @@ async function getProjectViewMenu(project) {
 			function checkSwitchParams(globalOptionParams) {
 				for (let switchType in SWITCH_NAMES_BY_TYPE)
 				for (let switchName of SWITCH_NAMES_BY_TYPE[switchType]) if (params[switchName]) {
-				var	o = (project.switchParamNames || (project.switchParamNames = {}))
-				,	o = (o[switchType] || (o[switchType] = {}))
+				var	o = getOrInitChild(project, 'switchParamNames')
+				,	o = getOrInitChild(o, switchType)
 					;
 
 					if (!o.implicit) {
@@ -2836,10 +3105,7 @@ async function getProjectViewMenu(project) {
 					}
 				}
 
-				for (k of [
-					'last',
-					'no_prefix',
-				]) {
+				for (k of PARAM_KEYWORDS_VALUE_TRUE) {
 					if (params[k]) optionParams[k] = true;
 				}
 
@@ -2856,13 +3122,11 @@ async function getProjectViewMenu(project) {
 			var	optionGroup = getOptionGroup(sectionName, listName)
 			,	optionParams = optionGroup.params
 			,	optionItems = optionGroup.items
-			,	optionItemLayers = (optionItems[optionName] || (optionItems[optionName] = []))
+			,	optionItemLayers = getOrInitChild(optionItems, optionName, Array)
 				;
 
 				if (optionName !== '') {
-					for (k of [
-						'preselect',
-					]) {
+					for (k of PARAM_KEYWORDS_VALUE_NAME) {
 						if (params[k]) optionParams[k] = optionName;
 					}
 
@@ -3030,22 +3294,20 @@ async function getProjectViewMenu(project) {
 			}
 
 		var	layersInside = layer.layers
-		,	j = 'layersForCopyPaste'
-		,	k = 'copypaste'
-		,	layerCP = params[k]
+		,	layerCopyParams = params.copypaste
 			;
 
-			if (layerCP) {
-			var	allCP = project[j] || (project[j] = {});
+			if (layerCopyParams) {
+			var	aliasTypes = getOrInitChild(project, 'layersForCopyPaste');
 
-				for (let t in layerCP) {
-				var	allAliases = allCP[t] || (allCP[t] = {});
+				for (let paramType in layerCopyParams) {
+				var	aliases = getOrInitChild(aliasTypes, paramType);
 
-					layerCP[t].forEach(
+					layerCopyParams[paramType].forEach(
 						(alias) => {
-						var	allByAlias = allAliases[alias] || (allAliases[alias] = []);
+						var	layersByAlias = getOrInitChild(aliases, alias, Array);
 
-							allByAlias.push(layer);
+							layersByAlias.push(layer);
 						}
 					);
 				}
@@ -3137,12 +3399,12 @@ async function getProjectViewMenu(project) {
 		}
 
 		function getUnskippedProcessedLayers(layers, isInsideColorList) {
-		var	i = layers.length
+		var	index = layers.length
 		,	clippingLayer = null
 		,	layer
 			;
 
-			while (i--) if (layer = layers[i]) {
+			while (index--) if (layer = layers[index]) {
 				if (layer.isClipped) {
 					layer.clippingLayer = clippingLayer;
 				} else {
@@ -3181,8 +3443,8 @@ async function getProjectViewMenu(project) {
 		}
 
 		for (let switchType in SWITCH_NAMES_BY_TYPE) {
-		var	o = (project.switchParamNames || (project.switchParamNames = {}))
-		,	o = (o[switchType] || (o[switchType] = {}))
+		var	o = getOrInitChild(project, 'switchParamNames')
+		,	o = getOrInitChild(o, switchType)
 			;
 
 			if (!o.implicit) {
@@ -3233,14 +3495,14 @@ async function getProjectViewMenu(project) {
 				try {
 					img = project.toPng(layer);
 				} catch (error) {
-					console.log(error);
+					logError(arguments, error);
 				}
 
 				if (
 					img
 				&&	isImageElement(img)
 				) {
-				var	onImgLoad = async function(e) {
+					img.onload = (evt) => {
 						if (layer.isColor) {
 							layer.img = getFirstPixelRGBA(img);
 
@@ -3263,18 +3525,28 @@ async function getProjectViewMenu(project) {
 								layer.img = colorCode;
 							}
 						} else {
-						var	i = layer.img = await getImgOptimized(img, project);
-							i.top  = layer.top;
-							i.left = layer.left;
+							img.top  = layer.top;
+							img.left = layer.left;
+
+							layer.img = img;
 						}
 
 						resolve(true);
 					};
 
-					if (!img.complete) {
-						img.onload = onImgLoad;
-					} else {
-						onImgLoad();
+					img.onerror = (evt) => {
+						if (img.complete) {
+							resolve(true);
+							return;
+						}
+
+						if (TESTING) console.log(['img.onerror:', img, evt]);
+
+						resolve(false);
+					}
+
+					if (img.complete) {
+						img.onload();
 					}
 				} else
 				if (colorCode) {
@@ -3306,16 +3578,25 @@ async function getProjectViewMenu(project) {
 				,	w = mask.width
 				,	h = mask.height
 				,	canvas = getCanvasFromByteArray(maskData, w,h)
-				,	data = canvas.toDataURL()
-				,	blob = dataToBlob(data, project)
-				,	img = layer.mask = cre('img')
 					;
 
-					img.top = mask.top;
-					img.left = mask.left;
-					img.defaultColor = orz(mask.defaultColor);
-					img.onload = () => resolve(true);
-					img.src = (blob ? blob.url : data);
+					getImagePromiseFromCanvasToBlob(canvas, project).then(
+						(img) => {
+							if (img) {
+								layer.mask.img = img;
+
+								resolve(true);
+							} else {
+								resolve(false);
+							}
+						}
+					).catch(
+						(error) => {
+							console.log(error);
+
+							resolve(false);
+						}
+					);
 				} else {
 					resolve(true);
 				}
@@ -3325,16 +3606,11 @@ async function getProjectViewMenu(project) {
 
 	function createOptionsMenu(project, container) {
 
-		function addHeader(text) {
-		var	th = cre('header', cre('th', cre('tr', table)));
-			th.textContent = text + ':';
-		}
-
 		function addOptions(sectionName, entry) {
 
 			function addOptionColor(rgba) {
 				if (rgba) {
-				var	colorStyle = getColorTextFromArray(rgba, true);
+				var	colorStyle = getColorTextFromArray(rgba, 3);
 
 					if (
 						colorStyle
@@ -3395,36 +3671,40 @@ async function getProjectViewMenu(project) {
 				td.title = listLabel;
 				td.textContent = listLabel + ':';
 
-			var	s = cre('select', cre('td', tr));
-				s.name = listName;
-				s.setAttribute('data-section', sectionName);
+			var	selectBox = cre('select', cre('td', tr));
+				selectBox.name = listName;
+				selectBox.setAttribute('data-section', sectionName);
 
 				if (sectionName !== 'collage')
 				for (let switchType in SWITCH_NAMES_BY_TYPE) {
-				var	b = getPropByNameChain(project, 'switchParamNames', switchType, 'implicit')
-				,	c = getPropByNameChain(project, 'switchParamNames', switchType, 'explicit')
-				,	la_switches = la.project_option_switches[switchType]
-				,	td = cre('td', tr)
-				,	label = cre('label', td)
-				,	i = cre('input', label)
+				var	implicitName = getPropByNameChain(project, 'switchParamNames', switchType, 'implicit')
+				,	explicitName = getPropByNameChain(project, 'switchParamNames', switchType, 'explicit')
+				,	isImplied = (typeof params[explicitName] === 'undefined')
 					;
 
-					params[c] = !(params[b] = (typeof params[c] === 'undefined'));
+					params[implicitName] = isImplied;
+					params[explicitName] = !isImplied;
 
-					i.type = 'checkbox';
-					i.className = switchType + '-checkbox';
-					i.setAttribute('data-switch-type', switchType);
-					i.checked = i.initialValue = !params[SWITCH_NAMES_BY_TYPE[switchType][0]];
-					i.params = params;
+				var	la_switches = la.project_option_switches[switchType]
+				,	td = cre('td', tr)
+				,	label = cre('label', td)
+				,	checkBox = cre('input', label)
+					;
 
-					for (let k in la_switches) {
-					var	i = SWITCH_CLASS_BY_TYPE[switchType].indexOf(k)
-					,	j = la_switches[k]
-					,	t = cre('div', label)
+					checkBox.type = 'checkbox';
+					checkBox.className = switchType + '-checkbox';
+					checkBox.setAttribute('data-switch-type', switchType);
+					checkBox.checked = checkBox.initialValue = !params[SWITCH_NAMES_BY_TYPE[switchType][0]];
+					checkBox.params = params;
+
+					for (let switchName in la_switches) {
+					var	index = SWITCH_CLASS_BY_TYPE[switchType].indexOf(switchName)
+					,	la_switch = la_switches[switchName]
+					,	button = cre('div', label)
 						;
 
-						t.className = switchType + '-' + k + ' ' + SWITCH_CLASS_BY_INDEX[i];
-						t.title = j.label + ': \r\n' + j.hint;
+						button.className = switchType + '-' + switchName + ' ' + SWITCH_CLASS_BY_INDEX[index];
+						button.title = la_switch.label + ': \r\n' + la_switch.hint;
 					}
 				}
 
@@ -3445,8 +3725,8 @@ async function getProjectViewMenu(project) {
 
 					if (sectionName === 'separate') {
 						project.layersTopSeparated.forEach(
-							(layer, layerIndex) => {
-								addOption(s, (layerIndex + 1) + ': ' + layer.name);
+							(layer, index) => {
+								addOption(selectBox, (index + 1) + ': ' + layer.name);
 							}
 						);
 					} else
@@ -3462,12 +3742,12 @@ async function getProjectViewMenu(project) {
 						var	addedDefaultZoom = true;
 							addEmpty = false;
 
-							addOption(s, '100%');
+							addOption(selectBox, '100%');
 
 							continue;
 						}
 
-						addOption(s, optionName);
+						addOption(selectBox, optionName);
 					} else {
 					var	optionLabel = optionName
 					,	optionValue = optionName
@@ -3505,7 +3785,7 @@ async function getProjectViewMenu(project) {
 							);
 						}
 
-					var	optionItem = addOption(s, optionLabel, optionValue);
+					var	optionItem = addOption(selectBox, optionLabel, optionValue);
 
 						colorStyles.forEach(
 							(colorStyle) => {
@@ -3524,31 +3804,38 @@ async function getProjectViewMenu(project) {
 				}
 
 				if (addEmpty) {
-					addOption(s, '', isZeroSameAsEmpty ? '0%' : '');
+					addOption(selectBox, '', isZeroSameAsEmpty ? '0%' : '');
 				}
 
-				if (i = getPropByNameChain(project, 'options', sectionName, listName, 'params', 'preselect')) {
-					s.initialValue = selectValue(s, i);
-				} else {
-					s.initialValue = selectValueByPos(s, params.last ? 'bottom' : 'top');
-				}
+			var	preselectByValue = getPropByNameChain(project, 'options', sectionName, listName, 'params', 'preselect');
+
+				selectBox.initialValue = (
+					preselectByValue
+					? selectValue(selectBox, preselectByValue)
+					: selectValueByPos(selectBox, params.last ? 'bottom' : 'top')
+				);
 
 			var	tabCount = gt('td', tr).length;
 				if (maxTabCount < tabCount) maxTabCount = tabCount;
 			}
 		}
 
+		function addHeader(text) {
+		var	th = cre('header', cre('th', cre('tr', table)));
+			th.textContent = text + ':';
+		}
+
 	var	options = project.options
 	,	la_autocrop = la.project_option_autocrop
 	,	la_collage = la.project_option_collage
 	,	la_view_sides = la.project_option_side
-	,	la_section_batches = la.project_option_sections
+	,	la_section_groups = la.project_option_sections
 	,	table = cre('table', container)
 	,	maxTabCount = 0
 	,	sections
 		;
 
-		for (let i in la_section_batches) if (sections = la_section_batches[i]) {
+		for (let groupName in la_section_groups) if (sections = la_section_groups[groupName]) {
 			if (sections.header) {
 			var	header = sections.header
 			,	sections = sections.select
@@ -3584,9 +3871,7 @@ async function getProjectViewMenu(project) {
 }
 
 function createProjectView(project) {
-var	sourceFile = project.loading.data.file || {}
-,	sourceFileTime = sourceFile.lastModified || sourceFile.lastModifiedDate
-,	container = cre('div')
+var	container = cre('div')
 ,	header = cre('header', container)
 	;
 
@@ -3594,62 +3879,72 @@ var	sourceFile = project.loading.data.file || {}
 
 //* show overall project info:
 
-var	e = cre('section', header)
-,	h = cre('header', e)
+var	summary       = cre('section', header)
+,	summaryHeader = cre('header', summary)
+,	summaryBody   = cre('div',    summary)
+,	summaryFooter = cre('footer', summary)
 	;
 
-	h.className = 'filename';
-	h.textContent = project.fileName;
+	summaryHeader.className = 'filename';
+	summaryHeader.textContent = project.fileName;
+
+var	bitDepthText = '';
 
 	if (project.channels && project.bitDepth) {
-		t = project.channels + 'x' + project.bitDepth + ' ' + la.project.bits;
+		bitDepthText = project.channels + 'x' + project.bitDepth + ' ' + la.project.bits;
 	} else
 	if (project.channels) {
-		t = project.channels + ' ' + la.project.channels;
+		bitDepthText = project.channels + ' ' + la.project.channels;
 	} else
 	if (project.bitDepth) {
-		t = project.bitDepth + ' ' + la.project.bits;
-	} else t = '';
+		bitDepthText = project.bitDepth + ' ' + la.project.bits;
+	}
 
-var	i = (
+var	canvasSizeText = (
 		project.width + 'x'
 	+	project.height + ' '
 	+	la.project.pixels
 	)
-,	j = arrayFilteredJoin([project.colorMode, t], ' ')
-,	j = arrayFilteredJoin([i, j], ', ')
-,	t = [j]
-,	i = project.loading.imagesCount
-,	j = project.layersCount
+,	colorModeText  = arrayFilteredJoin([project.colorMode, bitDepthText], ' ')
+,	resolutionText = arrayFilteredJoin([canvasSizeText, colorModeText], ', ')
+,	textParts = [resolutionText]
+,	imagesCount = project.loading.imagesCount
+,	layersCount = project.layersCount
+,	sourceFile  = project.loading.data.file || {}
+,	sourceFileTime = sourceFile.lastModified || sourceFile.lastModifiedDate
 	;
 
-	if (j) t.push(j + ' ' + la.project.layers);
-	if (i) t.push(i + ' ' + la.project.images);
+	if (layersCount) textParts.push(layersCount + ' ' + la.project.layers);
+	if (imagesCount) textParts.push(imagesCount + ' ' + la.project.images);
+	if (sourceFile.size) textParts.push(sourceFile.size + ' ' + la.project.bytes);
+	if (sourceFileTime)  textParts.push(la.project.date + ' ' + getFormattedTime(sourceFileTime));
 
-	if (sourceFile.size) t.push(sourceFile.size + ' ' + la.project.bytes);
-	if (sourceFileTime)  t.push(la.project.date + ' ' + getFormattedTime(sourceFileTime));
+	summaryBody.innerHTML = arrayFilteredJoin(textParts, '<br>');
 
-	cre('div', e).innerHTML = arrayFilteredJoin(t, '<br>');
-
-	t = 'console_log';
-	addButton(cre('footer', e), la.hint[t]).name = t;
+var	infoButton = addButton(summaryFooter, la.hint.console_log);
+	infoButton.name = 'console_log';
 
 	container.addEventListener('click', onProjectButtonClick, false);
 
 //* add batch controls:
 
 	if (project.options) {
-		for (let i in (t = la.project_controls)) {
-		var	j = t[i]
-		,	b = j.buttons
-		,	e = cre('section', header)
-		,	h = cre('header', e)
-		,	f = cre('footer', e)
+	var	la_controls = la.project_controls;
+
+		for (let groupName in la_controls) {
+		var	controlGroup = la_controls[groupName]
+		,	buttons = controlGroup.buttons
+		,	buttonsGroup = cre('section', header)
+		,	buttonsHeader = cre('header', buttonsGroup)
+		,	buttonsFooter = cre('footer', buttonsGroup)
 			;
 
-			h.textContent = j.header + ':';
+			buttonsHeader.textContent = controlGroup.header + ':';
 
-			for (let k in b) addButton(f, b[k]).name = k;
+			for (let buttonName in buttons) {
+			var	button = addButton(buttonsFooter, buttons[buttonName]);
+				button.name = buttonName;
+			}
 		}
 
 		container.addEventListener('change', onProjectMenuUpdate, false);
@@ -3665,8 +3960,11 @@ var	i = (
 }
 
 function setProjectThumbnail(project, fullImage) {
-	if (fullImage && project && project.thumbnail) {
-
+	if (
+		fullImage
+	&&	project
+	&&	project.thumbnail
+	) {
 	var	canvas = getResizedCanvasFromImg(fullImage, THUMBNAIL_SIZE);
 		if (canvas) {
 			setImageSrc(project.thumbnail, canvas.toDataURL());
@@ -3699,22 +3997,22 @@ function getProjectViewImage(project, img) {
 
 		if (img.complete) img.onload();
 
-	var	e = createProjectView(project)
-	,	h = gt('header', e)[0]
-	,	f = gt('footer', e)[0]
-	,	t = (
-			f
-			? cre('header', f, f.firstElementChild)
-			: h || cre('header', e)
-		)
-	,	d = cre('div', e)
-		;
+	var	container = createProjectView(project)
+	,	header = gt('header', container)[0]
+	,	footer = gt('footer', container)[0]
+	,	comment = (
+			footer
+			? cre('header', footer, footer.firstElementChild)
+			: header || cre('header', container)
+		);
 
-		t.textContent = la.error.options;
-		d.className = 'preview';
-		d.appendChild(img);
+		comment.textContent = la.error.options;
 
-		return e;
+	var	preview = cre('div', container)
+		preview.className = 'preview';
+		preview.appendChild(img);
+
+		return container;
 	}
 
 	return null;
@@ -3725,17 +4023,39 @@ function isParamInLayerName(name) {
 		name
 	&&	name.length > 0
 	) {
-	var	i = name.indexOf('[');
-		if (i < 0) return false;	//* <- has no "[param]", nothing else to see
+	var	paramStart = name.indexOf('[');
 
-	var	j = name.indexOf('(');
-		if (j < 0) return true;		//* <- has "[param]" and no "(comment)"
-		if (i < j) return true;		//* <- has "[param]" before "(comment)"
+//* no "[param]", nothing else to see:
 
-	var	k = name.indexOf(')', j)
-		if (k < 0) return false;	//* <- the rest is unclosed "(comment"
+		if (paramStart < 0) {
+			return false;
+		}
 
-		name = name.substr(k + 1);	//* <- continue looking after "(comment)"
+	var	commentStart = name.indexOf('(');
+
+//* has "[param]" and no "(comment)":
+
+		if (commentStart < 0) {
+			return true;
+		}
+
+//* has "[param]" before "(comment)":
+
+		if (paramStart < commentStart) {
+			return true;
+		}
+
+	var	commentEnd = name.indexOf(')', commentStart);
+
+//* the rest is unclosed "(comment...", nothing else to see:
+
+		if (commentEnd < 0) {
+			return false;
+		}
+
+//* continue looking after "(comment)":
+
+		name = name.substr(commentEnd + 1);
 	}
 
 	return false;
@@ -3744,12 +4064,12 @@ function isParamInLayerName(name) {
 function getLayerWithParamsFromParamList(paramList, layer) {
 
 	function addParamPartsToList(sectionName, listName, value) {
-	var	o = params[sectionName] || (params[sectionName] = {})
-	,	a = o[listName] || (o[listName] = [])
+	var	section = getOrInitChild(params, sectionName)
+	,	values = getOrInitChild(section, listName, Array)
 		;
 
-		if (a.indexOf(value) < 0) {
-			a.push(value);
+		if (values.indexOf(value) < 0) {
+			values.push(value);
 		}
 	}
 
@@ -3761,7 +4081,7 @@ function getLayerWithParamsFromParamList(paramList, layer) {
 		layer = {name: 'dummy'};
 	}
 
-var	params = layer.params || (layer.params = {});
+var	params = getOrInitChild(layer, 'params');
 
 	if (!Array.isArray(paramList)) {
 		return layer;
@@ -3773,115 +4093,125 @@ var	params = layer.params || (layer.params = {});
 	for (let param of paramList) {
 
 		param_types:
-		for (let paramType in regLayerNameParamType) if (m = param.match(regLayerNameParamType[paramType])) {
+		for (let paramType in regLayerNameParamType) if (match = param.match(regLayerNameParamType[paramType])) {
+		var	match, key, values;
+
 			if (NAME_PARTS_FOLDERS.indexOf(paramType) >= 0) {
 				layer.type = paramType;
 				layer.isVisibilityOptional = true;
 			} else
 			if (paramType === 'zoom' || paramType === 'opacities') {
 				params[paramType] = {
-					'values': getUniqueNumbersArray(m[1])
-				,	'format': orz(m[2])
+					'values': getUniqueNumbersArray(match[1])
+				,	'format': orz(match[2])
 				};
 			} else
 			if (paramType === 'radius') {
 				layer.isVisibilityOptional = true;
-				v = (
-					m[1]
+				values = (
+					match[1]
 					.split('/')
-					.filter((v) => regHasDigit.test(v))
+					.filter((textPart) => regHasDigit.test(textPart))
 					.map(
-						(x) => {
-							x = x.split('x', 2).map(
-								(y) => {
-									if (y.length == 0) return null;
+						(textPart) => {
+						var	dimensions = (
+								textPart
+								.split('x', 2)
+								.map(
+									(dimension) => {
+										if (dimension.length == 0) return null;
 
-									y = y.split(':', 2).map(
-										(z) => orzFloat(
-											z.replace(regTrimNaNorSign, '')
-										)
-									);
+									var	boundaries = (
+											dimension
+											.split(':', 2)
+											.map(
+												(boundary) => orzFloat(
+													boundary.replace(regTrimNaNorSign, '')
+												)
+											)
+										);
 
-									if (y.length == 0) return {'out': 1};
-									if (y.length == 1) return {'out': y[0]};
+										if (boundaries.length == 0) return {'out': 1};
+										if (boundaries.length == 1) return {'out': boundaries[0]};
 
-									return {
-										'in': Math.min(...y)
-									,	'out': Math.max(...y)
-									};
-								}
+										return {
+											'in': Math.min(...boundaries)
+										,	'out': Math.max(...boundaries)
+										};
+									}
+								)
 							);
 
-							if (x.length == 0) return {'radius': 1};
-							if (x.length == 1) return {'radius': x[0]};
-							if (x[0] === null) x[0] = x[1];
-							if (x[1] === null) x[1] = x[0];
-							if (x[1] === null) x[1] = x[0] = 1;
+							if (dimensions.length == 0) return {'radius': 1};
+							if (dimensions.length == 1) return {'radius': dimensions[0]};
+							if (dimensions[0] === null) dimensions[0] = dimensions[1];
+							if (dimensions[1] === null) dimensions[1] = dimensions[0];
+							if (dimensions[1] === null) dimensions[1] = dimensions[0] = 1;
 
 							return {
-								'x': x[0]
-							,	'y': x[1]
+								'x': dimensions[0]
+							,	'y': dimensions[1]
 							};
 						}
 					).map(
-						(v) => {
-							v.threshold = m[2];
-							return v;
+						(obj) => {
+							obj.threshold = match[2];
+							return obj;
 						}
 					)
 				);
 
-				params[paramType] = (params[paramType] || []).concat(v);
+				params[paramType] = (params[paramType] || []).concat(values);
 			} else
 			if (paramType === 'copypaste') {
-				addParamPartsToList(paramType, m[1], m[2]);
+				addParamPartsToList(paramType, match[1], match[2]);
 			} else
 			if (paramType === 'color_code') {
-				params[paramType] = getRGBAFromColorCode(m);
+				params[paramType] = getRGBAFromColorCode(match);
 			} else
 			if (paramType === 'multi_select') {
-				v = (
-					m[1] === 'optional'
+				values = (
+					match[1] === 'optional'
 					? [0,1]
-					: getNumbersArray(m[2], 2)
+					: getNumbersArray(match[2], 2)
 				);
 
 				params[paramType] = {
-					'min': Math.max(0, v[0])
-				,	'max': Math.max(1, v[v.length > 1?1:0])
+					'min': Math.max(0, values[0])
+				,	'max': Math.max(1, values[values.length > 1?1:0])
 				};
 			} else
 			if (paramType === 'check_order') {
-				params[paramType] = m[1];
+				params[paramType] = match[1];
 			} else
 			if (paramType === 'preselect') {
-				v = 'last';
-				params[param.indexOf(v) >= 0 ? v : paramType] = true;
+				key = 'last';
+				params[param.indexOf(key) >= 0 ? key : paramType] = true;
 			} else
 			if (paramType === 'batch') {
 				params[param === paramType ? paramType : 'single'] = true;
 			} else
 			if (paramType === 'autocrop') {
-				v = (
-					(m[2] || DEFAULT_AUTOCROP)
+				values = (
+					(match[2] || DEFAULT_AUTOCROP)
 					.split('/')
 					.filter(arrayFilterNonEmptyValues)
 				);
 
-				params[paramType] = (params[paramType] || []).concat(v);
+				params[paramType] = (params[paramType] || []).concat(values);
 			} else
 			if (paramType === 'collage') {
-				v = (
-					(m[2] || DEFAULT_COLLAGE)
+				values = (
+					(match[2] || DEFAULT_COLLAGE)
 					.split('/')
 					.filter(arrayFilterNonEmptyValues)
 				);
 
-				v.forEach(
-					(v) => {
-					var	m
+				values.forEach(
+					(value) => {
+					var	match
 					,	listName = 'background'
-					,	keyword = v.replace(regNonWord, '').toLowerCase()
+					,	keyword = value.replace(regNonWord, '').toLowerCase()
 						;
 
 						if (
@@ -3890,20 +4220,24 @@ var	params = layer.params || (layer.params = {});
 						) {
 							listName = 'align';
 						} else
-						if (m = v.match(regPrefixNumPx)) {
+						if (match = value.match(regPrefixNumPx)) {
 							if (
-								!(listName = m[1])
+								!(listName = match[1])
 							||	PARAM_KEYWORDS_COLLAGE_PAD.indexOf(listName) < 0
 							) {
 								listName = PARAM_KEYWORDS_COLLAGE_PAD;
 							}
 
-							v = orz(m[2]) + 'px';
+							value = orz(match[2]) + 'px';
 						}
 
 						if (listName) {
-							(Array.isArray(listName) ? listName : [listName]).forEach(
-								(listName) => addParamPartsToList(paramType, listName, v)
+							(
+								Array.isArray(listName)
+								? listName
+								: [listName]
+							).forEach(
+								(listName) => addParamPartsToList(paramType, listName, value)
 							);
 						}
 					}
@@ -3915,18 +4249,18 @@ var	params = layer.params || (layer.params = {});
 				if (paramType === 'side') {
 					layer.isVisibilityOptional = true;
 					if (
-						(v = m[2])
-					&&	(v = v[0])
+						(key = match[2])
+					&&	(key = key[0])
 					) {
-						if (v === 'h') layer.flipSide = orz(layer.flipSide) | FLAG_FLIP_HORIZONTAL;
-						if (v === 'v') layer.flipSide = orz(layer.flipSide) | FLAG_FLIP_VERTICAL;
+						if (key === 'h') layer.flipSide = orz(layer.flipSide) | FLAG_FLIP_HORIZONTAL;
+						if (key === 'v') layer.flipSide = orz(layer.flipSide) | FLAG_FLIP_VERTICAL;
 					}
 				}
 
 				params[paramType] = param || paramType;
 			}
 
-			if (TESTING) console.log('param type [' + paramType + '], value = [' + param + '] at: ' + getWIPLayerPathText());
+			// if (TESTING) console.log('param type [' + paramType + '], value = [' + param + '] at: ' + getWIPLayerPathText());
 
 			// break param_types;
 			continue param_list;
@@ -3952,7 +4286,6 @@ async function getNextParentAfterAddingLayerToTree(layer, sourceData, name, pare
 
 var	paramList = []
 ,	params = {}
-,	a,i,j,k,m,o,v
 	;
 
 	if (typeof layer.sourceData   === 'undefined') layer.sourceData   = sourceData;
@@ -3987,18 +4320,19 @@ var	checkVirtualPath = (
 
 //* make virtual subfolder from layer name:
 
-	while (m = name.match(regLayerNameParamOrComment)) if (
+	while (match = name.match(regLayerNameParamOrComment)) if (
 		checkVirtualPath
-	&&	(v = m[2])
-	&&	(v === '/')
+	&&	(separator = match[2])
+	&&	(separator === '/')
 	) {
-	var	subLayer = layer
+	var	match, separator
+	,	subLayer = layer
 	,	isSubLayerFolder = isLayerFolder
 		;
 
 		isLayerFolder = true;
-		name          = m[1].replace(regTrimCommaSpace, '');
-		subLayer.name = m[4].replace(regTrimCommaSpace, '');
+		name          = match[1].replace(regTrimCommaSpace, '');
+		subLayer.name = match[4].replace(regTrimCommaSpace, '');
 		layer = {
 			nameOriginal: layer.nameOriginal
 		,	isClipped: layer.isClipped
@@ -4017,19 +4351,18 @@ var	checkVirtualPath = (
 
 //* gather "[params]", remove "(comments)":
 
-		if (
-			(v = m[3])
-		&&	(v.length > 0)
-		) {
-			v
+	var	paramGroupText = match[3];
+
+		if (isNotEmptyString(paramGroupText)) {
+			paramGroupText
 			.split(regLayerNameParamSplit)
 			.map(trimParam)
 			.filter(arrayFilterNonEmptyValues)
-			.forEach((v) => paramList.push(v.toLowerCase()));
+			.forEach((param) => paramList.push(param.toLowerCase()));
 		}
 
 		name = (
-			(m[1] + ', ' + m[4])
+			(match[1] + ', ' + match[4])
 			.replace(regTrimCommaSpace, '')
 		);
 	}
@@ -4043,7 +4376,9 @@ var	checkVirtualPath = (
 	if (paramList.length > 0) {
 		getLayerWithParamsFromParamList(paramList, layer);
 
-		if (k = layer.type) {
+	var	layerType = layer.type;
+
+		if (isNotEmptyString(layerType)) {
 			if (params.if_only) {
 				if (params.any) {
 					layer.isOptionIfAny = true;
@@ -4055,10 +4390,10 @@ var	checkVirtualPath = (
 				}
 			} else {
 				if (isLayerFolder) {
-					if (NAME_PARTS_FOLDERS.indexOf(k) >= 0) {
+					if (NAME_PARTS_FOLDERS.indexOf(layerType) >= 0) {
 						layer.isOptionList = true;
 
-						if (k === 'colors') {
+						if (layerType === 'colors') {
 							layer.isColorList = true;
 						}
 					}
@@ -4073,11 +4408,15 @@ var	checkVirtualPath = (
 
 	parentGroup.push(layer);
 
+var	paramName = 'check_order'
+,	parentValue
+	;
+
 	if (
-		!params[k = 'check_order']
-	&&	(v = getPropByNameChain(getParentLayer(layer), 'params', k))
+		!params[paramName]
+	&&	(parentValue = getPropByNameChain(getParentLayer(layer), 'params', paramName))
 	) {
-		params[k] = v;
+		params[paramName] = parentValue;
 	}
 
 	if (isLayerFolder) {
@@ -4102,13 +4441,13 @@ var	checkVirtualPath = (
 }
 
 async function addLayerGroupCommonWrapper(project, parentGroup, layers, callback) {
-	for (let v of layers) {
+	for (let layer of layers) {
 
 		if (isStopRequestedAnywhere(project)) {
 			return false;
 		}
 
-		await callback(v, parentGroup);
+		await callback(layer, parentGroup);
 	}
 
 	return true;
@@ -4117,7 +4456,7 @@ async function addLayerGroupCommonWrapper(project, parentGroup, layers, callback
 //* Page-specific functions: internal, loading from file *---------------------
 
 async function loadCommonWrapper(project, libName, fileParserFunc, treeConstructorFunc) {
-	if (!(await loadLibOnDemand(libName))) {
+	if (!(await loadLibOnDemandPromise(libName))) {
 		return;
 	}
 
@@ -4128,14 +4467,14 @@ var	actionLabel = 'opening with ' + libName;
 	project.loading.startParsingTime = getTimeNow();
 
 	try {
-	var	d = project.loading.data
+	var	loadingData = project.loading.data
 	,	sourceData = await fileParserFunc(
-			d.url
-			? (d.file = await readFilePromiseFromURL(d.url, 'blob'))
-			: d.file
+			loadingData.url
+			? (loadingData.file = await getFilePromiseFromURL(loadingData.url, 'blob'))
+			: loadingData.file
 		);
 	} catch (error) {
-		console.log(error);
+		logError(arguments, error);
 	}
 
 	logTime(
@@ -4185,12 +4524,12 @@ async function loadORA(project) {
 	,	async function treeConstructorFunc(project, sourceData) {
 			if (!sourceData.layers) return;
 
-		var	l_i = project.layersCount = (
-				(sourceData.layersCount || 0)
-			+	(sourceData.stacksCount || 0)
+			project.layersCount = (
+				orz(sourceData.layersCount)
+			+	orz(sourceData.stacksCount)
 			);
 
-			if (!l_i) return;
+			if (!project.layersCount) return;
 
 			project.width	= sourceData.width;
 			project.height	= sourceData.height;
@@ -4198,7 +4537,7 @@ async function loadORA(project) {
 //* gather layers into a tree object:
 
 			async function addLayerToTree(layer, parentGroup) {
-			var	n	= layer.name || ''
+			var	name	= layer.name || ''
 			,	mode	= layer.composite || ''
 			,	mask	= layer.mask || null
 			,	layers	= layer.layers || null
@@ -4231,20 +4570,24 @@ async function loadORA(project) {
 				,	blendModeOriginal: mode
 				};
 
-//* note: layer masks also may be emulated via compositing modes in ORA
+//* Note: layer masks also may be emulated via compositing modes in ORA
 
 				if (mask) {
-				var	m = layerWIP.mask = getPropByAnyOfNamesChain(mask, 'img', 'image');	//* <- already loaded img element
-					m.top    = orz(mask.top  || mask.y);
-					m.left   = orz(mask.left || mask.x);
-					m.width  = orz(m.width   || mask.width);
-					m.height = orz(m.height  || mask.height);
+				var	img = getPropByAnyOfNamesChain(mask, 'img', 'image');	//* <- already loaded img element
+
+					layerWIP.mask = {
+						top:    orz(mask.top   || mask.y)
+					,	left:   orz(mask.left  || mask.x)
+					,	width:  orz(img.width  || mask.width)
+					,	height: orz(img.height || mask.height)
+					,	img: img
+					};
 				}
 
 				parentGroup = await getNextParentAfterAddingLayerToTree(
 					layerWIP
 				,	layer
-				,	n
+				,	name
 				,	parentGroup
 				,	isLayerFolder
 				);
@@ -4277,43 +4620,48 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 	,	async function treeConstructorFunc(project, sourceData) {
 			if (!sourceData.layers) return;
 
-		var	l_i = project.layersCount = sourceData.layers.length;
+			project.layersCount = sourceData.layers.length;
 
-			if (!l_i) return;
+			if (!project.layersCount) return;
 
 		var	projectHeader = sourceData.header || sourceData
 		,	layerMasks = getPropByNameChain(sourceData, 'layerMask', 'obj', 'layers')
-		,	m = projectHeader.mode
+		,	projectMode = projectHeader.mode
 			;
 
-			project.width	= projectHeader.cols;
-			project.height	= projectHeader.rows;
-			project.colorMode	= (isNaN(m) ? m : PSD_COLOR_MODES[m]);
-			project.channels	= projectHeader.channels;
+			project.width		= projectHeader.cols;
+			project.height		= projectHeader.rows;
 			project.bitDepth	= projectHeader.depth;
+			project.channels	= projectHeader.channels;
+			project.colorMode	= (
+				isNaN(projectMode)
+				? projectMode
+				: PSD_COLOR_MODES[projectMode]
+			);
 
 //* gather layers into a tree object:
 
 			async function addLayerToTree(layer, parentGroup) {
-			var	l	= layer.layer || layer
-			,	n	= layer.name  || l.name  || ''
-			,	img	= layer.image || l.image || null
-			,	mask	= layer.mask  || l.mask  || img.mask || null
-			,	mode	= getPropByAnyOfNamesChain(l, 'blendMode', 'mode')
-			,	clipping = getPropByAnyOfNamesChain(l, 'blendMode', 'clipped', 'clipping')
-			,	modePass = getPropByNameChain(l, 'adjustments', 'sectionDivider', 'obj', 'blendMode')
+			var	node	= layer
+			,	layer	= node.layer  || node
+			,	name	= layer.name  || node.name  || ''
+			,	img	= layer.image || node.image || null
+			,	mask	= layer.mask  || node.mask  || img.mask || null
+			,	mode		= getPropByAnyOfNamesChain(layer, 'blendMode', 'mode')
+			,	clipping	= getPropByAnyOfNamesChain(layer, 'blendMode', 'clipped', 'clipping')
+			,	modePass	= getPropByNameChain(layer, 'adjustments', 'sectionDivider', 'obj', 'blendMode')
 
-//* "fill" opacity is used by SAI2 instead of usual one for layers with certain blending modes when exporting to PSD.
+//* Note: "fill" opacity is used by SAI2 instead of usual one for layers with certain blending modes when exporting to PSD.
 //* source: https://github.com/meltingice/psd.js/issues/153#issuecomment-436456896
 
 			,	fillOpacity = (
-					l.fillOpacity
-					? getNormalizedOpacity(l.fillOpacity().layer.adjustments.fillOpacity.obj.value)
+					isFunction(layer.fillOpacity)
+					? getNormalizedOpacity(layer.fillOpacity().layer.adjustments.fillOpacity.obj.value)
 					: 1
 				)
 			,	layers = (
-					layer.hasChildren()
-					? layer.children()
+					node.hasChildren()
+					? node.children()
 					: null
 				)
 			,	blendMode = getNormalizedBlendMode(mode)
@@ -4323,12 +4671,12 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 				||	regLayerBlendModePass.test(blendMode)
 				)
 			,	layerWIP = {
-					top:    orz(l.top)
-				,	left:   orz(l.left)
-				,	width:  orz(l.width)
-				,	height: orz(l.height)
-				,	opacity: getNormalizedOpacity(l.opacity) * fillOpacity
-				,	isVisible: getTruthyValue(l.visible)
+					top:    orz(layer.top)
+				,	left:   orz(layer.left)
+				,	width:  orz(layer.width)
+				,	height: orz(layer.height)
+				,	opacity: getNormalizedOpacity(layer.opacity) * fillOpacity
+				,	isVisible: getTruthyValue(layer.visible)
 				,	isClipped: getTruthyValue(clipping)
 				,	isPassThrough: isPassThrough
 				,	blendMode: blendMode
@@ -4354,7 +4702,7 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 				parentGroup = await getNextParentAfterAddingLayerToTree(
 					layerWIP
 				,	layer
-				,	n
+				,	name
 				,	parentGroup
 				,	isLayerFolder
 				);
@@ -4374,12 +4722,14 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 	);
 }
 
+//* not needed, may be removed instead of fixing:
+
 async function loadPSDLIB(project) {
 	return await loadCommonWrapper(
 		project
 	,	'PSDLIB.js'
 	,	async function fileParserFunc(file) {
-			return PSDLIB.parse(await readFilePromise(file));
+			return PSDLIB.parse(await getFilePromise(file));
 		}
 	,	async function treeConstructorFunc(project, sourceData) {
 			if (!sourceData.layers) return;
@@ -4475,12 +4825,12 @@ async function loadPSDLIB(project) {
 //* Page-specific functions: internal, rendering *-----------------------------
 
 function isOptionRelevant(project, values, sectionName, listName, optionName) {
-var	o = getProjectOptionValue(project, sectionName, listName, optionName);
+
+var	relevantLayers = getProjectOptionValue(project, sectionName, listName, optionName);
 
 	if (
-		o
-	&&	o.map
-	&&	o.length > 0
+		Array.isArray(relevantLayers)
+	&&	relevantLayers.length > 0
 	) {
 	var	section = values[sectionName]
 	,	oldOptionName = section[listName]
@@ -4492,7 +4842,7 @@ var	o = getProjectOptionValue(project, sectionName, listName, optionName);
 			section[listName] = optionName;
 		}
 
-		for (let layer of o) {
+		for (let layer of relevantLayers) {
 			if (getLayerPathVisibilityByValues(project, layer, values, listName)) {
 				result = true;
 				break;
@@ -4504,11 +4854,9 @@ var	o = getProjectOptionValue(project, sectionName, listName, optionName);
 		}
 
 		return result;
-	} else {
-		return true;
 	}
 
-	return false;
+	return true;
 }
 
 function isSetOfValuesOK(project, values) {
@@ -4534,7 +4882,7 @@ var	section
 	for (let sectionName in values) if (section = values[sectionName])
 	for (let listName in section) {
 	var	optionName = section[listName]
-	,	resultSection = resultSet[sectionName] || (resultSet[sectionName] = {})
+	,	resultSection = getOrInitChild(resultSet, sectionName)
 		;
 
 		resultSection[listName] = (
@@ -4547,92 +4895,92 @@ var	section
 	return resultSet;
 }
 
-function selectValueByPos(s, valuePos) {
-var	v = s.value;
+function selectValueByPos(selectBox, targetPosition) {
+var	newValue = selectBox.value;
 
-	if (valuePos === 'top') {
-		v = s.options[0].value;
+	if (targetPosition === 'top') {
+		newValue = selectBox.options[0].value;
 	} else
-	if (valuePos === 'bottom') {
-		v = s.options[s.options.length - 1].value;
+	if (targetPosition === 'bottom') {
+		newValue = selectBox.options[selectBox.options.length - 1].value;
 	} else
-	if (valuePos === 'init') {
-		v = s.initialValue;
+	if (targetPosition === 'init') {
+		newValue = selectBox.initialValue;
 	} else {
-		for (let o of s.options) if (
-			'' === o.value
-		||	'' === trim(o.textContent)
+		for (let option of selectBox.options) if (
+			'' === option.value
+		||	'' === trim(option.textContent)
 		) {
-			v = o.value;
+			newValue = option.value;
 			break;
 		}
 	}
 
-	return selectValue(s, v);
+	return selectValue(selectBox, newValue);
 }
 
-function selectValue(s, v) {
-	v = getStringEmptyIfUndefined(v);
+function selectValue(selectBox, newValue) {
+	newValue = getJoinedOrEmptyString(newValue);
 
-	if (s.value !== v) {
-		s.value = v;
+	if (selectBox.value !== newValue) {
+		selectBox.value = newValue;
 	}
 
-	updateSelectStyle(s);
+	updateSelectStyle(selectBox);
 
-	return s.value;
+	return selectBox.value;
 }
 
-function updateSelectStyle(s) {
-var	optionItem = gt('option', s).find(
-		(o) => (
-			o.selected
-		||	o.value === s.value
+function updateSelectStyle(selectBox) {
+var	optionItem = gt('option', selectBox).find(
+		(option) => (
+			option.selected
+		||	option.value === selectBox.value
 		)
 	);
 
 	if (optionItem) {
-		s.style.color = optionItem.style.color || '';
-		s.style.backgroundColor = optionItem.style.backgroundColor || '';
+		selectBox.style.color = optionItem.style.color || '';
+		selectBox.style.backgroundColor = optionItem.style.backgroundColor || '';
 	} else {
-		s.style.color = '';
-		s.style.backgroundColor = '';
+		selectBox.style.color = '';
+		selectBox.style.backgroundColor = '';
 	}
 
 //* Set attribute for CSS selectors:
 
-	s.setAttribute(
+	selectBox.setAttribute(
 		'value'
 	,	(
 			ZERO_PERCENT_EQUALS_EMPTY
-		&&	NAME_PARTS_PERCENTAGES.indexOf(s.getAttribute('data-section')) >= 0
-		&&	s.value === '0%'
-			? ''
-			: s.value
+		&&	NAME_PARTS_PERCENTAGES.indexOf(selectBox.getAttribute('data-section')) >= 0
+		&&	selectBox.value === '0%'
+			? '' :
+			selectBox.value
 		)
 	);
 
-	return s.value;
+	return selectBox.value;
 }
 
-function setAllValues(project, valuePos) {
+function setAllValues(project, targetPosition) {
 	gt('select', project.container).forEach(
-		(s) => selectValueByPos(s, valuePos)
+		(selectBox) => selectValueByPos(selectBox, targetPosition)
 	);
 
 	if (
-		valuePos === 'init'
-	||	valuePos === 'empty'
+		targetPosition === 'init'
+	||	targetPosition === 'empty'
 	) {
-		gt('input', project.container).forEach(
-			(i) => {
-				i.checked = (
-					valuePos === 'init'
-					? i.initialValue
+		gy('checkbox', project.container).forEach(
+			(checkBox) => {
+				checkBox.checked = (
+					targetPosition === 'init'
+					? checkBox.initialValue
 					: false
 				);
 
-				updateCheckBox(i);
+				updateCheckBox(checkBox);
 			}
 		);
 	}
@@ -4645,10 +4993,10 @@ function getAllMenuValues(project, checkSelectedValue) {
 var	values = {};
 
 	gt('select', project.container).forEach(
-		(s) => {
-		var	sectionName = s.getAttribute('data-section')
-		,	listName    = s.name
-		,	optionLists = (values[sectionName] || (values[sectionName] = {}))
+		(selectBox) => {
+		var	sectionName = selectBox.getAttribute('data-section')
+		,	listName    = selectBox.name
+		,	optionLists = getOrInitChild(values, sectionName)
 			;
 
 			optionLists[listName] = (
@@ -4657,8 +5005,8 @@ var	values = {};
 					checkSelectedValue
 				&&	getPropByNameChain(project, 'options', sectionName, listName, 'params', 'single')
 				)
-				? [s.value]
-				: gt('option', s).map((o) => o.value)
+				? [selectBox.value]
+				: gt('option', selectBox).map((option) => option.value)
 			);
 		}
 	);
@@ -4687,15 +5035,13 @@ function getAllValueSets(project, flags) {
 				if (
 					getOnlyNames
 				&&	stopAtMaxCount
-				&&	resultSets.length > MAX_BATCH_PRECOUNT
+				&&	valueSets.length > MAX_BATCH_PRECOUNT
 				) {
 					return;
 				}
 
-//* https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/assign#Deep_Clone
-
 			var	values = JSON.parse(JSON.stringify(partialValueSet || {}))
-			,	section = (values[sectionName] || (values[sectionName] = {}))
+			,	section = getOrInitChild(values, sectionName)
 				;
 
 				section[listName] = optionName;
@@ -4713,12 +5059,12 @@ function getAllValueSets(project, flags) {
 					);
 
 					if (getOnlyNames) {
-						if (resultSets.indexOf(fileName) < 0) {
-							resultSets.push(fileName);
+						if (valueSets.indexOf(fileName) < 0) {
+							valueSets.push(fileName);
 						}
 					} else {
-						if (!(fileName in resultSets)) {
-							resultSets[fileName] = values;
+						if (!(fileName in valueSets)) {
+							valueSets[fileName] = values;
 						}
 					}
 				}
@@ -4726,14 +5072,16 @@ function getAllValueSets(project, flags) {
 		}
 	}
 
-	if (!flags) flags = {};
+	if (typeof flags !== 'object') {
+		flags = {};
+	}
 
 const	getOnlyNames		= !!flags.getOnlyNames
 ,	stopAtMaxCount		= !!flags.stopAtMaxCount
 ,	checkSelectedValue	= !!flags.checkSelectedValue
 ,	values = getAllMenuValues(project, checkSelectedValue);
 
-var	resultSets = getOnlyNames ? [] : {}
+var	valueSets = getOnlyNames ? [] : {}
 ,	optionLists = []
 ,	section
 ,	sectionName
@@ -4764,11 +5112,11 @@ var	resultSets = getOnlyNames ? [] : {}
 
 	goDeeper(optionLists);
 
-	return resultSets;
+	return valueSets;
 }
 
 function getAllValueSetsCount(project) {
-var	a = getAllValueSets(
+var	valueSets = getAllValueSets(
 		project
 	,	{
 			getOnlyNames: true,
@@ -4778,9 +5126,9 @@ var	a = getAllValueSets(
 	);
 
 	return (
-		a === null
+		valueSets === null
 		? la.hint.too_much
-		: a.length
+		: valueSets.length
 	);
 }
 
@@ -4788,13 +5136,13 @@ function getUpdatedMenuValues(project, updatedValues) {
 var	values = {};
 
 	gt('select', project.container).forEach(
-		(s) => {
+		(selectBox) => {
 
 //* 1) check current selected values:
 
-		var	sectionName   = s.getAttribute('data-section')
-		,	listName      = s.name
-		,	selectedValue = s.value || ''
+		var	sectionName   = selectBox.getAttribute('data-section')
+		,	listName      = selectBox.name
+		,	selectedValue = selectBox.value || ''
 		,	hide = false
 			;
 
@@ -4806,9 +5154,9 @@ var	values = {};
 			,	allHidden = true
 				;
 
-				gt('option', s).forEach(
-					(o) => {
-					var	optionName = o.value || ''
+				gt('option', selectBox).forEach(
+					(option) => {
+					var	optionName = option.value || ''
 					,	hide = !isOptionRelevant(project, updatedValues, sectionName, listName, optionName)
 						;
 
@@ -4827,18 +5175,18 @@ var	values = {};
 						if (!hide && optionName) {
 							allHidden = false;
 						}
-						if (!o.hidden === hide) {
-							o.hidden = o.disabled = hide;
+						if (!option.hidden === hide) {
+							option.hidden = option.disabled = hide;
 						}
 					}
 				);
 
 			var	hide = (allHidden ? 'none' : '')
-			,	container = getThisOrParentByClass(s, 'project-option') || s.parentNode
+			,	container = getThisOrParentByClass(selectBox, 'project-option') || selectBox.parentNode
 			,	style = container.style
 				;
 
-				selectValue(s, (
+				selectValue(selectBox, (
 					!hide && selectedValueHidden
 					? fallbackValue
 					: selectedValue
@@ -4851,11 +5199,12 @@ var	values = {};
 
 //* 3) get new values after update:
 
-		var	section = (values[sectionName] || (values[sectionName] = {}));
+		var	section = getOrInitChild(values, sectionName);
+
 			section[listName] = (
 				!hide
-			&&	trim(listName = s.name).length > 0
-			&&	trim(selectedValue = s.value).length > 0
+			&&	trim(listName = selectBox.name).length > 0
+			&&	trim(selectedValue = selectBox.value).length > 0
 				? selectedValue
 				: ''
 			);
@@ -4917,12 +5266,12 @@ function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
 			ctx.globalCompositeOperation = BLEND_MODE_NORMAL;
 
 			if (TESTING_RENDER) {
-			var	t = 'tryBlendingEmulation: ' + blendMode + ', layer ';
-				addDebugImage(project, canvas, t + 'below at ' + (ctx.globalAlpha * 100) + '%', 'yellow');
+			var	testPrefix = 'tryBlendingEmulation: ' + blendMode + ', layer ';
+				addDebugImage(project, canvas, testPrefix + 'below at ' + (ctx.globalAlpha * 100) + '%', 'yellow');
 			}
 
-		var	oldData = ctx.getImageData(0,0, w,h)
-		,	b = oldData.data
+		var	dataBelow = ctx.getImageData(0,0, w,h)
+		,	rgbaBelow = dataBelow.data
 			;
 
 //* get pixels of layer above (A):
@@ -4932,12 +5281,12 @@ function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
 
 			drawImageOrColorInside(img);
 
-			if (TESTING_RENDER) addDebugImage(project, canvas, t + 'above at ' + (ctx.globalAlpha * 100) + '%', 'orange');
+			if (TESTING_RENDER) addDebugImage(project, canvas, testPrefix + 'above at ' + (ctx.globalAlpha * 100) + '%', 'orange');
 
 			ctx.globalAlpha = 1;
 
-		var	newData = ctx.getImageData(0,0, w,h)
-		,	a = newData.data
+		var	dataAbove = ctx.getImageData(0,0, w,h)
+		,	rgbaAbove = dataAbove.data
 			;
 
 //* get pixels of transition mask (M):
@@ -4948,16 +5297,16 @@ function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
 
 				drawImageOrColorInside(mask || 'white');
 
-				if (TESTING_RENDER) addDebugImage(project, canvas, t + 'mask at ' + (ctx.globalAlpha * 100) + '%', 'brown');
+				if (TESTING_RENDER) addDebugImage(project, canvas, testPrefix + 'mask at ' + (ctx.globalAlpha * 100) + '%', 'brown');
 
 				ctx.globalAlpha = 1;
 
 			var	maskData = ctx.getImageData(0,0, w,h)
-			,	m = maskData.data
+			,	rgbaMask = maskData.data
 				;
 			}
 
-//* compute resulting pixels linearly into newData, and save result back onto canvas:
+//* compute resulting pixels linearly into dataAbove, and save result back onto canvas:
 
 			if (TESTING_RENDER) {
 				console.timeEnd(logLabel);
@@ -4965,7 +5314,7 @@ function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
 				console.time(logLabel);
 			}
 
-		var	isDone = callback(a,b,m);
+		var	isDone = callback(rgbaAbove, rgbaBelow, rgbaMask);
 
 			if (TESTING_RENDER) {
 				console.timeEnd(logLabel);
@@ -4973,7 +5322,7 @@ function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
 				console.time(logLabel);
 			}
 
-			ctx.putImageData(isDone ? newData : oldData, 0,0);
+			ctx.putImageData(isDone ? dataAbove : dataBelow, 0,0);
 
 			if (TESTING_RENDER) {
 				console.timeEnd(logLabel);
@@ -4984,27 +5333,27 @@ function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
 			return isDone;
 		}
 
-		function usingAsmJS(a,b,m) {
+		function usingAsmJS(rgbaAbove, rgbaBelow, rgbaMask) {
 			try {
-			var	i = a.length
+			var	arrayLength = rgbaAbove.length
 			,	uint8array = getOrCreateReusableHeap(project)
 			,	env = null
 			,	heap = uint8array.buffer
 			,	compute = CompositionModule(window, env, heap)
 				;
 
-				uint8array.set(b, 0);
-				uint8array.set(a, i);
+				uint8array.set(rgbaBelow, 0);
+				uint8array.set(rgbaAbove, arrayLength);
 
-				if (m) uint8array.set(m, i + i);
+				if (rgbaMask) uint8array.set(rgbaMask, arrayLength << 1);
 
-				compute[funcName](i);
-				a.set(uint8array.slice(0, i));
+				compute[funcName](arrayLength);
+				rgbaAbove.set(uint8array.slice(0, arrayLength));
 
 				return true;
 
 			} catch (error) {
-				console.log(error);
+				logError(arguments, error);
 			}
 		}
 
@@ -5036,17 +5385,17 @@ var	canvas = ctx.canvas;
 	,	y = orz(img.top)
 	,	w = canvas.width
 	,	h = canvas.height
-	,	m = ctx.globalCompositeOperation
+	,	ctxBlendMode = ctx.globalCompositeOperation
 	,	isTransition = !!(mask || blendMode === BLEND_MODE_TRANSIT)
 		;
 
 //* use native JS blending if available, or emulation fails/unavailable:
 
 		if (
-			m === blendMode
+			ctxBlendMode === blendMode
 		||	!tryBlendingEmulation(blendMode)
 		) {
-			if (TESTING && m !== blendMode) console.log(['blendMode =', blendMode, 'fallback =', m]);
+			if (TESTING && ctxBlendMode !== blendMode) console.log(['blendMode =', blendMode, 'fallback =', ctxBlendMode]);
 
 			ctx.globalAlpha = opacity;
 
@@ -5095,7 +5444,7 @@ function padCanvas(ctx, padding) {
 					if (resultValue == 255) break look_around;
 				} else
 				if (alpha > threshold) {
-				var	d = dist(dx, dy) + 1 - alpha/255;
+				var	d = getDistance(dx, dy) + 1 - alpha/255;
 					if (d > radius) {
 						if (distMin > d) distMin = d;
 					} else {
@@ -5125,8 +5474,8 @@ function padCanvas(ctx, padding) {
 	,	resultPixels = res.data
 		;
 
-		for (let i = resultPixels.length - 1; i >= 0; i -= 4) {
-			resultPixels[i] = Math.min(resultPixels[i], referencePixels[i]);
+		for (let index = resultPixels.length - 1; index >= 0; index -= 4) {
+			resultPixels[index] = Math.min(resultPixels[index], referencePixels[index]);
 		}
 
 		return res;
@@ -5137,8 +5486,8 @@ function padCanvas(ctx, padding) {
 	,	resultPixels = res.data
 		;
 
-		for (let i = resultPixels.length - 1; i >= 0; i -= 4) {
-			resultPixels[i] = Math.max(resultPixels[i], referencePixels[i]);
+		for (let index = resultPixels.length - 1; index >= 0; index -= 4) {
+			resultPixels[index] = Math.max(resultPixels[index], referencePixels[index]);
 		}
 
 		return res;
@@ -5147,8 +5496,8 @@ function padCanvas(ctx, padding) {
 	function invertAlpha(res) {
 	var	resultPixels = res.data;
 
-		for (let i = resultPixels.length - 1; i >= 0; i -= 4) {
-			resultPixels[i] = 255 - resultPixels[i];
+		for (let index = resultPixels.length - 1; index >= 0; index -= 4) {
+			resultPixels[index] = 255 - resultPixels[index];
 		}
 
 		return res;
@@ -5186,29 +5535,29 @@ function padCanvas(ctx, padding) {
 		ctx = ctx.getContext('2d');
 	}
 
-var	r = padding.radius;
+var	param = padding.radius;
 
-	if (r) {
-	var	r0 = r.in
-	,	r1 = r.out
-	,	t = padding.threshold
-	,	t_min = (t === 'min')
-	,	t_max = (t === 'max')
+	if (param) {
+	var	radiusInside = param.in
+	,	radiusOutside = param.out
+	,	t_param = padding.threshold
+	,	t_min = (t_param === 'min')
+	,	t_max = (t_param === 'max')
 	,	t_dist = !(t_min || t_max)
 	,	threshold = (
 			t_dist
-			? (orz(t) || DEFAULT_ALPHA_MASK_THRESHOLD)
+			? (orz(t_param) || DEFAULT_ALPHA_MASK_THRESHOLD)
 			: 0
 		)
 	,	w = ctx.canvas.width
 	,	h = ctx.canvas.height
 	,	ref = ctx.getImageData(0,0, w,h)
-	,	invRef = (r0 < 0 || r1 < 0 ? getImageDataInverted(ref) : null)
-	,	res = getImageDataPadded(r1)
+	,	invRef = (radiusInside < 0 || radiusOutside < 0 ? getImageDataInverted(ref) : null)
+	,	res = getImageDataPadded(radiusOutside)
 		;
 
-		if (typeof r0 !== 'undefined') {
-			intersectMask(res, getImageDataPadded(r0, true));
+		if (typeof radiusInside !== 'undefined') {
+			intersectMask(res, getImageDataPadded(radiusInside, true));
 		}
 
 		ctx.putImageData(res, 0,0);
@@ -5226,8 +5575,8 @@ var	canvas = cre('canvas')
 
 	canvas.getContext('2d').putImageData(img, 0,0);
 
-	for (let data = img.data, i = data.length - 1; i >= 0; i -= 4) {
-		data[i] = 255;
+	for (let data = img.data, index = data.length - 1; index >= 0; index -= 4) {
+		data[index] = 255;
 	}
 
 	ctx.putImageData(img, 0,0);
@@ -5350,6 +5699,8 @@ var	canvas = getNewCanvasForImg(project, img)
 function getCanvasFilledOutsideOfImage(project, img, fillColor) {
 	if (!img) return null;
 
+var	imgElement = img.img || img;
+
 	if (
 		!(
 			fillColor
@@ -5361,7 +5712,7 @@ function getCanvasFilledOutsideOfImage(project, img, fillColor) {
 		&&	img.height == project.height
 		)
 	) {
-		return img;
+		return imgElement;
 	}
 
 var	canvas = getNewCanvas(project)
@@ -5382,7 +5733,7 @@ var	w = orz(img.width)  || project.width
 	;
 
 	ctx.clearRect(x,y, w,h);
-	ctx.drawImage(img, x,y);
+	ctx.drawImage(imgElement, x,y);
 
 	return canvas;
 }
@@ -5444,15 +5795,15 @@ var	selectedName = getPropByNameChain(values, sectionName, listName)
 }
 
 function getSelectedMenuValue(project, sectionName, listName, defaultValue) {
-var	s = gt('select', project.container).find(
-		(s) => (
-			sectionName === s.getAttribute('data-section')
-		&&	listName === s.name
+var	selectBox = gt('select', project.container).find(
+		(selectBox) => (
+			sectionName === selectBox.getAttribute('data-section')
+		&&	listName === selectBox.name
 		)
 	);
 
-	if (s) {
-	var	selectedValue = s.value;
+	if (selectBox) {
+	var	selectedValue = selectBox.value;
 
 		if (isNotEmptyString(selectedValue)) {
 			return selectedValue;
@@ -5516,25 +5867,25 @@ function getLayerVisibilityByValues(project, layer, values, listName) {
 	}
 
 	function getOpacityByAnyName(listNames) {
-	var	max = -1
+	var	maxOpacity = -1
 	,	unselectable = false
 		;
 
 		for (let listName of listNames) {
-		var	v = getSelectedOptionValue(project, values, 'opacities', listName);
+		var	opacity = getSelectedOptionValue(project, values, 'opacities', listName);
 
-			if (v === null) {
+			if (opacity === null) {
 				unselectable = true;
 			} else {
-				if (max < v) max = v;
-				if (max >= 1) break;
+				if (maxOpacity < opacity) maxOpacity = opacity;
+				if (maxOpacity >= 1) break;
 			}
 		}
 
 		return (
-			max < 0
+			maxOpacity < 0
 			? (isVisible ? layer.opacity : 0)
-			: (unselectable ? 1 : max)
+			: (unselectable ? 1 : maxOpacity)
 		);
 	}
 
@@ -5587,7 +5938,7 @@ var	parent = layer.optionParent;
 	return getOpacityByAnyName(listName ? [listName] : layer.names);
 }
 
-async function getRenderByValues(project, values, layersBatch, renderParam) {
+async function getRenderByValues(project, values, nestedLayersBatch, renderParam) {
 
 	async function renderOneLayer(layer) {
 
@@ -5606,11 +5957,15 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 		&&	side === 'back'
 		)
 	,	flipSide = orz(backward ? layer.flipSide : 0)
-	,	p = project.rendering
+	,	PR = project.rendering
 		;
 
-		p.nestedLayers.push(layer);
-		p.nestedLevelMax = Math.max(p.nestedLevelMax, p.nestedLayers.length);
+		PR.nestedLayers.push(layer);
+
+		PR.nestedLevelMax = Math.max(
+			PR.nestedLevelMax
+		,	PR.nestedLayers.length
+		);
 
 //* step over clipping group to render or skip at once:
 
@@ -5618,25 +5973,25 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 			!clippingGroupWIP
 		&&	!ignoreColors
 		) {
-		var	g_a = []
-		,	g_i = l_i
-		,	g_l
+		var	clippingGroupLayers = []
+		,	siblingIndex = indexToRender
+		,	siblingLayer
 			;
 
 			while (
-				(g_i-- > 0)
-			&&	(g_l = l_a[g_i])
-			&&	g_l.isClipped
-			&&	g_l.clippingLayer
+				(siblingIndex-- > 0)
+			&&	(siblingLayer = layersToRender[siblingIndex])
+			&&	siblingLayer.isClipped
+			&&	siblingLayer.clippingLayer
 			) {
-				g_a.push(g_l);
+				clippingGroupLayers.push(siblingLayer);
 			}
 
-			if (g_a.length > 0) {
-				l_i = g_i + 1;
+			if (clippingGroupLayers.length > 0) {
+				indexToRender = siblingIndex + 1;
 
-				g_a.reverse();
-				g_a.push(layer);
+				clippingGroupLayers.reverse();
+				clippingGroupLayers.push(layer);
 
 				clippingGroupResult = true;
 			}
@@ -5699,7 +6054,7 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 			img = await getRenderByValues(
 				project
 			,	values
-			,	g_a
+			,	clippingGroupLayers
 			,	{
 					ignoreColors: ignoreColors
 				,	clippingGroupWIP: true
@@ -5796,8 +6151,8 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 						) {
 							canvasCopy = getCanvasFlipped(project, canvas, flipSide, true);
 						} else {
-							l_a = l_a.slice(0, l_i).concat(layers);
-							l_i = l_a.length;
+							layersToRender = layersToRender.slice(0, indexToRender).concat(layers);
+							indexToRender = layersToRender.length;
 
 							return onReturnCleanup();
 						}
@@ -5845,7 +6200,7 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 						mask = await getRenderByValues(
 							project
 						,	values
-						,	l_a.slice(0, l_i)	//* <- content after this layer
+						,	layersToRender.slice(0, indexToRender)	//* <- content after this layer
 						,	{
 								ignoreColors: true
 							}
@@ -5973,19 +6328,19 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 	}
 
 	if (project.rendering) {
-		if (layersBatch) {
+		if (nestedLayersBatch) {
 			project.rendering.layersBatchCount++;
 		} else {
 			logTime('getRenderByValues - skipped call without layers while rendering.');
 			return;
 		}
 	} else {
-		l_i = orz(getPropBySameNameChain(values, 'separate'));
+		indexToRender = orz(getPropBySameNameChain(values, 'separate'));
 
-		if (l_i > 0) {
+		if (indexToRender > 0) {
 			if (
 				(layers = project.layersTopSeparated)
-			&&	(layer = layers[l_i - 1])
+			&&	(layer = layers[indexToRender - 1])
 			) {
 			var	layersToRenderOne = (getParentLayer(layer) || project).layers;
 			} else {
@@ -6005,10 +6360,10 @@ async function getRenderByValues(project, values, layersBatch, renderParam) {
 		};
 	}
 
-var	l_a = layersToRenderOne || layersBatch || project.layers
-,	l_i = l_a.length
-,	l_k = 0
-,	bottomLayer = l_a[l_i - 1]
+var	layersToRender = layersToRenderOne || nestedLayersBatch || project.layers
+,	indexToRender = layersToRender.length
+,	indexToStop = 0
+,	bottomLayer = layersToRender[indexToRender - 1]
 ,	renderParam = renderParam || {}
 ,	side = getPropBySameNameChain(values, 'side')
 ,	colors = getPropByNameChain(values, 'colors') || {}
@@ -6025,11 +6380,11 @@ var	l_a = layersToRenderOne || layersBatch || project.layers
 //* start rendering layer batch:
 
 	if (layersToRenderOne) {
-		l_k = layersToRenderOne.indexOf(layer);
-		l_i = l_k + 1;
+		indexToStop = layersToRenderOne.indexOf(layer);
+		indexToRender = indexToStop + 1;
 	}
 
-	while (l_i-- > l_k) if (layer = l_a[l_i]) {
+	while (indexToRender-- > indexToStop) if (layer = layersToRender[indexToRender]) {
 
 		if (ADD_PAUSE_BEFORE_EACH_LAYER) {
 			await pause(1);
@@ -6061,7 +6416,7 @@ var	l_a = layersToRenderOne || layersBatch || project.layers
 
 //* end of layer tree:
 
-	if (!layersBatch) {
+	if (!nestedLayersBatch) {
 	var	renderingTime = getTimeNow() - project.rendering.startTime
 	,	renderName = project.rendering.fileName
 		;
@@ -6094,7 +6449,7 @@ var	l_a = layersToRenderOne || layersBatch || project.layers
 	return canvas;
 }
 
-function getFileNameByValues(project, values, namingParam) {
+function getFileNameByValues(project, values, flags) {
 
 	function getProcessedSectionName(sectionName) {
 
@@ -6106,8 +6461,9 @@ function getFileNameByValues(project, values, namingParam) {
 			}
 
 		var	params = getPropByNameChain(project, 'options', sectionName, listName, 'params');
+
 			if (params) {
-				if (namingParam.checkSelectedValue) {
+				if (flags.checkSelectedValue) {
 					if (
 						params.single
 					||	!params.batch
@@ -6116,7 +6472,7 @@ function getFileNameByValues(project, values, namingParam) {
 					}
 				}
 
-				if (namingParam.skipDefaultPercent) {
+				if (flags.skipDefaultPercent) {
 					if (
 						(
 							sectionName == 'zoom'
@@ -6136,7 +6492,7 @@ function getFileNameByValues(project, values, namingParam) {
 				}
 
 				if (
-					namingParam.addAllListNames
+					flags.addAllListNames
 				||	(
 						FILE_NAME_ADD_PARAM_KEY
 					&&	!params.no_prefix
@@ -6167,8 +6523,13 @@ function getFileNameByValues(project, values, namingParam) {
 		);
 	}
 
-	if (!namingParam) namingParam = {};
-	if (!values) values = getUpdatedMenuValues(project);
+	if (typeof flags !== 'object') {
+		flags = {};
+	}
+
+	if (typeof values !== 'object') {
+		values = getUpdatedMenuValues(project);
+	}
 
 	return (
 		NAME_PARTS_ORDER
@@ -6178,11 +6539,11 @@ function getFileNameByValues(project, values, namingParam) {
 	);
 }
 
-function getFileNameByValuesToSave(project, values, namingParam) {
+function getFileNameByValuesToSave(project, values, flags) {
 	return (
 		[
 			project.baseName
-		,	getFileNameByValues(project, values, namingParam)
+		,	getFileNameByValues(project, values, flags)
 		]
 		.filter(arrayFilterNonEmptyValues)
 		.join(NAME_PARTS_SEPARATOR)
@@ -6191,7 +6552,9 @@ function getFileNameByValuesToSave(project, values, namingParam) {
 }
 
 async function getOrCreateRender(project, render) {
-	if (!render) render = {};
+	if (typeof render !== 'object') {
+		render = {};
+	}
 
 var	values    = render.values    || (render.values    = getUpdatedMenuValues(project))
 ,	refValues = render.refValues || (
@@ -6212,59 +6575,35 @@ var	values    = render.values    || (render.values    = getUpdatedMenuValues(pro
 	return render;
 }
 
-function getImgElementPromise(canvas, fileName, w,h, callback, project) {
-	if (!canvas) return;
-
-	return new Promise(
-		(resolve, reject) => {
-		var	data = canvas.toDataURL()
-		,	blob = dataToBlob(data, project)
-		,	img = cre('img')
-			;
-
-			w = orz(w || (project ? project.width : 0));
-			h = orz(h || (project ? project.height : 0));
-
-			if (w > 0) img.width = w;
-			if (h > 0) img.height = h;
-
-			img.title = img.alt = fileName;
-			img.onload = () => {
-				if (callback) callback(img);
-
-				resolve(img);
-			}
-			img.src = (blob ? blob.url : data);
-		}
-	);
-}
-
 async function getOrCreateRenderedImg(project, render) {
 
-	function getAndCacheRenderedImgElementPromise(canvas, fileName, w,h) {
-		return getImgElementPromise(
-			canvas
-		,	fileName + '.png'
-		,	w,h
-		,	(img) => {
-			var	ms = canvas.renderingTime;
+	function getAndCacheRenderedImgElementPromise(canvas, fileName) {
+		return getImagePromiseFromCanvasToBlob(canvas, project).then(
+			(img) => {
+			var	msec = canvas.renderingTime;
 
-				img.alt += (
-					' \r\n('
+				img.title = img.alt = (
+					fileName + '.png'
+				+	' \r\n('
 				+	img.width + 'x' + img.height
 				+	(
-						typeof ms !== 'undefined'
-						? ', ' + la.hint.took_sec.render.replace('$t', ms / 1000)
-						: ''
+						typeof msec === 'undefined'
+						? '' :
+						', ' + la.hint.took_sec.render.replace('$t', msec / 1000)
 					)
 				+	')'
 				);
-				img.title = img.alt;
+
 				prerenders[fileName] = img;
 
-				// clearCanvasBeforeGC(canvas);
+				return img;
 			}
-		,	project
+		).catch(
+			(error) => {
+				console.log(error);
+
+				return null;
+			}
 		);
 	}
 
@@ -6274,10 +6613,8 @@ async function getOrCreateRenderedImg(project, render) {
 		return img;
 	}
 
-var	prerenders = (project.renders || (project.renders = {}))
-,	fileName   = render.fileName
-,	refName    = render.refName
-,	values     = render.values
+var	prerenders = getOrInitChild(project, 'renders')
+,	fileName = render.fileName
 	;
 
 	if (fileName in prerenders) {
@@ -6288,7 +6625,10 @@ var	prerenders = (project.renders || (project.renders = {}))
 
 	await pause(1);
 
-var	img = prerenders[refName];
+var	values = render.values
+,	refName = render.refName
+,	img = prerenders[refName]
+	;
 
 	if (!(img || isStopRequestedAnywhere(project))) {
 		if (fileName == refName) {
@@ -6312,28 +6652,26 @@ var	img = prerenders[refName];
 
 	if (
 		img
-	&&	(z = getPropBySameNameChain(values, 'zoom'))
-	&&	(z = orz(z))
-	&&	z > 0
-	&&	z != 100
+	&&	(zoomPercentage = orz(getPropBySameNameChain(values, 'zoom')))
+	&&	zoomPercentage > 0
+	&&	zoomPercentage != 100
 	) {
-	var	z
-	,	x = z / 100
+	var	zoomPercentage
+	,	zoomRatio = zoomPercentage / 100
 	,	canvas = cre('canvas')
-	,	w = canvas.width  = Math.max(1, Math.round(x * project.width))
-	,	h = canvas.height = Math.max(1, Math.round(x * project.height))
+	,	w = canvas.width  = Math.max(1, Math.round(zoomRatio * project.width))
+	,	h = canvas.height = Math.max(1, Math.round(zoomRatio * project.height))
 	,	ctx = canvas.getContext('2d')
 		;
 
 		ctx.drawImage(img, 0,0, w,h);
 
-		img = await getAndCacheRenderedImgElementPromise(canvas, fileName, w,h);
+		img = await getAndCacheRenderedImgElementPromise(canvas, fileName);
 	}
 
 	if (
 		img
-	&&	(autocrop = getPropBySameNameChain(values, 'autocrop'))
-	&&	isNotEmptyString(autocrop)
+	&&	isNotEmptyString(autocrop = getPropBySameNameChain(values, 'autocrop'))
 	&&	(crop = getAutoCropArea(img, autocrop))
 	) {
 		if (
@@ -6343,14 +6681,14 @@ var	img = prerenders[refName];
 		var	autocrop, crop
 		,	cropValues = getPatchedObject(values, replaceJSONpartsForCropRef)
 		,	cropRefName = getFileNameByValuesToSave(project, cropValues)
-		,	cropID = [
+		,	cropId = [
 				'x=' + crop.left
 			,	'y=' + crop.top
 			,	'w=' + crop.width
 			,	'h=' + crop.height
 			].join(',');
 
-			cropValues.autocrop = {'autocrop': cropID};
+			cropValues.autocrop = {'autocrop': cropId};
 		var	cropName = getFileNameByValuesToSave(project, cropValues);
 
 			if (cropName in prerenders) {
@@ -6368,7 +6706,7 @@ var	img = prerenders[refName];
 
 				ctx.drawImage(img, -crop.left, -crop.top);
 
-				img = prerenders[cropName] = await getAndCacheRenderedImgElementPromise(canvas, fileName, w,h);
+				img = prerenders[cropName] = await getAndCacheRenderedImgElementPromise(canvas, fileName);
 			} else
 			if (cropRefName in prerenders) {
 				img = prerenders[fileName] = prerenders[cropName] = prerenders[cropRefName];
@@ -6395,11 +6733,10 @@ var	options = project.options
 		var	optionList = section[listName];
 
 			if (getPropByNameChain(optionList, 'params', 'newline')) {
-			var	o = optionsForNewLines;
-				o = o[sectionName] || (o[sectionName] = []);
+			var	listNames = getOrInitChild(optionsForNewLines, sectionName, Array);
 
-				if (o.indexOf(listName) < 0) {
-					o.push(listName);
+				if (listNames.indexOf(listName) < 0) {
+					listNames.push(listName);
 				}
 			}
 		}
@@ -6418,17 +6755,17 @@ function getNewLineSubcontainer(container, values, options) {
 		var	optionName = getPropByNameChain(values, sectionName, listName);
 
 			if (optionName !== null) {
-			var	optionID = [
+			var	optionId = [
 					sectionName
 				,	listName
 				,	optionName
 				].join('\n');
 
-			var	e = getChildByAttr(container, 'data-option-id', optionID);
+			var	e = getChildByAttr(container, 'data-option-id', optionId);
 
 				if (!e) {
 					e = cre('div', container);
-					e.setAttribute('data-option-id', optionID);
+					e.setAttribute('data-option-id', optionId);
 				}
 
 				container = e;
@@ -6442,7 +6779,10 @@ function getNewLineSubcontainer(container, values, options) {
 async function renderAll(project, flags) {
 	setProjectWIPstate(project, true);
 
-	if (!flags) flags = {};
+	if (typeof flags !== 'object') {
+		flags = {};
+	}
+
 	if (!flags.saveToFile) flags.showOnPage = true;
 
 var	logLabel = 'Render all: ' + project.fileName;
@@ -6525,13 +6865,13 @@ var	startTime = getTimeNow()
 		}
 
 	var	endTime = getTimeNow();
-
 		totalTime += (endTime - startTime);
+
 		setsCount++;
 		setsCountWithoutPause++;
 
-//* https://stackoverflow.com/a/53841885
-//* must wait at least 1 second between each 10 downloads in Chrome:
+//* Note: Chrome skips downloads if more than 10 in 1 second.
+//* source: https://stackoverflow.com/a/53841885
 
 		if (
 			needWaitBetweenDL
@@ -6566,48 +6906,51 @@ var	startTime = getTimeNow()
 		,	y = 0
 		,	w = 0
 		,	h = 0
-		,	e = rootContainer.firstElementChild
+		,	element = rootContainer.firstElementChild
 			;
 
-			while (e) {
-				if (isImageElement(e)) {
-					e.batchOffsetX = x;
-					e.batchOffsetY = y;
+			while (element) {
+				if (isImageElement(element)) {
+					element.batchOffsetX = x;
+					element.batchOffsetY = y;
 
-					w = Math.max(w, x + e.width);
-					h = Math.max(h, y + e.height);
+					w = Math.max(w, x + element.width);
+					h = Math.max(h, y + element.height);
 
-					x += e.width + joinedPadding;
+					x += element.width + joinedPadding;
 				} else {
-				var	size = getBatchCanvasSize(e);
+				var	size = getBatchCanvasSize(element);
 
-					e.batchOffsetX = x = 0;
-					e.batchOffsetY = y = (h > 0 ? h + joinedPadding : 0);
+					element.batchOffsetX = x = 0;
+					element.batchOffsetY = y = (h > 0 ? h + joinedPadding : 0);
 
-					w = Math.max(w, x + size.w);
-					h = Math.max(h, y + size.h);
+					w = Math.max(w, x + size.width);
+					h = Math.max(h, y + size.height);
 
 					y = h + joinedPadding;
 				}
 
-				e = e.nextElementSibling;
+				element = element.nextElementSibling;
 			}
 
-			return {w:w, h:h};
+			return {
+				width: w
+			,	height: h
+			};
 		}
 
-		function getBatchOffsetXY(e) {
+		function getBatchOffsetXY(element) {
 		var	x = 0
 		,	y = 0
 			;
 
-			while (e) {
-				x += orz(e.batchOffsetX);
-				y += orz(e.batchOffsetY);
+			while (element) {
+				x += orz(element.batchOffsetX);
+				y += orz(element.batchOffsetY);
 
 				if (
-					(e = e.parentNode)
-				&&	e.getAttribute('data-option-id') === null
+					(element = element.parentNode)
+				&&	element.getAttribute('data-option-id') === null
 				) {
 					break;
 				}
@@ -6624,8 +6967,8 @@ var	startTime = getTimeNow()
 	,	joinedBorder = Math.max(0, orz(getSelectedMenuValue(project, 'collage', 'border', DEFAULT_JOINED_IMAGE_BORDER)))
 	,	joinedPadding = Math.max(0, orz(getSelectedMenuValue(project, 'collage', 'padding', DEFAULT_JOINED_IMAGE_PADDING)))
 	,	size = getBatchCanvasSize(batchContainer)
-	,	w = size.w
-	,	h = size.h
+	,	w = size.width
+	,	h = size.height
 		;
 
 		if (w > 0 && h > 0) {
@@ -6643,11 +6986,9 @@ var	startTime = getTimeNow()
 				canvas.width != w
 			||	canvas.height != h
 			) {
-			var	t = la.error.canvas_size;
-				if (t.join) t = t.join('\n');
-
 				alert(
-					t + '\n'
+					getJoinedOrEmptyString(la.error.canvas_size, '\n')
+				+	'\n'
 				+	w + 'x' + h
 				);
 			} else {
@@ -6668,16 +7009,14 @@ var	startTime = getTimeNow()
 					ctx.drawImage(img, pos.x, pos.y);
 				}
 
-			var	img = await getImgElementPromise(
-					canvas
-				,	project.fileName + '.png'
-				,	w,h
-				,	(img) => {
+			var	img = await getImagePromiseFromCanvasToBlob(canvas, project).then(
+					(img) => {
 						endTime = getTimeNow();
 						totalTime = (endTime - startTime);
 
-						img.alt += (
-							' \r\n('
+						img.title = img.alt = (
+							project.fileName + '.png'
+						+	' \r\n('
 						+	w + 'x' + h + ', '
 						+	(
 								la.hint.took_sec.collage
@@ -6685,13 +7024,21 @@ var	startTime = getTimeNow()
 								.replace('$n', renderedImages.length)
 							) + ')'
 						);
-						img.title = img.alt;
+
+						return img;
 					}
-				,	project
+				).catch(
+					(error) => {
+						console.log(error);
+
+						return null;
+					}
 				);
 
-				if (flags.showOnPage) getEmptyRenderContainer(project).appendChild(img);
-				if (flags.saveToFile) saveDL(img.src, project.fileName + '_' + renderedImages.length, 'png', 1);
+				if (img) {
+					if (flags.showOnPage) getEmptyRenderContainer(project).appendChild(img);
+					if (flags.saveToFile) saveDL(img.src, project.fileName + '_' + renderedImages.length, 'png', 1);
+				}
 			}
 		}
 	}
@@ -6737,7 +7084,7 @@ async function showImg(project, render, container) {
 			}
 		}
 	} catch (error) {
-		console.log(error);
+		logError(arguments, error);
 
 		project.rendering = null;
 	}
@@ -6753,9 +7100,12 @@ async function saveImg(project, render, fileName) {
 	try {
 		render = await getOrCreateRender(project, render);
 	var	img = render.img;
-		saveDL(img.src, fileName || render.fileName, 'png');
+
+		if (img) {
+			saveDL(img.src, fileName || render.fileName, 'png');
+		}
 	} catch (error) {
-		console.log(error);
+		logError(arguments, error);
 
 		project.rendering = null;
 	}
@@ -6771,7 +7121,7 @@ async function getRenderedImg(project, render) {
 	try {
 	var	img = await getOrCreateRenderedImg(project, render);
 	} catch (error) {
-		console.log(error);
+		logError(arguments, error);
 
 		project.rendering = null;
 	}
@@ -6805,23 +7155,24 @@ async function updateMenuAndShowImg(project) {
 	return await showImg(project);
 }
 
-function updateCheckBox(e, params) {
-	if (params || (params = e.params)) {
-	var	switchType = e.getAttribute('data-switch-type')
-	,	a = SWITCH_NAMES_BY_TYPE[switchType]
+function updateCheckBox(checkBox, params) {
+	if (params || (params = checkBox.params)) {
+	var	switchType = checkBox.getAttribute('data-switch-type')
+	,	switchName = SWITCH_NAMES_BY_TYPE[switchType]
+	,	targetState = !!checkBox.checked
 		;
 
-		params[a[0]] = !(params[a[1]] = !!e.checked);
+		params[switchName[0]] = !targetState;
+		params[switchName[1]] = targetState;
 	}
 }
 
 function updateBatchCount(project) {
-
-var	precounts = (project.renderBatchCounts || (project.renderBatchCounts = {}))
+var	precounts = getOrInitChild(project, 'renderBatchCounts')
 ,	key = (
 		(
 			gc('batch-checkbox', project.container)
-			.map((e) => (e.checked ? 1 : 0))
+			.map((checkBox) => (checkBox.checked ? 1 : 0))
 			.join('')
 		)
 	+	'_'
@@ -6846,8 +7197,9 @@ var	precounts = (project.renderBatchCounts || (project.renderBatchCounts = {}))
 
 	['show_all', 'save_all'].forEach(
 		(name) => gn(name, project.container).forEach(
-			(e) => {
-				(e.lastElementChild || cre('span', e)).textContent = count;
+			(button) => {
+			var	label = button.lastElementChild || cre('span', button);
+				label.textContent = count;
 			}
 		)
 	);
@@ -6861,10 +7213,10 @@ var	state = !!isWIP;
 
 	['button', 'select', 'input'].forEach(
 		(tagName) => gt(tagName, project.container).forEach(
-			(e) => (
-				e.disabled = (
+			(element) => (
+				element.disabled = (
 					tagName === 'button'
-				&&	e.name === 'stop'
+				&&	element.name === 'stop'
 					? !state
 					: state
 				)
@@ -6882,10 +7234,10 @@ var	state = !!isWIP;
 	isBatchWIP = state;
 
 	gt('button', gc('menu-bar')[0]).forEach(
-		(e) => {
-			if (e.name !== 'download_all') {
-				e.disabled = (
-					e.name === 'stop'
+		(element) => {
+			if (element.name !== 'download_all') {
+				element.disabled = (
+					element.name === 'stop'
 					? !state
 					: state
 				)
@@ -6904,7 +7256,7 @@ var	evt = eventStop(evt,1);
 	if (!TESTING && id('loaded-files-view').firstElementChild) {
 
 //* Note: given message text won't be used in modern browsers.
-//* https://habr.com/ru/post/141793/
+//* source: https://habr.com/ru/post/141793/
 
 	var	message = la.hint.close_page;
 
@@ -6922,28 +7274,31 @@ var	evt = eventStop(evt,1);
 function onResize(evt) {
 	updateDropdownMenuPositions(eventStop(evt,1));
 
-	thumbnailPlaceholder = null;
+//* TODO: find zoom/scale of the screen/page before regenerating thumbnail.
+	// thumbnailPlaceholder = null;
 }
 
 function updateDropdownMenuPositions(evt) {
 	eventStop(evt,1);
 
 	gc('menu-hid').forEach(
-		(e) => putInView(e, 0,0, true)
+		(menuPanel) => putInView(menuPanel, 0,0, true)
 	);
 }
 
 function onPageKeyPress(evt) {
 var	evt = evt || window.event;
 
-	if (evt.keyCode === 27) {	//* Esc
+//* Esc:
+
+	if (evt.keyCode === 27) {
 		gn('stop').forEach(
-			(e) => e.click()
+			(button) => button.click()
 		);
 
 		gc('loading', id('loaded-files-selection')).forEach(
-			(e) => {
-				(e.project || e).isStopRequested = true;
+			(button) => {
+				(button.project || button).isStopRequested = true;
 			}
 		);
 	}
@@ -6951,7 +7306,7 @@ var	evt = evt || window.event;
 
 function onProjectButtonClick(evt) {
 var	evt = evt || window.event
-,	e = evt
+,	button = evt
 	;
 
 	if (
@@ -6960,22 +7315,22 @@ var	evt = evt || window.event
 	&&	evt.type === 'click'
 	&&	evt.target
 	) {
-		e = evt.target;
+		button = evt.target;
 	}
 
 	if (
-		!e
-	||	!e.tagName
-	||	!(e = getThisOrParentByTagName(e, 'button'))
+		!button
+	||	!button.tagName
+	||	!(button = getThisOrParentByTagName(button, 'button'))
 	) {
 		return;
 	}
 
 	eventStop(evt,1);
 
-var	container = getProjectContainer(e)
+var	container = getProjectContainer(button)
 ,	project = container.project
-,	action = e.name
+,	action = button.name
 ,	resetPrefix = 'reset_to_'
 	;
 
@@ -6998,7 +7353,7 @@ var	container = getProjectContainer(e)
 	} else {
 		console.log([
 			evt
-		,	e
+		,	button
 		,	container
 		,	project
 		,	'Unknown action: ' + action
@@ -7010,7 +7365,7 @@ var	container = getProjectContainer(e)
 
 function onProjectMenuUpdate(evt) {
 var	evt = evt || window.event
-,	e = evt
+,	element = evt
 	;
 
 	if (
@@ -7019,37 +7374,37 @@ var	evt = evt || window.event
 	&&	evt.type === 'change'
 	&&	evt.target
 	) {
-		e = evt.target;
+		element = evt.target;
 	}
 
 	if (
-		!e
-	||	!e.tagName
+		!element
+	||	!element.tagName
 	) {
 		return;
 	}
 
 	eventStop(evt,1);
 
-	if (e.type === 'checkbox') {
-		updateCheckBox(e);
+	if (element.type === 'checkbox') {
+		updateCheckBox(element);
 
-		if (e.getAttribute('data-switch-type') !== 'batch') {
+		if (element.getAttribute('data-switch-type') !== 'batch') {
 			return;
 		}
 	}
 
-var	isSelect = isSelectElement(e);
+var	isSelect = isSelectElement(element);
 
 	if (isSelect) {
-		updateSelectStyle(e);
+		updateSelectStyle(element);
 
-		if (e.getAttribute('data-section') === 'collage') {
+		if (element.getAttribute('data-section') === 'collage') {
 			return;
 		}
 	}
 
-var	container = getProjectContainer(e)
+var	container = getProjectContainer(element)
 ,	project = container.project
 	;
 
@@ -7062,12 +7417,12 @@ var	container = getProjectContainer(e)
 
 function onPageDragOver(evt) {
 var	evt = eventStop(evt,0,1)
-,	d = evt.dataTransfer
-,	files = d.files
-,	items = d.items
+,	batch = evt.dataTransfer
+,	files = batch.files
+,	items = batch.items
 	;
 
-	d.dropEffect = (
+	batch.dropEffect = (
 		(files && files.length)
 	||	(items && items.length && Array.from(items).some((item) => (item.kind === 'file')))
 		? 'copy'
@@ -7117,7 +7472,7 @@ async function loadFromFileList(files, evt) {
 		files
 	&&	files.length > 0
 	) {
-	var	logLabel = 'Load ' + files.length + ' project files: ' + files.map((v) => v.name).join(', ')
+	var	logLabel = 'Load ' + files.length + ' project files: ' + files.map((file) => file.name).join(', ')
 	,	loadedProjectsCount = 0
 		;
 
@@ -7151,9 +7506,7 @@ var	logLabel = 'Load project from url: ' + url;
 	console.time(logLabel);
 	console.group(logLabel);
 
-var	isProjectLoaded = await addProjectView({
-		url: url
-	});
+var	isProjectLoaded = await addProjectView({url: url});
 
 	console.groupEnd(logLabel);
 	console.timeEnd(logLabel);
@@ -7161,34 +7514,36 @@ var	isProjectLoaded = await addProjectView({
 	return isProjectLoaded;
 }
 
-async function loadFromButton(e, inBatch) {
+async function loadFromButton(button, inBatch) {
 
-	function getButtonURL(e) {
-	var	url = e.getAttribute('data-url');
+	function getButtonURL(button) {
+	var	url = button.getAttribute('data-url')
+	,	container, link
+		;
 
 		if (
 			!url
-		&&	(e = getThisOrParentByClass(e, 'example-file'))
-		&&	(e = gt('a', e)[0])
+		&&	(container = getThisOrParentByClass(button, 'example-file'))
+		&&	(link = gt('a', container)[0])
 		) {
-			url = e.href;
+			url = link.href;
 		}
 
 		return url;
 	}
 
 	if (!inBatch) {
-		if (e.disabled) {
+		if (button.disabled) {
 			return;
 		}
 
-		e.disabled = true;
+		button.disabled = true;
 	}
 
 var	action, url;
 
-	if (action = e.name || e.getAttribute('data-action')) {
-	var	p = getThisOrParentByClass(e, regClassExampleFiles);
+	if (action = button.name || button.getAttribute('data-action')) {
+	var	filesTable = getThisOrParentByClass(button, regClassExampleFiles);
 
 		if (action === 'stop') {
 			isStopRequested = true;
@@ -7196,11 +7551,11 @@ var	action, url;
 		if (action === 'download_all') {
 		var	countWithoutPause = 0;
 
-			for (let a of gt('a', p)) if (a.download) {
-				a.click();
+			for (let link of gt('a', filesTable)) if (link.download) {
+				link.click();
 
-//* https://stackoverflow.com/a/53841885
-//* must wait at least 1 second between each 10 downloads in Chrome:
+//* Note: Chrome skips downloads if more than 10 in 1 second.
+//* source: https://stackoverflow.com/a/53841885
 
 				if (++countWithoutPause >= 10) {
 					await pause(1000);
@@ -7215,10 +7570,10 @@ var	action, url;
 		,	urls = []
 			;
 
-			for (let b of gt('button', p)) if (url = getButtonURL(b)) {
+			for (let otherButton of gt('button', filesTable)) if (url = getButtonURL(otherButton)) {
 				urls.push(url);
 
-				if (await loadFromButton(b, true)) {
+				if (await loadFromButton(otherButton, true)) {
 					++isProjectLoaded;
 				}
 
@@ -7231,20 +7586,20 @@ var	action, url;
 
 			setGlobalWIPstate(false);
 		} else {
-			console.log([e, p, 'Unknown action: ' + action]);
+			console.log([button, filesTable, 'Unknown action: ' + action]);
 		}
 	} else
-	if (url = getButtonURL(e)) {
+	if (url = getButtonURL(button)) {
 
 //* show loading status:
 
-	var	c = 'loading'
-	,	p = getThisOrParentByClass(e, regClassExampleFile)
+	var	className = 'loading'
+	,	fileRow = getThisOrParentByClass(button, regClassExampleFile)
 		;
 
-		if (p && p.className) {
-			if (p.className.indexOf(c) < 0) {
-				toggleClass(p,c,1);
+		if (fileRow && fileRow.className) {
+			if (fileRow.className.indexOf(className) < 0) {
+				toggleClass(fileRow, className, 1);
 			} else {
 				return;
 			}
@@ -7256,14 +7611,14 @@ var	action, url;
 
 //* remove loading status:
 
-		if (p && p.className) {
-			toggleClass(p,c,-1);
+		if (fileRow && fileRow.className) {
+			toggleClass(fileRow, className, -1);
 		}
 
 	}
 
 	if (!inBatch) {
-		e.disabled = false;
+		button.disabled = false;
 	}
 
 //* report error to user:
@@ -7278,56 +7633,58 @@ var	action, url;
 			: isURLFromDisk(url)
 		)
 	) {
-	var	t = la.error.file_protocol;
-		if (t.join) t = t.join('\n');
+		await pause(100);
 
-		alert(t);
+		alert(getJoinedOrEmptyString(la.error.file_protocol, '\n'));
 	}
 
 	return isProjectLoaded;
 }
 
-function selectProject(e) {
-	if (e = getProjectButton(e)) {
-	var	button = e.parentNode.firstElementChild;
+function selectProject(buttonTab) {
+	if (buttonTab = getProjectButton(buttonTab)) {
+	var	otherButtonTab = buttonTab.parentNode.firstElementChild;
 
-		while (button) {
-		var	state = (button === e ? 1 : -1);
+		while (otherButtonTab) {
+		var	selectedState = (otherButtonTab === buttonTab ? 1 : -1);
 
-			gi(button.id).forEach(
-				(e) => toggleClass(e, 'show', state)
+			gi(otherButtonTab.id).forEach(
+				(element) => toggleClass(element, 'show', selectedState)
 			);
 
-			button = button.nextElementSibling;
+			otherButtonTab = otherButtonTab.nextElementSibling;
 		}
 	}
 }
 
-function closeProject(e) {
-	if (e = getProjectButton(e)) {
-	var	c = e.className || ''
-	,	project = e.project
+function closeProject(buttonTab) {
+	if (buttonTab = getProjectButton(buttonTab)) {
+	var	buttonClass = buttonTab.className || ''
+	,	fileId = buttonTab.id
+	,	project = buttonTab.project
 		;
 
-		if (regClassShow.test(c)) {
+		if (regClassShow.test(buttonClass)) {
 			selectProject(
-				getNextSiblingByClass(e, regClassLoaded)
-			||	getPreviousSiblingByClass(e, regClassLoaded)
+				getNextSiblingByClass(buttonTab, regClassLoaded)
+			||	getPreviousSiblingByClass(buttonTab, regClassLoaded)
 			);
 		}
 
-		if (regClassLoading.test(c)) {
-			toggleClass(e, 'failed', 1);
+//* Note: if loading did not complete, the loader function will do cleanup.
 
-			e.isStopRequested = true;
+		if (regClassLoading.test(buttonClass)) {
+			toggleClass(buttonTab, 'failed', 1);
+
+			buttonTab.isStopRequested = true;
 
 			if (project) {
 				project.isStopRequested = true;
 			}
 		}
 
-		if (regClassLoaded.test(c)) {
-			removeProjectView(e.id) && del(e);
+		if (regClassLoaded.test(buttonClass)) {
+			removeProjectView(fileId);
 		}
 
 		if (
@@ -7344,8 +7701,10 @@ function closeProject(e) {
 //* Runtime: prepare UI *------------------------------------------------------
 
 async function init() {
-	toggleClass(document.body, 'loading', -1);
+	toggleClass(document.body, 'loading', 1);
 	document.body.innerHTML = la.loading;
+
+//* remember config defaults:
 
 var	configVarDefaults = {}
 ,	configVarNames = [
@@ -7361,52 +7720,75 @@ var	configVarDefaults = {}
 	];
 
 	configVarNames.forEach(
-		(k) => {
-			configVarDefaults[k] = window[k];
+		(varName) => {
+			configVarDefaults[varName] = window[varName];
 		}
 	);
 
-	await loadLib(
+//* load redefined config:
+
+	await loadLibPromise(
 		configFilePath,
 		libRootDir + 'composition.asm.js',
 	);
 
+//* restore invalid config values to default:
+
 	configVarNames.forEach(
-		(k) => {
-		var	configuredValue = orz(window[k])
-		,	invalidBottom = (k.indexOf('FACTOR') < 0 ? 0 : 1)
+		(varName) => {
+		var	configuredValue = orz(window[varName])
+		,	invalidBottom = (varName.indexOf('FACTOR') < 0 ? 0 : 1)
 			;
 
-			window[k] = (
+			window[varName] = (
 				configuredValue > invalidBottom
 				? configuredValue
-				: configVarDefaults[k]
+				: configVarDefaults[varName]
 			);
 		}
 	);
+
+//* check loading local files:
+
+	if (RUNNING_FROM_DISK) {
+		try {
+			canLoadLocalFiles = !!(await getFilePromiseFromURL(fetchTestFilePath));
+		} catch (error) {
+			canLoadLocalFiles = false;
+		}
+	} else {
+		canLoadLocalFiles = true;
+	}
+
+	if (!canLoadLocalFiles) {
+		logTime('Running from disk, cannot load local files.');
+	}
+
+//* load libraries not specific to file formats:
 
 	if (CompositionModule = AsmCompositionModule) {
 		CompositionFuncList = Object.keys(CompositionModule(window, null, new ArrayBuffer(nextValidHeapSize(0))));
 	}
 
+//* create main menu:
+
 var	supportedFileTypesText = (
 		fileTypeLoaders
 		.reduce(
-			(result, v,i,a) => result.concat(v.dropFileExts)
+			(collection, loader) => collection.concat(loader.dropFileExts)
 		,	[]
 		)
 		.filter(arrayFilterUniqueValues)
 		.filter(arrayFilterNonEmptyValues)
-		.map((v) => v.toUpperCase())
+		.map((ext) => ext.toUpperCase())
 		.sort()
 		.join(', ')
 	)
 ,	openingNotesText = la.menu.file.notes.join('<br>')
-,	HTMLparts = {}
-,	e,a,i,k,v
+,	menuHTMLparts = {}
 	;
 
-	HTMLparts.file = (
+	menuHTMLparts.file = (
 		'<p>'
 	+		la.menu.file.project
 	+		':'
@@ -7445,23 +7827,28 @@ var	supportedFileTypesText = (
 
 	var	padCount = orz(rowLength) - orz(tabs.length)
 	,	padHTML = (
-			padCount > 0
-			? '<td' + (
-				padCount > 1
-				? ' colspan="' + padCount + '"'
-				: ''
+			padCount == 0
+			? '' :
+			'<td' + (
+				padCount == 1
+				? '' :
+				' colspan="' + padCount + '"'
 			) + '></td>'
-			: ''
 		)
 	,	tabsHTML = tabs.map(
 			([name, text]) => (
-				'<td>'
-			+		'<button onclick="return loadFromButton(this)" name="'
-			+			encodeTagAttr(name)
-			+		'">'
-			+			text
-			+		'</button>'
-			+	'</td>'
+				(
+					!canLoadLocalFiles
+				&&	name.indexOf('download') < 0
+				) ? '' : (
+					'<td>'
+				+		'<button onclick="return loadFromButton(this)" name="'
+				+			encodeTagAttr(name)
+				+		'">'
+				+			text
+				+		'</button>'
+				+	'</td>'
+				)
 			)
 		).join('')
 		;
@@ -7477,18 +7864,19 @@ var	supportedFileTypesText = (
 var	tabsCountMax = 0
 ,	examplesHTML = (
 		exampleProjectFiles.map(
-			(v) => {
-			var	headerHTML = (
-					v.subdir
-					? '<header>'
-					+	(la.menu.examples.subdirs[v.subdir] || v.subdir)
-					+	':'
-					+ '</header>'
-					: ''
+			(fileGroup) => {
+			var	subdir = fileGroup.subdir || ''
+			,	headerHTML = (
+					!subdir
+					? '' :
+					'<header>'
+				+		(la.menu.examples.subdirs[subdir] || subdir)
+				+		':'
+				+	'</header>'
 				)
 			,	tabsCount = 0
 			,	fileListHTML = (
-					v.files.map(
+					fileGroup.files.map(
 						(file) => {
 						var	fileName = (
 								file.length
@@ -7513,22 +7901,22 @@ var	tabsCountMax = 0
 						,	thumbnail = (
 								'<div class="thumbnail-hover">'
 							+	(
-									file.thumbnail
-									? '<img class="thumbnail" src="'
-									+	encodeHTMLSpecialChars(file.thumbnail)
-									+ '">'
-									: ''
+									!file.thumbnail
+									? '' :
+									'<img class="thumbnail" src="'
+								+		encodeHTMLSpecialChars(file.thumbnail)
+								+	'">'
 								)
 							+	(
-									file.preview
-									? '<img class="thumbnail larger" src="'
-									+	encodeHTMLSpecialChars(file.preview)
-									+ '">'
-									: ''
+									!file.preview
+									? '' :
+									'<img class="thumbnail larger" src="'
+								+		encodeHTMLSpecialChars(file.preview)
+								+	'">'
 								)
 							+	'</div>'
 							)
-						,	filePath = arrayFilteredJoin([exampleRootDir, v.subdir, fileName], '/')
+						,	filePath = arrayFilteredJoin([exampleRootDir, subdir, fileName], '/')
 						,	fileURL = filePath + '?version=' + file.modtime.replace(/\W+/g, '_')
 						,	nameAttr = encodeTagAttr(fileName)
 						,	pathAttr = encodeTagAttr(fileURL)
@@ -7543,6 +7931,8 @@ var	tabsCountMax = 0
 							+	'</a>'
 							)
 						,	loadButton = (
+								!canLoadLocalFiles
+								? '' :
 								'<button onclick="return loadFromButton(this)'
 							// +	'" data-url="'
 							// +		pathAttr
@@ -7559,9 +7949,9 @@ var	tabsCountMax = 0
 							,	loadButton
 							]
 						,	tabsHTML = tabs.map(
-								(v,i,a) => (
+								(tabContent) => (
 									'<td>'
-								+		v
+								+		tabContent
 								+	'</td>'
 								)
 							).join('')
@@ -7595,7 +7985,7 @@ var	tabsCountMax = 0
 ,	batchButtonsHTML = getExampleButtonsRow(la.menu.examples.batch_buttons, tabsCountMax)
 	;
 
-	HTMLparts.examples = (
+	menuHTMLparts.examples = (
 		'<table class="example-files">'
 	+		examplesHTML
 	+		'<tfoot>'
@@ -7604,15 +7994,16 @@ var	tabsCountMax = 0
 	+	'</table>'
 	);
 
-	if (
-		EXAMPLE_NOTICE
-	&&	(v = la.menu.examples.notice)
-	) {
-		HTMLparts.examples += (
-			'<p class="warning">'
-		+		(v.join ? v.join('<br>') : v)
-		+	'</p>'
-		);
+	if (EXAMPLE_NOTICE) {
+	var	noticeHTML = getJoinedOrEmptyString(la.menu.examples.notice, '<br>');
+
+		if (noticeHTML) {
+			menuHTMLparts.examples += (
+				'<p class="warning">'
+			+		noticeHTML
+			+	'</p>'
+			);
+		}
 	}
 
 var	aboutLinks = [
@@ -7627,15 +8018,15 @@ var	aboutLinks = [
 		,	'links': (
 				gt('link')
 				.filter(
-					(e) => (
-						e.getAttribute('rel') == 'alternate'
-					&&	e.getAttribute('href')
-					&&	e.getAttribute('hreflang')
+					(element) => (
+						element.getAttribute('rel') == 'alternate'
+					&&	element.getAttribute('href')
+					&&	element.getAttribute('hreflang')
 					)
 				).map(
-					(e) => [
-						e.getAttribute('href')
-					,	e.getAttribute('hreflang').toUpperCase()
+					(element) => [
+						element.getAttribute('href')
+					,	element.getAttribute('hreflang').toUpperCase()
 					]
 				)
 			)
@@ -7646,24 +8037,25 @@ var	aboutLinks = [
 		}
 	];
 
-	HTMLparts.about = (
+	menuHTMLparts.about = (
 		aboutLinks.map(
-			(v) => (
-				(v.pretext || '')
+			(entry) => (
+				(entry.pretext || '')
 			+	'<p>'
 			+	(
-					v.header
-					? v.header + ':<br>'
-					: ''
+					!entry.header
+					? '' :
+					entry.header + ':<br>'
 				)
 			+	(
-					v.lines
-					? v.lines.join('<br>')
-					: ''
+					!entry.lines
+					? '' :
+					entry.lines.join('<br>')
 				)
 			+	(
-					v.links
-					? v.links.map(
+					!entry.links
+					? '' :
+					entry.links.map(
 						([url, text]) => (
 							'<a href="'
 						+		encodeTagAttr(url)
@@ -7672,42 +8064,43 @@ var	aboutLinks = [
 						+	'</a>'
 						)
 					).join(', ')
-					: ''
 				)
 			+	'</p>'
 			)
 		).join('')
 	);
 
-var	topMenuHTML = (
-		Object.entries(la.menu)
-		.map(
-			([k, v]) => getDropdownMenuHTML(
-				v.header || 'TODO'
-			,	HTMLparts[k] || '<p>TODO</p>'
+var	menuHTML = (
+		Object.entries(la.menu).map(
+			([menuName, menuProps]) => getDropdownMenuHTML(
+				menuProps.header || 'TODO'
+			,	menuHTMLparts[menuName] || '<p>TODO</p>'
 			)
 		).join('')
 	);
 
 	document.body.innerHTML = (
 		'<div class="menu-bar">'
-	+		topMenuHTML
+	+		menuHTML
 	+	'</div>'
 	+	'<div id="loaded-files-selection"></div>'
 	+	'<div id="loaded-files-view"></div>'
 	);
 
 	gc('thumbnail').map(
-		(e) => {
-			if (!e.firstElementChild) {
-				setImageSrc(e);
+		(element) => {
+			if (!element.firstElementChild) {
+				setImageSrc(element);
 			}
 		}
 	);
 
+//* enable/disable main menu buttons:
+
 	setGlobalWIPstate(false);
 
-//* drop event may not work without dragover:
+//* add global on-page events:
+//* Note: drop event may not work without dragover.
 
 	[
 		['beforeunload',onBeforeUnload]
@@ -7716,8 +8109,10 @@ var	topMenuHTML = (
 	,	['keypress',	onPageKeyPress]
 	,	['resize',	onResize]
 	].forEach(
-		([k, v]) => window.addEventListener(k, v, false)
+		([eventName, handlerFunction]) => window.addEventListener(eventName, handlerFunction, false)
 	);
+
+//* ready for user input:
 
 	toggleClass(document.body, 'loading', -1);
 	toggleClass(document.body, 'ready', 1);
