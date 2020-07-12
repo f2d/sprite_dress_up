@@ -11,7 +11,7 @@
 //* TODO: options menu: add/remove/copy/edit colors and outlines, or all list(s), maybe in textarea.
 //* TODO: remember already calculated batch counts and valid lists per project, in a dict with keys like joined list of all options and checkboxes.
 //* TODO: <select multiple> <optgroup> <option>?</option> </optgroup> </select>.
-//* TODO: save opened project as restructured ORA/PSD.
+//* TODO: save opened project as restructured ORA/PSD. Try https://github.com/Agamnentzar/ag-psd
 //* TODO: save rendered image as WebP. https://bugs.chromium.org/p/chromium/issues/detail?id=170565#c77 - toDataURL/toBlob quality 1.0 = lossless.
 
 //* rendering:
@@ -365,12 +365,6 @@ const	regLayerBlendModePass	= /^pass[-through]*$/i
 	,	showFromTree	: /^(layers|name)$/i
 	}
 
-,	regPSD = {
-		layerNameEndOfFolder	: /^<\/Layer[\s_]group>$/i
-	,	layerTypeFolder		: /^(open|closed)[\s_]folder$/i
-	,	layerUnicodeName	: /^Unicode[\s_]layer[\s_]name$/i
-	};
-
 const	LS = window.localStorage || localStorage
 ,	URL = window.URL || window.webkitURL || URL
 
@@ -396,9 +390,9 @@ const	LS = window.localStorage || localStorage
 ,	PARAM_KEYWORDS_AUTOCROP = ['transparent', 'topleft', 'topright', 'bottomleft', 'bottomright']
 ,	PARAM_KEYWORDS_COLLAGE_ALIGN = ['topleft', 'topright', 'bottomleft', 'bottomright', 'top', 'bottom', 'left', 'right']
 ,	PARAM_KEYWORDS_COLLAGE_PAD = ['border', 'padding']
+,	PARAM_KEYWORDS_SET_VALUE_TO_NAME = ['preselect']
+,	PARAM_KEYWORDS_SET_VALUE_TO_TRUE = ['last', 'no_prefix']
 ,	PARAM_KEYWORDS_SHORTCUT_FOR_ALL = ['all', 'etc']
-,	PARAM_KEYWORDS_VALUE_NAME = ['preselect']
-,	PARAM_KEYWORDS_VALUE_TRUE = ['last', 'no_prefix']
 ,	PARAM_OPTIONS_FOR_EACH_NAME = ['opacities', 'paddings']
 ,	PARAM_OPTIONS_GLOBAL = ['autocrop', 'collage', 'separate', 'side', 'zoom']
 ,	VIEW_SIDES = ['front', 'back']
@@ -605,20 +599,6 @@ const	libRootDir = 'lib/'
 				'psd.browser.js',
 			]
 		},
-
-		'PSDLIB.js': {
-
-//* source: https://github.com/Braunbart/PSDLIB.js
-
-//* TODO: layer opacity masks, data decompression methods
-
-			'varName': 'PSDLIB'
-		,	'dir': libFormatsDir + 'psd/psdlib/'
-		,	'files': [
-				// 'psdlib.min.js',
-				'psdlib.js',
-			]
-		}
 	}
 ,	fileTypeLoaders = [
 		{
@@ -632,15 +612,15 @@ const	libRootDir = 'lib/'
 		,	'handlerFuncs': [
 				// loadPSD,
 				loadPSDBrowser,
-				// loadPSDLIB,
 			]
 		},
 	];
 
 //* To be figured on the go *--------------------------------------------------
 
-var	ora, zip, PSD, PSD_JS, PSDLIB	//* <- external variable names, do not change, except "PSD_JS"
+var	ora, zip, PSD	//* <- external variable names, do not change
 
+,	PSD_JS
 ,	CompositionModule
 ,	CompositionFuncList
 
@@ -1781,7 +1761,7 @@ function addURLToTrackList(data, trackList) {
 	return trackList;
 }
 
-//* legacy copypaste code to get things working, don't bother with readability, redo later:
+//* legacy copypasted code to get things working, don't bother with readability, redo later:
 
 function dataToBlob(data, trackList) {
 	if (URL && URL.createObjectURL) {
@@ -2988,9 +2968,9 @@ async function getProjectViewMenu(project) {
 			;
 
 			if (options) {
-			var	l_a = project.loading.images
-			,	l_i = project.loading.imagesCount = l_a.length
-			,	actionLabel = 'preloading ' + l_i + ' images'
+			var	images = project.loading.images
+			,	imagesCount = project.loading.imagesCount = images.length
+			,	actionLabel = 'preloading ' + imagesCount + ' images'
 			,	result, layer
 				;
 
@@ -3001,8 +2981,8 @@ async function getProjectViewMenu(project) {
 			var	startTime = getTimeNow();
 
 				while (
-					l_a.length > 0
-				&&	(layer = l_a.pop())
+					images.length > 0
+				&&	(layer = images.pop())
 				&&	(result = !isStopRequestedAnywhere(project))
 				&&	(result = await getLayerImgLoadPromise(layer, project))
 				&&	(result = await getLayerMaskLoadPromise(layer, project))
@@ -3074,40 +3054,53 @@ async function getProjectViewMenu(project) {
 			function checkSwitchParams(globalOptionParams) {
 				for (let switchType in SWITCH_NAMES_BY_TYPE)
 				for (let switchName of SWITCH_NAMES_BY_TYPE[switchType]) if (params[switchName]) {
-				var	o = getOrInitChild(project, 'switchParamNames')
-				,	o = getOrInitChild(o, switchType)
+				var	switchParam = getOrInitChild(project, 'switchParamNames')
+				,	switchParam = getOrInitChild(switchParam, switchType)
 					;
 
-					if (!o.implicit) {
-						o.implicit = getOtherSwitchParamName(switchType, switchName);
-						o.explicit = switchName;
+					if (!switchParam.implicit) {
+						switchParam.implicit = getOtherSwitchParamName(switchType, switchName);
+						switchParam.explicit = switchName;
 					}
 
 					globalOptionParams[switchName] = true;
 				}
 			}
 
-			function addOptionGroup(sectionName, listName) {
-			var	optionGroup = getOptionGroup(sectionName, listName)
-			,	optionParams = optionGroup.params
-			,	i,j,k,o
-				;
+			function checkMinMaxParams(params, optionParams, paramName) {
+			var	paramMS = params[paramName];
 
-				checkSwitchParams(optionParams);
+				if (typeof paramMS === 'object') {
+				var	optionMS = optionParams[paramName];
 
-				if (j = params[k = 'multi_select']) {
-					if (o = optionParams[k]) {
-						if (o.min > j.min) o.min = j.min;
-						if (o.max < j.max) o.max = j.max;
+					if (typeof optionMS === 'object') {
+						if (optionMS.min > paramMS.min) optionMS.min = paramMS.min;
+						if (optionMS.max < paramMS.max) optionMS.max = paramMS.max;
 					} else {
-						o = optionParams[k] = {};
-						for (i in j) o[i] = j[i];
+						optionParams[paramName] = {
+							min: paramMS.min
+						,	max: paramMS.max
+						};
 					}
 				}
 
-				for (k of PARAM_KEYWORDS_VALUE_TRUE) {
-					if (params[k]) optionParams[k] = true;
-				}
+			}
+
+			function addOptionGroup(sectionName, listName) {
+			var	optionGroup = getOptionGroup(sectionName, listName)
+			,	optionParams = optionGroup.params
+				;
+
+				checkSwitchParams(optionParams);
+				checkMinMaxParams(params, optionParams, 'multi_select');
+
+				PARAM_KEYWORDS_SET_VALUE_TO_TRUE.forEach(
+					(paramName) => {
+						if (params[paramName]) {
+							optionParams[paramName] = true;
+						}
+					}
+				);
 
 				return optionGroup;
 			}
@@ -3126,9 +3119,13 @@ async function getProjectViewMenu(project) {
 				;
 
 				if (optionName !== '') {
-					for (k of PARAM_KEYWORDS_VALUE_NAME) {
-						if (params[k]) optionParams[k] = optionName;
-					}
+					PARAM_KEYWORDS_SET_VALUE_TO_NAME.forEach(
+						(paramName) => {
+							if (params[paramName]) {
+								optionParams[paramName] = optionName;
+							}
+						}
+					);
 
 					optionItemLayers.push(layer);
 				}
@@ -3138,27 +3135,27 @@ async function getProjectViewMenu(project) {
 
 				function addOptionsFromParamKeywords(keywordsList, paramList) {
 					paramList.forEach(
-						(v) => {
-						var	k = String(v);
+						(optionValue) => {
+						var	optionName = String(optionValue);
 
-							if (isNaN(v)) {
-								k = k.replace(regNonWord, '').toLowerCase();
+							if (isNaN(optionValue)) {
+								optionName = optionName.replace(regNonWord, '').toLowerCase();
 
-								if (PARAM_KEYWORDS_SHORTCUT_FOR_ALL.indexOf(k) >= 0) {
+								if (PARAM_KEYWORDS_SHORTCUT_FOR_ALL.indexOf(optionName) >= 0) {
 									keywordsList.forEach(
-										(v) => {
-											optionItems[v] = v;
+										(optionName) => {
+											optionItems[optionName] = optionName;
 										}
 									);
 								} else
-								if (keywordsList.indexOf(k) >= 0) {
-									optionItems[k] = k;
+								if (keywordsList.indexOf(optionName) >= 0) {
+									optionItems[optionName] = optionName;
 								} else
-								if (regColorCode.test(v)) {
-									optionItems[v] = v;
+								if (regColorCode.test(optionValue)) {
+									optionItems[optionValue] = optionValue;
 								}
 							} else {
-								optionItems[k] = v;
+								optionItems[optionName] = optionValue;
 							}
 						}
 					);
@@ -3180,7 +3177,6 @@ async function getProjectViewMenu(project) {
 			var	optionGroup = addOptionGroup(sectionName, listName || sectionName)
 			,	optionParams = optionGroup.params
 			,	optionItems = optionGroup.items
-			,	i,j,k
 				;
 
 				checkSwitchParams(optionParams);
@@ -3189,18 +3185,18 @@ async function getProjectViewMenu(project) {
 					optionItems[sectionName] = sectionName;
 				} else
 				if (sectionName === 'side') {
-					j = la.project_option_side;
+				var	la_side = la.project_option_side;
 
-					for (let k in j) {
-						optionItems[k] = j[k];
+					for (let optionName in la_side) {
+						optionItems[optionName] = la_side[optionName];
 					}
 
-					j = VIEW_SIDES.indexOf(param);
+				var	index = VIEW_SIDES.indexOf(param);
 
-					if (j >= 0) {
+					if (index >= 0) {
 						params[sectionName] = (
 							params.not
-							? VIEW_SIDES[j ? 0 : 1]
+							? VIEW_SIDES[index ? 0 : 1]
 							: param
 						);
 
@@ -3217,25 +3213,25 @@ async function getProjectViewMenu(project) {
 				if (sectionName === 'paddings') {
 					if (param = params['radius']) {
 						param.forEach(
-							(v) => {
-							var	j = v.threshold
-							,	k = (
+							(dimensions) => {
+							var	threshold = dimensions.threshold
+							,	optionName = (
 									(
-										typeof v.x !== 'undefined'
-										? [v.x, v.y]
-										: [v.radius]
+										typeof dimensions.x !== 'undefined'
+										? [dimensions.x, dimensions.y]
+										: [dimensions.radius]
 									).map(
-										(x) => (
-											typeof x.in !== 'undefined'
-											? x.in + ':' + x.out
-											: x.out
+										(boundaries) => (
+											typeof boundaries.in !== 'undefined'
+											? boundaries.in + ':' + boundaries.out
+											: boundaries.out
 										)
 									).join('x')
 								+	'px'
-								+	(j?'-'+j:'')
+								+	(threshold ? '-' + threshold : '')
 								);
 
-								optionItems[k] = v;
+								optionItems[optionName] = dimensions;
 							}
 						);
 					}
@@ -3249,26 +3245,35 @@ async function getProjectViewMenu(project) {
 						addOptionsFromParamKeywords(PARAM_KEYWORDS_COLLAGE_ALIGN, param[listName]);
 					} else {
 						param[listName].forEach(
-							(v) => {
-								optionItems[String(v)] = v;
+							(optionValue) => {
+							var	optionName = String(optionValue);
+								optionItems[optionName] = optionValue;
 							}
 						);
 					}
 				} else
 				if (sectionName === 'zoom' || sectionName === 'opacities') {
-					if (j = param.format) {
-						optionParams.format = j;
+				var	format = param.format;
+
+					if (format) {
+						optionParams.format = format;
 					}
-					if (j = param.values) {
-						j.forEach(
-							(v) => {
-							var	k = v + '%';	//* <- pad bare numbers to avoid autosorting in <select>
+
+				var	values = param.values;
+
+					if (values) {
+						values.forEach(
+							(optionValue) => {
+
+//* pad bare numbers to avoid numeric autosorting in <select>:
+
+							var	optionName = optionValue + '%';
 
 								if (sectionName === 'opacities') {
-									v = (orz(v) / 100);
+									optionValue = (orz(optionValue) / 100);
 								}
 
-								optionItems[k] = v;
+								optionItems[optionName] = optionValue;
 							}
 						);
 					}
@@ -3443,15 +3448,15 @@ async function getProjectViewMenu(project) {
 		}
 
 		for (let switchType in SWITCH_NAMES_BY_TYPE) {
-		var	o = getOrInitChild(project, 'switchParamNames')
-		,	o = getOrInitChild(o, switchType)
+		var	switchParam = getOrInitChild(project, 'switchParamNames')
+		,	switchParam = getOrInitChild(switchParam, switchType)
 			;
 
-			if (!o.implicit) {
+			if (!switchParam.implicit) {
 			var	switchName = SWITCH_NAMES_DEFAULT[switchType];
 
-				o.implicit = switchName;
-				o.explicit = getOtherSwitchParamName(switchType, switchName);
+				switchParam.implicit = switchName;
+				switchParam.explicit = getOtherSwitchParamName(switchType, switchName);
 			}
 		}
 
@@ -4152,6 +4157,9 @@ var	params = getOrInitChild(layer, 'params');
 								'x': dimensions[0]
 							,	'y': dimensions[1]
 							};
+
+							// TODO: get all values in ranges
+							// e.g.: outline [outline -1:1px/max 60/100/90/60/30/0% -1...1:5...1/5...1px-16/max]
 						}
 					).map(
 						(obj) => {
@@ -4722,106 +4730,6 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 	);
 }
 
-//* not needed, may be removed instead of fixing:
-
-async function loadPSDLIB(project) {
-	return await loadCommonWrapper(
-		project
-	,	'PSDLIB.js'
-	,	async function fileParserFunc(file) {
-			return PSDLIB.parse(await getFilePromise(file));
-		}
-	,	async function treeConstructorFunc(project, sourceData) {
-			if (!sourceData.layers) return;
-
-		var	l_a = sourceData.layers
-		,	l_i = project.layersCount = l_a.length
-			;
-
-			if (!l_i) return;
-
-			project.width	= sourceData.width;
-			project.height	= sourceData.height;
-			project.colorMode	= sourceData.colormode;
-			project.channels	= sourceData.channels;
-			project.bitDepth	= sourceData.depth;
-
-//* gather layers into a tree object:
-
-		var	parentGroup = project.layers = []
-		,	layer
-		,	d,k,n,t
-			;
-
-			while (l_i--) if (layer = l_a[l_i]) {
-				if (isStopRequestedAnywhere(project)) {
-					return;
-				}
-				n = layer.name || '';
-				if (regPSD.layerNameEndOfFolder.test(n)) {
-					while (
-						(parentGroup = parentGroup.parent || project.layers)
-					&&	typeof parentGroup.length === 'undefined'
-					);
-
-					continue;
-				} else {
-				var	isLayerFolder = false
-				,	ali = layer.additionalLayerInfo || []
-					;
-
-					if (ali) {
-					var	a_i = ali.length;
-						while (a_i--) if (
-							(t = ali[a_i])
-						&&	(d = t.data)
-						) {
-							if (
-								(k = t.name)
-							&&	regPSD.layerUnicodeName.test(k)
-							) {
-								n = d;
-							} else if (
-								(k = d.type)
-							&&	regPSD.layerTypeFolder.test(k)
-							) {
-								isLayerFolder = true;
-							}
-						}
-					}
-
-//* not supported here: layer masks, visibility toggle
-
-				var	mode = layer.blendMode || ''
-				,	blendMode = getNormalizedBlendMode(mode)
-				,	layerWIP = {
-						top:    orz(layer.top)
-					,	left:   orz(layer.left)
-					,	width:  orz(layer.width)
-					,	height: orz(layer.height)
-					,	opacity: getNormalizedOpacity(layer.opacity)
-					,	isVisible: true
-					,	isClipped: getTruthyValue(layer.clipping)
-					,	isPassThrough: regLayerBlendModePass.test(blendMode)
-					,	blendMode: blendMode
-					,	blendModeOriginal: mode
-					};
-
-					parentGroup = await getNextParentAfterAddingLayerToTree(
-						layerWIP
-					,	layer
-					,	n
-					,	parentGroup
-					,	isLayerFolder
-					);
-				}
-			}
-
-			return !isStopRequestedAnywhere(project);
-		}
-	);
-}
-
 //* Page-specific functions: internal, rendering *-----------------------------
 
 function isOptionRelevant(project, values, sectionName, listName, optionName) {
@@ -5252,7 +5160,7 @@ function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
 			if (TESTING_RENDER) {
 				console.log(['blendMode =', blendMode, 'opacity =', opacity, mask ? 'callback with mask' : 'callback']);
 
-			var	logLabelWrap = blendMode + ': ' + project.rendering.nestedLayers.map((v) => v.name).join(' / ');
+			var	logLabelWrap = blendMode + ': ' + project.rendering.nestedLayers.map((layer) => layer.name).join(' / ');
 				console.time(logLabelWrap);
 				console.group(logLabelWrap);
 
@@ -5415,54 +5323,54 @@ function padCanvas(ctx, padding) {
 	var	referencePixels = ref.data
 	,	resultPixels = res.data
 	,	resultValue, distMin
-	,	startValue = (t_min ? 255 : 0)
+	,	startValue = (isResultMinFromBoxAround ? 255 : 0)
 	,	radius = Math.abs(radius)
-	,	radiusPixels = Math.ceil(radius)
+	,	pixelsAround = Math.ceil(radius)
 		;
 
 		for (let y = h; y--;) next_result_pixel:
 		for (let x = w; x--;) {
-		var	pos = getAlphaDataIndex(x,y,w);
+		var	index = getAlphaDataIndex(x,y,w);
 
-			if (t_dist) {
+			if (isResultCutByDistance) {
 				distMin = +Infinity;
 			} else {
 				resultValue = startValue;
 			}
 
 			look_around:
-			for (let ydy, dy = -radiusPixels; dy <= radiusPixels; dy++) if ((ydy = y + dy) >= 0 && ydy < h)
-			for (let xdx, dx = -radiusPixels; dx <= radiusPixels; dx++) if ((xdx = x + dx) >= 0 && xdx < w) {
-			var	alpha = referencePixels[getAlphaDataIndex(xdx, ydy, w)];
+			for (let referenceY, dy = -pixelsAround; dy <= pixelsAround; dy++) if ((referenceY = y + dy) >= 0 && referenceY < h)
+			for (let referenceX, dx = -pixelsAround; dx <= pixelsAround; dx++) if ((referenceX = x + dx) >= 0 && referenceX < w) {
+			var	referenceAlpha = referencePixels[getAlphaDataIndex(referenceX, referenceY, w)];
 
-				if (t_min) {
-					if (resultValue > alpha) resultValue = alpha;
+				if (isResultMinFromBoxAround) {
+					if (resultValue > referenceAlpha) resultValue = referenceAlpha;
 					if (resultValue == 0) break look_around;
 				} else
-				if (t_max) {
-					if (resultValue < alpha) resultValue = alpha;
+				if (isResultMaxFromBoxAround) {
+					if (resultValue < referenceAlpha) resultValue = referenceAlpha;
 					if (resultValue == 255) break look_around;
 				} else
-				if (alpha > threshold) {
-				var	d = getDistance(dx, dy) + 1 - alpha/255;
-					if (d > radius) {
-						if (distMin > d) distMin = d;
+				if (referenceAlpha > threshold) {
+				var	referenceDistance = getDistance(dx, dy) + 1 - referenceAlpha/255;
+					if (referenceDistance > radius) {
+						if (distMin > referenceDistance) distMin = referenceDistance;
 					} else {
-						resultPixels[pos] = 255;
+						resultPixels[index] = 255;
 						continue next_result_pixel;
 					}
 				}
 			}
 
-			if (t_dist) {
+			if (isResultCutByDistance) {
 			var	distFloor = Math.floor(distMin);
-				resultPixels[pos] = (
+				resultPixels[index] = (
 					distFloor > radius
 					? 0
 					: (255 * (1 + distFloor - distMin))
 				);
 			} else {
-				resultPixels[pos] = resultValue;
+				resultPixels[index] = resultValue;
 			}
 		}
 
@@ -5540,13 +5448,13 @@ var	param = padding.radius;
 	if (param) {
 	var	radiusInside = param.in
 	,	radiusOutside = param.out
-	,	t_param = padding.threshold
-	,	t_min = (t_param === 'min')
-	,	t_max = (t_param === 'max')
-	,	t_dist = !(t_min || t_max)
+	,	thresholdParam = padding.threshold
+	,	isResultMinFromBoxAround = (thresholdParam === 'min')
+	,	isResultMaxFromBoxAround = (thresholdParam === 'max')
+	,	isResultCutByDistance = !(isResultMinFromBoxAround || isResultMaxFromBoxAround)
 	,	threshold = (
-			t_dist
-			? (orz(t_param) || DEFAULT_ALPHA_MASK_THRESHOLD)
+			isResultCutByDistance
+			? (orz(thresholdParam) || DEFAULT_ALPHA_MASK_THRESHOLD)
 			: 0
 		)
 	,	w = ctx.canvas.width
@@ -7727,10 +7635,7 @@ var	configVarDefaults = {}
 
 //* load redefined config:
 
-	await loadLibPromise(
-		configFilePath,
-		libRootDir + 'composition.asm.js',
-	);
+	await loadLibPromise(configFilePath);
 
 //* restore invalid config values to default:
 
@@ -7765,6 +7670,8 @@ var	configVarDefaults = {}
 	}
 
 //* load libraries not specific to file formats:
+
+	await loadLibPromise(libRootDir + 'composition.asm.js');
 
 	if (CompositionModule = AsmCompositionModule) {
 		CompositionFuncList = Object.keys(CompositionModule(window, null, new ArrayBuffer(nextValidHeapSize(0))));
