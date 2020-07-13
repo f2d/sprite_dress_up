@@ -3736,9 +3736,11 @@ async function getProjectViewMenu(project) {
 						);
 					} else
 					if (sectionName === 'zoom') {
+					var	zoomPercentage = orz(optionName);
+
 						if (
-							orz(optionName) == 100
-						||	orz(optionName) <= 0
+							zoomPercentage == 100
+						||	zoomPercentage <= 0
 						) {
 							if (addedDefaultZoom) {
 								continue;
@@ -3912,19 +3914,30 @@ var	canvasSizeText = (
 	)
 ,	colorModeText  = arrayFilteredJoin([project.colorMode, bitDepthText], ' ')
 ,	resolutionText = arrayFilteredJoin([canvasSizeText, colorModeText], ', ')
-,	textParts = [resolutionText]
-,	imagesCount = project.loading.imagesCount
-,	layersCount = project.layersCount
-,	sourceFile  = project.loading.data.file || {}
+	;
+
+var	foldersCount = project.foldersCount
+,	layersCount  = project.layersCount
+,	imagesCount  = project.loading.imagesCount
+,	layersTextParts = []
+	;
+
+	if (foldersCount) layersTextParts.push(foldersCount + ' ' + la.project.folders);
+	if (layersCount)  layersTextParts.push(layersCount  + ' ' + la.project.layers);
+	if (imagesCount)  layersTextParts.push(imagesCount  + ' ' + la.project.images);
+
+var	layersText = arrayFilteredJoin(layersTextParts, ', ')
+,	summaryTextParts = [resolutionText, layersText]
+	;
+
+var	sourceFile = project.loading.data.file || {}
 ,	sourceFileTime = sourceFile.lastModified || sourceFile.lastModifiedDate
 	;
 
-	if (layersCount) textParts.push(layersCount + ' ' + la.project.layers);
-	if (imagesCount) textParts.push(imagesCount + ' ' + la.project.images);
-	if (sourceFile.size) textParts.push(sourceFile.size + ' ' + la.project.bytes);
-	if (sourceFileTime)  textParts.push(la.project.date + ' ' + getFormattedTime(sourceFileTime));
+	if (sourceFile.size) summaryTextParts.push(sourceFile.size + ' ' + la.project.bytes);
+	if (sourceFileTime)  summaryTextParts.push(la.project.date + ' ' + getFormattedTime(sourceFileTime));
 
-	summaryBody.innerHTML = arrayFilteredJoin(textParts, '<br>');
+	summaryBody.innerHTML = arrayFilteredJoin(summaryTextParts, '<br>');
 
 var	infoButton = addButton(summaryFooter, la.hint.console_log);
 	infoButton.name = 'console_log';
@@ -4131,7 +4144,8 @@ var	params = getOrInitChild(layer, 'params');
 											.split(':', 2)
 											.map(
 												(boundary) => orzFloat(
-													boundary.replace(regTrimNaNorSign, '')
+													boundary
+													.replace(regTrimNaNorSign, '')
 												)
 											)
 										);
@@ -4532,10 +4546,8 @@ async function loadORA(project) {
 	,	async function treeConstructorFunc(project, sourceData) {
 			if (!sourceData.layers) return;
 
-			project.layersCount = (
-				orz(sourceData.layersCount)
-			+	orz(sourceData.stacksCount)
-			);
+			project.layersCount = orz(sourceData.layersCount);
+			project.foldersCount = orz(sourceData.stacksCount);
 
 			if (!project.layersCount) return;
 
@@ -4557,13 +4569,13 @@ async function loadORA(project) {
 				)
 			,	isClipped = (
 					blendMode === BLEND_MODE_CLIP
-				||	getTruthyValue(layer.clipping)
+				||	getTruthyValue(layer.clipping)		//* <- non-standard, for testing
 				)
 			,	isVisible = (
 					typeof layer.visibility === 'undefined'
 				||	layer.visibility === 'visible'
 				||	layer.visibility !== 'hidden'
-				// ||	getTruthyValue(layer.visibility)	//* <- non-standard, for testing
+				||	getTruthyValue(layer.visibility)	//* <- non-standard, for testing
 				)
 			,	layerWIP = {
 					top:    orz(layer.top    || layer.y)
@@ -4629,6 +4641,7 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 			if (!sourceData.layers) return;
 
 			project.layersCount = sourceData.layers.length;
+			project.foldersCount = 0;
 
 			if (!project.layersCount) return;
 
@@ -4716,6 +4729,8 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 				);
 
 				if (isLayerFolder) {
+					++project.foldersCount;
+
 					await addLayerGroupCommonWrapper(project, parentGroup, layers, addLayerToTree);
 				}
 			}
@@ -6381,19 +6396,21 @@ function getFileNameByValues(project, values, flags) {
 				}
 
 				if (flags.skipDefaultPercent) {
+					if (sectionName == 'zoom') {
+					var	zoomPercentage = orz(optionName);
+
+						if (
+							zoomPercentage == 100
+						||	zoomPercentage <= 0
+						) {
+							return;
+						}
+					}
+
 					if (
-						(
-							sectionName == 'zoom'
-						&&	(
-								orz(optionName) == 100
-							||	orz(optionName) <= 0
-							)
-						)
-					||	(
-							ZERO_PERCENT_EQUALS_EMPTY
-						&&	NAME_PARTS_PERCENTAGES.indexOf(sectionName) >= 0
-						&&	orz(optionName) == 0
-						)
+						ZERO_PERCENT_EQUALS_EMPTY
+					&&	NAME_PARTS_PERCENTAGES.indexOf(sectionName) >= 0
+					&&	orz(optionName) == 0
 					) {
 						return;
 					}
