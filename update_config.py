@@ -612,8 +612,8 @@ if arg_resize_filter:  resize_filter  = arg_resize_filter
 if arg_preview_size:   preview_size   = arg_preview_size
 if arg_thumbnail_size: thumbnail_size = arg_thumbnail_size
 
-preview_size_arg   = preview_size   + 'x' + preview_size
-thumbnail_size_arg = thumbnail_size + 'x' + thumbnail_size
+preview_size_arg   = '{0}x{0}'.format(preview_size)
+thumbnail_size_arg = '{0}x{0}'.format(thumbnail_size)
 
 
 
@@ -717,7 +717,11 @@ try:
 except TypeError:
 	json_text = json.dumps(new_files, sort_keys=True, indent=4, default=repr)	# <- use spaces, fallback for python 2
 
-json_lines = json_text.split('\n')
+json_lines = (
+	json_text
+	.replace(' '*4, '\t')	# <- use tabs anyway
+	.split('\n')
+)
 
 
 
@@ -762,39 +766,34 @@ if old_content:
 
 	for replacement in replacements:
 		if not replacement['encounters']:
-			content_after += '''
-var ''' + replacement['var_name'] + ''' = ''' + replacement['new_value'] + ''';
-'''
+			content_after += '\n\nvar %s = %s;' % (replacement['var_name'], replacement['new_value'])
 
 else:
-	content_before = '''
-//* Notes to avoid generation trouble:
-//*	Keep paths as simple one-line strings.
-//*	Keep JSON as strictly simple and valid.
+	content_before = '\n\n'.join([
+		'\n'.join([
+			''
+		,	'//* Notes to avoid generation trouble:'
+		,	'//*	Keep paths as simple one-line strings.'
+		,	'//*	Keep JSON as strictly simple and valid.'
+		])
+	,	'// var TESTING = true;'
+	,	'// var EXAMPLE_NOTICE = true;'
+	,	'var %s = %s;' % (preview_size_var_name, preview_size)
+	,	'var %s = %s;' % (thumbnail_size_var_name, thumbnail_size)
+	,	'var %s = %s;' % (src_dir_var_name, get_quoted_value_text(src_root_path))
+	,	'var %s =' % (filelist_var_name)
+	])
 
-// var TESTING = true;
-
-// var EXAMPLE_NOTICE = true;
-
-var ''' + preview_size_var_name + ''' = ''' + preview_size + ''';
-
-var ''' + thumbnail_size_var_name + ''' = ''' + thumbnail_size + ''';
-
-var ''' + src_dir_var_name + ''' = ''' + get_quoted_value_text(src_root_path) + ''';
-
-var ''' + filelist_var_name + ''' = '''
-
-	content_after = ''';
-'''
+	content_after = ';'
 
 
 
 new_content = '\n'.join([
-	content_before + json_lines[0]
+	content_before.rstrip() + ' ' + json_lines[0]
 ,	mark_before
 ,	'\n'.join(json_lines[1:-1])
 ,	mark_after
-,	json_lines[-1] + content_after
+,	json_lines[-1] + content_after.strip() + '\n'
 ])
 
 
