@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 # -*- coding: UTF-8 -*-
-
 # Python 2 or 3 should work.
 
 import base64, datetime, json, math, os, re, subprocess, sys, time, zipfile
@@ -177,15 +176,15 @@ converter_exe_path_dir = os.path.dirname(converter_exe_path)
 def is_type_str(v): return isinstance(v, s_type) or isinstance(v, u_type)
 def get_str_from_bytes(v): return v if is_type_str(v) else v.decode()
 
-def is_any_char_of_a_in_b(a, b):
-	for c in a:
-		if b.find(c) >= 0:
+def is_any_char_of_a_in_b(chars, text):
+	for char in chars:
+		if text.find(char) >= 0:
 			return True
 
 	return False
 
 def quoted_if_must(text):
-	return ('"' + text + '"') if is_any_char_of_a_in_b(must_quote, text) else text
+	return ('"%s"' % text) if is_any_char_of_a_in_b(must_quote, text) else text
 
 def quoted_list(a):
 	return map(quoted_if_must, a)
@@ -237,22 +236,29 @@ def read_file(path, mode='r'):
 	if not os.path.isfile(path):
 		return ''
 
-	f = open(path, mode)
-	r = f.read()
-	f.close()
+	file = open(path, mode)
+	result = file.read()
+	file.close()
 
-	return r
+	return result
 
 def write_file(path, content, mode='a+b'):
-	r = None
-	f = open(path, mode)
-	try:
-		r = f.write(content)
-	except Exception as e:
-		r = f.write(e)
-	f.close()
+	result = None
+	file = open(path, mode)
 
-	return r
+	try:
+		result = file.write(content)
+
+	except Exception as exception:
+		print('')
+		print('Error writing file:')
+		print(exception)
+
+		# result = file.write(exception)	# <- why? I don't remember
+
+	file.close()
+
+	return result
 
 def rewrite_file(path, content, mode='w'):
 	return write_file(path, content, mode)
@@ -367,15 +373,15 @@ def get_cmd_result(cmd_args):
 		# Note: IM does not work in Linux terminal with shell=True
 		output = subprocess.check_output(cmd_args)
 
-	except subprocess.CalledProcessError as e:
+	except subprocess.CalledProcessError as exception:
 		print('')
-		print('Error code {}, command output:'.format(e.returncode))
-		print(get_str_from_bytes(e.output))
+		print('Error code {}, command output:'.format(exception.returncode))
+		print(get_str_from_bytes(exception.output))
 
-	except FileNotFoundError as e:
+	except FileNotFoundError as exception:
 		print('')
 		print('Error:')
-		print(e)
+		print(exception)
 
 	else:
 		output = get_str_from_bytes(output)
