@@ -160,7 +160,7 @@ format_epoch = '%Epoch'	# <- not from python library, but custom str-replaced
 # format_ymd = '%Y-%m-%d'
 # format_hms = '%H-%M-%S'
 format_print = '%Y-%m-%d %H:%M:%S'
-must_quote = ' ,;>='
+must_quote_chars = ' ,;>='
 
 s_type = type('')
 u_type = type(u'')
@@ -183,11 +183,27 @@ def is_any_char_of_a_in_b(chars, text):
 
 	return False
 
-def quoted_if_must(text):
-	return ('"%s"' % text) if is_any_char_of_a_in_b(must_quote, text) else text
+def is_quoted(text):
+	for char in '\'"':
+		if text[0] == char and text[-1 : ][0] == char:
+			return True
 
-def quoted_list(a):
-	return map(quoted_if_must, a)
+	return False
+
+def quoted_if_must(text):
+	text = '%s' % text
+
+	return (
+		('"%s"' % text)
+		if not is_quoted(text) and is_any_char_of_a_in_b(must_quote_chars, text)
+		else text
+	)
+
+def quoted_list(args):
+	return list(map(quoted_if_must, args))
+
+def cmd_args_to_text(args):
+	return ' '.join(quoted_list(args))
 
 def timestamp(str_format=format_print):
 	return time.strftime(format_print)
@@ -366,7 +382,7 @@ def get_image_path_for_cmd(src_file_path, check_thumbnail=False):
 def get_cmd_result(cmd_args):
 	print('')
 	print('Running command:')
-	print(' '.join(quoted_list(cmd_args)))
+	print(cmd_args_to_text(cmd_args))
 
 	# https://stackoverflow.com/a/16198668
 	try:
@@ -530,7 +546,7 @@ old_files = None
 old_content = read_file(dest_file_path)
 
 if old_content:
-	print(str(len(old_content)) + ' bytes')
+	print('%d bytes' % len(old_content))
 
 	pat_array_value = re.compile(
 		r'''^
@@ -602,7 +618,7 @@ if old_content:
 				else:
 					continue
 
-				print(var_name, '=', var_value)
+				print('{0} = {1}'.format(var_name, var_value))
 		print('OK')
 else:
 	print('Empty or none.')
