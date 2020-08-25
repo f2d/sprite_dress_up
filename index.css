@@ -274,17 +274,21 @@ img.larger {
 .project-header div {
 	margin: 0.5em;
 }
+.project-header div {
+	display: inline-block;
+}
+.project-header div,
+.project-header div > button {
+	margin: 0;
+}
+.project-header div > button + button {
+	margin-top: 0.5em;
+}
+.project-header div + div {
+	margin-left: 0.5em;
+}
 .project-header button {
 	margin: 0.5em 0;
-}
-.project-header button span::before {
-	content: " (";
-}
-.project-header button span::after {
-	content: ")";
-}
-.project-header button span:empty::after {
-	content: "?)";
 }
 .project-header button,
 .project-options select {
@@ -368,7 +372,7 @@ img.larger {
 	max-width: 300px;
 }
 .project-options {
-	width: 0;	/* <- take the least possible width without line-wrap */
+	/* width: 0;	/* <- take the least possible width without line-wrap */
 }
 .preview {
 	padding-right: 6px;
@@ -385,4 +389,13 @@ p.warning {
 }
 .warning::before {
 	content: "⚠";
+}
+.count-label::before {
+	content: "(";
+}
+.count-label::after {
+	content: ")";
+}
+.count-label:empty::after {
+	content: "?)";
 }

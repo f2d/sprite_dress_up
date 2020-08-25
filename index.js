@@ -38,7 +38,11 @@
 var	exampleRootDir = ''
 ,	exampleProjectFiles = []
 
+,	DEFAULT_ALPHA_MASK_PADDING = 1
+,	DEFAULT_ALPHA_MASK_THRESHOLD = 16
 ,	DEFAULT_AUTOCROP = 'top-left/transparent'
+,	DEFAULT_COLLAGE_INSIDE_PADDING = 2
+,	DEFAULT_COLLAGE_OUTSIDE_PADDING = 1
 ,	DEFAULT_COLLAGE = [
 		'top-left/transparent'
 	,	'black'
@@ -54,17 +58,17 @@ var	exampleRootDir = ''
 	,	'salmon'
 	,	'lightgreen'
 	,	'lightblue'
-	,	'border-1px/padding-2px/0px'
+	,	'border-' + DEFAULT_COLLAGE_OUTSIDE_PADDING + 'px'
+	,	'padding-' + DEFAULT_COLLAGE_INSIDE_PADDING + 'px'
+	,	'0px'
 	].join('/')
 
-,	DEFAULT_JOINED_IMAGE_BORDER = 1
-,	DEFAULT_JOINED_IMAGE_PADDING = 2
-,	DEFAULT_ALPHA_MASK_THRESHOLD = 16
 ,	PREVIEW_SIZE = 64
 ,	THUMBNAIL_SIZE = 16
 ,	THUMBNAIL_ZOOM_STEP_MAX_FACTOR = 4	//* <- one-step scaling result is too blocky, stepping by factor of 2 is too blurry, 4 looks okay
 ,	ZOOM_STEP_MAX_FACTOR = 2
 
+,	ADD_COUNT_ON_BUTTON_LABEL	= false
 ,	ADD_PAUSE_BEFORE_EACH_FOLDER	= true	//* <- when loading file and rendering
 ,	ADD_PAUSE_BEFORE_EACH_LAYER	= false
 ,	DOWNSCALE_BY_MAX_FACTOR_FIRST	= true
@@ -98,6 +102,7 @@ const	configFilePath = 'config.js'			//* <- declarations-only file to redefine a
 	)
 ,	regLayerNameParamSplit	= /[\s,_]+/g
 ,	regLayerNameParamTrim	= getTrimReg('\\s,_')
+,	regTrimParamRadius	= /^(px|at)+|(px|at)+$/ig
 ,	regPrefixNumPx		= /^(?:(.*?)\W+)?(\d+)px$/i
 ,	regColorCode		= /^(?:rgba?\W*(\w.+)|(?:hex\W*|#)(\w+(\W+\w+)*))$/i
 
@@ -201,13 +206,42 @@ examples of 'paddings', 'radius':
 	"name [pad 5px-max]"		for each pixel use max value found inside 5px radius.
 	"name [pad 5px-16]"		for each pixel use 100% alpha if any value inside 5px radius is above threshold 16 of 255.
 	"name [pad (1:2x3:4)px]"	[1 to 2] width x [3 to 4] height px radius, rectangle area around each pixel.
-	"name [pad (5...1:0...1)px]"	generates same sequence as "5:0/4:0/3:0(...)3:1/2:1/1:1".
 	"name [pad (1x/2x/3x)px]"	(1 or 2 or 3) px radius, square area.
 	"name [pad (-4:5)px-max]"	[-4 to 5] px radius, rounded area, use max value around.
 	"name [pad 1/2/3px-in-min/out-max/enclosed-16]"	cross-variation combo.
 
-	Note: when rendering in outline or wireframe mode, all irrelevant layers are skipped (coloring, clipping, etc).
-	Note: use 0px to get mask or image without padding.
+	Note: (TODO) when rendering in outline or wireframe mode, all irrelevant layers are skipped (coloring, clipping, etc).
+	Note: (TODO) single dot is part of a number, rounded for now but may be properly supported later.
+	Note: use 0px to get mask or image without padding. Entries without numbers are ignored.
+
+layer name sample:
+	"outline [optional outline 60/100/90/60/30% :xpx 5...1px/(-1...1):(5...1)px/(5...1x)px/(-1...1):(5...1)x(-1...1):(5...1)px/(1...2:)px/(1...2x:)px/(1...2:3x4...5)px/at=16-0/max/min]"
+
+1) split param into parts by "/".
+2) remove any optional brackets, added by human for human readability, without validating them.
+3) parse methods, if known keywords:
+	"max" (get maximum value around each pixel, starting tith 0, then cut the inner mask from the outer)
+	"min" (get minimum value around each pixel, starting tith 255, then add the inner mask to the outer)
+	default: max
+
+4) get alpha thresholds, if part starts with "at", split in nested order by non-digits/dots, then "..." (2 or more dots):
+	"at=0-16-199...200" is unpacked into variants below:
+	"0" (skip pixels around with exactly 0 in alpha channel)
+	"16" (skip pixels around with 16/255 or less in alpha channel)
+	"199...200" (add all variants from 199/255 up to 200/255)
+	default: 16
+
+5) get boundary sets, if part ends with "px", split in nested order by ":", "x", "..." (2 or more dots):
+	":xpx" (skipped, no numbers)
+	"5...1px" (add all variants of outer radius from +5 down to +1)
+	"(5...1x)px" (add all variants of equal outer box width and height from +5 down to +1)
+	"(-1...1):(5...1)px" (add all variants of radius from -1 up to +1 inside, from +5 down to +1 outside)
+	"(-1...1)x(-1...1):(5...1)x(5...1)px" (add all variants of width and height from -1 up to +1 inside, from +5 down to +1 outside)
+	"(1...2:)px" (add all variants of outer radius from +1 to +2, inner radius equals outer in each variant)
+	"(1...2:3x4...5)px" (add all variants of box inner width from +1 to +2, with outer width 3, and equal inner and outer height from +4 to +5)
+	default: outer radius = 1px, inner radius = none.
+
+6) add option variants for each method x each threshold x each boundary set (width-in/out + height-in/out, or radius-in/out) in one param without spaces.
 
 examples of 'wireframe':
 
@@ -333,6 +367,9 @@ const	regLayerBlendModePass	= /^pass[-through]*$/i
 ,	regLayerBlendModeAlpha	= /^(source|destination)-(\w+)$/i
 ,	regLayerTypeSingleTrim	= /s+$/i
 ,	regHasDigit		= /\d/
+,	regMultiDot		= /\.\.+/g
+,	regNumDots		= /[\d.]+/g
+,	regNaNorDot		= /[^\d.]+/g
 ,	regNaN			= /\D+/g
 ,	regNonWord		= /\W+/g
 ,	regNonHex		= /[^0-9a-f]+/gi
@@ -374,11 +411,18 @@ const	LS = window.localStorage || localStorage
 ,	RUNNING_FROM_DISK = isURLFromDisk('/')
 
 ,	SPLIT_SEC = 60
+,	MIN_CHANNEL_VALUE = 0
+,	MAX_CHANNEL_VALUE = 255
 ,	MAX_OPACITY = 255
 ,	MAX_BATCH_PRECOUNT = 1000
 
 ,	FLAG_FLIP_HORIZONTAL = 1
 ,	FLAG_FLIP_VERTICAL = 2
+
+,	FLAG_EVENT_STOP_IMMEDIATE = {stopImmediatePropagation: true}
+,	FLAG_EVENT_NO_DEFAULT = {preventDefault: true}
+
+,	DUMMY_ARRAY = [null]	//* <- for cross-product combinations
 
 ,	BLOB_PREFIX = 'blob:'
 ,	DATA_PREFIX = 'data:'
@@ -390,6 +434,7 @@ const	LS = window.localStorage || localStorage
 ,	PARAM_KEYWORDS_AUTOCROP = ['transparent', 'topleft', 'topright', 'bottomleft', 'bottomright']
 ,	PARAM_KEYWORDS_COLLAGE_ALIGN = ['topleft', 'topright', 'bottomleft', 'bottomright', 'top', 'bottom', 'left', 'right']
 ,	PARAM_KEYWORDS_COLLAGE_PAD = ['border', 'padding']
+,	PARAM_KEYWORDS_PADDING_METHODS = ['max', 'min']
 ,	PARAM_KEYWORDS_SET_VALUE_TO_NAME = ['preselect']
 ,	PARAM_KEYWORDS_SET_VALUE_TO_TRUE = ['last', 'no_prefix']
 ,	PARAM_KEYWORDS_SHORTCUT_FOR_ALL = ['all', 'etc']
@@ -403,7 +448,7 @@ const	LS = window.localStorage || localStorage
 ,	NAME_PARTS_SEPARATOR = ''
 
 ,	PARAM_OPTIONS_ADD_BY_DEFAULT = {
-		'collage': ['optional', 'collage']
+		'collage':  ['optional', 'collage',  'no-batch', 'last']
 	,	'autocrop': ['optional', 'autocrop', 'no-batch', 'last']
 	}
 
@@ -457,6 +502,8 @@ const	LS = window.localStorage || localStorage
 ,	BLEND_MODE_NORMAL = 'source-over'
 ,	BLEND_MODE_CLIP = 'source-atop'
 ,	BLEND_MODE_MASK = 'destination-in'
+,	BLEND_MODE_CUT = 'destination-out'
+,	BLEND_MODE_INVERT = 'source-out'
 ,	BLEND_MODE_ADD = 'lighter'
 ,	BLEND_MODE_PASS = 'pass'
 ,	BLEND_MODE_TRANSIT = 'transition'
@@ -632,9 +679,17 @@ var	ora, zip, PSD	//* <- external variable names, do not change
 
 //* Common utility functions *-------------------------------------------------
 
-//* create type-checking functions, e.g. "isString()" or "isImageElement()":
+function isNonNullObject(value) {
+	return (
+		value !== null
+	&&	typeof value === 'object'
+	);
+}
+
+//* Create type-checking functions, e.g. "isString()" or "isImageElement()":
 //* source: https://stackoverflow.com/a/17772086
 [
+	'Array',
 	'Date',
 	'Function',
 	'Number',
@@ -652,17 +707,136 @@ var	ora, zip, PSD	//* <- external variable names, do not change
 	}
 );
 
-function arrayFilterNonEmptyValues(value) {return (isString(value) ? (value.length > 0) : !!value);}
+//* Get array of all possible combinations of values from multiple arrays:
+//* source: https://cwestblog.com/2011/05/02/cartesian-product-of-multiple-arrays/
+//* usage:
+//*	var combos = getCrossProductArray( array, array, ... );
+//*	var combo = combos[123];
+//*	var count = combos.length;
+function getCrossProductArray() {
+	return Array.prototype.reduce.call(
+		arguments
+	,	(a, b) => {
+		var	result = [];
+
+			a.forEach(
+				(a) => b.forEach(
+					(b) => result.push(a.concat([b]))
+				)
+			);
+
+			return result;
+		}
+	,	[[]]
+	);
+}
+
+//* Shorter version, source: https://stackoverflow.com/a/43053803
+const getCrossProductSub = (a, b) => [].concat(...a.map(d => b.map(e => [].concat(d, e))));
+const getCrossProductArr = (a, b, ...c) => (b ? getCrossProductArr(getCrossProductSub(a, b), ...c) : a);
+
+//* Construct lazy iterator for all possible combinations without saving them all beforehand:
+//* source: http://phrogz.net/lazy-cartesian-product
+//* usage:
+//*	var combos = new CrossProductIterator( array, array, ... );
+//*	var combo = combos.item(123);
+//*	var count = combos.length;
+function CrossProductIterator() {
+	for (
+	var	dimensions = [], totalCount = 1, subCount, argIndex = arguments.length;
+		argIndex--;
+		totalCount *= subCount
+	) {
+		dimensions[argIndex] = [totalCount, subCount = arguments[argIndex].length];
+	}
+
+	this.length = totalCount;
+
+	this.item = (comboIndex) => {
+		for (
+		var	combo = [], argIndex = arguments.length;
+			argIndex--;
+		) {
+			combo[argIndex] = arguments[argIndex][(comboIndex / dimensions[argIndex][0] << 0) % dimensions[argIndex][1]];
+		}
+
+		return combo;
+	};
+}
+
+//* Iterate through all possible combinations without saving them all, combination array becomes arguments for callback:
+//* source: http://phrogz.net/lazy-cartesian-product
+//* usage:
+//*	forEachSetInCrossProduct( [array, array, ...], console.log );
+function forEachSetInCrossProduct(arrays, callback, thisContext) {
+
+	function dive(arrayIndex) {
+	var	variants = arrays[arrayIndex]
+	,	count = counts[arrayIndex]
+		;
+
+		if (arrayIndex == lastArrayIndex) {
+			for (let i = 0; i < count; ++i) {
+				variantSet[arrayIndex] = variants[i];
+				callback.apply(thisContext, variantSet);
+			}
+		} else {
+			for (let i = 0; i < count; ++i) {
+				variantSet[arrayIndex] = variants[i];
+				dive(arrayIndex + 1);
+			}
+		}
+
+		variantSet.pop();
+	}
+
+	if (!thisContext) {
+		thisContext = this;
+	}
+
+var	lastArrayIndex = arrays.length - 1
+,	variantSet = []
+,	counts = []
+	;
+
+	for (let i = arrays.length; i--; ) {
+		counts[i] = arrays[i].length;
+	}
+
+	dive(0);
+}
+
+function asArray(value) {
+	if (isArray(value)) {
+		return value;
+	}
+
+	return [value];
+}
+
+function arrayFilterNonEmptyValues(value) {
+	return (
+		isString(value)
+	||	(
+			isNonNullObject(value)
+		&&	typeof value.length !== 'undefined'
+		)
+		? (value.length > 0)
+		: !!value
+	);
+}
+
 function arrayFilterUniqueValues(value, index, array) {return (array.indexOf(value) === index);}
 function arrayFilteredJoin(array, joinText) {return array.filter(arrayFilterNonEmptyValues).join(joinText || '');}
 
 function orz(value) {return parseInt(value||0)||0;}
 function orzClamp(value, min, max) {return Math.max(min, Math.min(max, orz(value)));}
 function orzFloat(value) {return parseFloat(value||.0)||.0;}
-function orzTrim(value) {return orz(value.replace(regTrimNaN, ''));}
+function orzTrim(value) {return orz(String(value).replace(regTrimNaN, ''));}
 
 function getDistance(x,y) {return Math.sqrt(x*x + y*y);}
 function getAlphaDataIndex(x,y, width) {return (((y*width + x) << 2) | 3);}
+// function getAlphaDataIndex(x,y, width) {return (((y*width + x) * 4) + 3);}
 function repeatText(text, numberOfTimes) {return (new Array(numberOfTimes + 1)).join(text);}
 
 function isNotEmptyString(value) {
@@ -670,6 +844,115 @@ function isNotEmptyString(value) {
 		isString(value)
 	&&	value.length > 0
 	);
+}
+
+function hasPrefix(value, prefix) {
+	return (
+		prefix
+	&&	prefix.length > 0
+	&&	value
+	&&	value.length >= prefix.length
+	&&	value.slice
+	&&	value.slice(0, prefix.length) === prefix
+	);
+}
+
+function hasPostfix(value, postfix) {
+	return (
+		postfix
+	&&	postfix.length > 0
+	&&	value
+	&&	value.length >= postfix.length
+	&&	value.slice
+	&&	value.slice(-postfix.length) === postfix
+	);
+}
+
+function hasFraming(value, prefix, postfix) {
+	return (
+		hasPrefix(value, prefix)
+	&&	hasPostfix(value, postfix || prefix)
+	);
+}
+
+function addToListIfNotYet(values, value) {
+	if (values.indexOf(value) < 0) {
+		values.push(value);
+
+		return 1;
+	}
+
+	return 0;
+}
+
+function addRangeToList(values, rangeText) {
+var	range = (
+		String(rangeText)
+		.split(regMultiDot)
+		.map((textPart) => textPart.replace(regTrimNaNorSign, ''))
+		.filter(arrayFilterNonEmptyValues)
+		.map(orzFloat)
+	);
+
+	if (range.length > 0) {
+	var	min = Math.min(...range)
+	,	max = Math.max(...range)
+	,	isCountDown = range.indexOf(min) > range.indexOf(max)
+		;
+
+		if (
+			!values
+		||	!isFunction(values.push)
+		) {
+			values = [];
+		}
+
+		if (isCountDown) {
+			for (let value = max; value >= min; value--) {
+				addToListIfNotYet(values, value);
+			}
+		} else {
+			for (let value = min; value <= max; value++) {
+				addToListIfNotYet(values, value);
+			}
+		}
+
+//* don't forget overstepped floats:
+
+		addToListIfNotYet(values, min);
+		addToListIfNotYet(values, max);
+	}
+
+	return values;
+}
+
+function getThisOrAnyNonEmptyItem(value, index, values) {
+var	foundValue;
+
+	if (value) {
+		return value;
+	}
+
+	if (
+		(isNumber(index) || isString(index))
+	&&	(foundValue = value[index])
+	) {
+		return foundValue;
+	}
+
+	if (
+		isFunction(values.find)
+	&&	(foundValue = values.find((value) => !!value))
+	) {
+		return foundValue;
+	}
+
+	if (
+		isFunction(index.find)
+	&&	(foundValue = index.find((value) => !!value))
+	) {
+		return foundValue;
+	}
 }
 
 function getJoinedOrEmptyString(text, joinText) {
@@ -702,7 +985,7 @@ function pause(msec) {
 	);
 }
 
-function eventStop(evt, stopImmediatePropagation, preventDefault) {
+function eventStop(evt, flags) {
 	if (
 		(
 			evt
@@ -712,10 +995,16 @@ function eventStop(evt, stopImmediatePropagation, preventDefault) {
 		? evt
 		: (evt = window.event)
 	) {
+		if (!isNonNullObject(flags)) {
+			flags = {};
+		}
+
 		if (evt.cancelBubble !== null) evt.cancelBubble = true;
 		if (evt.stopPropagation) evt.stopPropagation();
-		if (stopImmediatePropagation && evt.stopImmediatePropagation) evt.stopImmediatePropagation();
-		if (preventDefault && evt.preventDefault) evt.preventDefault();
+
+		for (let key in flags) {
+			if (flags[key] && isFunction(evt[key])) evt[key]();
+		}
 	}
 
 	return evt;
@@ -761,7 +1050,7 @@ var	canvas = cre('canvas');
 function isColorDark(color) {
 	return (
 		(
-			Array.isArray(color)
+			isArray(color)
 			? color
 			: getRGBAFromColorCode(color)
 		)
@@ -809,7 +1098,7 @@ function getRGBAFromColorCode(textOrMatch) {
 
 //* check arguments:
 
-	if (Array.isArray(textOrMatch)) {
+	if (isArray(textOrMatch)) {
 		match = textOrMatch;
 	} else {
 	var	text = String(textOrMatch)
@@ -907,6 +1196,23 @@ function getPatchedObject(obj, jsonReplacerFunc) {
 	return JSON.parse(JSON.stringify(obj, jsonReplacerFunc || null));
 }
 
+//* source: https://stackoverflow.com/a/53593328
+function orderedJSONstringify(obj, space) {
+const	allKeys = [];
+
+	JSON.stringify(
+		obj
+	,	(key, value) => {
+			allKeys.push(key);
+			return value;
+		}
+	);
+
+	allKeys.sort();
+
+	return JSON.stringify(obj, allKeys, space);
+}
+
 function getOrInitChild() {
 
 	function getInitChild(args) {
@@ -933,7 +1239,7 @@ var	args = Array.from(arguments)
 ,	key = args.shift()
 	;
 
-	if (typeof obj !== 'object') {
+	if (!isNonNullObject(obj)) {
 		return;
 	}
 
@@ -954,7 +1260,7 @@ var	keys = Array.from(arguments)
 
 		if (
 			typeof key === 'undefined'
-		||	typeof obj !== 'object'
+		||	!isNonNullObject(obj)
 		) {
 			return null;
 		}
@@ -971,7 +1277,7 @@ var	keys = Array.from(arguments)
 	;
 
 	deeper:
-	while (typeof obj === 'object') {
+	while (isNonNullObject(obj)) {
 
 		for (let key of keys) if (key in obj) {
 			obj = obj[key];
@@ -987,8 +1293,7 @@ var	keys = Array.from(arguments)
 
 function getPropBySameNameChain(obj, key) {
 	while (
-		typeof obj === 'object'
-	&&	obj
+		isNonNullObject(obj)
 	&&	key in obj
 	) {
 		obj = obj[key];
@@ -1087,7 +1392,9 @@ var	element = document.createElement(tagName);
 }
 
 function del(element) {
-	if (!element) return;
+	if (!element) {
+		return null;
+	}
 
 	if (isFunction(element.map)) {
 		return element.map(del);
@@ -1142,9 +1449,16 @@ function dashedToCamelCase(text) {
 }
 
 function getStyleValue(element, prop) {
-var	obj;
-	if (obj = element.currentStyle) return obj[dashedToCamelCase(prop)];
-	if (obj = window.getComputedStyle) return obj(element).getPropertyValue(prop);
+var	helperObject;
+
+	if (helperObject = element.currentStyle) {
+		return helperObject[dashedToCamelCase(prop)];
+	}
+
+	if (helperObject = window.getComputedStyle) {
+		return helperObject(element).getPropertyValue(prop);
+	}
+
 	return null;
 }
 
@@ -1255,11 +1569,7 @@ function getTargetParentByClass(element, className) {
 
 function getTagAttrIfNotEmpty(name, values, delim) {
 	if (name) {
-		values = (
-			Array.isArray(values)
-			? values
-			: [values]
-		).filter(arrayFilterNonEmptyValues);
+		values = asArray(values).filter(arrayFilterNonEmptyValues);
 
 		if (values.length > 0) {
 			return (
@@ -1276,7 +1586,7 @@ function getTagAttrIfNotEmpty(name, values, delim) {
 }
 
 function getDropdownMenuHTML(headContent, listContent, headId, tagName) {
-	if (Array.isArray(arguments[0])) {
+	if (isArray(arguments[0])) {
 		[headContent, listContent, headId, tagName] = arguments[0];
 	}
 
@@ -1291,8 +1601,7 @@ var	tagName = tagName || 'div'
 	+	getTagAttrIfNotEmpty('id', headId || '')
 	+	' onmouseover="updateDropdownMenuPositions()">'
 	+	(
-			headContent[0] === '<'
-		&&	headContent.slice(-1) === '>'
+			hasFraming(headContent, '<', '>')
 			? headContent
 			: (
 				'<header class="button" onclick="toggleDropdownMenu(this)">'
@@ -1496,7 +1805,7 @@ var	flags = {}
 		if (isDate(arg)) var argDate = arg; else
 		if (isNumber(arg)) var argNum = arg; else
 		if (isString(arg)) var argText = arg; else
-		if (typeof arg === 'object') {
+		if (isNonNullObject(arg)) {
 			for (let key in arg) {
 				flags[key] = !!arg[key];
 			}
@@ -1611,9 +1920,9 @@ var	text = getLogTime();
 
 		if (textValue.indexOf('\n') >= 0) {
 			if (
-				(textValue[0] == '(' && ')' == textValue.slice(-1))
-			||	(textValue[0] == '{' && '}' == textValue.slice(-1))
-			||	(textValue[0] == '[' && ']' == textValue.slice(-1))
+				hasFraming(textValue, '(', ')')
+			||	hasFraming(textValue, '{', '}')
+			||	hasFraming(textValue, '[', ']')
 			) {
 				text += ':\n' + textValue;
 			} else {
@@ -1714,12 +2023,12 @@ function getImagePromiseFromCanvasToBlob(canvas, trackList, mimeType, quality) {
 						return;
 					}
 
-					addURLToTrackList(trackList);
+					trackList = addURLToTrackList(url, trackList);
 
 				var	img = cre('img');
 
-					img.onload = function(evt) {
-						// URL.revokeObjectURL(url);
+					img.onload = (evt) => {
+						// URL.revokeObjectURL(url);	//* <- let the outside code clean up after it's done
 
 						resolve(img);
 					};
@@ -1730,11 +2039,14 @@ function getImagePromiseFromCanvasToBlob(canvas, trackList, mimeType, quality) {
 							return;
 						}
 
-						if (TESTING) console.log(['img.onerror:', url, img, evt]); else
-						URL.revokeObjectURL(url);
+						if (TESTING) console.log(['img.onerror:', url, img, evt]);
+
+						if (!trackList) {
+							URL.revokeObjectURL(url);
+						}
 
 						getErrorFromEvent(evt, 'Canvas to blob: image loading failed.', reject);
-					}
+					};
 
 					img.src = url;
 				}
@@ -1745,20 +2057,46 @@ function getImagePromiseFromCanvasToBlob(canvas, trackList, mimeType, quality) {
 	);
 }
 
-//* Note: cannot save image by revoked url, so better keep it.
-function addURLToTrackList(data, trackList) {
-	if (
-		trackList
-	&&	typeof trackList === 'object'
-	) {
-		if (!isFunction(trackList.push)){
-			trackList = getOrInitChild(trackList, 'blobTrackList', Array);
+//* Note: cannot save image by revoked url, so better keep it and revoke later.
+function addURLToTrackList(url, trackList) {
+	if (isNonNullObject(trackList)) {
+		if (!isFunction(trackList.push)) {
+			trackList = getOrInitChild(trackList, 'blobs', Array);
 		}
 
-		trackList.push(url);
+		addToListIfNotYet(trackList, url);
+
+		return trackList;
+	} else {
+		return null;
+	}
+}
+
+function revokeBlobsFromTrackList(trackList) {
+var	count = 0;
+
+	if (isNonNullObject(trackList)) {
+
+		if (isFunction(trackList.push)) {
+			for (let blob of trackList) if (blob) {
+				URL.revokeObjectURL(blob.url || blob);
+
+				++count;
+			}
+		} else
+		if (isNonNullObject(trackList = trackList.blobs)) {
+
+			if (isFunction(trackList.push)) {
+				count += revokeBlobsFromTrackList(trackList);
+			} else {
+				for (let listName in trackList) {
+					count += revokeBlobsFromTrackList(trackList[listName]);
+				}
+			}
+		}
 	}
 
-	return trackList;
+	return count;
 }
 
 //* legacy copypasted code to get things working, don't bother with readability, redo later:
@@ -1766,7 +2104,7 @@ function addURLToTrackList(data, trackList) {
 function dataToBlob(data, trackList) {
 	if (URL && URL.createObjectURL) {
 	var	type = TYPE_TEXT;
-		if (data.slice(0, k = DATA_PREFIX.length) == DATA_PREFIX) {
+		if (hasPrefix(data, DATA_PREFIX)) {
 		var	i = data.indexOf(',')
 		,	meta = data.slice(k,i)
 		,	data = data.slice(i+1)
@@ -1787,7 +2125,7 @@ function dataToBlob(data, trackList) {
 		;
 
 		if (url) {
-			addURLToTrackList(trackList);
+			addURLToTrackList(url, trackList);
 
 			return {
 				size: size
@@ -1807,7 +2145,7 @@ function saveDL(data, fileName, ext, addTime, jsonReplacerFunc) {
 
 var	type = TYPE_TEXT
 ,	data = (
-		typeof data === 'object'
+		isNonNullObject(data)
 		? JSON.stringify(
 			data
 		,	jsonReplacerFunc || null
@@ -1816,12 +2154,12 @@ var	type = TYPE_TEXT
 		: String(data)
 	);
 
-	if (data.slice(0, BLOB_PREFIX.length) == BLOB_PREFIX) {
+	if (hasPrefix(data, BLOB_PREFIX)) {
 	var	dataURI = data
 	,	blob = true
 		;
 	} else
-	if (data.slice(0, DATA_PREFIX.length) == DATA_PREFIX) {
+	if (hasPrefix(data, DATA_PREFIX)) {
 		dataURI = data;
 	} else {
 		dataURI = DATA_PREFIX + type + ',' + encodeURIComponent(data);
@@ -1905,7 +2243,7 @@ function loadLibPromise(lib) {
 
 		var	dir = lib.dir || ''
 		,	scripts = lib.files || (
-				Array.isArray(lib)
+				isArray(lib)
 				? lib
 				: Array.from(arguments)
 			);
@@ -2030,55 +2368,6 @@ var	depends = lib.depends || null;
 function getProjectContainer(element) {return getTargetParentByClass(element, regClassLoadedFile);}
 function getProjectButton(element) {return getTargetParentByClass(element, regClassButton);}
 
-/*function replaceJSONpartsFromPSD(key, value) {
-
-	function JSONtoFlatLine(v) {
-		return JSON.stringify(v, replaceJSONpartsFromPSD).replace(/"/g, "'");
-	}
-
-	if (regJSONstringify.skipByKey.test(key)) {
-		return '<skipped>';
-	}
-	if (regJSONstringify.skipByKeyIfLong.test(key)) {
-		if (value && typeof value.length !== 'undefined' && value.length > 123) {
-			return '<skipped [' + value.length + ' items]>';
-		}
-
-	var	i = String(value).length;
-		if (i > 456) {
-			return '<skipped (' + i + ' chars)>';
-		}
-	}
-	if (regJSONstringify.asFlatLine.test(key)) return JSONtoFlatLine(value);
-	if (regJSONstringify.asFlatLines.test(key)) {
-		if (typeof value === 'object') {
-			if (value.map && value.length > 0) {
-				return value.map(JSONtoFlatLine);
-			} else {
-			var	o = {};
-				for (let i in value) o[i] = JSONtoFlatLine(value);
-				return o;
-			}
-		}
-		return JSONtoFlatLine(value);
-	}
-	return value;
-}
-
-function replaceJSONpartsFromTree(key, value) {
-	if (
-		typeof value === 'object'
-	&&	typeof value.length === 'undefined'
-	) {
-	var	o = {};
-		for (let i in value) {
-			if (regJSONstringify.showFromTree.test(i)) o[i] = value[i];
-		}
-		return o || undefined;
-	}
-	return value;
-}*/
-
 function replaceJSONpartsForCropRef(key, value) {
 	if (key === 'autocrop') {
 		return;
@@ -2129,7 +2418,7 @@ function replaceJSONpartsForZoomRef(key, value) {
 
 //* keep as is the same-key object parent, throw away anything else:
 
-		if (typeof value !== 'object') {
+		if (!isNonNullObject(value)) {
 			return;
 		}
 	}
@@ -2328,6 +2617,33 @@ function getImageData(img, x,y, w,h) {
 	if (ctx) {
 		return ctx.getImageData(x,y, w,h);
 	}
+}
+
+function getCtxFromImageData(imageData) {
+var	canvas = cre('canvas')
+,	ctx = canvas.getContext('2d')
+	;
+
+	canvas.width = imageData.width;
+	canvas.height = imageData.height;
+
+	ctx.putImageData(imageData, 0,0);
+
+	return ctx;
+}
+
+function getImageDataInverted(imageData) {
+var	ctx = getCtxFromImageData(imageData)
+,	w = imageData.width
+,	h = imageData.height
+	;
+
+	ctx.globalAlpha = 1;
+	ctx.globalCompositeOperation = BLEND_MODE_INVERT;
+	ctx.fillStyle = 'white';
+	ctx.fillRect(0,0, w,h);
+
+	return ctx.getImageData(0,0, w,h);
 }
 
 function getFirstPixelRGBA(img) {
@@ -2589,7 +2905,9 @@ var	blendMode = String(text).toLowerCase()
 }
 
 function getParentLayer(layer, propName, isTrue) {
-	if (!layer) return null;
+	if (!layer) {
+		return null;
+	}
 
 	while (layer = layer.parent) {
 		if (
@@ -2606,20 +2924,30 @@ function getParentLayer(layer, propName, isTrue) {
 	return layer;
 }
 
-function getLayerPath(layer, includeSelf) {
-	if (!layer) return [];
+function getLayerPath(layer, flags) {
+	if (!layer) {
+		return [];
+	}
 
-var	path = (includeSelf ? [layer.name] : []);
+	if (!isNonNullObject(flags)) {
+		flags = {};
+	}
+
+var	path = (flags.includeSelf ? [layer.name] : []);
 
 	while (layer = getParentLayer(layer)) {
 		path.unshift(layer.name);
+	}
+
+	if (flags.asText) {
+		return path.join(flags.separator || ' / ');
 	}
 
 	return path;
 }
 
 function getLayerPathText(layer) {
-	return getLayerPath(layer, true).join(' / ');
+	return getLayerPath(layer, {includeSelf: true, asText: true});
 }
 
 function getLayerVisibilityChain(layer) {
@@ -2693,7 +3021,9 @@ function thisToPng(targetLayer) {
 	,	i = e.prerendered || e.thumbnail
 		;
 
-		if (i) return i;
+		if (i) {
+			return i;
+		}
 
 		if (isImageElement(e = e.image || e)) {
 			return e;
@@ -2727,8 +3057,7 @@ function isStopRequestedAnywhere() {
 		isStopRequested
 	||	Array.from(arguments).some(
 			(obj) => (
-				typeof obj === 'object'
-			&&	obj
+				isNonNullObject(obj)
 			&&	obj.isStopRequested
 			)
 		)
@@ -3038,7 +3367,7 @@ async function getProjectViewMenu(project) {
 		function getProcessedLayerInBranch(layer) {
 
 			function getOptionGroup(sectionName, listName) {
-				if (typeof options !== 'object') {
+				if (!isNonNullObject(options)) {
 					options = {};
 				}
 
@@ -3070,10 +3399,10 @@ async function getProjectViewMenu(project) {
 			function checkMinMaxParams(params, optionParams, paramName) {
 			var	paramMS = params[paramName];
 
-				if (typeof paramMS === 'object') {
+				if (isNonNullObject(paramMS)) {
 				var	optionMS = optionParams[paramName];
 
-					if (typeof optionMS === 'object') {
+					if (isNonNullObject(optionMS)) {
 						if (optionMS.min > paramMS.min) optionMS.min = paramMS.min;
 						if (optionMS.max < paramMS.max) optionMS.max = paramMS.max;
 					} else {
@@ -3213,25 +3542,51 @@ async function getProjectViewMenu(project) {
 				if (sectionName === 'paddings') {
 					if (param = params['radius']) {
 						param.forEach(
-							(dimensions) => {
-							var	threshold = dimensions.threshold
-							,	optionName = (
+							(padding) => {
+								if (isString(padding)) {
+									padding = JSON.parse(padding);
+								}
+
+							var	{method, threshold, dimensions} = padding
+							,	isBox = ('x' in dimensions)
+							,	[openBracket, closeBracket] = (isBox ? '[]' : '()')
+							,	optionNameParts = [
 									(
-										typeof dimensions.x !== 'undefined'
+										isBox
 										? [dimensions.x, dimensions.y]
 										: [dimensions.radius]
 									).map(
-										(boundaries) => (
-											typeof boundaries.in !== 'undefined'
-											? boundaries.in + ':' + boundaries.out
-											: boundaries.out
+										(interval) => (
+											'in' in interval
+											? (
+												openBracket
+											+	interval.in
+											+	'..'
+											+	interval.out
+											+	closeBracket
+											)
+											: interval.out
 										)
-									).join('x')
-								+	'px'
-								+	(threshold ? '-' + threshold : '')
+									).join('x') + 'px'
+								,	(
+										!threshold
+										? '' :
+										'a > ' + threshold
+									)
+								,	(
+										!method
+									||	PARAM_KEYWORDS_PADDING_METHODS.indexOf(method) <= 0
+										? '' :
+										method
+									)
+								]
+							,	optionName = (
+									optionNameParts
+									.filter(arrayFilterNonEmptyValues)
+									.join(', ')
 								);
 
-								optionItems[optionName] = dimensions;
+								optionItems[optionName] = padding;
 							}
 						);
 					}
@@ -3312,7 +3667,7 @@ async function getProjectViewMenu(project) {
 						(alias) => {
 						var	layersByAlias = getOrInitChild(aliases, alias, Array);
 
-							layersByAlias.push(layer);
+							addToListIfNotYet(layersByAlias, layer);
 						}
 					);
 				}
@@ -3482,12 +3837,12 @@ async function getProjectViewMenu(project) {
 					colorCode
 				&&	!VERIFY_PARAM_COLOR_VS_LAYER_CONTENT
 				) {
-					if (TESTING) console.log(
-						'got color code in param: '
-					+	getColorTextFromArray(colorCode)
-					+	', layer content not checked at: '
-					+	getLayerPathText(layer)
-					);
+					// if (TESTING) console.log(
+						// 'got color code in param: '
+					// +	getColorTextFromArray(colorCode)
+					// +	', layer content not checked at: '
+					// +	getLayerPathText(layer)
+					// );
 
 					layer.img = colorCode;
 
@@ -3555,7 +3910,7 @@ async function getProjectViewMenu(project) {
 					}
 				} else
 				if (colorCode) {
-					console.log(
+					if (TESTING) console.log(
 						'got color code in param: '
 					+	getColorTextFromArray(colorCode)
 					+	', layer content not found at: '
@@ -3617,11 +3972,8 @@ async function getProjectViewMenu(project) {
 				if (rgba) {
 				var	colorStyle = getColorTextFromArray(rgba, 3);
 
-					if (
-						colorStyle
-					&&	colorStyles.indexOf(colorStyle) < 0
-					) {
-						colorStyles.push(colorStyle);
+					if (colorStyle) {
+						addToListIfNotYet(colorStyles, colorStyle);
 					}
 				}
 			}
@@ -3946,6 +4298,24 @@ var	infoButton = addButton(summaryFooter, la.hint.console_log);
 
 //* add batch controls:
 
+	function addButtonGroup(container, group) {
+
+		function addNamedButton(container, name, label) {
+			addButton(container, label).name = name;
+		}
+
+		for (let buttonName in group) {
+		var	entry = group[buttonName];
+
+			if (isString(entry)) {
+				addNamedButton(container, buttonName, entry);
+			} else
+			if (isNonNullObject(entry)) {
+				addButtonGroup(cre('div', container), entry);
+			}
+		}
+	}
+
 	if (project.options) {
 	var	la_controls = la.project_controls;
 
@@ -3959,10 +4329,7 @@ var	infoButton = addButton(summaryFooter, la.hint.console_log);
 
 			buttonsHeader.textContent = controlGroup.header + ':';
 
-			for (let buttonName in buttons) {
-			var	button = addButton(buttonsFooter, buttons[buttonName]);
-				button.name = buttonName;
-			}
+			addButtonGroup(buttonsFooter, buttons);
 		}
 
 		container.addEventListener('change', onProjectMenuUpdate, false);
@@ -4081,14 +4448,20 @@ function isParamInLayerName(name) {
 
 function getLayerWithParamsFromParamList(paramList, layer) {
 
-	function addParamPartsToList(sectionName, listName, value) {
+	function addUniqueParamValuesToList(paramType, values) {
+	var	collection = getOrInitChild(params, paramType, Array);
+
+		values.forEach(
+			(value) => addToListIfNotYet(collection, value)
+		);
+	}
+
+	function addUniqueParamPartsToList(sectionName, listName, value) {
 	var	section = getOrInitChild(params, sectionName)
-	,	values = getOrInitChild(section, listName, Array)
+	,	collection = getOrInitChild(section, listName, Array)
 		;
 
-		if (values.indexOf(value) < 0) {
-			values.push(value);
-		}
+		addToListIfNotYet(collection, value);
 	}
 
 	function getWIPLayerPathText() {
@@ -4101,7 +4474,7 @@ function getLayerWithParamsFromParamList(paramList, layer) {
 
 var	params = getOrInitChild(layer, 'params');
 
-	if (!Array.isArray(paramList)) {
+	if (!isArray(paramList)) {
 		return layer;
 	}
 
@@ -4126,67 +4499,250 @@ var	params = getOrInitChild(layer, 'params');
 			} else
 			if (paramType === 'radius') {
 				layer.isVisibilityOptional = true;
-				values = (
-					match[1]
+
+			var	paramTextParts = (
+					param
 					.split('/')
-					.filter((textPart) => regHasDigit.test(textPart))
-					.map(
-						(textPart) => {
-						var	dimensions = (
-								textPart
+					.filter(arrayFilterNonEmptyValues)
+					.map((text) => text.toLowerCase())
+				)
+			,	methods = []
+			,	thresholds = []
+			,	boundaries = []
+				;
+
+				paramTextParts.forEach(
+					(paramTextPart) => {
+
+				//* methods:
+
+						if (PARAM_KEYWORDS_SHORTCUT_FOR_ALL.indexOf(paramTextPart) >= 0) {
+							PARAM_KEYWORDS_PADDING_METHODS.forEach(
+								(keyword) => addToListIfNotYet(methods, keyword)
+							);
+						} else
+						if (PARAM_KEYWORDS_PADDING_METHODS.indexOf(paramTextPart) >= 0) {
+							addToListIfNotYet(methods, paramTextPart);
+						} else
+
+				//* thresholds:
+
+						if (
+							hasPrefix(paramTextPart, 'at')
+						||	(paramTextPart.replace(regNumDots, '') === 'a')
+						) {
+							paramTextPart
+							.replace(regTrimParamRadius, '')
+							.split(regNaNorDot)
+							.filter(arrayFilterNonEmptyValues)
+							.forEach(
+								(rangeText) => addRangeToList(thresholds, rangeText)
+							);
+						} else
+
+				//* boundaries:
+
+						if (
+							hasPostfix(paramTextPart, 'px')
+						||	(paramTextPart.replace(regNumDots, '') === '')
+						) {
+						var	isHollow = false
+						,	dimensions = (
+								paramTextPart
+								.replace(regTrimParamRadius, '')
 								.split('x', 2)
 								.map(
-									(dimension) => {
-										if (dimension.length == 0) return null;
-
-									var	boundaries = (
-											dimension
-											.split(':', 2)
-											.map(
-												(boundary) => orzFloat(
-													boundary
-													.replace(regTrimNaNorSign, '')
-												)
+									(dimensionText) => (
+										!dimensionText.length
+										? null :
+										dimensionText
+										.split(':', 2)
+										.map(
+											(boundaryText) => (
+												!boundaryText.length
+												? null :
+												addRangeToList(null, boundaryText)
 											)
-										);
+										)
+									)
+								)
+							)
+						,	explicitDimensions = (
+								dimensions
+								.map(
+									(dimensionBoundaries) => {
+										if (isArray(dimensionBoundaries)) {
+											if (dimensionBoundaries.length > 1) {
+												isHollow = true;
+											}
 
-										if (boundaries.length == 0) return {'out': 1};
-										if (boundaries.length == 1) return {'out': boundaries[0]};
+										var	explicitBoundaries = (
+												dimensionBoundaries
+												.filter(arrayFilterNonEmptyValues)
+											);
 
-										return {
-											'in': Math.min(...boundaries)
-										,	'out': Math.max(...boundaries)
-										};
+											if (explicitBoundaries.length > 0) {
+												return explicitBoundaries;
+											}
+										}
+
+										return null;
 									}
 								)
-							);
+								.filter(arrayFilterNonEmptyValues)
+							)
+						,	isBox = (explicitDimensions.length > 1)
+						,	isRound = (explicitDimensions.length === 1) && (dimensions.length === 1)
+						,	isSquare = (explicitDimensions.length === 1) && (dimensions.length > 1)
+						,	count = 0
+							;
 
-							if (dimensions.length == 0) return {'radius': 1};
-							if (dimensions.length == 1) return {'radius': dimensions[0]};
-							if (dimensions[0] === null) dimensions[0] = dimensions[1];
-							if (dimensions[1] === null) dimensions[1] = dimensions[0];
-							if (dimensions[1] === null) dimensions[1] = dimensions[0] = 1;
+							if (isRound || isSquare) {
+							var	directions = explicitDimensions[0]
+							,	addToBoundaryList = (
+									isRound
+									? function(interval) {
+										count += addToListIfNotYet(
+											boundaries
+										,	{
+												'radius': interval
+											}
+										);
+									}
+									: function(interval) {
+										count += addToListIfNotYet(
+											boundaries
+										,	{
+												'x': interval
+											,	'y': interval
+											}
+										);
+									}
+								);
 
-							return {
-								'x': dimensions[0]
-							,	'y': dimensions[1]
-							};
+								if (directions.length > 1) {
+									forEachSetInCrossProduct(
+										directions
+									,	function() {
+										var	interval = {
+												'in': Math.min(...arguments)
+											,	'out': Math.max(...arguments)
+											};
 
-							// TODO: get all values in ranges
-							// e.g.: outline [outline -1:1px/max 60/100/90/60/30/0% -1...1:5...1/5...1px-16/max]
+											addToBoundaryList(interval);
+										}
+									);
+								} else {
+									directions[0].forEach(
+										(outerRadius) => {
+										var	interval = (
+												isHollow
+												? {
+													'in': outerRadius
+												,	'out': outerRadius
+												}
+												: {'out': outerRadius}
+											);
+
+											addToBoundaryList(interval);
+										}
+									);
+								}
+							} else
+							if (isBox) {
+								if (isHollow) {
+									forEachSetInCrossProduct(
+										[
+											dimensions[0][0] || DUMMY_ARRAY
+										,	dimensions[0][1] || DUMMY_ARRAY
+										,	dimensions[1][0] || DUMMY_ARRAY
+										,	dimensions[1][1] || DUMMY_ARRAY
+										]
+									,	(x1, x2, y1, y2) => {
+											if (x1 === null) x1 = x2; else
+											if (x2 === null) x2 = x1;
+											if (y1 === null) y1 = y2; else
+											if (y2 === null) y2 = y1;
+
+											if (
+												x1 === null
+											||	x2 === null
+											||	y1 === null
+											||	y2 === null
+											) {
+												return;
+											}
+
+											count += addToListIfNotYet(
+												boundaries
+											,	{
+													'x': {
+														'in': Math.min(x1, x2)
+													,	'out': Math.max(x1, x2)
+													}
+												,	'y': {
+														'in': Math.min(y1, y2)
+													,	'out': Math.max(y1, y2)
+													}
+												}
+											);
+										}
+									);
+								} else {
+									forEachSetInCrossProduct(
+										[
+											dimensions[0][0] || dimensions[0][1]
+										,	dimensions[1][0] || dimensions[1][1]
+										]
+									,	(outerX, outerY) => {
+											if (
+												outerX === null
+											||	outerY === null
+											) {
+												return;
+											}
+
+											count += addToListIfNotYet(
+												boundaries
+											,	{
+													'x': {'out': outerX}
+												,	'y': {'out': outerY}
+												}
+											);
+										}
+									);
+								}
+							}
 						}
-					).map(
-						(obj) => {
-							obj.threshold = match[2];
-							return obj;
-						}
-					)
+					}
 				);
 
-				params[paramType] = (params[paramType] || []).concat(values);
+				if (boundaries.length > 0) {
+				var	collection = getOrInitChild(params, paramType, Array);
+
+					if (!methods.length) {
+						methods = [PARAM_KEYWORDS_PADDING_METHODS[0]];
+					}
+
+					if (!thresholds.length) {
+						thresholds = [DEFAULT_ALPHA_MASK_THRESHOLD];
+					}
+
+					forEachSetInCrossProduct(
+						[methods, thresholds, boundaries]
+					,	(method, threshold, dimensions) => {
+							addToListIfNotYet(
+								collection
+							,	orderedJSONstringify(
+									{method, threshold, dimensions}
+								)
+							);
+						}
+					);
+				}
 			} else
 			if (paramType === 'copypaste') {
-				addParamPartsToList(paramType, match[1], match[2]);
+				addUniqueParamPartsToList(paramType, match[1], match[2]);
 			} else
 			if (paramType === 'color_code') {
 				params[paramType] = getRGBAFromColorCode(match);
@@ -4220,7 +4776,7 @@ var	params = getOrInitChild(layer, 'params');
 					.filter(arrayFilterNonEmptyValues)
 				);
 
-				params[paramType] = (params[paramType] || []).concat(values);
+				addUniqueParamValuesToList(paramType, values);
 			} else
 			if (paramType === 'collage') {
 				values = (
@@ -4254,12 +4810,8 @@ var	params = getOrInitChild(layer, 'params');
 						}
 
 						if (listName) {
-							(
-								Array.isArray(listName)
-								? listName
-								: [listName]
-							).forEach(
-								(listName) => addParamPartsToList(paramType, listName, value)
+							asArray(listName).forEach(
+								(listName) => addUniqueParamPartsToList(paramType, listName, value)
 							);
 						}
 					}
@@ -4752,16 +5304,16 @@ function isOptionRelevant(project, values, sectionName, listName, optionName) {
 var	relevantLayers = getProjectOptionValue(project, sectionName, listName, optionName);
 
 	if (
-		Array.isArray(relevantLayers)
+		isArray(relevantLayers)
 	&&	relevantLayers.length > 0
 	) {
 	var	section = values[sectionName]
 	,	oldOptionName = section[listName]
-	,	optionNameChanged = (oldOptionName !== optionName)
+	,	isOptionNameChanged = (oldOptionName !== optionName)
 	,	result = false
 		;
 
-		if (optionNameChanged) {
+		if (isOptionNameChanged) {
 			section[listName] = optionName;
 		}
 
@@ -4772,7 +5324,7 @@ var	relevantLayers = getProjectOptionValue(project, sectionName, listName, optio
 			}
 		}
 
-		if (optionNameChanged) {
+		if (isOptionNameChanged) {
 			section[listName] = oldOptionName;
 		}
 
@@ -4982,9 +5534,7 @@ function getAllValueSets(project, flags) {
 					);
 
 					if (getOnlyNames) {
-						if (valueSets.indexOf(fileName) < 0) {
-							valueSets.push(fileName);
-						}
+						addToListIfNotYet(valueSets, fileName);
 					} else {
 						if (!(fileName in valueSets)) {
 							valueSets[fileName] = values;
@@ -4995,7 +5545,7 @@ function getAllValueSets(project, flags) {
 		}
 	}
 
-	if (typeof flags !== 'object') {
+	if (!isNonNullObject(flags)) {
 		flags = {};
 	}
 
@@ -5294,7 +5844,9 @@ function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
 		}
 	}
 
-	if (!ctx || !img) return;
+	if (!ctx || !img) {
+		return null;
+	}
 
 	if (typeof opacity === 'undefined') opacity = 1;
 	if (typeof blendMode === 'undefined') blendMode = BLEND_MODE_NORMAL;
@@ -5332,125 +5884,200 @@ var	canvas = ctx.canvas;
 	return canvas;
 }
 
-function padCanvas(ctx, padding) {
+function getPaddedImageData(referenceImageData, method, threshold, dimensions) {
 
-	function addPadding(res, ref, radius) {
-	var	referencePixels = ref.data
-	,	resultPixels = res.data
-	,	resultValue, distMin
-	,	startValue = (isResultMinFromBoxAround ? 255 : 0)
-	,	radius = Math.abs(radius)
-	,	pixelsAround = Math.ceil(radius)
-		;
+	function addPadding(referenceImageData, dimensions) {
 
-		for (let y = h; y--;) next_result_pixel:
-		for (let x = w; x--;) {
-		var	index = getAlphaDataIndex(x,y,w);
+		function addRoundPadding() {
+		const	paddingRadius = Math.abs(orz(arguments[0]))
+		,	pixelsAround = Math.ceil(paddingRadius)
+		,	startDistance = (isMethodMin ? -Infinity : +Infinity)
+			;
 
-			if (isResultCutByDistance) {
-				distMin = +Infinity;
-			} else {
-				resultValue = startValue;
-			}
+			for (let resultY = h; resultY--;) next_result_pixel:
+			for (let resultX = w; resultX--;) {
 
-			look_around:
-			for (let referenceY, dy = -pixelsAround; dy <= pixelsAround; dy++) if ((referenceY = y + dy) >= 0 && referenceY < h)
-			for (let referenceX, dx = -pixelsAround; dx <= pixelsAround; dx++) if ((referenceX = x + dx) >= 0 && referenceX < w) {
-			var	referenceAlpha = referencePixels[getAlphaDataIndex(referenceX, referenceY, w)];
+			var	resultByteIndex = getAlphaDataIndex(resultX, resultY, w)
+				resultDistance = startDistance
+				;
 
-				if (isResultMinFromBoxAround) {
-					if (resultValue > referenceAlpha) resultValue = referenceAlpha;
-					if (resultValue == 0) break look_around;
-				} else
-				if (isResultMaxFromBoxAround) {
-					if (resultValue < referenceAlpha) resultValue = referenceAlpha;
-					if (resultValue == 255) break look_around;
-				} else
-				if (referenceAlpha > threshold) {
-				var	referenceDistance = getDistance(dx, dy) + 1 - referenceAlpha/255;
-					if (referenceDistance > radius) {
-						if (distMin > referenceDistance) distMin = referenceDistance;
+				for (let referenceY, dy = -pixelsAround; dy <= pixelsAround; dy++) if ((referenceY = resultY + dy) >= 0 && referenceY < h) look_around:
+				for (let referenceX, dx = -pixelsAround; dx <= pixelsAround; dx++) if ((referenceX = resultX + dx) >= 0 && referenceX < w) {
+
+				var	referenceAlpha = referencePixels[getAlphaDataIndex(referenceX, referenceY, w)];
+
+					if (referenceAlpha <= threshold) {
+						continue look_around;
+					}
+
+				var	referenceDistance = getDistance(dx, dy) + 1 - referenceAlpha/MAX_CHANNEL_VALUE;
+
+					if (isMethodMin) {
+						if (referenceDistance < paddingRadius) {
+							if (resultDistance < referenceDistance) {
+								resultDistance = referenceDistance;
+							}
+						} else {
+							resultPixels[resultByteIndex] = MIN_CHANNEL_VALUE;
+							continue next_result_pixel;
+						}
 					} else {
-						resultPixels[index] = 255;
-						continue next_result_pixel;
+						if (referenceDistance > paddingRadius) {
+							if (resultDistance > referenceDistance) {
+								resultDistance = referenceDistance;
+							}
+						} else {
+							resultPixels[resultByteIndex] = MAX_CHANNEL_VALUE;
+							continue next_result_pixel;
+						}
 					}
 				}
-			}
 
-			if (isResultCutByDistance) {
-			var	distFloor = Math.floor(distMin);
-				resultPixels[index] = (
-					distFloor > radius
-					? 0
-					: (255 * (1 + distFloor - distMin))
+			var	resultDistanceFloor = Math.floor(resultDistance);
+
+				resultPixels[resultByteIndex] = (
+					resultDistanceFloor > paddingRadius
+					? MIN_CHANNEL_VALUE
+					: (MAX_CHANNEL_VALUE * (1 + resultDistanceFloor - resultDistance))
 				);
-			} else {
-				resultPixels[index] = resultValue;
 			}
 		}
 
-		return res;
-	}
+		function addBoxPadding() {
+		const	pixelsAroundX = Math.ceil(Math.abs(orz(arguments[0])))
+		,	pixelsAroundY = Math.ceil(Math.abs(orz(arguments[1])))
+		,	startAlpha = (isMethodMin ? MAX_CHANNEL_VALUE : MIN_CHANNEL_VALUE)
+			;
 
-	function intersectMask(res, ref) {
-	var	referencePixels = ref.data
-	,	resultPixels = res.data
+			for (let resultY = h; resultY--;) next_result_pixel:
+			for (let resultX = w; resultX--;) {
+
+			var	resultByteIndex = getAlphaDataIndex(resultX, resultY, w)
+			,	resultAlpha = startAlpha
+				;
+
+				for (let referenceY, dy = -pixelsAroundY; dy <= pixelsAroundY; dy++) if ((referenceY = resultY + dy) >= 0 && referenceY < h) look_around:
+				for (let referenceX, dx = -pixelsAroundX; dx <= pixelsAroundX; dx++) if ((referenceX = resultX + dx) >= 0 && referenceX < w) {
+
+				var	referenceAlpha = referencePixels[getAlphaDataIndex(referenceX, referenceY, w)];
+
+					if (referenceAlpha <= threshold) {
+						continue look_around;
+					}
+
+					if (isMethodMin) {
+						if (resultAlpha > referenceAlpha) {
+							resultAlpha = referenceAlpha;
+						}
+
+						if (resultAlpha === MIN_CHANNEL_VALUE) {
+							break look_around;
+						}
+					} else {
+						if (resultAlpha < referenceAlpha) {
+							resultAlpha = referenceAlpha;
+						}
+
+						if (resultAlpha === MAX_CHANNEL_VALUE) {
+							break look_around;
+						}
+					}
+				}
+
+				resultPixels[resultByteIndex] = resultAlpha;
+			}
+		}
+
+	const	resultImageData = new ImageData(w,h)
+	,	resultPixels = resultImageData.data
+	,	referencePixels = referenceImageData.data
 		;
 
-		for (let index = resultPixels.length - 1; index >= 0; index -= 4) {
-			resultPixels[index] = Math.min(resultPixels[index], referencePixels[index]);
+		(
+			dimensions.length > 1
+			? addBoxPadding
+			: addRoundPadding
+		) (...dimensions);
+
+		return resultImageData;
+	}
+
+	function subtractPadding(referenceImageData, dimensions) {
+		return getImageDataInverted(
+			addPadding(
+				getImageDataInverted(referenceImageData)
+			,	dimensions
+			)
+		);
+	}
+
+	if (!referenceImageData) {
+		return null;
+	}
+
+const	w = referenceImageData.width
+,	h = referenceImageData.height
+,	isMethodMin = (method === 'min')
+,	[paddingX, paddingY] = dimensions
+	;
+
+	if (dimensions.length > 1) {
+		if ((paddingX < 0) !== (paddingY < 0)) {
+			if (paddingX < 0) {
+				return addPadding(subtractPadding(referenceImageData, [paddingX, 0]), [0, paddingY]);
+			} else {
+				return addPadding(subtractPadding(referenceImageData, [0, paddingY]), [paddingX, 0]);
+			}
 		}
-
-		return res;
 	}
 
-	function combineMask(res, ref) {
-	var	referencePixels = ref.data
-	,	resultPixels = res.data
-		;
+	if (paddingX < 0) {
+		return subtractPadding(referenceImageData, dimensions);
+	} else {
+		return addPadding(referenceImageData, dimensions);
+	}
+}
 
-		for (let index = resultPixels.length - 1; index >= 0; index -= 4) {
-			resultPixels[index] = Math.max(resultPixels[index], referencePixels[index]);
+function padCanvas(ctx, padding) {
+
+	function addPaddingByDimensions() {
+	var	dimensions = Array.from(arguments).filter(
+			(dimension) => isNonNullObject(dimension)
+		)
+	,	isHollow = dimensions.every(
+			(dimension) => (typeof dimension.in !== 'undefined')
+		)
+	,	resultImageData = getPaddedImageData(
+			referenceImageData
+		,	method
+		,	threshold
+		,	dimensions.map((dimension) => dimension.out)
+		);
+
+		ctx.putImageData(resultImageData, 0,0);
+
+		if (isHollow) {
+		var	cutImageData = getPaddedImageData(
+				referenceImageData
+			,	method
+			,	threshold
+			,	dimensions.map((dimension) => dimension.in)
+			);
+
+			ctx.globalAlpha = 1;
+			ctx.globalCompositeOperation = BLEND_MODE_CUT;
+
+			ctx.drawImage(getCtxFromImageData(cutImageData).canvas, 0,0);
+
+			ctx.globalCompositeOperation = BLEND_MODE_NORMAL;
 		}
-
-		return res;
 	}
 
-	function invertAlpha(res) {
-	var	resultPixels = res.data;
-
-		for (let index = resultPixels.length - 1; index >= 0; index -= 4) {
-			resultPixels[index] = 255 - resultPixels[index];
-		}
-
-		return res;
-	}
-
-	function getImageDataClone(img) {
-		return new ImageData(new Uint8ClampedArray(img.data), w,h);
-	}
-
-	function getImageDataInverted(img) {
-		return invertAlpha(getImageDataClone(img));
-	}
-
-	function getImageDataPadded(radius, invert) {
-	var	res = new ImageData(w,h);
-
-		if (radius) {
-			addPadding(res, (radius > 0 ? ref : invRef), radius);
-		} else {
-			res.data.set(ref.data);
-		}
-
-		if (!invert === (radius < 0)) {
-			invertAlpha(res);
-		}
-
-		return res;
-	}
-
-	if (!ctx || !padding) {
+	if (
+		!ctx
+	||	!padding
+	||	!padding.method
+	) {
 		return;
 	}
 
@@ -5458,32 +6085,18 @@ function padCanvas(ctx, padding) {
 		ctx = ctx.getContext('2d');
 	}
 
-var	param = padding.radius;
+var	w = ctx.canvas.width
+,	h = ctx.canvas.height
+,	referenceImageData = ctx.getImageData(0,0, w,h)
+,	{method, threshold, dimensions} = padding
+,	threshold = Math.abs(orz(threshold))
+,	isBox = ('x' in dimensions)
+	;
 
-	if (param) {
-	var	radiusInside = param.in
-	,	radiusOutside = param.out
-	,	thresholdParam = padding.threshold
-	,	isResultMinFromBoxAround = (thresholdParam === 'min')
-	,	isResultMaxFromBoxAround = (thresholdParam === 'max')
-	,	isResultCutByDistance = !(isResultMinFromBoxAround || isResultMaxFromBoxAround)
-	,	threshold = (
-			isResultCutByDistance
-			? (orz(thresholdParam) || DEFAULT_ALPHA_MASK_THRESHOLD)
-			: 0
-		)
-	,	w = ctx.canvas.width
-	,	h = ctx.canvas.height
-	,	ref = ctx.getImageData(0,0, w,h)
-	,	invRef = (radiusInside < 0 || radiusOutside < 0 ? getImageDataInverted(ref) : null)
-	,	res = getImageDataPadded(radiusOutside)
-		;
-
-		if (typeof radiusInside !== 'undefined') {
-			intersectMask(res, getImageDataPadded(radiusInside, true));
-		}
-
-		ctx.putImageData(res, 0,0);
+	if (isBox) {
+		addPaddingByDimensions(dimensions.x, dimensions.y)
+	} else {
+		addPaddingByDimensions(dimensions.radius)
 	}
 }
 
@@ -5562,7 +6175,9 @@ var	canvas = cre('canvas');
 }
 
 function getCanvasCopy(project, img) {
-	if (!img) return null;
+	if (!img) {
+		return null;
+	}
 
 var	canvas = getNewCanvasForImg(project, img)
 ,	ctx = canvas.getContext('2d')
@@ -5579,12 +6194,18 @@ var	canvas = getNewCanvasForImg(project, img)
 	return canvas;
 }
 
-function getCanvasFlipped(project, img, flipSide, isCopyNeeded) {
-	if (!img) return null;
+function getCanvasFlipped(project, img, flipSide, flags) {
+	if (!img) {
+		return null;
+	}
+
+	if (!isNonNullObject(flags)) {
+		flags = {};
+	}
 
 	if (!flipSide) {
 		return (
-			isCopyNeeded
+			flags.isCopyNeeded
 			? getCanvasCopy(project, img)
 			: img
 		);
@@ -5620,7 +6241,9 @@ var	canvas = getNewCanvasForImg(project, img)
 }
 
 function getCanvasFilledOutsideOfImage(project, img, fillColor) {
-	if (!img) return null;
+	if (!img) {
+		return null;
+	}
 
 var	imgElement = img.img || img;
 
@@ -5861,7 +6484,7 @@ var	parent = layer.optionParent;
 	return getOpacityByAnyName(listName ? [listName] : layer.names);
 }
 
-async function getRenderByValues(project, values, nestedLayersBatch, renderParam) {
+async function getRenderByValues(project, values, nestedLayersBatch, renderParams) {
 
 	async function renderOneLayer(layer) {
 
@@ -5872,8 +6495,8 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 	var	names = layer.names
 	,	params = layer.params
 	,	skipColoring = !!params.if_only			//* <- check logical visibility, but skip recolor
-	,	ignoreColors = !!renderParam.ignoreColors	//* <- only care about alpha channel, for mask generation
-	,	clippingGroupWIP = !!renderParam.clippingGroupWIP
+	,	ignoreColors = !!renderParams.ignoreColors	//* <- only care about alpha channel, for mask generation
+	,	clippingGroupWIP = !!renderParams.clippingGroupWIP
 	,	clippingGroupResult = false
 	,	backward = (
 			layer.isOrderedBySide
@@ -5926,7 +6549,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 		if (
 			!isLayerRendered(layer)
-		||	!(opacity = renderParam.opacity || getLayerVisibilityByValues(project, layer, values))
+		||	!(opacity = renderParams.opacity || getLayerVisibilityByValues(project, layer, values))
 		) {
 			return onReturnCleanup();
 		}
@@ -5964,11 +6587,11 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 		if (
 			!canvas
-		&&	(canvas = renderParam.baseCanvas)
+		&&	(canvas = renderParams.baseCanvas)
 		) {
 			ctx = canvas.getContext('2d');
 
-			if (TESTING_RENDER) addDebugImage(project, canvas, 'renderParam.baseCanvas', 'green');
+			if (TESTING_RENDER) addDebugImage(project, canvas, 'renderParams.baseCanvas', 'green');
 		}
 
 //* render clipping group as separate batch:
@@ -6005,11 +6628,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 						getPropByNameChain(project, 'layersForCopyPaste', 'copy', alias)
 					||	[]
 					).forEach(
-						(layer) => {
-							if (layers.indexOf(layer) < 0) {
-								layers.push(layer);
-							}
-						}
+						(layer) => addToListIfNotYet(layers, layer)
 					)
 				);
 			}
@@ -6072,7 +6691,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 						||	layer.mask
 						||	layer.isMaskGenerated
 						) {
-							canvasCopy = getCanvasFlipped(project, canvas, flipSide, true);
+							canvasCopy = getCanvasFlipped(project, canvas, flipSide, {isCopyNeeded: true});
 						} else {
 							layersToRender = layersToRender.slice(0, indexToRender).concat(layers);
 							indexToRender = layersToRender.length;
@@ -6283,11 +6902,14 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 		};
 	}
 
+	if (!isNonNullObject(renderParams)) {
+		renderParams = {};
+	}
+
 var	layersToRender = layersToRenderOne || nestedLayersBatch || project.layers
 ,	indexToRender = layersToRender.length
 ,	indexToStop = 0
 ,	bottomLayer = layersToRender[indexToRender - 1]
-,	renderParam = renderParam || {}
 ,	side = getPropBySameNameChain(values, 'side')
 ,	colors = getPropByNameChain(values, 'colors') || {}
 ,	canvas, ctx, layers, layer, mask, clippingMask
@@ -6448,11 +7070,11 @@ function getFileNameByValues(project, values, flags) {
 		);
 	}
 
-	if (typeof flags !== 'object') {
+	if (!isNonNullObject(flags)) {
 		flags = {};
 	}
 
-	if (typeof values !== 'object') {
+	if (!isNonNullObject(values)) {
 		values = getUpdatedMenuValues(project);
 	}
 
@@ -6477,7 +7099,7 @@ function getFileNameByValuesToSave(project, values, flags) {
 }
 
 async function getOrCreateRender(project, render) {
-	if (typeof render !== 'object') {
+	if (!isNonNullObject(render)) {
 		render = {};
 	}
 
@@ -6660,9 +7282,7 @@ var	options = project.options
 			if (getPropByNameChain(optionList, 'params', 'newline')) {
 			var	listNames = getOrInitChild(optionsForNewLines, sectionName, Array);
 
-				if (listNames.indexOf(listName) < 0) {
-					listNames.push(listName);
-				}
+				addToListIfNotYet(listNames, listName);
 			}
 		}
 	}
@@ -6671,7 +7291,9 @@ var	options = project.options
 }
 
 function getNewLineSubcontainer(container, values, options) {
-	if (!values || !options) return container;
+	if (!values || !options) {
+		return container;
+	}
 
 	for (let sectionName in options) {
 	var	section = options[sectionName];
@@ -6704,7 +7326,7 @@ function getNewLineSubcontainer(container, values, options) {
 async function renderAll(project, flags) {
 	setProjectWIPstate(project, true);
 
-	if (typeof flags !== 'object') {
+	if (!isNonNullObject(flags)) {
 		flags = {};
 	}
 
@@ -6766,12 +7388,13 @@ var	startTime = getTimeNow()
 			if (!img) {
 				img = await getRenderedImg(project, render);
 			}
-			if (img && renderedImages.indexOf(img) < 0) {
-				renderedImages.push(img);
 
-				if (!flags.showOnPage) {
-					subContainer.appendChild(img);
-				}
+			if (
+				img
+			&&	addToListIfNotYet(renderedImages, img)
+			&&	!flags.showOnPage
+			) {
+				subContainer.appendChild(img);
 			}
 		} else
 		if (flags.saveToFile) {
@@ -6889,8 +7512,8 @@ var	startTime = getTimeNow()
 
 	var	startTime = getTimeNow()
 	,	alignImages = getSelectedMenuValue(project, 'collage', 'align') || ''
-	,	joinedBorder = Math.max(0, orz(getSelectedMenuValue(project, 'collage', 'border', DEFAULT_JOINED_IMAGE_BORDER)))
-	,	joinedPadding = Math.max(0, orz(getSelectedMenuValue(project, 'collage', 'padding', DEFAULT_JOINED_IMAGE_PADDING)))
+	,	joinedBorder = Math.max(0, orz(getSelectedMenuValue(project, 'collage', 'border', DEFAULT_COLLAGE_OUTSIDE_PADDING)))
+	,	joinedPadding = Math.max(0, orz(getSelectedMenuValue(project, 'collage', 'padding', DEFAULT_COLLAGE_INSIDE_PADDING)))
 	,	size = getBatchCanvasSize(batchContainer)
 	,	w = size.width
 	,	h = size.height
@@ -7120,14 +7743,30 @@ var	precounts = getOrInitChild(project, 'renderBatchCounts')
 		precounts[key] = count;
 	}
 
-	['show_all', 'save_all'].forEach(
-		(name) => gn(name, project.container).forEach(
-			(button) => {
-			var	label = button.lastElementChild || cre('span', button);
-				label.textContent = count;
-			}
-		)
-	);
+	if (ADD_COUNT_ON_BUTTON_LABEL) {
+		['show_all', 'save_all'].forEach(
+			(name) => gn(name, project.container).forEach(
+				(button) => {
+				var	label = button.lastElementChild || cre('span', button);
+					label.className = 'count-label';
+					label.textContent = count;
+				}
+			)
+		);
+	} else {
+	var	label = gc('count-line', project.container)[0];
+
+		if (!label) {
+		var	container = gn('show_all', project.container)[0] || project.container
+		,	container = getThisOrParentByTagName(container, 'section')
+		,	label = cre('div', container, container.lastElementChild)
+			;
+
+			label.className = 'count-line';
+		}
+
+		label.textContent = count;
+	}
 }
 
 function setProjectWIPstate(project, isWIP) {
@@ -7176,7 +7815,7 @@ var	state = !!isWIP;
 //* Page-specific functions: UI-side *-----------------------------------------
 
 function onBeforeUnload(evt) {
-var	evt = eventStop(evt,1);
+var	evt = eventStop(evt, FLAG_EVENT_STOP_IMMEDIATE);
 
 	if (!TESTING && id('loaded-files-view').firstElementChild) {
 
@@ -7197,14 +7836,14 @@ var	evt = eventStop(evt,1);
 }
 
 function onResize(evt) {
-	updateDropdownMenuPositions(eventStop(evt,1));
+	updateDropdownMenuPositions(eventStop(evt, FLAG_EVENT_STOP_IMMEDIATE));
 
 //* TODO: find zoom/scale of the screen/page before regenerating thumbnail.
 	// thumbnailPlaceholder = null;
 }
 
 function updateDropdownMenuPositions(evt) {
-	eventStop(evt,1);
+	eventStop(evt, FLAG_EVENT_STOP_IMMEDIATE);
 
 	gc('menu-hid').forEach(
 		(menuPanel) => putInView(menuPanel, 0,0, true)
@@ -7251,7 +7890,7 @@ var	evt = evt || window.event
 		return;
 	}
 
-	eventStop(evt,1);
+	eventStop(evt, FLAG_EVENT_STOP_IMMEDIATE);
 
 var	container = getProjectContainer(button)
 ,	project = container.project
@@ -7268,7 +7907,7 @@ var	container = getProjectContainer(button)
 	if (action === 'save_all') saveAll(project); else
 	if (action === 'show_join') showJoin(project); else
 	if (action === 'save_join') saveJoin(project); else
-	if (action.substr(0, resetPrefix.length) === resetPrefix) {
+	if (hasPrefix(action, resetPrefix)) {
 		setAllValues(project, action.substr(resetPrefix.length));
 	} else
 	if (action === 'console_log') {
@@ -7309,7 +7948,7 @@ var	evt = evt || window.event
 		return;
 	}
 
-	eventStop(evt,1);
+	eventStop(evt, FLAG_EVENT_STOP_IMMEDIATE);
 
 	if (element.type === 'checkbox') {
 		updateCheckBox(element);
@@ -7341,7 +7980,7 @@ var	container = getProjectContainer(element)
 }
 
 function onPageDragOver(evt) {
-var	evt = eventStop(evt,0,1)
+var	evt = eventStop(evt, FLAG_EVENT_NO_DEFAULT)
 ,	batch = evt.dataTransfer
 ,	files = batch.files
 ,	items = batch.items
@@ -7356,7 +7995,7 @@ var	evt = eventStop(evt,0,1)
 }
 
 function onPageDrop(evt) {
-var	evt = eventStop(evt,0,1)
+var	evt = eventStop(evt, FLAG_EVENT_NO_DEFAULT)
 ,	filesToLoad = []
 ,	files, name, ext
 	;
@@ -7496,7 +8135,7 @@ var	action, url;
 			;
 
 			for (let otherButton of gt('button', filesTable)) if (url = getButtonURL(otherButton)) {
-				urls.push(url);
+				addToListIfNotYet(urls, url);
 
 				if (await loadFromButton(otherButton, true)) {
 					++isProjectLoaded;
@@ -7549,7 +8188,8 @@ var	action, url;
 //* report error to user:
 
 	if (
-		!inBatch
+		!TESTING
+	&&	!inBatch
 	&&	!isProjectLoaded
 	&&	(urls || url)
 	&&	(
@@ -7612,13 +8252,10 @@ function closeProject(buttonTab) {
 			removeProjectView(fileId);
 		}
 
-		if (
-			project
-		&&	project.blobTrackList
-		) {
-			for (let blob of project.blobTrackList) if (blob) {
-				URL.revokeObjectURL(blob.url || blob);
-			}
+	var	revokedBlobsCount = revokeBlobsFromTrackList(project);
+
+		if (revokedBlobsCount) {
+			if (TESTING) console.log(['closed project:', project, 'revoked blobs:', revokedBlobsCount]);
 		}
 	}
 }
@@ -7633,11 +8270,12 @@ async function init() {
 
 var	configVarDefaults = {}
 ,	configVarNames = [
+		'DEFAULT_ALPHA_MASK_PADDING',
+		'DEFAULT_ALPHA_MASK_THRESHOLD',
 		'DEFAULT_AUTOCROP',
 		'DEFAULT_COLLAGE',
-		'DEFAULT_JOINED_IMAGE_BORDER',
-		'DEFAULT_JOINED_IMAGE_PADDING',
-		'DEFAULT_ALPHA_MASK_THRESHOLD',
+		'DEFAULT_COLLAGE_INSIDE_PADDING',
+		'DEFAULT_COLLAGE_OUTSIDE_PADDING',
 		'PREVIEW_SIZE',
 		'THUMBNAIL_SIZE',
 		'THUMBNAIL_ZOOM_STEP_MAX_FACTOR',
