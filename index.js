@@ -5901,13 +5901,14 @@ function getPaddedImageData(referenceImageData, method, threshold, dimensions) {
 				resultDistance = startDistance
 				;
 
-				for (let referenceY, dy = -pixelsAround; dy <= pixelsAround; dy++) if ((referenceY = resultY + dy) >= 0 && referenceY < h) look_around:
+				look_around:
+				for (let referenceY, dy = -pixelsAround; dy <= pixelsAround; dy++) if ((referenceY = resultY + dy) >= 0 && referenceY < h) next_pixel_around:
 				for (let referenceX, dx = -pixelsAround; dx <= pixelsAround; dx++) if ((referenceX = resultX + dx) >= 0 && referenceX < w) {
 
 				var	referenceAlpha = referencePixels[getAlphaDataIndex(referenceX, referenceY, w)];
 
 					if (referenceAlpha <= threshold) {
-						continue look_around;
+						continue next_pixel_around;
 					}
 
 				var	referenceDistance = getDistance(dx, dy) + 1 - referenceAlpha/MAX_CHANNEL_VALUE;
@@ -5956,13 +5957,14 @@ function getPaddedImageData(referenceImageData, method, threshold, dimensions) {
 			,	resultAlpha = startAlpha
 				;
 
-				for (let referenceY, dy = -pixelsAroundY; dy <= pixelsAroundY; dy++) if ((referenceY = resultY + dy) >= 0 && referenceY < h) look_around:
+				look_around:
+				for (let referenceY, dy = -pixelsAroundY; dy <= pixelsAroundY; dy++) if ((referenceY = resultY + dy) >= 0 && referenceY < h) next_pixel_around:
 				for (let referenceX, dx = -pixelsAroundX; dx <= pixelsAroundX; dx++) if ((referenceX = resultX + dx) >= 0 && referenceX < w) {
 
 				var	referenceAlpha = referencePixels[getAlphaDataIndex(referenceX, referenceY, w)];
 
 					if (referenceAlpha <= threshold) {
-						continue look_around;
+						continue next_pixel_around;
 					}
 
 					if (isMethodMin) {
