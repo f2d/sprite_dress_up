@@ -468,6 +468,78 @@ const	LS = window.localStorage || localStorage
 	,	'layout': 'inline'
 	}
 
+,	PROJECT_OPTION_GROUPS = [
+		{
+			'header': 'option_header_collage',
+			'select': {
+				'collage': {
+					'align': 'option_collage_align',
+					'background': 'option_collage_background',
+					'border': 'option_collage_border',
+					'padding': 'option_collage_padding',
+				},
+			},
+		},
+		{
+			'header': 'option_header_view',
+			'select': {
+				'autocrop': 'option_autocrop',
+				'zoom': 'option_zoom',
+				'side': 'option_side',
+				'separate': 'option_separate',
+			},
+		},
+		{
+			'parts': 'option_header_parts',
+			'opacities': 'option_header_opacities',
+			'paddings': 'option_header_paddings',
+			'colors': 'option_header_colors',
+		},
+	]
+
+,	EXAMPLE_CONTROLS = [
+		{
+			'download_all': 'download_all',
+			'load_all': 'open_example_all',
+		},
+		{
+			'stop': 'stop',
+		},
+	]
+
+,	PROJECT_CONTROLS = [
+		{
+			'header': 'reset_header',
+			'buttons': {
+				'reset_to_init': 'reset_to_init',
+				'reset_to_top': 'reset_to_top',
+				'reset_to_bottom': 'reset_to_bottom',
+				'reset_to_empty': 'reset_to_empty',
+			},
+		},
+		{
+			'header': 'current_header',
+			'buttons': {
+				'show': 'show_png',
+				'save': 'save_png',
+			},
+		},
+		{
+			'header': 'batch_header',
+			'buttons': {
+				'show': {
+					'show_all': 'show_png_batch',
+					'save_all': 'save_png_batch',
+				},
+				'save': {
+					'show_join': 'show_png_collage',
+					'save_join': 'save_png_collage',
+				},
+				'stop': 'stop',
+			},
+		},
+	]
+
 ,	FALSY_STRINGS = [
 		'0'
 	,	'no'
@@ -838,6 +910,7 @@ function getDistance(x,y) {return Math.sqrt(x*x + y*y);}
 function getAlphaDataIndex(x,y, width) {return (((y*width + x) << 2) | 3);}
 // function getAlphaDataIndex(x,y, width) {return (((y*width + x) * 4) + 3);}
 function repeatText(text, numberOfTimes) {return (new Array(numberOfTimes + 1)).join(text);}
+function replaceAll(text, replaceWhat, replaceWith) {return String(text).split(replaceWhat).join(replaceWith);}
 
 function isNotEmptyString(value) {
 	return (
@@ -955,23 +1028,56 @@ var	foundValue;
 	}
 }
 
-function getJoinedOrEmptyString(text, joinText) {
+function getJoinedOrEmptyText(text, joinText) {
 	return (
 		typeof text === 'undefined'
 	||	text === null
 		? '' :
 		(
 			text
-		&&	text.join
-			? text.join(joinText)
+		&&	isFunction(text.join)
+			? text.join(
+				typeof joinText === 'undefined'
+			||	joinText === null
+				? '\n'
+				: joinText
+			)
 			: String(text)
 		)
 	);
 }
 
+function getLocalizedOrDefaultText(key, defaultText, ...replacements) {
+var	text = getJoinedOrEmptyText(
+		key in LOCALIZATION_TEXT
+		? LOCALIZATION_TEXT[key]
+		: defaultText
+	);
+
+	if (text && isArray(replacements)) {
+		for (let index in replacements) {
+			text = replaceAll(text, '{' + index + '}', replacements[index]);
+		}
+	}
+
+	return text;
+}
+
+function getLocalizedOrEmptyText(key, ...replacements) {
+	return getLocalizedOrDefaultText(key, '', ...replacements);
+}
+
+function getLocalizedText(key, ...replacements) {
+	return getLocalizedOrDefaultText(key, key, ...replacements);
+}
+
+function getLocalizedHTML() {
+	return replaceAll(getLocalizedText(...arguments), '\n', '<br>');
+}
+
 function trim(text) {
 	return (
-		getJoinedOrEmptyString(text)
+		getJoinedOrEmptyText(text)
 		.replace(regTrim, '')
 		.replace(regTrimNewLine, '\n')
 	);
@@ -1723,11 +1829,13 @@ function getFormattedFileNamePart(name) {return (name ? '[' + name + ']' : '');}
 
 function getFormattedFileSize(shortened, bytes) {
 	if (bytes) {
-		bytes += ' ' + la.project.bytes;
+		bytes += ' ' + getLocalizedText('file_bytes');
 	}
+
 	if (shortened && bytes) {
 		shortened += ' (' + bytes + ')';
 	}
+
 	return shortened || bytes;
 }
 
@@ -1916,7 +2024,7 @@ var	text = getLogTime();
 	}
 
 	if (typeof argValue !== 'undefined') {
-	var	textValue = getJoinedOrEmptyString(argValue, '\n');
+	var	textValue = getJoinedOrEmptyText(argValue, '\n');
 
 		if (textValue.indexOf('\n') >= 0) {
 			if (
@@ -2843,8 +2951,8 @@ var	button = cre('button', parent);
 
 function addOption(parent, text, value) {
 var	option = cre('option', parent)
-,	text = getJoinedOrEmptyString(text)
-,	value = getJoinedOrEmptyString(value) || text
+,	text = getJoinedOrEmptyText(text)
+,	value = getJoinedOrEmptyText(value) || text
 	;
 
 	option.value = value;
@@ -3514,10 +3622,8 @@ async function getProjectViewMenu(project) {
 					optionItems[sectionName] = sectionName;
 				} else
 				if (sectionName === 'side') {
-				var	la_side = la.project_option_side;
-
-					for (let optionName in la_side) {
-						optionItems[optionName] = la_side[optionName];
+					for (let optionName of VIEW_SIDES) {
+						optionItems[optionName] = getLocalizedText(sectionName + '_' + optionName);
 					}
 
 				var	index = VIEW_SIDES.indexOf(param);
@@ -4006,7 +4112,7 @@ async function getProjectViewMenu(project) {
 //* list box = set of parts:
 
 			for (let listName in optionLists) if (optionList = section[listName]) {
-			var	listLabel = (isEntryList ? optionLists[listName] : entry) || listName
+			var	listLabel = getLocalizedText((isEntryList ? optionLists[listName] : entry) || listName)
 			,	items = optionList.items
 			,	params = optionList.params
 			,	isZeroSameAsEmpty = (
@@ -4042,7 +4148,7 @@ async function getProjectViewMenu(project) {
 					params[implicitName] = isImplied;
 					params[explicitName] = !isImplied;
 
-				var	la_switches = la.project_option_switches[switchType]
+				var	switchNames = SWITCH_CLASS_BY_TYPE[switchType]
 				,	td = cre('td', tr)
 				,	label = cre('label', td)
 				,	checkBox = cre('input', label)
@@ -4054,14 +4160,17 @@ async function getProjectViewMenu(project) {
 					checkBox.checked = checkBox.initialValue = !params[SWITCH_NAMES_BY_TYPE[switchType][0]];
 					checkBox.params = params;
 
-					for (let switchName in la_switches) {
-					var	index = SWITCH_CLASS_BY_TYPE[switchType].indexOf(switchName)
-					,	la_switch = la_switches[switchName]
+					for (let index in switchNames) {
+					var	switchName = switchNames[index]
 					,	button = cre('div', label)
 						;
 
 						button.className = switchType + '-' + switchName + ' ' + SWITCH_CLASS_BY_INDEX[index];
-						button.title = la_switch.label + ': \r\n' + la_switch.hint;
+						button.title = (
+							getLocalizedText('switch_' + switchName)
+						+	': \r\n'
+						+	getLocalizedText('hint_switch_' + switchName)
+						);
 					}
 				}
 
@@ -4115,28 +4224,22 @@ async function getProjectViewMenu(project) {
 
 						if (sectionName === 'autocrop') {
 							optionLabel = (
-								la_autocrop[optionName]
-							||	getOptionLabelFromColor(
-									optionName
-								,	la_autocrop.by_color
-								)
+								getLocalizedOrEmptyText(sectionName + '_' + optionName)
+							||	getOptionLabelFromColor(optionName)
 							);
 						} else
 						if (sectionName === 'collage') {
-						var	translatedLabel = getPropByNameChain(la_collage, listName, optionName);
-
-							if (translatedLabel) {
-								optionLabel = translatedLabel;
-							} else
-							if (listName === 'background') {
-								optionLabel = getOptionLabelFromColor(
-									optionName
-								// ,	la_collage[listName].color
-								);
-							}
+							optionLabel = (
+								getLocalizedOrEmptyText(listName + '_' + optionName)
+							||	(
+									listName === 'background'
+									? getOptionLabelFromColor(optionName)
+									: optionLabel
+								)
+							);
 						} else
 						if (sectionName === 'side') {
-							optionLabel = la_view_sides[optionName] || optionName;
+							optionLabel = getLocalizedText(sectionName + '_' + optionName);
 						} else
 						if (sectionName === 'colors') {
 							items[optionName].forEach(
@@ -4181,24 +4284,19 @@ async function getProjectViewMenu(project) {
 
 		function addHeader(text) {
 		var	th = cre('header', cre('th', cre('tr', table)));
-			th.textContent = text + ':';
+			th.textContent = getLocalizedText(text) + ':';
 		}
 
 	var	options = project.options
-	,	la_autocrop = la.project_option_autocrop
-	,	la_collage = la.project_option_collage
-	,	la_view_sides = la.project_option_side
-	,	la_section_groups = la.project_option_sections
 	,	table = cre('table', container)
 	,	maxTabCount = 0
-	,	sections
 		;
 
-		for (let groupName in la_section_groups) if (sections = la_section_groups[groupName]) {
+		for (let sections of PROJECT_OPTION_GROUPS) {
 			if (sections.header) {
-			var	header = sections.header
-			,	sections = sections.select
-				;
+			var	header = sections.header;
+
+				sections = sections.select;
 
 				for (let sectionName in sections) {
 					if (options[sectionName]) {
@@ -4250,19 +4348,19 @@ var	summary       = cre('section', header)
 var	bitDepthText = '';
 
 	if (project.channels && project.bitDepth) {
-		bitDepthText = project.channels + 'x' + project.bitDepth + ' ' + la.project.bits;
+		bitDepthText = project.channels + 'x' + project.bitDepth + ' ' + getLocalizedText('project_bits');
 	} else
 	if (project.channels) {
-		bitDepthText = project.channels + ' ' + la.project.channels;
+		bitDepthText = project.channels + ' ' + getLocalizedText('project_channels');
 	} else
 	if (project.bitDepth) {
-		bitDepthText = project.bitDepth + ' ' + la.project.bits;
+		bitDepthText = project.bitDepth + ' ' + getLocalizedText('project_bits');
 	}
 
 var	canvasSizeText = (
 		project.width + 'x'
 	+	project.height + ' '
-	+	la.project.pixels
+	+	getLocalizedText('project_pixels')
 	)
 ,	colorModeText  = arrayFilteredJoin([project.colorMode, bitDepthText], ' ')
 ,	resolutionText = arrayFilteredJoin([canvasSizeText, colorModeText], ', ')
@@ -4274,9 +4372,9 @@ var	foldersCount = project.foldersCount
 ,	layersTextParts = []
 	;
 
-	if (foldersCount) layersTextParts.push(foldersCount + ' ' + la.project.folders);
-	if (layersCount)  layersTextParts.push(layersCount  + ' ' + la.project.layers);
-	if (imagesCount)  layersTextParts.push(imagesCount  + ' ' + la.project.images);
+	if (foldersCount) layersTextParts.push(foldersCount + ' ' + getLocalizedText('project_folders'));
+	if (layersCount)  layersTextParts.push(layersCount  + ' ' + getLocalizedText('project_layers'));
+	if (imagesCount)  layersTextParts.push(imagesCount  + ' ' + getLocalizedText('project_images'));
 
 var	layersText = arrayFilteredJoin(layersTextParts, ', ')
 ,	summaryTextParts = [resolutionText, layersText]
@@ -4286,12 +4384,12 @@ var	sourceFile = project.loading.data.file || {}
 ,	sourceFileTime = sourceFile.lastModified || sourceFile.lastModifiedDate
 	;
 
-	if (sourceFile.size) summaryTextParts.push(sourceFile.size + ' ' + la.project.bytes);
-	if (sourceFileTime)  summaryTextParts.push(la.project.date + ' ' + getFormattedTime(sourceFileTime));
+	if (sourceFile.size) summaryTextParts.push(sourceFile.size + ' ' + getLocalizedText('file_bytes'));
+	if (sourceFileTime)  summaryTextParts.push(getLocalizedText('file_date') + ' ' + getFormattedTime(sourceFileTime));
 
 	summaryBody.innerHTML = arrayFilteredJoin(summaryTextParts, '<br>');
 
-var	infoButton = addButton(summaryFooter, la.hint.console_log);
+var	infoButton = addButton(summaryFooter, getLocalizedText('console_log'));
 	infoButton.name = 'console_log';
 
 	container.addEventListener('click', onProjectButtonClick, false);
@@ -4301,7 +4399,7 @@ var	infoButton = addButton(summaryFooter, la.hint.console_log);
 	function addButtonGroup(container, group) {
 
 		function addNamedButton(container, name, label) {
-			addButton(container, label).name = name;
+			addButton(container, getLocalizedText(label || name)).name = name || label;
 		}
 
 		for (let buttonName in group) {
@@ -4317,17 +4415,14 @@ var	infoButton = addButton(summaryFooter, la.hint.console_log);
 	}
 
 	if (project.options) {
-	var	la_controls = la.project_controls;
-
-		for (let groupName in la_controls) {
-		var	controlGroup = la_controls[groupName]
-		,	buttons = controlGroup.buttons
+		for (let controlGroup of PROJECT_CONTROLS) {
+		var	buttons = controlGroup.buttons
 		,	buttonsGroup = cre('section', header)
 		,	buttonsHeader = cre('header', buttonsGroup)
 		,	buttonsFooter = cre('footer', buttonsGroup)
 			;
 
-			buttonsHeader.textContent = controlGroup.header + ':';
+			buttonsHeader.textContent = getLocalizedText(controlGroup.header) + ':';
 
 			addButtonGroup(buttonsFooter, buttons);
 		}
@@ -4391,7 +4486,7 @@ function getProjectViewImage(project, img) {
 			: header || cre('header', container)
 		);
 
-		comment.textContent = la.error.options;
+		comment.innerHTML = getLocalizedHTML('error_options');
 
 	var	preview = cre('div', container)
 		preview.className = 'preview';
@@ -5395,7 +5490,7 @@ var	newValue = selectBox.value;
 }
 
 function selectValue(selectBox, newValue) {
-	newValue = getJoinedOrEmptyString(newValue);
+	newValue = getJoinedOrEmptyText(newValue);
 
 	if (selectBox.value !== newValue) {
 		selectBox.value = newValue;
@@ -5600,7 +5695,7 @@ var	valueSets = getAllValueSets(
 
 	return (
 		valueSets === null
-		? la.hint.too_much
+		? getLocalizedText('too_much')
 		: valueSets.length
 	);
 }
@@ -7138,7 +7233,7 @@ async function getOrCreateRenderedImg(project, render) {
 				+	(
 						typeof msec === 'undefined'
 						? '' :
-						', ' + la.hint.took_sec.render.replace('$t', msec / 1000)
+						', ' + getLocalizedText('render_took_time', msec / 1000)
 					)
 				+	')'
 				);
@@ -7536,11 +7631,7 @@ var	startTime = getTimeNow()
 				canvas.width != w
 			||	canvas.height != h
 			) {
-				alert(
-					getJoinedOrEmptyString(la.error.canvas_size, '\n')
-				+	'\n'
-				+	w + 'x' + h
-				);
+				alert(getLocalizedText('error_canvas_size', w + 'x' + h));
 			} else {
 			var	backgroundFill = getSelectedMenuValue(project, 'collage', 'background');
 
@@ -7568,10 +7659,10 @@ var	startTime = getTimeNow()
 							project.fileName + '.png'
 						+	' \r\n('
 						+	w + 'x' + h + ', '
-						+	(
-								la.hint.took_sec.collage
-								.replace('$t', totalTime / 1000)
-								.replace('$n', renderedImages.length)
+						+	getLocalizedText(
+								'collage_took_time'
+							,	totalTime / 1000
+							,	renderedImages.length
 							) + ')'
 						);
 
@@ -7756,7 +7847,9 @@ var	precounts = getOrInitChild(project, 'renderBatchCounts')
 			)
 		);
 	} else {
-	var	label = gc('count-line', project.container)[0];
+	var	labelClass = 'count-line'
+	,	label = gc(labelClass, project.container)[0]
+		;
 
 		if (!label) {
 		var	container = gn('show_all', project.container)[0] || project.container
@@ -7764,7 +7857,7 @@ var	precounts = getOrInitChild(project, 'renderBatchCounts')
 		,	label = cre('div', container, container.lastElementChild)
 			;
 
-			label.className = 'count-line';
+			label.className = labelClass;
 		}
 
 		label.textContent = count;
@@ -7824,7 +7917,7 @@ var	evt = eventStop(evt, FLAG_EVENT_STOP_IMMEDIATE);
 //* Note: given message text won't be used in modern browsers.
 //* source: https://habr.com/ru/post/141793/
 
-	var	message = la.hint.close_page;
+	var	message = getLocalizedText('confirm_close_page');
 
 		if (typeof evt === 'undefined') {
 			evt = window.event;
@@ -7897,7 +7990,7 @@ var	evt = evt || window.event
 var	container = getProjectContainer(button)
 ,	project = container.project
 ,	action = button.name
-,	resetPrefix = 'reset_to_'
+,	resetPrefix
 	;
 
 	if (action === 'stop') {
@@ -7909,13 +8002,13 @@ var	container = getProjectContainer(button)
 	if (action === 'save_all') saveAll(project); else
 	if (action === 'show_join') showJoin(project); else
 	if (action === 'save_join') saveJoin(project); else
-	if (hasPrefix(action, resetPrefix)) {
+	if (hasPrefix(action, resetPrefix = 'reset_to_')) {
 		setAllValues(project, action.substr(resetPrefix.length));
 	} else
 	if (action === 'console_log') {
 		console.log(project);
 
-		alert(la.hint.see_console);
+		alert(getLocalizedText('see_console'));
 	} else {
 		console.log([
 			evt
@@ -7925,7 +8018,7 @@ var	container = getProjectContainer(button)
 		,	'Unknown action: ' + action
 		]);
 
-		alert(la.error.unknown_button);
+		alert(getLocalizedText('unknown_button'));
 	}
 }
 
@@ -8202,7 +8295,7 @@ var	action, url;
 	) {
 		await pause(100);
 
-		alert(getJoinedOrEmptyString(la.error.file_protocol, '\n'));
+		alert(getLocalizedText('error_file_protocol'));
 	}
 
 	return isProjectLoaded;
@@ -8266,7 +8359,7 @@ function closeProject(buttonTab) {
 
 async function init() {
 	toggleClass(document.body, 'loading', 1);
-	document.body.innerHTML = la.loading;
+	document.body.innerHTML = getLocalizedHTML('loading');
 
 //* remember config defaults:
 
@@ -8348,18 +8441,17 @@ var	supportedFileTypesText = (
 		.sort()
 		.join(', ')
 	)
-,	openingNotesText = la.menu.file.notes.join('<br>')
-,	menuHTMLparts = {}
-	;
+,	openingNotesText = getLocalizedHTML('file_notes')
+,	menuHTMLparts = {};
 
 	menuHTMLparts.file = (
 		'<p>'
-	+		la.menu.file.project
+	+		getLocalizedHTML('file_select_project')
 	+		':'
 	+	'</p>'
 	+	'<input type="file" onchange="onPageDrop(this)">'
 	+	'<p>'
-	+		la.menu.file.formats
+	+		getLocalizedHTML('file_formats')
 	+		':\n'
 	+		supportedFileTypesText
 	+		'.'
@@ -8400,7 +8492,7 @@ var	supportedFileTypesText = (
 			) + '></td>'
 		)
 	,	tabsHTML = tabs.map(
-			([name, text]) => (
+			([name, label]) => (
 				(
 					!canLoadLocalFiles
 				&&	name.indexOf('download') < 0
@@ -8409,7 +8501,7 @@ var	supportedFileTypesText = (
 				+		'<button onclick="return loadFromButton(this)" name="'
 				+			encodeTagAttr(name)
 				+		'">'
-				+			text
+				+			getLocalizedText(label)
 				+		'</button>'
 				+	'</td>'
 				)
@@ -8434,7 +8526,7 @@ var	tabsCountMax = 0
 					!subdir
 					? '' :
 					'<header>'
-				+		(la.menu.examples.subdirs[subdir] || subdir)
+				+		getLocalizedHTML(subdir)
 				+		':'
 				+	'</header>'
 				)
@@ -8484,14 +8576,13 @@ var	tabsCountMax = 0
 						,	fileURL = filePath + '?version=' + file.modtime.replace(/\W+/g, '_')
 						,	nameAttr = encodeTagAttr(fileName)
 						,	pathAttr = encodeTagAttr(fileURL)
-						,	dict = la.menu.examples.buttons
 						,	downloadLink = (
 								'<a href="'
 							+		pathAttr
 							+	'" download="'
 							+		nameAttr
 							+	'">'
-							+		dict.download
+							+		getLocalizedHTML('download_file')
 							+	'</a>'
 							)
 						,	loadButton = (
@@ -8501,7 +8592,7 @@ var	tabsCountMax = 0
 							// +	'" data-url="'
 							// +		pathAttr
 							+	'">'
-							+		dict.load
+							+		getLocalizedHTML('open_example_file')
 							+	'</button>'
 							)
 						,	tabs = [
@@ -8533,7 +8624,7 @@ var	tabsCountMax = 0
 					).join('')
 				);
 
-			var	batchButtonsHTML = getExampleButtonsRow(la.menu.examples.batch_buttons, tabsCount)
+			var	batchButtonsHTML = getExampleButtonsRow(EXAMPLE_CONTROLS, tabsCount);
 
 				return (
 					'<tbody class="example-file-type">'
@@ -8546,7 +8637,7 @@ var	tabsCountMax = 0
 			}
 		).join('')
 	)
-,	batchButtonsHTML = getExampleButtonsRow(la.menu.examples.batch_buttons, tabsCountMax)
+,	batchButtonsHTML = getExampleButtonsRow(EXAMPLE_CONTROLS, tabsCountMax)
 	;
 
 	menuHTMLparts.examples = (
@@ -8559,26 +8650,22 @@ var	tabsCountMax = 0
 	);
 
 	if (EXAMPLE_NOTICE) {
-	var	noticeHTML = getJoinedOrEmptyString(la.menu.examples.notice, '<br>');
-
-		if (noticeHTML) {
-			menuHTMLparts.examples += (
-				'<p class="warning">'
-			+		noticeHTML
-			+	'</p>'
-			);
-		}
+		menuHTMLparts.examples += (
+			'<p class="warning">'
+		+		getLocalizedHTML('examples_notice')
+		+	'</p>'
+		);
 	}
 
 var	aboutLinks = [
 		{
-			'header': la.menu.about.source
+			'header': getLocalizedHTML('about_source')
 		,	'links': [
 				['https://github.com/f2d/sprite_dress_up', 'GitHub']
 			]
 		}
 	,	{
-			'header': la.menu.about.page_lang
+			'header': getLocalizedHTML('about_lang')
 		,	'links': (
 				gt('link')
 				.filter(
@@ -8597,7 +8684,7 @@ var	aboutLinks = [
 		}
 	,	{
 			'pretext': '<hr>'
-		,	'lines': la.menu.about.notes
+		,	'body': getLocalizedHTML('about_notes')
 		}
 	];
 
@@ -8610,6 +8697,11 @@ var	aboutLinks = [
 					!entry.header
 					? '' :
 					entry.header + ':<br>'
+				)
+			+	(
+					!entry.body
+					? '' :
+					entry.body
 				)
 			+	(
 					!entry.lines
@@ -8634,11 +8726,13 @@ var	aboutLinks = [
 		).join('')
 	);
 
-var	menuHTML = (
-		Object.entries(la.menu).map(
-			([menuName, menuProps]) => getDropdownMenuHTML(
-				menuProps.header || 'TODO'
-			,	menuHTMLparts[menuName] || '<p>TODO</p>'
+var	todoText
+,	todoHTML
+,	menuHTML = (
+		Object.entries(menuHTMLparts).map(
+			([menuName, menuHTMLpart]) => getDropdownMenuHTML(
+				getLocalizedOrEmptyText(menuName) || todoText || (todoText = getLocalizedText('todo'))
+			,	menuHTMLpart || todoHTML || (todoHTML = '<p>' + getLocalizedHTML('todo') + '</p>')
 			)
 		).join('')
 	);

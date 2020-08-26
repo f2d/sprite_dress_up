@@ -142,7 +142,7 @@ label:hover {
 	text-align: center;
 	content: "⌛";
 }
-.batch-buttons button {
+.example-files button {
 	width: 100%;
 }
 .close-button:not(:hover),
@@ -263,6 +263,7 @@ img.larger {
 	display: inline-block;
 	background-color: rgba(0,0,0, 0.1);
 }
+.project-header .count-line,
 .project-header section,
 .project-header header,
 .project-header footer {
@@ -274,21 +275,15 @@ img.larger {
 .project-header div {
 	margin: 0.5em;
 }
-.project-header div {
+.project-header footer > div {
 	display: inline-block;
-}
-.project-header div,
-.project-header div > button {
 	margin: 0;
 }
-.project-header div > button + button {
-	margin-top: 0.5em;
-}
-.project-header div + div {
+.project-header footer > div:not(:first-child) {
 	margin-left: 0.5em;
 }
-.project-header button {
-	margin: 0.5em 0;
+.project-header button:not(:first-child) {
+	margin-top: 0.5em;
 }
 .project-header button,
 .project-options select {
