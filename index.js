@@ -103,7 +103,7 @@ const	configFilePath = 'config.js'			//* <- declarations-only file to redefine a
 ,	regLayerNameParamSplit	= /[\s,_]+/g
 ,	regLayerNameParamTrim	= getTrimReg('\\s,_')
 ,	regTrimParamRadius	= /^(px|at)+|(px|at)+$/ig
-,	regPrefixNumPx		= /^(?:(.*?)\W+)?(\d+)px$/i
+,	regEndsWithNumPx	= /^(?:(.*?)\W+)?(\d+)px$/i
 ,	regColorCode		= /^(?:rgba?\W*(\w.+)|(?:hex\W*|#)(\w+(\W+\w+)*))$/i
 
 //* examples of comments: "... (1) ... (copy 2) (etc)"
@@ -1200,7 +1200,7 @@ var	rgba = [0,0,0,255];
 	return rgba;
 }
 
-function getRGBAFromColorCode(textOrMatch) {
+function getRGBAFromColorCode(textOrMatch, isOnlyMatchingFormatAllowed) {
 
 //* check arguments:
 
@@ -1241,13 +1241,22 @@ function getRGBAFromColorCode(textOrMatch) {
 			);
 		}
 
+		if (rgba[3] === 255) {
+			rgba.length = 3;
+		}
+
 		return rgba;
+	}
+
+	if (isOnlyMatchingFormatAllowed) {
+		return;
 	}
 
 //* ask API what a color word means:
 
 var	canvas = cre('canvas')
 ,	ctx = canvas.getContext('2d')
+,	rgbaFromCanvas
 	;
 
 	canvas.width = 1;
@@ -1256,8 +1265,16 @@ var	canvas = cre('canvas')
 	ctx.fillStyle = text;
 
 	if (
-		ctx.fillStyle !== 'transparent'
-	||	ctx.fillStyle === text
+		text === 'transparent'
+	||	(
+			(rgbaFromCanvas = getRGBAFromColorCode(ctx.fillStyle, true))
+		&&	(
+				rgbaFromCanvas.length === 3
+			||	rgbaFromCanvas.some(
+					(channelValue) => (channelValue > 0)
+				)
+			)
+		)
 	) {
 		ctx.fillRect(0,0, 1,1);
 		rgba = Array.from(ctx.getImageData(0,0, 1,1).data.slice(0,4));
@@ -1268,7 +1285,7 @@ var	canvas = cre('canvas')
 
 		return rgba;
 	} else {
-		if (TESTING) console.log(['unknown color:', text, ctx.fillStyle]);
+		if (TESTING) console.log(['unknown color:', textOrMatch, text, ctx.fillStyle]);
 	}
 }
 
@@ -3081,8 +3098,11 @@ var	layersToRender = [];
 
 		if (layersToRender.length > 1) {
 			return layersToRender;
-		} else {
+		} else
+		if (layersToRender.length > 0) {
 			layers = layersToRender[0].layers;
+		} else {
+			break;
 		}
 	}
 
@@ -3590,7 +3610,7 @@ async function getProjectViewMenu(project) {
 								if (keywordsList.indexOf(optionName) >= 0) {
 									optionItems[optionName] = optionName;
 								} else
-								if (regColorCode.test(optionValue)) {
+								if (getRGBAFromColorCode(optionValue)) {
 									optionItems[optionValue] = optionValue;
 								}
 							} else {
@@ -4897,12 +4917,14 @@ var	params = getOrInitChild(layer, 'params');
 						) {
 							listName = 'align';
 						} else
-						if (match = value.match(regPrefixNumPx)) {
+						if (match = value.match(regEndsWithNumPx)) {
+							listName = match[1];
+
 							if (
-								!(listName = match[1])
+								!listName
 							||	PARAM_KEYWORDS_COLLAGE_PAD.indexOf(listName) < 0
 							) {
-								listName = PARAM_KEYWORDS_COLLAGE_PAD;
+								listName = PARAM_KEYWORDS_COLLAGE_PAD;	//* <- add all with same value
 							}
 
 							value = orz(match[2]) + 'px';
