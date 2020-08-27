@@ -3071,20 +3071,22 @@ var	layers = [];
 }
 
 function getLayersTopSeparated(layers) {
+var	layersToRender = [];
+
 	while (
-		layers
+		isArray(layers)
 	&&	layers.length > 0
 	) {
-	var	layersToRender = layers.filter(isLayerRendered);
+		layersToRender = layers.filter(isLayerRendered);
 
 		if (layersToRender.length > 1) {
 			return layersToRender;
 		} else {
-			layers = layersToRender[0];
+			layers = layersToRender[0].layers;
 		}
 	}
 
-	return layers;
+	return layersToRender;
 }
 
 function isLayerRendered(layer) {
@@ -4190,11 +4192,13 @@ async function getProjectViewMenu(project) {
 					}
 
 					if (sectionName === 'separate') {
-						project.layersTopSeparated.forEach(
-							(layer, index) => {
-								addOption(selectBox, (index + 1) + ': ' + layer.name);
-							}
-						);
+						if (project.layersTopSeparated) {
+							project.layersTopSeparated.forEach(
+								(layer, index) => {
+									addOption(selectBox, (index + 1) + ': ' + layer.name);
+								}
+							);
+						}
 					} else
 					if (sectionName === 'zoom') {
 					var	zoomPercentage = orz(optionName);
