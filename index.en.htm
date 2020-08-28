@@ -9,6 +9,21 @@
 	<link rel="alternate" hreflang="ru" href="index.ru.htm">
 	<script src="index.js"></script>
 	<script>
+		function getLocalizedCaseByCount(num) {
+		const	numPartUnder100 = num % 100
+		,	numPartUnder10 = num % 10
+			;
+
+			if (
+				(numPartUnder100 > 10 && numPartUnder100 < 20)
+			||	(numPartUnder10 !== 1)
+			) {
+				return 'plural';
+			}
+
+			return 'singular';
+		}
+
 		const LOCALIZATION_TEXT = {
 			'file': 'File',
 			'file_select_project': 'Drag and drop a project file onto this page, or select here',
@@ -38,7 +53,7 @@
 				'Chrome-based browsers are recommended for this page.',,
 				'Firefox, for example, stores colors on canvas as premultiplied with alpha for faster display,',
 				'which hurts blending precision and results in color-banded gradients, which were supposed to be smooth.',,
-				'High-precision rendering without relying on canvas API is planned to be added later.',
+				'There is plan to later add high-precision rendering without relying on browser built-in algorithms.',
 			],
 
 			'help': 'Manual',
@@ -86,6 +101,8 @@
 			'save_png': 'Save',
 
 			'batch_header': 'Selected batch',
+			'batch_count_singular': '{0} variant',
+			'batch_count_plural': '{0} variants',
 			'show_png_batch': 'Show all',
 			'save_png_batch': 'Save all',
 			'show_png_collage': 'Show collage',
@@ -144,6 +161,7 @@
 			'confirm_close_page': 'Close all projects on this the page?',
 			'console_log': 'Show internal details',
 			'see_console': 'See in the browser console.',
+			'too_many': 'Too many',
 			'too_much': 'Too much',
 
 			'render_took_time': 'rendering this image took {0} sec.',

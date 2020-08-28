@@ -1047,6 +1047,21 @@ function getJoinedOrEmptyText(text, joinText) {
 	);
 }
 
+function getLocalizedKeyByCount(defaultKey, num) {
+var	key, keyCase;
+
+	if (
+		isFunction(getLocalizedCaseByCount)
+	&&	(keyCase = getLocalizedCaseByCount(num))
+	&&	(key = defaultKey + '_' + keyCase)
+	&&	(key in LOCALIZATION_TEXT)
+	) {
+		return key;
+	}
+
+	return defaultKey;
+}
+
 function getLocalizedOrDefaultText(key, defaultText, ...replacements) {
 var	text = getJoinedOrEmptyText(
 		key in LOCALIZATION_TEXT
@@ -5721,7 +5736,7 @@ var	valueSets = getAllValueSets(
 
 	return (
 		valueSets === null
-		? getLocalizedText('too_much')
+		? getLocalizedText('too_many')
 		: valueSets.length
 	);
 }
@@ -7886,7 +7901,10 @@ var	precounts = getOrInitChild(project, 'renderBatchCounts')
 			label.className = labelClass;
 		}
 
-		label.textContent = count;
+		label.textContent = (
+			getLocalizedOrEmptyText(getLocalizedKeyByCount('batch_count', count), count)
+		||	count
+		);
 	}
 }
 

@@ -9,6 +9,26 @@
 	<link rel="alternate" hreflang="ru" href="index.ru.htm">
 	<script src="index.js"></script>
 	<script>
+		function getLocalizedCaseByCount(num) {
+		const	numPartUnder100 = num % 100
+		,	numPartUnder10 = num % 10
+			;
+
+			if (numPartUnder100 > 10 && numPartUnder100 < 20) {
+				return 'plural';
+			}
+
+			if (numPartUnder10 > 1 && numPartUnder10 < 5) {
+				return 'genitive';
+			}
+
+			if (numPartUnder10 !== 1) {
+				return 'plural';
+			}
+
+			return 'singular';
+		}
+
 		const LOCALIZATION_TEXT = {
 			'file': 'Файл',
 			'file_select_project': 'Перетащите и сбросьте файл проекта на эту страницу, или выберите здесь',
@@ -38,7 +58,7 @@
 				'Для этой страницы рекомендуются Chrome-подобные браузеры.',,
 				'Например, Firefox хранит цвета в канве умноженными на прозрачность для ускорения показа,',
 				'но от этого в операциях смешивания теряется точность и на градиентах, которые должны быть плавными, появляются полосы.',,
-				'Отображение с высокой точностью независимо от встроенного механизма канвы планируется добавить позже.',
+				'Позже планируется добавить отображение с высокой точностью независимо от встроенных алгоритмов браузера.',
 			],
 
 			'help': 'Справка',
@@ -86,6 +106,9 @@
 			'save_png': 'Сохранить',
 
 			'batch_header': 'Выбранное множество',
+			'batch_count_singular': '{0} вариант',
+			'batch_count_genitive': '{0} варианта',
+			'batch_count_plural': '{0} вариантов',
 			'show_png_batch': 'Показать все',
 			'save_png_batch': 'Сохранить все',
 			'show_png_collage': 'Показать коллаж',
@@ -144,6 +167,7 @@
 			'confirm_close_page': 'Закрыть все проекты на этой странице?',
 			'console_log': 'Показать внутренние подробности',
 			'see_console': 'Смотрите в консоли браузера.',
+			'too_many': 'Слишком много',
 			'too_much': 'Слишком много',
 
 			'render_took_time': 'на отрисовку этой картинки ушло {0} сек.',
