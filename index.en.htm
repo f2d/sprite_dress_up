@@ -10,13 +10,16 @@
 	<script src="index.js"></script>
 	<script>
 		function getLocalizedCaseByCount(num) {
-		const	numPartUnder100 = num % 100
-		,	numPartUnder10 = num % 10
+		const	absValue = Math.abs(num)
+		,	numPartUnder100 = absValue % 100
+		,	numPartUnder10 = absValue % 10
+		,	numPartFraction = absValue % 1
 			;
 
 			if (
 				(numPartUnder100 > 10 && numPartUnder100 < 20)
 			||	(numPartUnder10 !== 1)
+			||	(numPartFraction > 0)
 			) {
 				return 'plural';
 			}
