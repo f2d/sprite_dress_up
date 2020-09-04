@@ -404,6 +404,7 @@ const	regLayerBlendModePass	= /^pass[-through]*$/i
 
 const	LS = window.localStorage || localStorage
 ,	URL = window.URL || window.webkitURL || URL
+,	LANG = document.documentElement.lang || 'en'
 
 ,	CAN_CAST_TO_ARRAY = (typeof Array.from === 'function')
 ,	CAN_EXPORT_BLOB = (typeof HTMLCanvasElement.prototype.toBlob === 'function')
@@ -8403,6 +8404,9 @@ function closeProject(buttonTab) {
 
 async function init() {
 	toggleClass(document.body, 'loading', 1);
+
+	await loadLibPromise('localization.' + LANG + '.js');
+
 	document.body.innerHTML = getLocalizedHTML('loading');
 
 //* remember config defaults:
