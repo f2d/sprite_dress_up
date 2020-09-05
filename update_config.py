@@ -4,9 +4,28 @@
 
 import base64, datetime, json, math, os, re, subprocess, sys, time, zipfile
 
+# Use colored text if available:
+try:
+	from termcolor import colored, cprint
+	import colorama
+
+	colorama.init()
+
+except ImportError:
+	def colored(*list_args, **keyword_args): return list_args[0]
+	def cprint(*list_args, **keyword_args): print(list_args[0])
+
+# Workaround for Python 2:
+# https://stackoverflow.com/a/26745443
+# https://github.com/pytorch/pytorch/issues/6932#issuecomment-388586780
+try:
+	FileNotFoundError
+except NameError:
+	FileNotFoundError = IOError
 
 
-# - config - source files and result content: -------------------------------
+
+# - Config - source files and result content: -------------------------------
 
 
 
@@ -30,8 +49,7 @@ is_dest_array = True
 
 
 
-
-# - command line arguments: -------------------------------------------------
+# - Command line arguments: -------------------------------------------------
 
 
 
@@ -81,7 +99,8 @@ arg_preview_size     = get_cmd_arg_after_arg(['z', 'zoom_size', 'preview_size'],
 
 
 
-# - config - external helper programs: --------------------------------------
+# - Config - external helper programs: --------------------------------------
+
 
 
 # Full path example: 'd:/programs/ImageMagick_7/magick.exe'
@@ -148,7 +167,7 @@ pat_check_image_size = re.compile(r'^(\d+)x(\d+)$', re.U | re.I)
 
 
 
-# - config - internal, do not change: ---------------------------------------
+# - Config - internal, do not change: ---------------------------------------
 
 
 
@@ -161,6 +180,7 @@ format_epoch = '%Epoch'	# <- not from python library, but custom str-replaced
 # format_hms = '%H-%M-%S'
 format_print = '%Y-%m-%d %H:%M:%S'
 must_quote_chars = ' ,;>='
+horizontal_separator_line_text = '--------        --------        --------        --------'
 
 s_type = type('')
 u_type = type(u'')
@@ -169,9 +189,47 @@ converter_exe_path_dir = os.path.dirname(converter_exe_path)
 
 
 
-# - functions: --------------------------------------------------------------
+# - Functions: --------------------------------------------------------------
 
 
+
+def print_tabs(*tabs):
+	print('\t'.join(tabs))
+
+def print_with_colored_title(title=None, content=None, title_color=None, content_color=None):
+	print('')
+
+	if not title_color:
+		if title.find('Error') >= 0:
+			title_color = 'red'
+
+		elif title.find('Completed') >= 0:
+			title_color = 'green'
+
+		elif title.find('Running') >= 0:
+			title_color = 'magenta'
+
+		elif (
+			title.find('Done') >= 0
+		or	title.find('Result') >= 0
+		or	title.find(horizontal_separator_line_text) >= 0
+		):
+			title_color = 'cyan'
+
+		else:
+			title_color = 'yellow'
+
+	if title is not None:
+		if title_color:
+			cprint(title, title_color)
+		else:
+			print(title)
+
+	if content is not None:
+		if content_color:
+			cprint(content, content_color)
+		else:
+			print(content)
 
 def is_type_str(v): return isinstance(v, s_type) or isinstance(v, u_type)
 def get_str_from_bytes(v): return v if is_type_str(v) else v.decode()
@@ -266,9 +324,7 @@ def write_file(path, content, mode='a+b'):
 		result = file.write(content)
 
 	except Exception as exception:
-		print('')
-		print('Error writing file:')
-		print(exception)
+		print_with_colored_title('Error writing file:', exception)
 
 		# result = file.write(exception)	# <- why? I don't remember
 
@@ -282,9 +338,7 @@ def rewrite_file(path, content, mode='w'):
 def remove_temp_file(path=None):
 	if path:
 		if os.path.isfile(path):
-			print('')
-			print('Removing temporary file:')
-			print(path)
+			print_with_colored_title('Removing temporary file:', path)
 
 			os.remove(path)
 	else:
@@ -337,15 +391,10 @@ def get_image_cmd_versions(cmd_args):
 	return cmd_versions
 
 def get_image_path_for_cmd(src_file_path, check_thumbnail=False):
-	print('')
-	print('Parsing image file:')
-	print(src_file_path)
+	print_with_colored_title('Parsing image file:', src_file_path)
 
 	src_file_ext = get_file_ext(src_file_path)
-
-	print('')
-	print('File type:')
-	print(src_file_ext)
+	print_with_colored_title('File type:', src_file_ext)
 
 	if src_file_ext in zip_file_types:
 
@@ -361,9 +410,7 @@ def get_image_path_for_cmd(src_file_path, check_thumbnail=False):
 				name = get_file_name(zipped_path)
 
 				if name in names_to_search:
-					print('')
-					print('Found full merged image file:')
-					print(zipped_path)
+					print_with_colored_title('Found full merged image file:', zipped_path)
 
 					unzipped_content = src_zip.read(zipped_path)
 
@@ -380,31 +427,28 @@ def get_image_path_for_cmd(src_file_path, check_thumbnail=False):
 	return src_file_path
 
 def get_cmd_result(cmd_args):
-	print('')
-	print('Running command:')
-	print(cmd_args_to_text(cmd_args))
+	print_with_colored_title('Running command:', cmd_args_to_text(cmd_args))
 
 	# https://stackoverflow.com/a/16198668
 	try:
-		# Note: IM does not work in Linux terminal with shell=True
-		output = subprocess.check_output(cmd_args)
+		# Note: IM does not work in Linux terminal with shell=True.
+		# Note: stderr without override could be shown before the next print.
+
+		output = subprocess.check_output(cmd_args, stderr=subprocess.STDOUT)
 
 	except subprocess.CalledProcessError as exception:
-		print('')
-		print('Error code {}, command output:'.format(exception.returncode))
-		print(get_str_from_bytes(exception.output))
+		print_with_colored_title(
+			'Error code {}, command output:'.format(exception.returncode)
+		,	get_str_from_bytes(exception.output)
+		)
 
-	except FileNotFoundError as exception:
-		print('')
-		print('Error:')
-		print(exception)
+	except (FileNotFoundError, IOError, OSError) as exception:
+		print_with_colored_title('Error:', exception)
 
 	else:
 		output = get_str_from_bytes(output)
 
-		print('')
-		print('Done, command output:')
-		print(output)
+		print_with_colored_title('Done, command output:', output)
 
 		return output
 
@@ -488,9 +532,7 @@ def get_image_size(src_file_path):
 		image_size = cmd_result.strip().lower()
 
 		if re.match(pat_check_image_size, image_size):
-			print('')
-			print('Got image size:')
-			print(image_size)
+			print_with_colored_title('Got image size:', image_size)
 
 			return image_size
 
@@ -515,9 +557,7 @@ def get_resized_image_as_base64(src_file_path, new_size_arg=None):
 			+	base64.b64encode(raw_content).decode()
 			)
 
-			print('')
-			print('Got resized image content:')
-			print(base64_content)
+			print_with_colored_title('Got resized image content:', base64_content)
 
 			return base64_content
 
@@ -525,16 +565,14 @@ def get_resized_image_as_base64(src_file_path, new_size_arg=None):
 
 
 
-# - check old list content: -------------------------------------------------
+# - Check old list content: -------------------------------------------------
 
 
 
 if arg_dest_file_path:
 	dest_file_path = arg_dest_file_path
 
-print('')
-print('Reading old file:')
-print(dest_file_path)
+print_with_colored_title('Reading old file:', dest_file_path)
 
 t = timestamp()
 mark_before = '//* generated file list start, saved at ' + t
@@ -578,15 +616,32 @@ if old_content:
 		old_vars_text = remove_comments(content_before + content_after)
 		old_files_text = remove_comments(match.group('OldFileList'))
 
-		print('')
-		print('Parsing old file list:')
+		print_with_colored_title('Parsing old file list:')
+		print('%d bytes' % len(old_files_text))
 
 		old_files = json.loads(old_files_text)	# <- 'encoding' is ignored and deprecated.
 
-		print('OK')
+		print_with_colored_title('Done parsing old file list:')
 
-		print('')
-		print('Parsing optional old variables:')
+		for group in old_files:
+			files = group.get('files')
+
+			if files:
+				subdir = group.get('subdir', '')
+
+				if subdir:
+					subdir += '/'
+
+				for file in files:
+					print_tabs(
+						subdir +
+						file.get('name',     colored('<no name>', 'red'))
+					,	file.get('pixels',   colored('<no WxH>',  'red'))
+					,	file.get('filesize', colored('<no size>', 'red'))
+					,	file.get('modtime',  colored('<no time>', 'red'))
+					)
+
+		print_with_colored_title('Parsing optional old variables:')
 
 		for match in re.finditer(pat_var_value, old_vars_text):
 			var_value = (
@@ -619,13 +674,14 @@ if old_content:
 					continue
 
 				print('{0} = {1}'.format(var_name, var_value))
-		print('OK')
+
+		print_with_colored_title('Done parsing old variables.')
 else:
 	print('Empty or none.')
 
 
 
-# - override old values with command-line arguments: ------------------------
+# - Override old values with command-line arguments: ------------------------
 
 
 
@@ -639,13 +695,11 @@ thumbnail_size_arg = '{0}x{0}'.format(thumbnail_size)
 
 
 
-# - get list of files: ------------------------------------------------------
+# - Get list of files: ------------------------------------------------------
 
 
 
-print('')
-print('Searching files in:')
-print(src_root_path)
+print_with_colored_title('Searching files in:', src_root_path)
 
 src_filenames_by_subdir = {}
 
@@ -659,8 +713,7 @@ if dirs:
 		files, dirs2 = get_separate_lists_of_files_and_dirs(src_root_path + '/' + name)
 		src_filenames_by_subdir[name] = files
 
-print('')
-print('Found files:')
+print_with_colored_title('Found files:')
 
 for dir_name, filenames in sorted(src_filenames_by_subdir.items()):
 	for filename in sorted(filenames):
@@ -668,7 +721,7 @@ for dir_name, filenames in sorted(src_filenames_by_subdir.items()):
 
 
 
-# - get metadata of files: --------------------------------------------------
+# - Get metadata of files: --------------------------------------------------
 
 
 
@@ -730,7 +783,7 @@ for dir_name, filenames in sorted(src_filenames_by_subdir.items()):
 
 
 
-# - compile results: --------------------------------------------------------
+# - Compile results: --------------------------------------------------------
 
 
 
@@ -820,29 +873,25 @@ new_content = '\n'.join([
 
 
 
-# - output results: ---------------------------------------------------------
+# - Output results: ---------------------------------------------------------
 
 
 
 if TEST:
-	print('')
-	print('Result output for testing, not saved:')
+	print_with_colored_title('Result output for testing, not saved:')
 else:
-	print('')
-	print('Result output for saving:')
+	print_with_colored_title('Result output for saving:')
 
-print('--------        --------        --------        --------')
+print_with_colored_title(horizontal_separator_line_text)
 print(new_content)
-print('--------        --------        --------        --------')
+print_with_colored_title(horizontal_separator_line_text)
 
-if not TEST:
+if TEST:
+	print_with_colored_title('Completed test run.')
+else:
 	remove_temp_file()
 
-	print('')
-	print('Saving to file:')
-	print(dest_file_path)
-
+	print_with_colored_title('Saving to file:', dest_file_path)
 	rewrite_file(dest_file_path, new_content)
 
-	print('')
-	print('Done.')
+	print_with_colored_title('Completed saving new config.')

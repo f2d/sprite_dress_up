@@ -32,6 +32,12 @@ This script can be used manually on the server side to quickly update the table 
 * **Python** (tested with versions 2.7.17 and 3.8.1)
 * **ImageMagick** (tested with versions 6.8.9-9 and 7.0.9-27) for project file canvas measurement and thumbnail generation, called by name or manually configurable path.
 
+#### Optional:
+
+* Python modules for colored text in terminal output, both needed, or colors will not be used:
+	* **termcolor**
+	* **colorama**
+
 
 
 #### Command line arguments:
