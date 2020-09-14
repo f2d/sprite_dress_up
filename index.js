@@ -88,6 +88,8 @@ var	exampleRootDir = ''
 
 const	configFilePath = 'config.js'			//* <- declarations-only file to redefine any of the above variables
 ,	fetchTestFilePath = 'index.png'			//* <- smallest local file to test loading from disk
+,	localStorageNameSpace = 'spriteDressUp'
+,	LSKeyBigText = localStorageNameSpace + 'BigText'
 
 // ,	regLayerNameToSkip		= /^(skip)$/i
 ,	regLayerNameToSkip		= null
@@ -1606,6 +1608,8 @@ var	keep = orz(keep)
 		element.className = '';
 		element.removeAttribute('className');
 	}
+
+	return (classNames.indexOf(className) >= 0);
 }
 
 function getClassReg(className) {return new RegExp('(^|\\s)(' + className + ')($|\\s)', 'i');}
@@ -1877,6 +1881,16 @@ var	header = id('top-menu-' + sectionName);
 		} else {
 			header.scrollIntoView();
 		}
+	}
+}
+
+function toggleTextSize() {
+var	isBigTextEnabled = toggleClass(document.body, 'larger-text');
+
+	updateDropdownMenuPositions();
+
+	if (LS) {
+		LS[LSKeyBigText] = isBigTextEnabled;
 	}
 }
 
@@ -9845,7 +9859,7 @@ var	helpSections = {
 		&&	(content = getLocalizedText(sectionName))
 		) {
 			return (
-				'<header onclick="return toggleSection(this)" id="'
+				'<header onclick="toggleSection(this)" id="'
 			+		encodeTagAttr('top-menu-' + sectionName)
 			+	'">'
 			+		getTableHTML(content)
@@ -10030,7 +10044,7 @@ var	menuHTML = getNestedFilteredArrayJoinedText(
 var	toggleTextSizeHTML = (
 		'<button'
 	+	getTagAttrIfNotEmpty('title', getLocalizedOrEmptyText('larger_text'))
-	+	` onclick="return toggleClass(document.body, 'larger-text'), updateDropdownMenuPositions()">`
+	+	` onclick="return toggleTextSize()">`
 	+		'<big>'
 	+			getLocalizedText('text_size_sample')
 	+		'</big>'
@@ -10098,12 +10112,25 @@ var	toggleTextSizeHTML = (
 
 	console.timeEnd(logLabel);
 
-//* ready for user input:
+//* open or restore state of UI parts:
+
+var	button, oldSetting;
+
+	if (
+		LS
+	&&	(oldSetting = LS[LSKeyBigText])
+	&&	FALSY_STRINGS.indexOf(oldSetting) < 0
+	) {
+		toggleTextSize();
+	}
 
 	if (OPEN_FIRST_MENU_TAB_AT_START) {
-		toggleClass(gt('header')[0], 'show');
-		putInView(gc('menu-hid')[0], 0,0, true);
+		toggleDropdownMenu(gt('header')[0]);
+
+		updateDropdownMenuPositions();
 	}
+
+//* ready for user input:
 
 	toggleClass(document.body, 'loading', -1);
 	toggleClass(document.body, 'ready', 1);
