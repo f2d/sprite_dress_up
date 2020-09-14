@@ -1,18 +1,51 @@
-html {
-	color: #000;
-	background-color: #ddd;
+﻿html {
 	margin-left: 0;
-	margin-right: calc(100% - 100vw);	/* <- Prevent page elements from jumping due to page width changing when vertical scrollbar appears.
+	margin-right: calc(100% - 100vw);
+/*	^
+Prevent page elements from jumping due to page width changing when vertical scrollbar appears.
+
 Source:
 https://css-tricks.com/elegant-fix-jumping-scrollbar-issue/
 https://aykevl.nl/2014/09/fix-jumping-scrollbar
 */
+	color: black;
+	background-color: #ddd;
+	font-family: sans-serif;
+}
+small {
+	font-size: smaller;
+}
+big,
+body > button b,
+body.larger-text > :not(button) button,
+body.larger-text > :not(button) option,
+body.larger-text > :not(button) select,
+body.larger-text > :not(button) input,
+body.larger-text > :not(button) {
+	font-size: large;
+}
+body.larger-text > :not(button) pre,
+body.larger-text > :not(button) code {
+	font-weight: bold;
+}
+body.larger-text > button {
+	background-color: #ace;
+}
+body > button {
+	border: 0.0625em solid gray;
 }
 a {
-	color: #888;
+	color: gray;
 }
 a:hover {
-	color: #000;
+	color: black;
+}
+.button,
+button {
+	/* box-shadow: 0.1875em 0.1875em rgba(0,0,0, 0.1); */	/* <- buggy in ff56 */
+}
+.button button {
+	/* box-shadow: none; */
 }
 [onclick],
 button,
@@ -32,17 +65,29 @@ body {
 	margin: 1em auto;
 	text-align: center;
 }
+body > button {
+	position: absolute;
+	top: 1em;
+	right: 1em;
+	width: 3em;
+	height: 3em;
+}
+.menu-bar > button {
+	margin: 0 0.5em;
+	padding: 0.25em 0.5em;
+	vertical-align: top;
+}
 p > button + button {
 	margin-left: 1em;
 }
 hr {
 	border: none;
-	border-top: 1px solid gray;
+	border-top: 0.0625em solid gray;
 }
 #loaded-files-view img,
 canvas {
-	border: 1px solid #ddd;
-	box-shadow: 3px 3px rgba(0,0,0, 0.1);
+	border: 0.0625em solid #ddd;
+	box-shadow: 0.1875em 0.1875em rgba(0,0,0, 0.1);
 }
 canvas {
 	position: relative;
@@ -64,7 +109,7 @@ label:hover {
 	text-align: left;
 }
 .menu-head > :first-child::before {
-	line-height: 50%;
+	line-height: 0.5;
 	content: "\25BE\A0";
 }
 .menu-drop {
@@ -91,7 +136,7 @@ label:hover {
 .menu-list {
 	display: block;
 	padding: 0 1em;
-	border: 1px solid gray;
+	border: 0.0625em solid gray;
 	background-color: #f5f5f5;
 	text-align: left;
 	white-space: nowrap;
@@ -111,10 +156,14 @@ label:hover {
 	/* font-weight: normal; */
 }
 .example-files td {
-	padding: 2px 4px;
+	padding: 0.125em 0.25em;
 }
 .example-files td:first-child {
 	text-align: right;
+	padding-left: 0;
+}
+.example-files td:last-child {
+	padding-right: 0;
 }
 .example-files:last-child .example-file-type:last-child hr {
 	visibility: hidden;
@@ -127,7 +176,7 @@ label:hover {
 	margin: 1em 0;
 }
 .example-file:hover:not(.loading) td {
-	background-color: #fff;
+	background-color: white;
 }
 .example-file.loading td {
 	position: relative;
@@ -159,7 +208,7 @@ label:hover {
 	background-color: #bdf;
 }
 .button:hover {
-	background-color: #fff;
+	background-color: white;
 }
 .button.loading {
 	background-color: #eda;
@@ -187,7 +236,7 @@ img.thumbnail {
 }
 img.larger {
 	background-color: rgba(0,0,0, 0.4);
-	border: 1px solid white;
+	border: 0.0625em solid white;
 }
 .thumbnail,
 .thumbnail-hover {
@@ -206,6 +255,131 @@ img.larger {
 .thumbnail-hover:not(:hover) .larger {
 	display: none;
 }
+.menu-list > header {
+	margin: 1em 0;
+}
+#top-menu-help table,
+#top-menu-help table tr,
+#top-menu-help table td {
+	margin: 0;
+	padding: 0;
+	border-collapse: collapse;
+}
+#top-menu-help header > button {
+	float: right;
+}
+#top-menu-help header > table td:first-child {
+	width: 100%;
+}
+#top-menu-help header > table td:not(:first-child) button {
+	margin-left: 0.25em;
+}
+#top-menu-help section {
+	margin: 0.5em -1em;
+	border-width: 0 1em;
+	border-style: solid;
+	border-color: transparent;
+}
+#top-menu-help section:hover {
+	border-color: #bdf;
+}
+#top-menu-help section header {
+	padding: 0.5em;
+	/* text-align: center; */
+	background-color: rgba(0,0,0, 0.1);
+}
+#top-menu-help section header:hover {
+	background-color: white;
+}
+#top-menu-help section header.show {
+	background-color: #ace;
+}
+#top-menu-help section header.show:hover {
+	background-color: #bdf;
+}
+#top-menu-help section > div {
+	padding: 1em 0.5em;
+	margin-bottom: 1em;
+	transition: background-color 0.7s ease-in;
+	background-color: transparent;
+}
+#top-menu-help section > div.open-up {
+	transition: none;
+	background-color: #bdf;
+}
+#top-menu-help section > div > table th {
+	padding: 0.5em;
+}
+#top-menu-help section > div > table th:first-child {
+	padding-left: 0;
+}
+#top-menu-help section > div > table td {
+	padding-left: 0.5em;
+	vertical-align: top;
+}
+#top-menu-help section > div > table td:first-child {
+	width: 0;
+	padding-left: 0;
+}
+#top-menu-help section > div > table tr:hover td {
+	background-color: white;
+}
+#top-menu-help section > div > table tr:hover td code {
+	opacity: 0.6;
+}
+#top-menu-help .left-arrow::before,
+#top-menu-help .right-arrow::after {
+	display: inline-block;
+	vertical-align: bottom;
+	border: 1em solid transparent;
+	width: 0;
+	height: 0;
+	content: "";
+}
+#top-menu-help .left-arrow::before {
+	border-left-color: rgba(0,0,0, 0.1);
+	margin-right: 0.5em;
+}
+#top-menu-help .right-arrow::after {
+	border-right-color: rgba(0,0,0, 0.1);
+	margin-left: 0.5em;
+}
+#top-menu-help .show .left-arrow::before,
+#top-menu-help .show .right-arrow::after {
+	border-color: transparent;
+	border-top-color: rgba(0,0,0, 0.1);
+	border-bottom-width: 0.5em;
+	margin-top: 0.5em;
+}
+#top-menu-help code,
+#top-menu-help code > *,
+#top-menu-help pre > * {
+	display: inline-flex;	/* <- does not fill parent table-cell height, but a little better than inline-block */
+}
+#top-menu-help code[class],
+#top-menu-help code > *,
+#top-menu-help pre > * {
+	padding-left: 0.5em;
+	padding-right: 0.5em;
+}
+#top-menu-help pre:first-child {
+	margin-top: 0.5em;
+}
+#top-menu-help pre {
+	margin-top: 2.5em;
+	margin-bottom: 0.5em;
+	padding: 0.5em;
+}
+#top-menu-help pre br {
+	margin-bottom: 0.5em;
+}
+#top-menu-help code,
+#top-menu-help pre,
+#top-menu-help .ignore {	background-color: #e2e2e2;}
+#top-menu-help .comment {	background-color: #f3d7d7;}
+#top-menu-help .name {		background-color: #d7d7f3;}
+#top-menu-help .param {		background-color: #d7f3d7;}
+#top-menu-help .path {		background-color: #f3f300;}
 #loaded-files-selection .button > * {
 	display: inline-flex;	/* <- modern way to vertically fill parent height */
 }
@@ -213,10 +387,12 @@ img.larger {
 	display: inline-flex;
 	margin: 0.5em;
 }
+body > button::-moz-focus-inner,
 #loaded-files-selection .button::-moz-focus-inner,
 #loaded-files-selection .button > *::-moz-focus-inner {
 	border: none;	/* <- https://stackoverflow.com/a/199319 */
 }
+body > button,
 #loaded-files-selection .button,
 #loaded-files-selection .button > * {
 	outline: none;	/* <- https://stackoverflow.com/a/47002717 */
@@ -289,16 +465,16 @@ img.larger {
 .project-options select {
 	display: block;
 	width: 100%;
-	min-width: 100px;
+	min-width: 8em;
 }
 .project-options select {
-	max-width: 200px;
-	border-width: 1px;
+	max-width: 10em;
+	border-width: 0.0625em;
 }
 .project-options select,
 .project-options option {
-	color: #000;
-	background-color: #fff;
+	color: black;
+	background-color: white;
 }
 .project-options select[value][value=""],
 .project-options option:empty {
@@ -306,8 +482,8 @@ img.larger {
 }
 .project-options label {
 	display: block;
-	min-width: 40px;
-	height: 20px;
+	min-width: 2.5em;
+	height: 1.25em;
 }
 .project-options label :not(input) {
 	display: block;
@@ -315,7 +491,7 @@ img.larger {
 	text-align: center;
 }
 .project-options label :not(input):not(:empty) {
-	min-width: 50px;
+	min-width: 4em;
 	padding: 0 0.5em;
 }
 .project-options .batch-all::before {		content: "\2E2C";}
@@ -349,7 +525,7 @@ img.larger {
 }
 .project-options th {
 	padding: 0.5em 0;
-	min-width: 300px;
+	min-width: 20em;
 	/* text-align: center; */
 }
 .project-options header {
@@ -358,19 +534,19 @@ img.larger {
 .project-options td:first-child {
 	text-align: right;
 	padding: 0 0.5em 0 1em;
-	min-width: 128px;
-	max-width: 128px;
+	min-width: 9em;
+	max-width: 9em;
 	overflow: hidden;
 	text-overflow: ellipsis;	/* <- requires max-width */
 }
 .project-options > table {
-	max-width: 300px;
+	max-width: 20em;
 }
 .project-options {
 	/* width: 0;	/* <- take the least possible width without line-wrap */
 }
 .preview {
-	padding-right: 6px;
+	padding-right: 0.375em;
 }
 .preview img {
 	max-width: 100%;
@@ -393,4 +569,30 @@ p.warning {
 }
 .count-label:empty::after {
 	content: "?)";
+}
+.nested-layer::before {
+	content: "\21B3";
+}
+.section-link::before {
+	content: "\A7";
+}
+.section-link::before {
+	padding-right: 0.25em;
+}
+.external-link::after {
+	/* padding-left: 0.25em; */
+	content: "⎘";
+}
+.external-link::after,
+.section-link::before {
+	display: inline-block;	/* <- to remove underline, https://stackoverflow.com/a/15688237 */
+	/* text-decoration: none; */
+}
+header:not(:hover) .section-link:not(a)::before {
+	visibility: hidden;
+}
+header.show [name="open_section"],
+header:not(.show) [name="close_section"],
+.hidden {
+	display: none;
 }

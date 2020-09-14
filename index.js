@@ -15,6 +15,7 @@
 //* TODO: save rendered image as WebP. https://bugs.chromium.org/p/chromium/issues/detail?id=170565#c77 - toDataURL/toBlob quality 1.0 = lossless.
 
 //* rendering:
+//* TODO: properly check copypaste visibility.
 //* TODO: stop images moving to hidden container when save collage button was clicked.
 //* TODO: fix hiding of clipping group with skipped/invisible/empty base layer.
 //* TODO: keep track of current root of (possibly nested) copy-pasted layer (in array property with push-pop?) while rendering.
@@ -29,11 +30,13 @@
 
 //* other:
 //* TODO: make visible user manual from notes and examples.
+//* TODO: find zoom/scale of the screen/page before regenerating thumbnails.
+//* TODO: consistent UI colors (what blue, yellow, white, etc. means across the whole page).
 //* TODO: global job list for WIP cancelling instead of spaghetti-coded flag checks.
 //* TODO: split JS files in a way that lets older browsers to use parts they can parse and execute (only show menu, or only load ORA, etc.).
 //* TODO: split functionality into modules to reuse with drawpad, etc.
 
-//* Config: defaults, safe to redefine in external config file *---------------
+//* Config: defaults, do not change here, redefine in external config file *---
 
 var	exampleRootDir = ''
 ,	exampleProjectFiles = []
@@ -41,27 +44,25 @@ var	exampleRootDir = ''
 ,	DEFAULT_ALPHA_MASK_PADDING = 1
 ,	DEFAULT_ALPHA_MASK_THRESHOLD = 16
 ,	DEFAULT_AUTOCROP = 'top-left/transparent'
-,	DEFAULT_COLLAGE_INSIDE_PADDING = 2
-,	DEFAULT_COLLAGE_OUTSIDE_PADDING = 1
-,	DEFAULT_COLLAGE = [
-		'top-left/transparent'
-	,	'black'
-	,	'gray'
-	,	'lightgray'
-	,	'white'
-	,	'red'
-	,	'green'
-	,	'blue'
-	,	'purple'
-	,	'magenta'
-	,	'violet'
-	,	'salmon'
-	,	'lightgreen'
-	,	'lightblue'
-	,	'border-' + DEFAULT_COLLAGE_OUTSIDE_PADDING + 'px'
-	,	'padding-' + DEFAULT_COLLAGE_INSIDE_PADDING + 'px'
-	,	'0px'
-	].join('/')
+,	DEFAULT_COLLAGE_ALIGN = 'top-left'
+,	DEFAULT_COLLAGE_COLORS = [
+		'Transparent'
+	,	'White'
+	,	'Gray'
+	,	'Black'
+	,	'MidnightBlue'
+	,	'Teal'
+	,	'SteelBlue'
+	,	'LightSlateGray'
+	,	'DeepSkyBlue'
+	,	'LightBlue'
+	,	'LightGreen'
+	,	'LightYellow'
+	,	'Magenta'
+	]
+,	DEFAULT_COLLAGE_PADDING = 0
+,	DEFAULT_COLLAGE_PADDING_INSIDE = 2
+,	DEFAULT_COLLAGE_PADDING_OUTSIDE = 1
 
 ,	PREVIEW_SIZE = 64
 ,	THUMBNAIL_SIZE = 16
@@ -74,6 +75,7 @@ var	exampleRootDir = ''
 ,	DOWNSCALE_BY_MAX_FACTOR_FIRST	= true
 ,	EXAMPLE_NOTICE			= false
 ,	FILE_NAME_ADD_PARAM_KEY		= true
+,	OPEN_FIRST_MENU_TAB_AT_START	= true
 ,	TAB_THUMBNAIL_ZOOM		= true
 ,	TESTING				= false
 ,	TESTING_RENDER			= false
@@ -100,14 +102,12 @@ const	configFilePath = 'config.js'			//* <- declarations-only file to redefine a
 	+		'(.*?)'				//* <- [4] remainder for next step
 	+	'$'
 	)
-,	regLayerNameParamSplit	= /[\s,_]+/g
-,	regLayerNameParamTrim	= getTrimReg('\\s,_')
+// ,	regLayerNameParamSplit	= /[\s,_]+/g
+,	regLayerNameParamSplit	= /[\s\r\n]+/g
+,	regLayerNameParamTrim	= getTrimReg('\\s\\r\\n,_')
 ,	regTrimParamRadius	= /^(px|at)+|(px|at)+$/ig
 ,	regEndsWithNumPx	= /^(?:(.*?)\W+)?(\d+)px$/i
-,	regColorCode		= /^(?:rgba?\W*(\w.+)|(?:hex\W*|#)(\w+(\W+\w+)*))$/i
-
-//* examples of comments: "... (1) ... (copy 2) (etc)"
-//* examples of params: "... [param] ... [param,param param_param]"
+,	regColorCode		= /^(?:(rgba?)\W*|(hex)\W*|(#))(\w.*?)$/i
 
 ,	regLayerNameParamType = {
 		'skip':		/^(skip)$/i
@@ -126,10 +126,10 @@ const	configFilePath = 'config.js'			//* <- declarations-only file to redefine a
 
 	,	'paddings':	/^(outline|pad[ding]*)$/i
 	,	'radius':	/^(.*?\d.*)px(?:\W(.*))?$/i
-	,	'wireframe':	/^(?:wire\W*)?(frame|fill)$/i
+	// ,	'wireframe':	/^(?:wire\W*)?(frame|fill)$/i
 
-	,	'opacities':	/^(?:(?:opacit[yies]*)\W*)?(\d[\d\W]*)%(\d*)$/i
-	,	'zoom':		/^(?:(?:zoom|scale|x)\W*)(\d[\d\W]*)%(\d*)$/i
+	,	'opacities':	/^(?:(?:opacit[yies]*)\W*)?(\d[^%]*)%(\d*)$/i
+	,	'zoom':		/^(?:(?:zoom|scale|x)\W*)(\d[^%]*)%(\d*)$/i
 
 	,	'side':		/^(front|back|reverse(?:\W(.*))?)$/i
 	,	'separate':	/^(separate|split)$/i
@@ -143,227 +143,9 @@ const	configFilePath = 'config.js'			//* <- declarations-only file to redefine a
 	,	'batch':	/^(batch|no-batch|single)?$/i
 
 	,	'no_prefix':	/^(no-prefix)$/i
-	};
-/*
-examples of layer folder names with parameter syntax:
+	}
 
-	"[if not any parts] body"	render contents of this folder if "parts: body" select box value is empty.
-	"[if     any parts] body"	render contents of this folder if "parts: body" select box value is non-empty.
-	"[if not colors] eyes, hair"	render only those subfolders/layers, which have no names selected in "colors: hair" AND "colors: eyes" select boxes.
-	"[if     colors] eyes, hair"	render only those subfolders/layers, which have any of names selected in "colors: hair" OR "colors: eyes" select boxes.
-
-	Note: any amount of whitespace is automatically trimmed around and collapsed inside to single spaces.
-	Note: [none] adds empty name to the list of layer's option IDs. Comma-separated empty IDs are discarded.
-	Note: [parts/colors] folder with [if/not/any] are intended for logical dependencies, and do not add options to selectable list.
-	Note: [colors] folder without [if/not/any] gets replaced with selected color, or skipped if empty value is selected. Any layer inside it is added as option regardless of nesting depth, which is intended for logical-dependent inclusion and same-name overwrites. First one found passing logical criteria from top to bottom is used.
-
-examples of 'copypaste':
-
-	[copy]			(ID = empty string)
-	[paste=]
-
-	[copy=alias]		(ID = "alias")
-	[paste=alias]
-
-	[copy=1 copy=2]		(ID = any of "1" or "2")
-	[paste=1 paste=2]	(create a folder with pasted copies inside for each given ID - both "1" and "2")
-
-	Note: copypaste-specific IDs are unrelated to option IDs.
-	Note: layer content or children are not copied in the project layer tree, only referenced during relevance checking or rendering.
-	Note: for relevance - all paste targets under given aliases are checked.
-	Note: for rendering - all copy sources under given aliases are pasted in order of encounter.
-
-examples of 'color_code':
-
-	[#1]		( = hex-11-11-11    = rgb-17-17-17)
-	[#12]		( = hex-12-12-12    = rgb-18-18-18)
-	[#123]		( = hex-11-22-33    = rgb-17-34-51)
-	[#1234]		( = hex-11-22-33-44 = rgba-17-34-51-68)
-	[#12345]	( = hex-12-34-5     = rgb-18-52-5)
-	[#123456]	( = hex-12-34-56    = rgb-18-52-86)
-	[#1234567]	( = hex-12-34-56-7  = rgba-18-52-86-7)
-	[#12345678]	( = hex-12-34-56-78 = rgba-18-52-86-120)
-	[hex-1F2F3F4F]
-	[hex-1F-2F-3F-4F]
-
-	[rgb-255-123-0]
-	[rgba-10-20-30-40]
-
-	Note: missing RGB values are set to 0 (partial specification is tolerated, but should not be relied upon).
-	Note: missing Alpha value is set to 255 (FF).
-
-examples of 'paddings', 'radius':
-
-	"name [outline 1px]"
-	"name [pad 1px]"		defaults to outline mode.
-	"name [pad 1px-outline]"	fills a padded mask behind layers above it in the same folder.
-	"name [pad 1px-inline]"		TODO: fills a padded mask over layers below it in the same folder.
-	"name [pad 1px-enclosed]"	TODO: use a mask enclosed from outer side, fill inner areas and holes.
-	"name [pad 1px-boundbox]"	TODO: use bounding rectangle as a mask.
-	"name [pad 0px-wireframe]"	TODO: use wireframe as a mask (render b/w-filled image, then convert white into transparency).
-	"name [pad 0px-wirefill]"	TODO: render b/w-filled image.
-	"name [pad 5px-min]"		for each pixel use min value found inside 5px radius of source alpha.
-	"name [pad 5px-max]"		for each pixel use max value found inside 5px radius.
-	"name [pad 5px-16]"		for each pixel use 100% alpha if any value inside 5px radius is above threshold 16 of 255.
-	"name [pad (1:2x3:4)px]"	[1 to 2] width x [3 to 4] height px radius, rectangle area around each pixel.
-	"name [pad (1x/2x/3x)px]"	(1 or 2 or 3) px radius, square area.
-	"name [pad (-4:5)px-max]"	[-4 to 5] px radius, rounded area, use max value around.
-	"name [pad 1/2/3px-in-min/out-max/enclosed-16]"	cross-variation combo.
-
-	Note: (TODO) when rendering in outline or wireframe mode, all irrelevant layers are skipped (coloring, clipping, etc).
-	Note: (TODO) single dot is part of a number, rounded for now but may be properly supported later.
-	Note: use 0px to get mask or image without padding. Entries without numbers are ignored.
-
-layer name sample:
-	"outline [optional outline 60/100/90/60/30% :xpx 5...1px/(-1...1):(5...1)px/(5...1x)px/(-1...1):(5...1)x(-1...1):(5...1)px/(1...2:)px/(1...2x:)px/(1...2:3x4...5)px/at=16-0/max/min]"
-
-1) split param into parts by "/".
-2) remove any optional brackets, added by human for human readability, without validating them.
-3) parse methods, if known keywords:
-	"max" (get maximum value around each pixel, starting tith 0, then cut the inner mask from the outer)
-	"min" (get minimum value around each pixel, starting tith 255, then add the inner mask to the outer)
-	default: max
-
-4) get alpha thresholds, if part starts with "at", split in nested order by non-digits/dots, then "..." (2 or more dots):
-	"at=0-16-199...200" is unpacked into variants below:
-	"0" (skip pixels around with exactly 0 in alpha channel)
-	"16" (skip pixels around with 16/255 or less in alpha channel)
-	"199...200" (add all variants from 199/255 up to 200/255)
-	default: 16
-
-5) get boundary sets, if part ends with "px", split in nested order by ":", "x", "..." (2 or more dots):
-	":xpx" (skipped, no numbers)
-	"5...1px" (add all variants of outer radius from +5 down to +1)
-	"(5...1x)px" (add all variants of equal outer box width and height from +5 down to +1)
-	"(-1...1):(5...1)px" (add all variants of radius from -1 up to +1 inside, from +5 down to +1 outside)
-	"(-1...1)x(-1...1):(5...1)x(5...1)px" (add all variants of width and height from -1 up to +1 inside, from +5 down to +1 outside)
-	"(1...2:)px" (add all variants of outer radius from +1 to +2, inner radius equals outer in each variant)
-	"(1...2:3x4...5)px" (add all variants of box inner width from +1 to +2, with outer width 3, and equal inner and outer height from +4 to +5)
-	default: outer radius = 1px, inner radius = none.
-
-6) add option variants for each method x each threshold x each boundary set (width-in/out + height-in/out, or radius-in/out) in one param without spaces.
-
-examples of 'wireframe':
-
-	[frame]		(TODO)
-	[wireframe]	(TODO)
-	[wire-frame]	(TODO: recolor this layer into black)
-
-	Note: when rendering wireframe mask, unmarked layers will be recolored into white.
-
-examples of 'opacities':
-
-	[opacity-50/100%]
-	[100-50%]	(set opacity of this layer/folder to exactly 100 or 50%)
-	[0/30/60/90%1]	(TODO: exactly (0 or 30 or 60 or 90)%, preselect format version 1)
-	[optional 0%]	(TODO: optionally hide, otherwise leave default opacity of each layer from document)
-
-examples of 'zoom':
-
-	[zoom-50/100%]
-	[x50/100/200%]	(scale to (50 or 100 or 200)%, default shortest format in filenames)
-	[x100-50-25%2]	(TODO: scale to (100 or 50 or 25)%, preselect format version 2)
-
-	Note: this option works globally (applied to whole result image), so putting this on topmost root layer for clarity is advised.
-	Note: internally, 100% is rendered first regardless of selection, then scaled up/down repeatedly by up to x2, until target scale is met.
-	Note: all intermediate results are cached and reused.
-
-examples of 'side':
-
-	[reverse]	(when back side is selected, this folder content will be rendered in reverse order)
-	[reverse-hor]	(rendered in reverse order and then flipped horizontally)
-	[reverse-ver]	(rendered in reverse order and then flipped vertically)
-
-	[if reverse]
-	[back]
-	[not front]	(when back side is selected, this layer/folder will be drawn; may be used for different color masks)
-
-	[if not reverse]
-	[front]
-	[not back]	(when back side is selected, this layer/folder will be skipped)
-
-	Note: any of these will add one global select for all to the menu, with 2 options: front and back.
-
-examples of 'separate':
-
-	[separate]	(layers in the top-most non-single-layer folder will be rendered into series of separate images)
-
-	Note: this option works globally (like zoom), not on the marked layer.
-
-examples of 'autocrop':
-
-	[autocrop]			(TODO: remove same-fill bar areas around a copy of rendered image)
-	[autocrop=rgb-255-123-0]	(TODO: remove border areas colored as given value; see 'color_code' examples for syntax)
-	[autocrop=top-left]		(TODO: remove border areas colored same as pixel in given corner)
-	[autocrop=top-left/top-right/bottom-left/bottom-right/transparent/all/etc]
-
-	Note: this option works globally.
-	Note: all given variants are added as options.
-	Note: default = none (pixels with zero alpha value).
-
-examples of 'collage':
-
-	[collage=border-1px]		(TODO: add 1px transparent padding around the whole collage)
-	[collage=padding-2px]		(TODO: add 2px transparent padding between joined images)
-	[collage=3px/rgb-255-123-0]	(TODO: add 3px colored padding around and between; see 'color_code' examples for syntax)
-	[collage=top-left]		(TODO: align images in a row to top, align rows to left side)
-	[collage=top/bottom]		(TODO: horizontally-centered rows)
-	[collage=left/right]		(TODO: vertically-centered rows)
-	[collage=top-left/top-right/bottom-left/bottom-right/transparent/all/etc]
-
-	Note: this option works globally.
-	Note: all given variants are added as options.
-	Note: default = top-left alignment, transparent 1px border + 2px padding (for neighbour texture edge interpolation).
-	Note: alignment has no effect without autocrop, because all images in a project will render with the same canvas size.
-
-examples of 'layout':
-
-	[rows]
-	[newline]	(separate row of images in a batch/collage for each value in marked option list)
-
-	[columns]
-	[inline]	(keep images in one row while all option lists marked with 'newline' keep their values)
-
-	Note: first found explicit setting makes the inverse to be global default.
-	Note: if none found, default = all inline.
-
-examples of 'multi_select':
-
-	[optional]	(1 or none)
-	[x0-1]		(1 or none)
-	[x1+]		(TODO: 1 or more)
-	[x2]		(TODO: exactly 2)
-	[x]		(TODO: any, from none to all at once)
-
-	Note: [parts] cannot be selected more than 1 at once currently.
-	Note: [colors] cannot be selected more than 1 at once (they will overwrite anyway).
-
-examples of 'preselect':
-
-	[preselect]
-	[initial]	(preselect marked option initially)
-
-	[last]		(preselect last option in the list; may be empty value, depending on 'multi_select' param)
-
-	Note: default = preselect first option in the list.
-
-examples of 'batch':
-
-	[batch]		(in batch/collage operations - iterate the whole option list)
-
-	[no-batch]
-	[single]	(in batch/collage operations - use only the single selected option)
-
-	Note: first found explicit setting makes the inverse to be global default.
-	Note: if none found, default = all batch.
-
-examples of 'no_prefix':
-
-	[no-prefix]	(for export filename - omit option list title)
-			(TODO: add prefix automatically only if option names collide?)
-*/
-
-const	regLayerBlendModePass	= /^pass[-through]*$/i
+,	regLayerBlendModePass	= /^pass[-through]*$/i
 ,	regLayerBlendModeAlpha	= /^(source|destination)-(\w+)$/i
 ,	regLayerTypeSingleTrim	= /s+$/i
 ,	regHasDigit		= /\d/
@@ -371,18 +153,22 @@ const	regLayerBlendModePass	= /^pass[-through]*$/i
 ,	regNumDots		= /[\d.]+/g
 ,	regNaNorDot		= /[^\d.]+/g
 ,	regNaN			= /\D+/g
-,	regNonWord		= /\W+/g
+,	regNonWord		= /\W+/g	//* <- "\w" includes underscore "_"
+,	regNonAlphaNum		= /[^0-9a-z]+/gi
 ,	regNonHex		= /[^0-9a-f]+/gi
 ,	regSpace		= /\s+/g
 ,	regCommaSpace		= /\,+s*/g
 ,	regSplitLayerNames	= /[\/,]+/g
 ,	regSanitizeFileName	= /[_\s\/\\:<>?*"]+/g
+,	regTemplateVarName	= /\{(\w+)\}/g
 ,	regHMS			= /(T\d+)-(\d+)-(\d+\D*)/
 ,	regTrim			= getTrimReg('\\s')
+,	regTrimBrackets		= getTrimReg('\\(\\)\\[\\]\\{\\}\\<\\>')
 ,	regTrimCommaSpace	= getTrimReg('\\s,')
 ,	regTrimNaN		= getTrimReg('\\D')
 ,	regTrimNaNorSign	= getTrimReg('^\\d\\.+-')
 ,	regTrimNewLine		= /[^\S\r\n]*(\r\n|\r|\n)/g
+,	regTrimTailBrTags	= /(\<br\/\>\s*)+$/gi
 ,	regClassOption		= getClassReg('project-option|option')
 ,	regClassExampleFiles	= getClassReg('example-file-type|example-files|files')
 ,	regClassExampleFile	= getClassReg('example-file|file')
@@ -432,6 +218,9 @@ const	LS = window.localStorage || localStorage
 ,	TIME_PARTS_YMD = ['FullYear', 'Month', 'Date']
 ,	TIME_PARTS_HMS = ['Hours', 'Minutes', 'Seconds']
 
+,	OPEN_CLOSE = ['open', 'close']
+
+,	COLOR_LIST_NAMES = ['background']
 ,	PARAM_KEYWORDS_AUTOCROP = ['transparent', 'topleft', 'topright', 'bottomleft', 'bottomright']
 ,	PARAM_KEYWORDS_COLLAGE_ALIGN = ['topleft', 'topright', 'bottomleft', 'bottomright', 'top', 'bottom', 'left', 'right']
 ,	PARAM_KEYWORDS_COLLAGE_PAD = ['border', 'padding']
@@ -744,6 +533,7 @@ var	ora, zip, PSD	//* <- external variable names, do not change
 ,	CompositionModule
 ,	CompositionFuncList
 
+,	DEFAULT_COLLAGE
 ,	thumbnailPlaceholder
 ,	canLoadFromDisk
 ,	isStopRequested
@@ -887,6 +677,30 @@ function asArray(value) {
 	return [value];
 }
 
+function getFlatArray(array, maxDepth) {
+	if (isNaN(maxDepth)) {
+		maxDepth = Infinity;
+	}
+
+var	flatArray = [];
+
+	array.forEach(
+		(value) => {
+			if (isArray(value)) {
+				if (maxDepth > 0) {
+					flatArray.concat(getFlatArray(value, maxDepth - 1))
+				} else {
+					flatArray.concat(value)
+				}
+			} else {
+				flatArray.push(value)
+			}
+		}
+	);
+
+	return flatArray;
+}
+
 function arrayFilterNonEmptyValues(value) {
 	return (
 		isString(value)
@@ -900,8 +714,6 @@ function arrayFilterNonEmptyValues(value) {
 }
 
 function arrayFilterUniqueValues(value, index, array) {return (array.indexOf(value) === index);}
-function arrayFilteredJoin(array, joinText) {return array.filter(arrayFilterNonEmptyValues).join(joinText || '');}
-
 function orz(value) {return parseInt(value||0)||0;}
 function orzClamp(value, min, max) {return Math.max(min, Math.min(max, orz(value)));}
 function orzFloat(value) {return parseFloat(value||.0)||.0;}
@@ -911,12 +723,35 @@ function getDistance(x,y) {return Math.sqrt(x*x + y*y);}
 function getAlphaDataIndex(x,y, width) {return (((y*width + x) << 2) | 3);}
 // function getAlphaDataIndex(x,y, width) {return (((y*width + x) * 4) + 3);}
 function repeatText(text, numberOfTimes) {return (new Array(numberOfTimes + 1)).join(text);}
-function replaceAll(text, replaceWhat, replaceWith) {return String(text).split(replaceWhat).join(replaceWith);}
+
+function replaceAll(text, replaceWhat, replaceWith) {
+	if (isArray(replaceWhat)) {
+		Array.from(arguments).forEach(
+			(arg) => {
+				if (isArray(arg)) {
+					text = replaceAll(text, ...arg);
+				}
+			}
+		);
+
+		return text;
+	}
+
+	return String(text).split(replaceWhat).join(replaceWith);
+}
 
 function isNotEmptyString(value) {
 	return (
 		isString(value)
 	&&	value.length > 0
+	);
+}
+
+function isSlicableNotString(value) {
+	return (
+		!isString(value)
+	&&	value
+	&&	isFunction(value.slice)
 	);
 }
 
@@ -959,45 +794,55 @@ function addToListIfNotYet(values, value) {
 	return 0;
 }
 
-function addRangeToList(values, rangeText) {
-var	range = (
-		String(rangeText)
-		.split(regMultiDot)
-		.map((textPart) => textPart.replace(regTrimNaNorSign, ''))
-		.filter(arrayFilterNonEmptyValues)
-		.map(orzFloat)
+function addRangeToList(values, newValuesText) {
+	String(newValuesText)
+	.split(regCommaSpace)
+	.forEach(
+		(rangeText) => {
+		var	range = (
+				String(rangeText)
+				.split(regMultiDot)
+				.map((textPart) => textPart.replace(regTrimNaNorSign, ''))
+				.filter(arrayFilterNonEmptyValues)
+				.map(orzFloat)
+			);
+
+			if (range.length > 0) {
+			var	min = Math.min(...range)
+			,	max = Math.max(...range)
+			,	isCountDown = range.indexOf(min) > range.indexOf(max)
+				;
+
+				if (
+					!values
+				||	!isFunction(values.push)
+				) {
+					values = [];
+				}
+
+				if (isCountDown) {
+					for (let value = max; value >= min; value--) {
+						addToListIfNotYet(values, value);
+					}
+				} else {
+					for (let value = min; value <= max; value++) {
+						addToListIfNotYet(values, value);
+					}
+				}
+
+		//* don't forget overstepped floats:
+
+				addToListIfNotYet(values, min);
+				addToListIfNotYet(values, max);
+			}
+		}
 	);
 
-	if (range.length > 0) {
-	var	min = Math.min(...range)
-	,	max = Math.max(...range)
-	,	isCountDown = range.indexOf(min) > range.indexOf(max)
-		;
-
-		if (
-			!values
-		||	!isFunction(values.push)
-		) {
-			values = [];
-		}
-
-		if (isCountDown) {
-			for (let value = max; value >= min; value--) {
-				addToListIfNotYet(values, value);
-			}
-		} else {
-			for (let value = min; value <= max; value++) {
-				addToListIfNotYet(values, value);
-			}
-		}
-
-//* don't forget overstepped floats:
-
-		addToListIfNotYet(values, min);
-		addToListIfNotYet(values, max);
-	}
-
 	return values;
+}
+
+function getRangeValuesFromText(rangeText) {
+	return addRangeToList([], rangeText);
 }
 
 function getThisOrAnyNonEmptyItem(value, index, values) {
@@ -1048,6 +893,63 @@ function getJoinedOrEmptyText(text, joinText) {
 	);
 }
 
+function getNestedJoinedText(value, ...joinTexts) {
+	return getNestedArrayJoinedText(value, null, ...joinTexts);
+}
+
+function getNestedFilteredArrayJoinedText(value, ...joinTexts) {
+	return getNestedArrayJoinedText(value, {filter: true}, ...joinTexts);
+}
+
+function getNestedFilteredArrayEnclosedJoinedText(value, prefix, suffix, ...joinTexts) {
+	return getNestedArrayJoinedText(value, {prefix, suffix, filter: true}, ...joinTexts);
+}
+
+function getNestedArrayJoinedText(value, flags, ...joinTexts) {
+	if (!isNonNullObject(flags)) {
+		flags = {};
+	}
+
+	if (!isArray(joinTexts) || !joinTexts.length) {
+		joinTexts = [''];
+	}
+
+var	wrapText = {
+		'prefix': '',
+		'suffix': '',
+	};
+
+	for (let key in wrapText) if (key in flags) {
+		wrapText[key] = String(flags[key]);
+
+		delete flags[key];
+	}
+
+	if (isArray(value)) {
+	var	joinText = (
+			joinTexts.length > 1
+			? joinTexts.shift()
+			: joinTexts[0]
+		) || '';
+
+		value = value.map(
+			(value) => getNestedArrayJoinedText(value, flags, ...joinTexts)
+		);
+
+		if (flags.filter) {
+			value = value.filter(arrayFilterNonEmptyValues);
+		}
+
+		value = value.join(joinText);
+	}
+
+	return (
+		wrapText.prefix
+	+	String(value)
+	+	wrapText.suffix
+	);
+}
+
 function getLocalizedKeyByCount(defaultKey, num) {
 var	key, keyCase;
 
@@ -1064,15 +966,45 @@ var	key, keyCase;
 }
 
 function getLocalizedOrDefaultText(key, defaultText, ...replacements) {
-var	text = getJoinedOrEmptyText(
+var	lowKey
+,	text = getJoinedOrEmptyText(
 		key in LOCALIZATION_TEXT
 		? LOCALIZATION_TEXT[key]
-		: defaultText
+		: (
+			(lowKey = String(key).toLowerCase()) in LOCALIZATION_TEXT
+			? LOCALIZATION_TEXT[lowKey]
+			: (
+				defaultText === true
+				? getNestedJoinedText(key, '\n', '')
+				: defaultText
+			)
+		)
 	);
 
-	if (text && isArray(replacements)) {
-		for (let index in replacements) {
-			text = replaceAll(text, '{' + index + '}', replacements[index]);
+	if (
+		text
+	&&	isArray(replacements)
+	) {
+		replacements.forEach(
+			(value, index) => {
+				text = replaceAll(text, '{' + index + '}', getNestedJoinedText(value, '\n', ''));
+			}
+		);
+	}
+
+	if (
+		text
+	&&	(replacements = text.match(regTemplateVarName))
+	) {
+		for (let placeholder of replacements) {
+			key = placeholder.replace(regTrimBrackets, '');
+
+			if (key in LOCALIZATION_TEXT) {
+				text = replaceAll(text, placeholder, getNestedJoinedText(LOCALIZATION_TEXT[key], '\n', ''));
+			} else
+			if (key in window) {
+				text = replaceAll(text, placeholder, getNestedJoinedText(window[key], '\n', ''));
+			}
 		}
 	}
 
@@ -1084,7 +1016,7 @@ function getLocalizedOrEmptyText(key, ...replacements) {
 }
 
 function getLocalizedText(key, ...replacements) {
-	return getLocalizedOrDefaultText(key, key, ...replacements);
+	return getLocalizedOrDefaultText(key, true, ...replacements);
 }
 
 function getLocalizedHTML() {
@@ -1169,18 +1101,11 @@ var	canvas = cre('canvas');
 	);
 }
 
-function isColorDark(color) {
+function getNormalizedColorText(color) {
 	return (
-		(
-			isArray(color)
-			? color
-			: getRGBAFromColorCode(color)
-		)
-		.slice(0,3)
-		.reduce(
-			(sum, channelValue) => (sum + orz(channelValue))
-		,	0
-		) < 400
+		String(color)
+		.replace(regNonAlphaNum, '')
+		.toLowerCase()
 	);
 }
 
@@ -1216,93 +1141,146 @@ var	rgba = [0,0,0,255];
 	return rgba;
 }
 
-function getRGBAFromColorCode(textOrMatch, isOnlyMatchingFormatAllowed) {
-
-//* check arguments:
-
-	if (isArray(textOrMatch)) {
-		match = textOrMatch;
-	} else {
-	var	text = String(textOrMatch)
-	,	match = text.match(regColorCode)
-		;
-	}
-
-	if (match) {
-	var	rgba = [0,0,0,255];
+function getRGBAFromColorCodeMatch(match) {
+var	rgba = [0,0,0,255];
 
 //* split RGB(A):
 
-		if (match[1]) {
-			getNumbersArray(match[1], 4).forEach(
-				(channelValue, index) => (rgba[index] = channelValue)
-			);
-		} else
+	if (match[1]) {
+		getNumbersArray(match[4], 4).forEach(
+			(channelValue, index) => (rgba[index] = channelValue)
+		);
+	} else
 
 //* split hex:
 
-		if (match[3]) {
-			getNumbersArray(match[2], 4, regNonHex,
-				(channelValue) => parseInt(channelValue.substr(0, 2), 16)
-			).forEach(
-				(channelValue, index) => (rgba[index] = channelValue)
-			);
-		} else
+	if (match[2]) {
+		getNumbersArray(match[4], 4, regNonHex,
+			(channelValue) => parseInt(channelValue.substr(0, 2), 16)
+		).forEach(
+			(channelValue, index) => (rgba[index] = channelValue)
+		);
+	} else
 
 //* solid hex:
 
-		if (match[2]) {
-			getRGBAFromHex(match[2]).forEach(
-				(channelValue, index) => (rgba[index] = channelValue)
-			);
-		}
+	if (match[3]) {
+		getRGBAFromHex(match[4]).forEach(
+			(channelValue, index) => (rgba[index] = channelValue)
+		);
+	}
 
-		if (rgba[3] === 255) {
-			rgba.length = 3;
-		}
+	return getNormalizedRGBA(rgba);
+}
 
+function getRGBAFromColorCodeText(color) {
+var	match = String(color).match(regColorCode);
+
+	if (match) {
+		return getRGBAFromColorCodeMatch(match);
+	}
+}
+
+function getRGBAFromColorCodeOrName(color, maxCount) {
+var	rgba = getRGBAFromColorCodeText(color);
+
+	if (rgba) {
 		return rgba;
 	}
 
-	if (isOnlyMatchingFormatAllowed) {
-		return;
-	}
-
-//* ask API what a color word means:
+//* ask browser built-in API what a color word means:
 
 var	canvas = cre('canvas')
 ,	ctx = canvas.getContext('2d')
+,	normalizedColorText = getNormalizedColorText(color)
 ,	rgbaFromCanvas
 	;
 
 	canvas.width = 1;
 	canvas.height = 1;
 	ctx.fillStyle = 'transparent';
-	ctx.fillStyle = text;
+	ctx.fillStyle = normalizedColorText;
 
 	if (
-		text === 'transparent'
+		normalizedColorText === 'transparent'
 	||	(
-			(rgbaFromCanvas = getRGBAFromColorCode(ctx.fillStyle, true))
-		&&	(
-				rgbaFromCanvas.length === 3
-			||	rgbaFromCanvas.some(
-					(channelValue) => (channelValue > 0)
-				)
-			)
+			(rgbaFromCanvas = getRGBAFromColorCodeText(ctx.fillStyle))
+		&&	!isColorTransparent(rgbaFromCanvas)
 		)
 	) {
 		ctx.fillRect(0,0, 1,1);
-		rgba = Array.from(ctx.getImageData(0,0, 1,1).data.slice(0,4));
 
+		maxCount = orzClamp(maxCount || 4, 3,4);
+		rgba = Array.from(ctx.getImageData(0,0, 1,1).data.slice(0, maxCount));
+
+		return getNormalizedRGBA(rgba);
+	} else {
+		if (TESTING) console.log(
+			'getRGBAFromColorCodeOrName - unknown color: "'
+		+		color
+		+	'" ('
+		+		normalizedColorText
+		+	'), canvas result = "'
+		+		ctx.fillStyle
+		+	'"'
+		);
+	}
+}
+
+function getRGBAFromColorCodeOrArray(color, maxCount) {
+	maxCount = orzClamp(maxCount || 4, 3,4);
+
+	return (
+		isSlicableNotString(color)
+		? getNumbersArray(color, maxCount)
+		: getRGBAFromColorCodeOrName(color, maxCount)
+	);
+}
+
+function isColorDark(color) {
+var	[r, g, b] = getRGBAFromColorCodeOrArray(color, 3);
+
+//* sources:
+//* https://awik.io/determine-color-bright-dark-using-javascript/
+//* http://alienryderflex.com/hsp.html
+	return Math.sqrt(
+		0.299 * (r * r)
+	+	0.587 * (g * g)
+	+	0.114 * (b * b)
+	) < 150;
+}
+
+function isColorTransparent(color) {
+	if (getNormalizedColorText(color) === 'transparent') {
+		return true;
+	}
+
+var	rgba = getRGBAFromColorCodeOrArray(color);
+
+	return (
+		rgba
+	&&	isArray(rgba)
+	&&	!(
+			rgba.length === 3
+		||	rgba.some(
+				(channelValue) => (channelValue > 0)
+			)
+		)
+	);
+}
+
+function getNormalizedRGBA(rgba) {
+	if (rgba.length > 3) {
 		if (rgba[3] === 255) {
-			rgba.length = 3;
+			return rgba.slice(0,3);
 		}
 
-		return rgba;
-	} else {
-		if (TESTING) console.log(['unknown color:', textOrMatch, text, ctx.fillStyle]);
+		if (rgba[3] === 0) {
+			return [0,0,0,0];
+		}
 	}
+
+	return rgba;
 }
 
 function getColorTextFromArray(rgba, maxCount) {
@@ -1312,7 +1290,11 @@ function getColorTextFromArray(rgba, maxCount) {
 	&&	!isString(rgba)
 	) {
 	var	rgba = rgba.slice(0, orzClamp(maxCount || 4, 1,4)).map(
-			(channelValue, index) => (index === 3 ? getNormalizedOpacity : orz)(channelValue)
+			(channelValue, index) => (
+				index === 3
+				? getNormalizedOpacity(channelValue).toFixed(3)
+				: orz(channelValue)
+			)
 		);
 
 		while (rgba.length < 3) {
@@ -1322,7 +1304,7 @@ function getColorTextFromArray(rgba, maxCount) {
 		return (
 			(rgba.length < 4 ? 'rgb' : 'rgba')
 		+	'('
-		+		rgba.join(',')
+		+		rgba.join(', ')
 		+	')'
 		);
 	}
@@ -1724,6 +1706,33 @@ function getTagAttrIfNotEmpty(name, values, delim) {
 	return '';
 }
 
+function getTableRowHTML(cells, tagName) {
+var	tagName = String(tagName || '') || 'td'
+,	openTag = '<' + tagName + '>'
+,	closeTag = '</' + tagName + '>'
+	;
+
+	return (
+		openTag
+	+		getNestedJoinedText(cells, closeTag + openTag, '')
+	+	closeTag
+	);
+}
+
+function getTableHTML() {
+	return (
+		'<table><tr>'
+	+	Array.from(arguments).map(
+			(row) => (
+				isNonNullObject(row) && (row.cells || row.cell_tag_name)
+				? getTableRowHTML(row.cells, row.cell_tag_name)
+				: getTableRowHTML(row)
+			)
+		).join('</tr><tr>')
+	+	'</tr></table>'
+	);
+}
+
 function getDropdownMenuHTML(headContent, listContent, headId, tagName) {
 	if (isArray(arguments[0])) {
 		[headContent, listContent, headId, tagName] = arguments[0];
@@ -1743,7 +1752,9 @@ var	tagName = tagName || 'div'
 			hasFraming(headContent, '<', '>')
 			? headContent
 			: (
-				'<header class="button" onclick="toggleDropdownMenu(this)">'
+				'<header class="button"'
+			+	getTagAttrIfNotEmpty('title', getLocalizedOrEmptyText('hint_menu'))
+			+	' onclick="toggleDropdownMenu(this)">'
 			+		headContent
 			+	'</header>'
 			)
@@ -1759,22 +1770,114 @@ var	tagName = tagName || 'div'
 	);
 }
 
-function toggleDropdownMenu(element) {
-var	parent = getThisOrParentByClass(element, regClassMenuBar);
+function closeAllDropdownMenuTabs(element) {
+	gc('menu-head', getThisOrParentByClass(element, regClassMenuBar)).forEach(
+		(tabContainer) => {
+		var	header = gt('header', tabContainer)[0];
 
-	if (parent) {
-		gc('menu-head', parent).forEach(
-			(container) => {
-			var	header = gt('header', container)[0];
-
-				if (header && header !== element) {
-					toggleClass(header, 'show', -1);
-				}
+			if (header && header !== element) {
+				toggleClass(header, 'show', -1);
 			}
-		);
+		}
+	);
+
+	OPEN_FIRST_MENU_TAB_AT_START = false;
+}
+
+function toggleDropdownMenu(element) {
+	closeAllDropdownMenuTabs(element);
+	toggleClass(element, 'show');
+}
+
+function toggleSection(element, action) {
+
+	function toggleSectionClass(header, element) {
+	var	wasOpen = regClassShow.test(header.className);
+
+		toggleClass(header,  'show',   isActionOpen ?  1 : isActionClose ? -1 : 0);
+		toggleClass(element, 'hidden', isActionOpen ? -1 : isActionClose ?  1 : 0);
+
+	var	justOpened = !wasOpen && regClassShow.test(header.className);
+
+		if (
+			isActionAll
+			? justOpened
+			: (isActionOpen || justOpened)
+		) {
+			toggleClass(element, 'open-up', 1);
+
+			setTimeout(() => toggleClass(element, 'open-up', -1), 300);
+		}
 	}
 
-	toggleClass(element, 'show');
+	function toggleAllSections(element) {
+		while (element) {
+			if (header) {
+				toggleSectionClass(header, element);
+
+				++toggledCount;
+			}
+
+		var	header = (element.tagName === tagName ? element : null);
+
+			element = element.nextElementSibling;
+		}
+	}
+
+var	header = getThisOrParentByTagName(element, 'header');
+
+	if (header) {
+	var	actionWords = (action || element.name || '').split('_')
+	,	isActionAll = (actionWords.indexOf('all') >= 0)
+	,	isActionOpen = (actionWords.indexOf('open') >= 0)
+	,	isActionClose = (actionWords.indexOf('close') >= 0)
+	,	tagName = header.tagName
+	,	toggledCount = 0
+		;
+
+		if (isActionAll) {
+			gt('section', header.parentNode).forEach(
+				(section) => toggleAllSections(gt('header', section)[0])
+			);
+
+			if (!toggledCount) {
+				toggleAllSections(header);
+			}
+		} else {
+			toggleSectionClass(header, header.nextElementSibling);
+		}
+	}
+
+	updateDropdownMenuPositions();
+}
+
+function showHelpSection(sectionName, source) {
+var	header = id('top-menu-' + sectionName);
+
+	if (header) {
+		toggleSection(header, 'open');
+
+		if (source) {
+		var	sourceElement = (isString(source) ? id('top-menu-' + source) : source)
+		,	fromSection = getThisOrParentByTagName(sourceElement, 'section')
+		,	toSection = getThisOrParentByTagName(header, 'section')
+		,	alignWithTop = true
+			;
+
+			while (fromSection && toSection) {
+				fromSection = fromSection.nextElementSibling;
+
+				if (fromSection === toSection) {
+					alignWithTop = false;
+					break;
+				}
+			}
+
+			toSection.scrollIntoView(alignWithTop);
+		} else {
+			header.scrollIntoView();
+		}
+	}
 }
 
 function getOffsetXY(element) {
@@ -1839,17 +1942,29 @@ var	parentOffsetX = 0
 	return element;
 }
 
-function getNumbersArray(text, maxCount, splitBy, transformFunction) {
+function getNumbersArray(data, maxCount, splitBy, transformFunction) {
+	if (isSlicableNotString(data)) {
+	var	values = Array.from(
+			data
+			.slice(0, orz(maxCount) || Infinity)
+		);
+	} else {
+		values = (
+			String(data)
+			.split(splitBy || regNaN, orz(maxCount) || -1)
+			.filter(isNotEmptyString)
+		);
+	}
+
 	return (
-		String(text)
-		.split(splitBy || regNaN, orz(maxCount) || -1)
+		values
 		.map(transformFunction || orz)
 	);
 }
 
-function getUniqueNumbersArray(text, maxCount, splitBy, transformFunction) {
+function getUniqueNumbersArray() {
 	return (
-		getNumbersArray(text, maxCount, splitBy, transformFunction)
+		getNumbersArray(...arguments)
 		.filter(arrayFilterUniqueValues)
 	);
 }
@@ -2383,7 +2498,7 @@ function loadLibPromise(lib) {
 			}
 
 		var	dir = lib.dir || ''
-		,	scripts = lib.files || (
+		,	scripts = lib.files || getFlatArray(
 				isArray(lib)
 				? lib
 				: Array.from(arguments)
@@ -2826,8 +2941,9 @@ var	data = img.data
 			bgRGBA = data.slice(bgByteIndex, bgByteIndex + 4);
 		} else {
 			if (bgToCheck.match) {
-				bgToCheck = getRGBAFromColorCode(bgToCheck);
+				bgToCheck = getRGBAFromColorCodeOrName(bgToCheck);
 			}
+
 			if (bgToCheck.concat) {
 				index = bgToCheck.length;
 				bgRGBA = (
@@ -3243,6 +3359,7 @@ async function addProjectView(sourceFile) {
 			sourceFile.name = getFileName(getFilePathFromUrl(sourceFile.url));
 		}
 	}
+
 	if (!sourceFile.name) {
 		return false;
 	}
@@ -3328,6 +3445,10 @@ var	buttonClose = cre('button', buttonTab);
 //* attach prepared DOM branch to visible document:
 
 			if (result) {
+				if (OPEN_FIRST_MENU_TAB_AT_START) {
+					closeAllDropdownMenuTabs(gc('menu-bar')[0]);
+				}
+
 				removeProjectView(fileId);
 
 				container.id = buttonTab.id = fileId;
@@ -3614,7 +3735,7 @@ async function getProjectViewMenu(project) {
 						var	optionName = String(optionValue);
 
 							if (isNaN(optionValue)) {
-								optionName = optionName.replace(regNonWord, '').toLowerCase();
+								optionName = optionName.replace(regNonAlphaNum, '').toLowerCase();
 
 								if (PARAM_KEYWORDS_SHORTCUT_FOR_ALL.indexOf(optionName) >= 0) {
 									keywordsList.forEach(
@@ -3626,7 +3747,7 @@ async function getProjectViewMenu(project) {
 								if (keywordsList.indexOf(optionName) >= 0) {
 									optionItems[optionName] = optionName;
 								} else
-								if (getRGBAFromColorCode(optionValue)) {
+								if (getRGBAFromColorCodeOrName(optionValue)) {
 									optionItems[optionValue] = optionValue;
 								}
 							} else {
@@ -4123,7 +4244,7 @@ async function getProjectViewMenu(project) {
 			}
 
 			function getOptionLabelFromColor(colorCode, prefix) {
-			var	rgba = getRGBAFromColorCode(colorCode)
+			var	rgba = getRGBAFromColorCodeOrName(colorCode)
 			,	text = String(colorCode)
 				;
 
@@ -4262,21 +4383,46 @@ async function getProjectViewMenu(project) {
 					,	colorStyles = []
 						;
 
+						function setLocalizedColorOptionLabel(key, colorListNames) {
+
+						var	localizedLabel = getLocalizedOrEmptyText(key);
+
+							if (localizedLabel) {
+								optionLabel = localizedLabel;
+
+								return true;
+							}
+
+							if (
+								!colorListNames
+							||	colorListNames.indexOf(listName) >= 0
+							) {
+								if (
+									optionName !== 'transparent'
+								&&	isColorTransparent(optionName)
+								) {
+									if ('transparent' in items) {
+										return false;
+									}
+
+									optionValue = optionName = 'transparent';
+								}
+
+								optionLabel = getOptionLabelFromColor(optionName);
+							}
+
+							return true;
+						}
+
 						if (sectionName === 'autocrop') {
-							optionLabel = (
-								getLocalizedOrEmptyText(sectionName + '_' + optionName)
-							||	getOptionLabelFromColor(optionName)
-							);
+							if (!setLocalizedColorOptionLabel(sectionName + '_' + optionName)) {
+								continue;
+							}
 						} else
 						if (sectionName === 'collage') {
-							optionLabel = (
-								getLocalizedOrEmptyText(listName + '_' + optionName)
-							||	(
-									listName === 'background'
-									? getOptionLabelFromColor(optionName)
-									: optionLabel
-								)
-							);
+							if (!setLocalizedColorOptionLabel(listName + '_' + optionName, COLOR_LIST_NAMES)) {
+								continue;
+							}
 						} else
 						if (sectionName === 'side') {
 							optionLabel = getLocalizedText(sectionName + '_' + optionName);
@@ -4402,8 +4548,8 @@ var	canvasSizeText = (
 	+	project.height + ' '
 	+	getLocalizedText('project_pixels')
 	)
-,	colorModeText  = arrayFilteredJoin([project.colorMode, bitDepthText], ' ')
-,	resolutionText = arrayFilteredJoin([canvasSizeText, colorModeText], ', ')
+,	colorModeText  = getNestedFilteredArrayJoinedText([project.colorMode, bitDepthText], ' ')
+,	resolutionText = getNestedFilteredArrayJoinedText([canvasSizeText, colorModeText], ', ')
 	;
 
 var	foldersCount = project.foldersCount
@@ -4416,7 +4562,7 @@ var	foldersCount = project.foldersCount
 	if (layersCount)  layersTextParts.push(layersCount  + ' ' + getLocalizedText('project_layers'));
 	if (imagesCount)  layersTextParts.push(imagesCount  + ' ' + getLocalizedText('project_images'));
 
-var	layersText = arrayFilteredJoin(layersTextParts, ', ')
+var	layersText = getNestedFilteredArrayJoinedText(layersTextParts, ', ')
 ,	summaryTextParts = [resolutionText, layersText]
 	;
 
@@ -4427,7 +4573,7 @@ var	sourceFile = project.loading.data.file || {}
 	if (sourceFile.size) summaryTextParts.push(sourceFile.size + ' ' + getLocalizedText('file_bytes'));
 	if (sourceFileTime)  summaryTextParts.push(getLocalizedText('file_date') + ' ' + getFormattedTime(sourceFileTime));
 
-	summaryBody.innerHTML = arrayFilteredJoin(summaryTextParts, '<br>');
+	summaryBody.innerHTML = getNestedFilteredArrayJoinedText(summaryTextParts, '<br>');
 
 var	infoButton = addButton(summaryFooter, getLocalizedText('console_log'));
 	infoButton.name = 'console_log';
@@ -4617,20 +4763,33 @@ var	params = getOrInitChild(layer, 'params');
 
 	param_list:
 	for (let param of paramList) {
+	var	match, key, values;
 
 		param_types:
 		for (let paramType in regLayerNameParamType) if (match = param.match(regLayerNameParamType[paramType])) {
-		var	match, key, values;
 
 			if (NAME_PARTS_FOLDERS.indexOf(paramType) >= 0) {
 				layer.type = paramType;
 				layer.isVisibilityOptional = true;
 			} else
 			if (paramType === 'zoom' || paramType === 'opacities') {
-				params[paramType] = {
-					'values': getUniqueNumbersArray(match[1])
-				,	'format': orz(match[2])
-				};
+			var	values = getUniqueNumbersArray(match[1])
+			,	format = orz(match[2])
+			,	collection = params[paramType]
+				;
+
+				if (collection) {
+					values.forEach(
+						(value) => addToListIfNotYet(collection.values, value)
+					);
+
+					collection.format = format;
+				} else {
+					params[paramType] = {
+						'values': values
+					,	'format': format
+					};
+				}
 			} else
 			if (paramType === 'radius') {
 				layer.isVisibilityOptional = true;
@@ -4666,13 +4825,24 @@ var	params = getOrInitChild(layer, 'params');
 							hasPrefix(paramTextPart, 'at')
 						||	(paramTextPart.replace(regNumDots, '') === 'a')
 						) {
-							paramTextPart
-							.replace(regTrimParamRadius, '')
-							.split(regNaNorDot)
-							.filter(arrayFilterNonEmptyValues)
+							// paramTextPart
+							// .replace(regTrimParamRadius, '')
+							// .split(regNaNorDot)
+							// .filter(arrayFilterNonEmptyValues)
+							// .forEach(
+								// (rangeText) => addRangeToList(thresholds, rangeText)
+							// );
+
+							getRangeValuesFromText(
+								paramTextPart
+								.replace(regTrimParamRadius, '')
+							)
 							.forEach(
-								(rangeText) => addRangeToList(thresholds, rangeText)
+								(value) => (
+									addToListIfNotYet(thresholds, Math.abs(orz(value)))
+								)
 							);
+
 						} else
 
 				//* boundaries:
@@ -4696,7 +4866,7 @@ var	params = getOrInitChild(layer, 'params');
 											(boundaryText) => (
 												!boundaryText.length
 												? null :
-												addRangeToList(null, boundaryText)
+												getRangeValuesFromText(boundaryText)
 											)
 										)
 									)
@@ -4852,8 +5022,16 @@ var	params = getOrInitChild(layer, 'params');
 					}
 				);
 
-				if (boundaries.length > 0) {
+				if (
+					boundaries.length > 0
+				||	methods.length > 0
+				||	thresholds.length > 0
+				) {
 				var	collection = getOrInitChild(params, paramType, Array);
+
+					if (!boundaries.length) {
+						boundaries = [{'radius': {'out': DEFAULT_ALPHA_MASK_PADDING}}];
+					}
 
 					if (!methods.length) {
 						methods = [PARAM_KEYWORDS_PADDING_METHODS[0]];
@@ -4878,9 +5056,6 @@ var	params = getOrInitChild(layer, 'params');
 			} else
 			if (paramType === 'copypaste') {
 				addUniqueParamPartsToList(paramType, match[1], match[2]);
-			} else
-			if (paramType === 'color_code') {
-				params[paramType] = getRGBAFromColorCode(match);
 			} else
 			if (paramType === 'multi_select') {
 				values = (
@@ -4924,7 +5099,7 @@ var	params = getOrInitChild(layer, 'params');
 					(value) => {
 					var	match
 					,	listName = 'background'
-					,	keyword = value.replace(regNonWord, '').toLowerCase()
+					,	keyword = value.replace(regNonAlphaNum, '').toLowerCase()
 						;
 
 						if (
@@ -4943,12 +5118,25 @@ var	params = getOrInitChild(layer, 'params');
 								listName = PARAM_KEYWORDS_COLLAGE_PAD;	//* <- add all with same value
 							}
 
-							value = orz(match[2]) + 'px';
+						var	values = (
+								getRangeValuesFromText(value)
+								.map(
+									(value) => (
+										Math.abs(orz(value)) + 'px'
+									)
+								)
+							);
+
+							if (!values.length) {
+								value = match[2] + 'px';
+							}
 						}
 
 						if (listName) {
-							asArray(listName).forEach(
-								(listName) => addUniqueParamPartsToList(paramType, listName, value)
+							asArray(values || value).forEach(
+								(value) => asArray(listName).forEach(
+									(listName) => addUniqueParamPartsToList(paramType, listName, value)
+								)
 							);
 						}
 					}
@@ -4956,6 +5144,9 @@ var	params = getOrInitChild(layer, 'params');
 			} else
 			if (paramType === 'layout') {
 				params[param === 'rows' || param === 'newline' ? 'newline' : 'inline'] = true;
+			} else
+			if (paramType === 'color_code') {
+				params[paramType] = getRGBAFromColorCodeMatch(match);
 			} else {
 				if (paramType === 'side') {
 					layer.isVisibilityOptional = true;
@@ -4974,6 +5165,12 @@ var	params = getOrInitChild(layer, 'params');
 			// if (TESTING) console.log('param type [' + paramType + '], value = [' + param + '] at: ' + getWIPLayerPathText());
 
 			// break param_types;
+			continue param_list;
+		}
+
+		if (value = getRGBAFromColorCodeOrName(param)) {
+			params.color_code = value;
+
 			continue param_list;
 		}
 
@@ -7651,8 +7848,8 @@ var	startTime = getTimeNow()
 
 	var	startTime = getTimeNow()
 	,	alignImages = getSelectedMenuValue(project, 'collage', 'align') || ''
-	,	joinedBorder = Math.max(0, orz(getSelectedMenuValue(project, 'collage', 'border', DEFAULT_COLLAGE_OUTSIDE_PADDING)))
-	,	joinedPadding = Math.max(0, orz(getSelectedMenuValue(project, 'collage', 'padding', DEFAULT_COLLAGE_INSIDE_PADDING)))
+	,	joinedBorder = Math.max(0, orz(getSelectedMenuValue(project, 'collage', 'border', DEFAULT_COLLAGE_PADDING_OUTSIDE)))
+	,	joinedPadding = Math.max(0, orz(getSelectedMenuValue(project, 'collage', 'padding', DEFAULT_COLLAGE_PADDING_INSIDE)))
 	,	size = getBatchCanvasSize(batchContainer)
 	,	w = size.width
 	,	h = size.height
@@ -7681,6 +7878,7 @@ var	startTime = getTimeNow()
 					backgroundFill
 				&&	backgroundFill !== 'transparent'
 				&&	(backgroundFill = getColorTextFromArray(backgroundFill))
+				&&	backgroundFill !== 'transparent'
 				) {
 					ctx.fillStyle = backgroundFill;
 					ctx.fillRect(0,0, w,h);
@@ -7976,9 +8174,9 @@ var	evt = eventStop(evt, FLAG_EVENT_STOP_IMMEDIATE);
 }
 
 function onResize(evt) {
-	updateDropdownMenuPositions(eventStop(evt, FLAG_EVENT_STOP_IMMEDIATE));
+	updateDropdownMenuPositions(evt);
 
-//* TODO: find zoom/scale of the screen/page before regenerating thumbnail.
+//* TODO: find zoom/scale of the screen/page before regenerating thumbnails.
 	// thumbnailPlaceholder = null;
 }
 
@@ -8063,7 +8261,7 @@ var	container = getProjectContainer(button)
 		,	'Unknown action: ' + action
 		]);
 
-		alert(getLocalizedText('unknown_button'));
+		alert(getLocalizedText('unknown_button', action));
 	}
 }
 
@@ -8176,7 +8374,7 @@ async function loadFromFileList(files, evt) {
 		files
 	&&	files.length > 0
 	) {
-	var	logLabel = 'Load ' + files.length + ' project files: ' + files.map((file) => file.name).join(', ')
+	var	logLabel = 'Load ' + files.length + ' project files: ' + getNestedFilteredArrayJoinedText(files.map((file) => file.name), ', ')
 	,	loadedProjectsCount = 0
 		;
 
@@ -8333,14 +8531,14 @@ var	action, url;
 	&&	!isProjectLoaded
 	&&	(urls || url)
 	&&	(
-			urls && urls.length > 0
+			isArray(urls) && urls.length > 0
 			? urls.some((url) => isURLFromDisk(url))
 			: isURLFromDisk(url)
 		)
 	) {
 		await pause(100);
 
-		alert(getLocalizedText('error_file_protocol'));
+		alert(getLocalizedText('error_file_protocol', '{file}'));
 	}
 
 	return isProjectLoaded;
@@ -8403,22 +8601,34 @@ function closeProject(buttonTab) {
 //* Runtime: prepare UI *------------------------------------------------------
 
 async function init() {
+var	logLabelWrap = 'Init';
+	console.time(logLabelWrap);
+	console.group(logLabelWrap);
+
+var	logLabel = `Init localization "${LANG}"`;
+	console.time(logLabel);
+
 	toggleClass(document.body, 'loading', 1);
-
 	await loadLibPromise('localization.' + LANG + '.js');
-
 	document.body.innerHTML = getLocalizedHTML('loading');
 
+	console.timeEnd(logLabel);
+
 //* remember config defaults:
+
+	logLabel = 'Init config';
+	console.time(logLabel);
 
 var	configVarDefaults = {}
 ,	configVarNames = [
 		'DEFAULT_ALPHA_MASK_PADDING',
 		'DEFAULT_ALPHA_MASK_THRESHOLD',
 		'DEFAULT_AUTOCROP',
-		'DEFAULT_COLLAGE',
-		'DEFAULT_COLLAGE_INSIDE_PADDING',
-		'DEFAULT_COLLAGE_OUTSIDE_PADDING',
+		'DEFAULT_COLLAGE_ALIGN',
+		'DEFAULT_COLLAGE_COLORS',
+		'DEFAULT_COLLAGE_PADDING',
+		'DEFAULT_COLLAGE_PADDING_INSIDE',
+		'DEFAULT_COLLAGE_PADDING_OUTSIDE',
 		'PREVIEW_SIZE',
 		'THUMBNAIL_SIZE',
 		'THUMBNAIL_ZOOM_STEP_MAX_FACTOR',
@@ -8451,6 +8661,30 @@ var	configVarDefaults = {}
 		}
 	);
 
+//* finalize config values format:
+
+	DEFAULT_COLLAGE_ALIGN = getNestedFilteredArrayJoinedText(DEFAULT_COLLAGE_ALIGN, '/');
+	DEFAULT_COLLAGE_COLORS = getNestedFilteredArrayJoinedText(DEFAULT_COLLAGE_COLORS, '/');
+	DEFAULT_COLLAGE_PADDING = getNestedFilteredArrayJoinedText(
+		[
+			getNestedFilteredArrayEnclosedJoinedText(DEFAULT_COLLAGE_PADDING_OUTSIDE, 'border=', 'px', '/'),
+			getNestedFilteredArrayEnclosedJoinedText(DEFAULT_COLLAGE_PADDING_INSIDE, 'padding=', 'px', '/'),
+			getNestedFilteredArrayEnclosedJoinedText(DEFAULT_COLLAGE_PADDING, '', 'px', '/'),
+		]
+	,	'/'
+	);
+
+	DEFAULT_COLLAGE = getNestedFilteredArrayJoinedText(
+		[
+			DEFAULT_COLLAGE_ALIGN,
+			DEFAULT_COLLAGE_COLORS,
+			DEFAULT_COLLAGE_PADDING,
+		]
+	,	'/'
+	);
+
+	console.timeEnd(logLabel);
+
 //* check loading local files:
 
 	if (RUNNING_FROM_DISK) {
@@ -8464,10 +8698,13 @@ var	configVarDefaults = {}
 	}
 
 	if (!canLoadLocalFiles) {
-		logTime('Running from disk, cannot load local files.');
+		logTime('Init: running from disk, cannot load local files.');
 	}
 
 //* load libraries not specific to file formats:
+
+	logLabel = 'Init libraries';
+	console.time(logLabel);
 
 	await loadLibPromise(libRootDir + 'composition.asm.js');
 
@@ -8475,21 +8712,50 @@ var	configVarDefaults = {}
 		CompositionFuncList = Object.keys(CompositionModule(window, null, new ArrayBuffer(nextValidHeapSize(0))));
 	}
 
+	console.timeEnd(logLabel);
+
 //* create main menu:
 
+	logLabel = 'Init menu: file types';
+	console.time(logLabel);
+
+var	todoText = getLocalizedText('todo')
+,	todoHTML = '<p>' + getLocalizedHTML('todo') + '</p>'
+,	fileTypesByKeys = {}
+	;
+
+	fileTypeLoaders.forEach(
+		(loader) => {
+		var	exts = loader.dropFileExts.map((ext) => ext.toUpperCase())
+		,	key = exts.shift()
+		,	otherTypesByKey = getOrInitChild(fileTypesByKeys, key, Array)
+			;
+
+			exts.forEach(
+				(ext) => addToListIfNotYet(otherTypesByKey, ext)
+			);
+		}
+	);
+
 var	supportedFileTypesText = (
-		fileTypeLoaders
-		.reduce(
-			(collection, loader) => collection.concat(loader.dropFileExts)
-		,	[]
-		)
-		.filter(arrayFilterUniqueValues)
-		.filter(arrayFilterNonEmptyValues)
-		.map((ext) => ext.toUpperCase())
+		Object.keys(fileTypesByKeys)
 		.sort()
+		.map(
+			(key) => {
+			var	text = key
+			,	otherTypesByKey = fileTypesByKeys[key]
+				;
+
+				if (otherTypesByKey.length > 0) {
+					text += ' (' + otherTypesByKey.sort().join(', ') + ')';
+				}
+
+				return text;
+			}
+		)
 		.join(', ')
 	)
-,	openingNotesText = getLocalizedHTML('file_notes')
+,	openingNotesHTML = getLocalizedHTML('file_notes')
 ,	menuHTMLparts = {};
 
 	menuHTMLparts.file = (
@@ -8506,9 +8772,16 @@ var	supportedFileTypesText = (
 	+	'</p>'
 	+	'<hr>'
 	+	'<p>'
-	+		openingNotesText
+	+		openingNotesHTML
 	+	'</p>'
 	);
+
+	console.timeEnd(logLabel);
+
+	logLabel = 'Init menu: examples files';
+	console.time(logLabel);
+
+	console.timeEnd(logLabel);
 
 	function getExampleHeaderRow(content, rowLength) {
 		return (
@@ -8522,9 +8795,11 @@ var	supportedFileTypesText = (
 
 	function getExampleButtonsRow(tabs, rowLength) {
 		if (tabs.map) {
-			return tabs.map(
-				(tabs) => getExampleButtonsRow(tabs, rowLength)
-			).join('');
+			return (
+				tabs.map(
+					(tabs) => getExampleButtonsRow(tabs, rowLength)
+				).join('')
+			);
 		}
 
 		tabs = Object.entries(tabs);
@@ -8539,23 +8814,24 @@ var	supportedFileTypesText = (
 				' colspan="' + padCount + '"'
 			) + '></td>'
 		)
-	,	tabsHTML = tabs.map(
-			([name, label]) => (
-				(
-					!canLoadLocalFiles
-				&&	name.indexOf('download') < 0
-				) ? '' : (
-					'<td>'
-				+		'<button onclick="return loadFromButton(this)" name="'
-				+			encodeTagAttr(name)
-				+		'">'
-				+			getLocalizedText(label)
-				+		'</button>'
-				+	'</td>'
+	,	tabsHTML = (
+			tabs.map(
+				([name, label]) => (
+					(
+						!canLoadLocalFiles
+					&&	name.indexOf('download') < 0
+					) ? '' : (
+						'<td>'
+					+		'<button onclick="return loadFromButton(this)" name="'
+					+			encodeTagAttr(name)
+					+		'">'
+					+			getLocalizedText(label)
+					+		'</button>'
+					+	'</td>'
+					)
 				)
-			)
-		).join('')
-		;
+			).join('')
+		);
 
 		return (
 			'<tr class="batch-buttons">'
@@ -8566,7 +8842,7 @@ var	supportedFileTypesText = (
 	}
 
 var	tabsCountMax = 0
-,	examplesHTML = (
+,	examplesHTML = getNestedFilteredArrayJoinedText(
 		exampleProjectFiles.map(
 			(fileGroup) => {
 			var	subdir = fileGroup.subdir || ''
@@ -8579,7 +8855,7 @@ var	tabsCountMax = 0
 				+	'</header>'
 				)
 			,	tabsCount = 0
-			,	fileListHTML = (
+			,	fileListHTML = getNestedFilteredArrayJoinedText(
 					fileGroup.files.map(
 						(file) => {
 						var	fileName = (
@@ -8594,7 +8870,7 @@ var	tabsCountMax = 0
 							&&	file.length > 1
 							&&	file[1]
 								? '(' + file[1] + ')'
-								: arrayFilteredJoin(
+								: getNestedFilteredArrayJoinedText(
 									[
 										file.pixels
 									,	getFormattedFileSize(file.filesize, file.bytes)
@@ -8620,7 +8896,7 @@ var	tabsCountMax = 0
 								)
 							+	'</div>'
 							)
-						,	filePath = arrayFilteredJoin([exampleRootDir, subdir, fileName], '/')
+						,	filePath = getNestedFilteredArrayJoinedText([exampleRootDir, subdir, fileName], '/')
 						,	fileURL = filePath + '?version=' + file.modtime.replace(/\W+/g, '_')
 						,	nameAttr = encodeTagAttr(fileName)
 						,	pathAttr = encodeTagAttr(fileURL)
@@ -8636,10 +8912,7 @@ var	tabsCountMax = 0
 						,	loadButton = (
 								!canLoadLocalFiles
 								? '' :
-								'<button onclick="return loadFromButton(this)'
-							// +	'" data-url="'
-							// +		pathAttr
-							+	'">'
+								'<button onclick="return loadFromButton(this)">'
 							+		getLocalizedHTML('open_example_file')
 							+	'</button>'
 							)
@@ -8651,14 +8924,15 @@ var	tabsCountMax = 0
 							,	downloadLink
 							,	loadButton
 							]
-						,	tabsHTML = tabs.map(
-								(tabContent) => (
-									'<td>'
-								+		tabContent
-								+	'</td>'
+						,	tabsHTML = getNestedFilteredArrayJoinedText(
+								tabs.map(
+									(tabContent) => (
+										'<td>'
+									+		tabContent
+									+	'</td>'
+									)
 								)
-							).join('')
-							;
+							);
 
 							tabsCount = Math.max(tabsCount, tabs.length);
 							tabsCountMax = Math.max(tabsCount, tabsCountMax);
@@ -8669,7 +8943,7 @@ var	tabsCountMax = 0
 							+	'</tr>'
 							);
 						}
-					).join('')
+					)
 				);
 
 			var	batchButtonsHTML = getExampleButtonsRow(EXAMPLE_CONTROLS, tabsCount);
@@ -8683,12 +8957,19 @@ var	tabsCountMax = 0
 				+	'</tbody>'
 				);
 			}
-		).join('')
+		)
 	)
 ,	batchButtonsHTML = getExampleButtonsRow(EXAMPLE_CONTROLS, tabsCountMax)
 	;
 
 	menuHTMLparts.examples = (
+		!EXAMPLE_NOTICE
+		? '' :
+		'<p class="warning">'
+	+		getLocalizedHTML('examples_notice')
+	+	'</p>'
+	+	'<hr>'
+	) + (
 		'<table class="example-files">'
 	+		examplesHTML
 	+		'<tfoot>'
@@ -8697,13 +8978,978 @@ var	tabsCountMax = 0
 	+	'</table>'
 	);
 
-	if (EXAMPLE_NOTICE) {
-		menuHTMLparts.examples += (
-			'<p class="warning">'
-		+		getLocalizedHTML('examples_notice')
-		+	'</p>'
+	console.timeEnd(logLabel);
+
+	logLabel = 'Init menu: help';
+	console.time(logLabel);
+
+	function getHelpSectionLinkAwayHTML(linkName) {
+	var	url = getLocalizedOrEmptyText(linkName)
+	,	linkAttr = (
+			url
+			? encodeTagAttr(url) + '" class="external-link'
+			: encodeTagAttr(`javascript:alert(getLocalizedText('unknown_link', '${linkName}'))`)
+		)
+	,	linkText = (
+			getLocalizedOrEmptyText(linkName + '_text')
+		||	linkName
+		);
+
+		return (
+			'<a href="'
+		+		linkAttr
+		+	'">'
+		+		linkText
+		+	'</a>'
 		);
 	}
+
+	function getHelpSectionLinkHTML(sectionName) {
+		return (
+			`<a onclick="showHelpSection('`
+		+		encodeTagAttr(sectionName)
+		+	`', this)" class="section-link">`
+		+		getLocalizedText(sectionName)
+		+	'</a>'
+		);
+	}
+
+	function getCodeTableHTML() {
+		return replaceAll(
+			getTableHTML(...arguments)
+		,	['[', '<code class="param">']
+		,	[']', '</code>']
+		);
+	}
+
+	function getArrayCodeReplaceSlashToNewLine() {
+		return Array.from(arguments).map(
+			(value) => wrap.code.param(
+				isFunction(value.split)
+				? value.split('/').join('\n')
+				: value
+			)
+		);
+	}
+
+var	wrap = {
+		'code': {},
+		'span': {},
+	};
+
+	[
+		'comment',
+		'ignore',
+		'name',
+		'nested-layer ignore',
+		'param',
+		'path',
+	].forEach(
+		(className) => {
+		var	key = className.split(regNonAlphaNum)[0];
+
+			for (let tagName in wrap) {
+				wrap[tagName][key] = function() {
+					return (
+						'<' + tagName + ' class="' + className + '">'
+					+		Array.from(arguments).join('')
+					+	'</' + tagName + '>'
+					);
+				};
+			}
+		}
+	);
+
+var	helpSections = {
+		'autocrop': [
+			{
+				'text_key': 'notes',
+			}, {
+				'code_sample': '[autocrop={help_code_color_value}/{help_code_color_value}2/({help_code_more_values})]',
+				'text_key': 'color',
+				'text_replace_values': [getHelpSectionLinkHTML('help_color_value')],
+			}, {
+				'code_sample': '[autocrop=top-left/top-right/bottom-left/bottom-right]',
+				'text_key': 'corner',
+			}, {
+				'code_sample': '[autocrop=all/etc]',
+				'text_key': 'all',
+			}, {
+				'code_sample': '[autocrop]',
+				'text_key': 'default',
+				'text_replace_values': getArrayCodeReplaceSlashToNewLine(DEFAULT_AUTOCROP),
+			},
+		],
+		'batch': [
+			{
+				'text_key': 'notes',
+			}, {
+				'code_sample': [
+					wrap.span.name('{help_code_list_name}') + '[batch]',
+				],
+				'text_key': 'all',
+			}, {
+				'code_sample': [
+					wrap.span.name('{help_code_list_name}') + '[no-batch]',
+					wrap.span.name('{help_code_list_name}') + '[single]',
+				],
+				'text_key': 'single',
+			}, {
+				'code_sample': [
+					wrap.span.name('{help_code_list_name}') + '[inline]',
+					wrap.span.name('{help_code_list_name}') + '[columns]',
+				],
+				'text_key': 'inline',
+			}, {
+				'code_sample': [
+					wrap.span.name('{help_code_list_name}') + '[newline]',
+					wrap.span.name('{help_code_list_name}') + '[rows]',
+				],
+				'text_key': 'newline',
+			},
+		],
+		'clone': [
+			{
+				'text_key': 'notes',
+			}, {
+				'code_sample': '[copy={help_clone_alias}]',
+				'text_key': 'copy',
+				'text_replace_values': ['{help_clone_alias}'],
+			}, {
+				'code_sample': '[paste={help_clone_alias}]',
+				'text_key': 'paste',
+				'text_replace_values': ['{help_clone_alias}'],
+			}, {
+				'code_sample': [
+					'[copy]',
+					'[paste]',
+				],
+				'text_key': 'empty_id',
+			}, {
+				'code_sample': '[copy=A copy=B]',
+				'text_key': 'multi_copy',
+			}, {
+				'code_sample': '[paste=A paste=B]',
+				'text_key': 'multi_paste',
+			},
+		],
+		'collage': [
+			{
+				'text_key': 'notes',
+			}, {
+				'code_sample': '[collage={help_code_color_value}/{help_code_color_value}2/({help_code_more_values})]',
+				'text_key': 'color',
+				'text_replace_values': [getHelpSectionLinkHTML('help_color_value')],
+			}, {
+				'code_sample': '[collage=border=(0,1,2,5...10)px]',
+				'text_key': 'border',
+			}, {
+				'code_sample': '[collage=padding=(0,1,2,5...10)px]',
+				'text_key': 'padding',
+			}, {
+				'code_sample': '[collage=(0,1,2,5...10)px/({help_code_more_numbers})px]',
+				'text_key': 'pixels',
+			//* TODO:
+			// }, {
+				// 'code_sample': '[collage=top-left/top-right/bottom-left/bottom-right/top/bottom/left/right]',
+				// 'text_key': 'align',
+			// }, {
+				// 'code_sample': '[collage=all/etc]',
+				// 'text_key': 'all',
+			}, {
+				'code_sample': '[collage]',
+				'text_key': 'default',
+				'text_replace_values': [
+					getTableHTML(
+						{
+							'cell_tag_name': 'th',
+							'cells': [
+								'{help_collage_default_colors}',
+								'{help_collage_default_align}',
+								'{help_collage_default_padding}',
+							],
+						}, getArrayCodeReplaceSlashToNewLine(
+							DEFAULT_COLLAGE_COLORS,
+							DEFAULT_COLLAGE_ALIGN,
+							DEFAULT_COLLAGE_PADDING,
+						),
+					),
+					getHelpSectionLinkAwayHTML('help_color_value_names_link'),
+				],
+			},
+		],
+		'color_value': [
+			{
+				'text_key': 'notes',
+				'text_replace_values': [
+					getCodeTableHTML(
+						{
+							'cell_tag_name': 'th',
+							'cells': [
+								'{help_color_value_table_short_hex}',
+								'{help_color_value_table_split_hex}',
+								'{help_color_value_table_split_dec}',
+							],
+						}, [
+							'[#1]',
+							'[hex=11-11-11]',
+							'[rgb=17-17-17]',
+						], [
+							'[#12]',
+							'[hex=12-12-12]',
+							'[rgb=18-18-18]',
+						], [
+							'[#123]',
+							'[hex=11-22-33]',
+							'[rgb=17-34-51]',
+						], [
+							'[#1234]',
+							'[hex=11-22-33-44]',
+							'[rgba=17-34-51-68]',
+						], [
+							'[#12345]',
+							'[hex=12-34-5]',
+							'[rgb=18-52-5]',
+						], [
+							'[#123456]',
+							'[hex=12-34-56]',
+							'[rgb=18-52-86]',
+						], [
+							'[#1234567]',
+							'[hex=12-34-56-7]',
+							'[rgba=18-52-86-7]',
+						], [
+							'[#12345678]',
+							'[hex=12-34-56-78]',
+							'[rgba=18-52-86-120]',
+						],
+					),
+					getHelpSectionLinkAwayHTML('help_color_value_names_link'),
+				],
+			}, {
+				'code_sample': [
+					'[rgb=10-20-30]',
+					'[rgba=0-100-200-255]',
+					'[rgba(0,100,200,255)]',
+				],
+				'text_key': 'split_dec',
+			}, {
+				'code_sample': [
+					'[hex=12-34-56]',
+					'[hex=12-34-ab-cd]',
+					'[hex(12,34,ab,cd)]',
+				],
+				'text_key': 'split_hex',
+			}, {
+				'code_sample': '[#1234abcd]',
+				'text_key': 'short_hex',
+			}, {
+				'code_sample': '[transparent]',
+				'text_key': 'transparent',
+				'text_replace_values': [wrap.code.param('[rgba(0,0,0,0)]')],
+			},
+		],
+		'colors': [
+			{
+				'text_key': 'notes',
+				'text_replace_values': [
+					getTableHTML(
+						[
+							'{help_code_list_folder}:',
+							[
+								'<code>',
+									wrap.span.param('[colors]'),
+									wrap.span.name('{help_code_list_name_colors}'),
+								'</code>',
+							],
+						], [
+							'{help_code_option_layer}:',
+							[
+								'<code>',
+									wrap.span.nested(),
+									wrap.span.name('{help_code_option_name_color} 1'),
+									wrap.span.param('[red]'),
+								'</code>',
+							],
+						], [
+							'{help_code_option_nested}:',
+							[
+								'<code>',
+									wrap.span.nested(),
+									wrap.span.comment('({help_code_more_folders})'),
+									wrap.span.path('/'),
+									wrap.span.name('{help_code_option_name_color} 2'),
+									wrap.span.param('[green]'),
+								'</code>',
+							],
+						], [
+							'{help_code_option_inverted}:',
+							[
+								'<code>',
+									wrap.span.nested(),
+									wrap.span.param('[not]'),
+									wrap.span.name('{help_code_option_name_color} 1'),
+									wrap.span.param('[blue]'),
+								'</code>',
+							],
+						], [
+							'',
+							[
+								'<code>',
+									wrap.span.ignore('...'),
+								'</code>',
+							],
+						], [
+							'{help_code_layer_to_recolor}:',
+							[
+								'<code>',
+									wrap.span.name('{help_code_list_name_colors}'),
+								'</code>',
+							],
+						],
+					),
+					getHelpSectionLinkHTML('help_color_value'),
+				],
+			}, {
+				'code_sample': [
+					[
+						'[colors]',
+						wrap.span.name('{help_code_list_name} 1, 2'),
+						wrap.span.path('/'),
+						wrap.span.name('{help_code_option_name} 1, 2'),
+						'[red]',
+					],
+				],
+				'text_key': 'add',
+			}, {
+				'code_sample': [
+					[
+						'[colors]',
+						wrap.span.name('{help_code_list_name}'),
+						wrap.span.path('/'),
+						wrap.span.comment('({help_code_more_folders})'),
+						wrap.span.path('/'),
+						wrap.span.name('{help_code_option_name}'),
+						'[green]',
+					],
+				],
+				'text_key': 'nested',
+			}, {
+				'code_sample': [
+					[
+						'[colors]',
+						wrap.span.name('{help_code_list_name_colors}'),
+						wrap.span.path('/'),
+						'[if parts]',
+						wrap.span.name('{help_code_list_name_parts}'),
+						wrap.span.path('/'),
+						wrap.span.name('{help_code_option_name_part}'),
+						wrap.span.path('/'),
+						wrap.span.name('{help_code_option_name_color_same}'),
+						'[blue]',
+					], [
+						'[colors]',
+						wrap.span.name('{help_code_list_name_colors}'),
+						wrap.span.path('/'),
+						'[not]',
+						wrap.span.name('{help_code_option_name_color_same}'),
+						'[gray]',
+					], [
+						'[colors]',
+						wrap.span.name('{help_code_list_name_colors}'),
+						wrap.span.path('/'),
+						wrap.span.comment('({help_code_otherwise})'),
+						wrap.span.name('{help_code_option_name_color_same}'),
+						'[dark-blue]',
+					],
+				],
+				'text_key': 'path_logic',
+				'text_replace_values': [
+					wrap.code.param('[not]'),
+					wrap.code.param('[if]'),
+					getHelpSectionLinkHTML('help_path_logic'),
+				],
+			},
+		],
+		'opacity': [
+			{
+				'text_key': 'notes',
+			}, {
+				'code_sample': [
+					[
+						wrap.span.name('{help_code_list_name}'),
+						'[opacity=0/10/20/({help_code_more_numbers})/100%]',
+					], [
+						wrap.span.name('{help_code_list_name} 1, 2'),
+						'[0/10/20/({help_code_more_numbers})/100%]',
+					],
+				],
+				'text_key': 'set',
+				'text_replace_values': [
+					wrap.code.param('[optional]'),
+					getHelpSectionLinkHTML('help_other'),
+				],
+			},
+		],
+		'other': [
+			{
+				'code_sample': [
+					[
+						'[optional parts]',
+						wrap.span.name('{help_code_list_name}'),
+					], [
+						'[optional colors]',
+						wrap.span.name('{help_code_list_name}'),
+					], [
+						'[optional zoom=25/50%]',
+					],
+				],
+				'text_key': 'optional',
+			}, {
+				'code_sample': [
+					[
+						'[last parts]',
+						wrap.span.name('{help_code_list_name}'),
+					], [
+						'[last colors]',
+						wrap.span.name('{help_code_list_name}'),
+					], [
+						'[last zoom=100/50%]',
+					],
+				],
+				'text_key': 'last',
+			}, {
+				'code_sample': [
+					[
+						'[initial]',
+						wrap.span.name('{help_code_option_name}'),
+					], [
+						'[preselect]',
+						wrap.span.name('{help_code_option_name}'),
+					], [
+						'[parts]',
+						wrap.span.name('{help_code_list_name}'),
+						wrap.span.path('/'),
+						wrap.span.name('{help_code_option_name}'),
+						'[preselect]',
+					],
+
+				],
+				'text_key': 'preselect',
+			}, {
+				'code_sample': '[no-prefix]' + wrap.span.name('{help_code_list_name}'),
+				'text_key': 'no_prefix',
+			}, {
+				'code_sample': '[no-render]',
+				'text_key': 'no_render',
+			}, {
+				'code_sample': '[skip]',
+				'text_key': 'skip',
+			},
+		],
+		'padding': [
+			{
+				'text_key': 'notes',
+			}, {
+				'code_sample': [
+					wrap.span.name('{help_code_list_name}') + '[outline red 0px 1/2/3px (4,5,6)px]',
+					wrap.span.name('{help_code_list_name}') + '[outline red (-1...1)/(5...10)px]',
+				],
+				'text_key': 'outer_radius',
+			}, {
+				'code_sample': [
+					wrap.span.name('{help_code_list_name}') + '[outline 1:2px]',
+					wrap.span.name('{help_code_list_name}') + '[outline ((0,1,2...5):(5...10))px]',
+				],
+				'text_key': 'inner_radius',
+			}, {
+				'code_sample': [
+					wrap.span.name('{help_code_list_name}') + '[outline 1x2px]',
+				],
+				'text_key': 'outer_box',
+			}, {
+				'code_sample': [
+					wrap.span.name('{help_code_list_name}') + '[outline ((1:2)x(3:4))px]',
+				],
+				'text_key': 'inner_box',
+			}, {
+				'code_sample': [
+					wrap.span.name('{help_code_list_name}') + '[outline 1xpx]',
+					wrap.span.name('{help_code_list_name}') + '[outline (x1)px]',
+				],
+				'text_key': 'outer_square',
+			}, {
+				'code_sample': [
+					wrap.span.name('{help_code_list_name}') + '[outline 1:xpx]',
+					wrap.span.name('{help_code_list_name}') + '[outline 1x1:px]',
+					wrap.span.name('{help_code_list_name}') + '[outline x((-1...1):(-2...2))px]',
+				],
+				'text_key': 'inner_square',
+			}, {
+				'code_sample': [
+					wrap.span.name('{help_code_list_name}') + '[outline 1x2:3x4px]',
+				],
+				'text_key': 'invalid',
+				'text_replace_values': [
+					wrap.code.param('[outline 1x2:3px]'),
+				],
+			}, {
+				'code_sample': [
+					wrap.span.name('{help_code_list_name}') + '[outline at=0,1,2,({help_code_more_numbers})]',
+					wrap.span.name('{help_code_list_name}') + '[outline at=5...10]',
+				],
+				'text_key': 'threshold',
+			//* TODO:
+			// }, {
+				// 'code_sample': [
+					// wrap.span.name('{help_code_list_name}') + '[outline max/min]',
+				// ],
+				// 'text_key': 'method',
+			}, {
+				'code_sample': [
+					wrap.span.name('{help_code_list_name}') + '[outline at=0,5...10,16/(1...2):(3...4)x(5...6):(7...8)px]',
+				],
+				'text_key': 'cross',
+				'text_replace_values': [
+					DEFAULT_ALPHA_MASK_PADDING,
+					DEFAULT_ALPHA_MASK_THRESHOLD,
+				],
+			},
+		],
+		'param': [
+			{
+				'text_key': 'notes',
+				'text_replace_values': [
+					getHelpSectionLinkHTML('help_virtual_path'),
+					wrap.code.param(' [ {help_param_params} ] '),
+					wrap.code.comment(' ( {help_param_comments} ) '),
+					wrap.code.name(' {help_param_names} '),
+					wrap.code.path(' / '),
+					getTableHTML(
+						[
+							'1.',
+							[
+								'<code>',
+									wrap.span.name(
+										'{help_code_layer} 1, ',
+										'{help_code_name} 2, ',
+										'{help_code_name} 3, 4',
+									),
+									wrap.span.param(
+										'[{help_code_param}1 ',
+										'{help_code_param}2 ',
+										'{help_code_param}3 4]',
+									),
+								'</code>',
+							],
+						], [
+							'2.',
+							[
+								'<code>',
+									wrap.span.param('[{help_code_param}1 {help_code_param}2]'),
+									wrap.span.name('{help_code_layer} 1'),
+									wrap.span.comment('({help_code_copy} 2)'),
+									wrap.span.name('{help_code_name} 2'),
+									wrap.span.param('[{help_code_param}3, 4]'),
+									wrap.span.name('{help_code_name} 3, 4'),
+									wrap.span.comment('({help_code_more_comments})'),
+								'</code>',
+							],
+						],
+					),
+				],
+			},
+		],
+		'parts': [
+			{
+				'text_key': 'notes',
+				'text_replace_values': [
+					getTableHTML(
+						[
+							'{help_code_list_folder}:',
+							[
+								'<code>',
+									wrap.span.param('[parts]'),
+									wrap.span.name('{help_code_list_name_parts}'),
+								'</code>',
+							],
+						], [
+							'{help_code_option_layer}:',
+							[
+								'<code>',
+									wrap.span.nested(),
+									wrap.span.name('{help_code_option_name_part} 1'),
+								'</code>',
+							],
+						], [
+							'{help_code_option_folder}:',
+							[
+								'<code>',
+									wrap.span.nested(),
+									wrap.span.name('{help_code_option_name_part} 2'),
+									wrap.span.path('/'),
+									wrap.span.comment('({help_code_more_layers})'),
+								'</code>',
+							],
+						], [
+							'{help_code_option_inverted}:',
+							[
+								'<code>',
+									wrap.span.nested(),
+									wrap.span.param('[not]'),
+									wrap.span.name('{help_code_option_name_part} 1'),
+								'</code>',
+							],
+						],
+					),
+				],
+			}, {
+				'code_sample': [
+					[
+						'[parts]',
+						wrap.span.name('{help_code_list_name} 1, 2'),
+						wrap.span.path('/'),
+						wrap.span.name('{help_code_option_name} 1, 2'),
+					],
+				],
+				'text_key': 'add',
+				'text_replace_values': [
+					wrap.code.param('[not]'),
+					wrap.code.param('[if]'),
+					getHelpSectionLinkHTML('help_path_logic'),
+				],
+			},
+		],
+		'path_logic': [
+			{
+				'text_key': 'notes',
+				'text_replace_values': [wrap.code.param('[if]')],
+			}, {
+				'code_sample': [
+					[
+						'[if parts]',
+						wrap.span.name('{help_code_list_name}'),
+						wrap.span.path('/'),
+						wrap.span.name('{help_code_option_name}'),
+					], [
+						'[if colors]',
+						wrap.span.name('{help_code_list_name}'),
+						wrap.span.path('/'),
+						wrap.span.name('{help_code_option_name}'),
+					],
+				],
+				'text_key': 'if',
+			}, {
+				'code_sample': [
+					[
+						'[if parts]',
+						wrap.span.name('{help_code_list_name}'),
+						wrap.span.path('/'),
+						'[not]',
+						wrap.span.name('{help_code_option_name}'),
+					], [
+						'[if colors]',
+						wrap.span.name('{help_code_list_name}'),
+						wrap.span.path('/'),
+						'[not]',
+						wrap.span.name('{help_code_option_name}'),
+					],
+				],
+				'text_key': 'if_not_option',
+			}, {
+				'code_sample': [
+					[
+						'[if not parts]',
+						wrap.span.name('{help_code_list_name}'),
+						wrap.span.path('/'),
+						wrap.span.name('{help_code_option_name}'),
+					], [
+						'[if not colors]',
+						wrap.span.name('{help_code_list_name}'),
+						wrap.span.path('/'),
+						wrap.span.name('{help_code_option_name}'),
+					],
+				],
+				'text_key': 'if_not_list',
+				'text_replace_values': [wrap.code.param('[not]')],
+			}, {
+				'code_sample': [
+					[
+						'[if not parts]',
+						wrap.span.name('{help_code_list_name}'),
+						wrap.span.path('/'),
+						'[not]',
+						wrap.span.name('{help_code_option_name}'),
+					], [
+						'[if not colors]',
+						wrap.span.name('{help_code_list_name}'),
+						wrap.span.path('/'),
+						'[not]',
+						wrap.span.name('{help_code_option_name}'),
+					],
+				],
+				'text_key': 'if_not_both',
+				'text_replace_values': [wrap.code.param('[not]')],
+			}, {
+				'code_sample': [
+					[
+						'[if parts]',
+						wrap.span.name('{help_code_list_name}'),
+						wrap.span.path('/'),
+						'[not none]',
+					], [
+						'[if colors]',
+						wrap.span.name('{help_code_list_name}'),
+						wrap.span.path('/'),
+						'[not none]',
+					], [
+						'[if any parts]',
+						wrap.span.name('{help_code_list_name} 1, 2'),
+					], [
+						'[if any colors]',
+						wrap.span.name('{help_code_list_name} 1, 2'),
+					],
+				],
+				'text_key': 'if_any',
+			}, {
+				'code_sample': [
+					[
+						'[if parts]',
+						wrap.span.name('{help_code_list_name}'),
+						wrap.span.path('/'),
+						'[none]',,
+					], [
+						'[if colors]',
+						wrap.span.name('{help_code_list_name}'),
+						wrap.span.path('/'),
+						'[none]',
+					], [
+						'[if not any parts]',
+						wrap.span.name('{help_code_list_name} 1, 2'),
+					], [
+						'[if not any colors]',
+						wrap.span.name('{help_code_list_name} 1, 2'),
+					],
+				],
+				'text_key': 'if_not_any',
+				'text_replace_values': [wrap.code.param('[not]')],
+			}, {
+				'code_sample': '[not]',
+				'text_key': 'not',
+				'text_replace_values': [
+					wrap.code.param('[if]'),
+					wrap.code.param('[any]'),
+				],
+			}, {
+				'code_sample': '[any]',
+				'text_key': 'any',
+				'text_replace_values': [wrap.code.param('[if]')],
+			}, {
+				'code_sample': '[none]',
+				'text_key': 'none',
+			},
+		],
+		'separate': [
+			{
+				'code_sample': '[separate]',
+				'text_key': 'notes',
+				'text_replace_values': [getHelpSectionLinkHTML('help_clone')],
+			},
+		],
+		'side': [
+			{
+				'text_key': 'notes',
+			}, {
+				'code_sample': [
+					'[front]',
+					'[not back]',
+					'[if not reverse]',
+				],
+				'text_key': 'front',
+			}, {
+				'code_sample': [
+					'[back]',
+					'[not front]',
+					'[if reverse]',
+				],
+				'text_key': 'back',
+			}, {
+				'code_sample': [
+					'[reverse]' + wrap.span.comment('({help_code_folder})'),
+				],
+				'text_key': 'reverse',
+			}, {
+				'code_sample': '[reverse=hor]',
+				'text_key': 'flip_hor',
+				'text_replace_values': [wrap.code.param('reverse')],
+			}, {
+				'code_sample': '[reverse=ver]',
+				'text_key': 'flip_ver',
+				'text_replace_values': [wrap.code.param('reverse')],
+			},
+		],
+		'virtual_path': [
+			{
+				'text_key': 'notes',
+				'text_replace_values': [
+					[
+						[
+							'{help_code_layer}:&nbsp;',
+							'<code>',
+								wrap.span.name('{help_code_parent_name}'),
+								wrap.span.param('[{help_code_parent_param}]'),
+								wrap.span.path('/'),
+								wrap.span.name('{help_code_child_name}'),
+								wrap.span.param('[{help_code_child_param}]'),
+							'</code>',
+						],
+					],
+					getTableHTML(
+						[
+							'{help_code_folder}:',
+							[
+								'<code>',
+									wrap.span.name('{help_code_parent_name}'),
+									wrap.span.param('[{help_code_parent_param}]'),
+								'</code>',
+							],
+						], [
+							'{help_code_layer}:',
+							[
+								'<code>',
+									wrap.span.nested(),
+									wrap.span.name('{help_code_child_name}'),
+									wrap.span.param('[{help_code_child_param}]'),
+								'</code>',
+							],
+						],
+					),
+					getHelpSectionLinkHTML('help_clone'),
+				],
+			},
+		],
+		'zoom': [
+			{
+				'code_sample': [
+					'[zoom=10/20/({help_code_more_numbers})/100%]',
+					'[x10/20/({help_code_more_numbers})/100%]',
+				],
+				'text_key': 'notes',
+			},
+		],
+	};
+
+	function getHeaderWithToggleButtons(toggleName, sectionName) {
+		if (
+			sectionName
+		&&	(content = getLocalizedText(sectionName))
+		) {
+			return (
+				'<header onclick="return toggleSection(this)" id="'
+			+		encodeTagAttr('top-menu-' + sectionName)
+			+	'">'
+			+		getTableHTML(content)
+					.replace('<tr', '<tr class="left-arrow right-arrow"')
+					.replace('<td', '<td class="section-link"')
+			+	'</header>'
+			);
+		} else {
+		var	content = OPEN_CLOSE.map(
+				(actionName) => {
+				var	buttonName = actionName + '_' + toggleName;
+
+					return (
+						'<button onclick="return toggleSection(this)" name="'
+					+		encodeTagAttr(buttonName)
+					+	'" id="'
+					+		encodeTagAttr('top-menu-' + sectionName)
+					+	'">'
+					+		getLocalizedText(buttonName)
+					+	'</button>'
+					);
+				}
+			).join('</td><td>')
+
+			return (
+				'<header>'
+			+		getTableHTML(content)
+			+	'</header>'
+			);
+		}
+	}
+
+	menuHTMLparts.help = getNestedFilteredArrayJoinedText([
+		getHeaderWithToggleButtons('all_sections')
+	,	[
+			'param',
+			'parts',
+			'colors',
+			'opacity',
+			'padding',
+			'side',
+			'zoom',
+			'separate',
+			'autocrop',
+			'collage',
+			'batch',
+			'clone',
+			'virtual_path',
+			'path_logic',
+			'color_value',
+			'other',
+		].map(
+			(sectionName) => {
+			var	content = helpSections[sectionName]
+			,	sectionContentHTML = getNestedFilteredArrayJoinedText(
+					!isArray(content)
+					? (
+						content
+					||	getLocalizedHTML('help_' + sectionName + '_content')
+					)
+					: content.map(
+						(entry) => [
+							(
+								!entry.code_sample
+								? ''
+								: (
+									'<pre class="' + (entry.code_class || 'param') + '">'
+								+		getLocalizedHTML(entry.code_sample)
+								+	'</pre>'
+								)
+							)
+						,	(
+								!entry.text_key
+								? '' :
+								(entry.text_key === 'todo')
+								? todoHTML :
+								(
+									getLocalizedHTML(
+										'help_' + sectionName + '_' + entry.text_key
+									,	...asArray(entry.text_replace_values)
+									).replace(regTrimTailBrTags, '')
+								+	'<br>'
+								)
+							)
+						]
+					)
+				);
+
+				return (
+					'<section>'
+				+		getHeaderWithToggleButtons('section', 'help_' + sectionName)
+				+		'<div class="hidden">'
+				+			sectionContentHTML
+				+		'</div>'
+				+	'</section>'
+				);
+			}
+		)
+	]);
+
+	console.timeEnd(logLabel);
+
+	logLabel = 'Init menu: about';
+	console.time(logLabel);
 
 var	aboutLinks = [
 		{
@@ -8732,57 +9978,67 @@ var	aboutLinks = [
 		}
 	,	{
 			'pretext': '<hr>'
-		,	'body': getLocalizedHTML('about_notes')
+		,	'content': getLocalizedHTML('about_notes')
 		}
 	];
 
-	menuHTMLparts.about = (
+	menuHTMLparts.about = getNestedFilteredArrayJoinedText(
 		aboutLinks.map(
 			(entry) => (
 				(entry.pretext || '')
 			+	'<p>'
-			+	(
-					!entry.header
-					? '' :
-					entry.header + ':<br>'
-				)
-			+	(
-					!entry.body
-					? '' :
-					entry.body
-				)
-			+	(
-					!entry.lines
-					? '' :
-					entry.lines.join('<br>')
-				)
-			+	(
-					!entry.links
-					? '' :
-					entry.links.map(
+			+	(!entry.header ? '' : entry.header + ':<br>')
+			+	(!entry.lines ? '' : entry.lines.join('<br>'))
+			+	getNestedFilteredArrayJoinedText(
+					!entry.links ? '' : entry.links.map(
 						([url, text]) => (
 							'<a href="'
 						+		encodeTagAttr(url)
+						+	(
+								url.indexOf('//') < 0
+								? '" class="local-link'
+								: '" class="external-link'
+							)
 						+	'">'
 						+		text
 						+	'</a>'
 						)
-					).join(', ')
+					)
+				,	', '
 				)
+			+	(entry.content || '')
 			+	'</p>'
 			)
-		).join('')
+		)
 	);
 
-var	todoText
-,	todoHTML
-,	menuHTML = (
+	console.timeEnd(logLabel);
+
+	logLabel = 'Init GUI content';
+	console.time(logLabel);
+
+var	menuHTML = getNestedFilteredArrayJoinedText(
 		Object.entries(menuHTMLparts).map(
 			([menuName, menuHTMLpart]) => getDropdownMenuHTML(
-				getLocalizedOrEmptyText(menuName) || todoText || (todoText = getLocalizedText('todo'))
-			,	menuHTMLpart || todoHTML || (todoHTML = '<p>' + getLocalizedHTML('todo') + '</p>')
+				getLocalizedOrEmptyText(menuName) || todoText
+			,	menuHTMLpart || todoHTML
+			,	'top-menu-' + menuName
 			)
-		).join('')
+		)
+	);
+
+var	toggleTextSizeHTML = (
+		'<button'
+	+	getTagAttrIfNotEmpty('title', getLocalizedOrEmptyText('larger_text'))
+	+	` onclick="return toggleClass(document.body, 'larger-text'), updateDropdownMenuPositions()">`
+	+		'<big>'
+	+			getLocalizedText('text_size_sample')
+	+		'</big>'
+	+		'&nbsp;'
+	+		'<small>'
+	+			getLocalizedText('text_size_sample')
+	+		'</small>'
+	+	'</button>'
 	);
 
 	document.body.innerHTML = (
@@ -8791,15 +10047,37 @@ var	todoText
 	+	'</div>'
 	+	'<div id="loaded-files-selection"></div>'
 	+	'<div id="loaded-files-view"></div>'
+	+	toggleTextSizeHTML
 	);
 
-	gc('thumbnail').map(
+	gc('thumbnail').forEach(
 		(element) => {
 			if (!element.firstElementChild) {
 				setImageSrc(element);
 			}
 		}
 	);
+
+	[
+		['section-link', 'help_section_link'],
+		['local-link', 'page_version_link'],
+		['external-link', 'external_link'],
+	].forEach(
+		([className, textKey]) => gc(className).forEach(
+			(element) => {
+			var	url = element.getAttribute('href');
+
+				if (url) {
+					element.setAttribute('title', decodeURI(getLocalizedText(textKey, url)));
+				}
+			}
+		)
+	);
+
+	console.timeEnd(logLabel);
+
+	logLabel = 'Init GUI events';
+	console.time(logLabel);
 
 //* enable/disable main menu buttons:
 
@@ -8818,12 +10096,22 @@ var	todoText
 		([eventName, handlerFunction]) => window.addEventListener(eventName, handlerFunction, false)
 	);
 
+	console.timeEnd(logLabel);
+
 //* ready for user input:
+
+	if (OPEN_FIRST_MENU_TAB_AT_START) {
+		toggleClass(gt('header')[0], 'show');
+		putInView(gc('menu-hid')[0], 0,0, true);
+	}
 
 	toggleClass(document.body, 'loading', -1);
 	toggleClass(document.body, 'ready', 1);
 
-	logTime('ready to work');
+	console.groupEnd(logLabelWrap);
+	console.timeEnd(logLabelWrap);
+
+	logTime('Init: ready to work.');
 }
 
 document.addEventListener('DOMContentLoaded', init, false);
