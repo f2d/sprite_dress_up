@@ -165,12 +165,6 @@ label:hover {
 .example-files td:last-child {
 	padding-right: 0;
 }
-.example-files:last-child .example-file-type:last-child hr {
-	visibility: hidden;
-}
-.example-files hr {
-	margin: 1em 0 0 0;
-}
 .example-file-type,
 .example-file-type header {
 	margin: 1em 0;
@@ -190,6 +184,18 @@ label:hover {
 	width: 1em;
 	text-align: center;
 	content: "⌛";
+}
+.example-files tbody,
+.example-files tfoot {
+	border-top: 0.0625em solid gray;
+}
+.example-files tbody tr:first-child td,
+.example-files tfoot tr:first-child td {
+	padding-top: 1em;
+}
+.example-files tbody tr:last-child td,
+.example-files tfoot tr:last-child td {
+	padding-bottom: 1em;
 }
 .example-files button {
 	width: 100%;

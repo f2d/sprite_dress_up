@@ -8967,7 +8967,6 @@ var	tabsCountMax = 0
 				+		getExampleHeaderRow(headerHTML, tabsCount)
 				+		fileListHTML
 				+		batchButtonsHTML
-				+		getExampleHeaderRow('<hr>', tabsCount)
 				+	'</tbody>'
 				);
 			}
@@ -8982,7 +8981,6 @@ var	tabsCountMax = 0
 		'<p class="warning">'
 	+		getLocalizedHTML('examples_notice')
 	+	'</p>'
-	+	'<hr>'
 	) + (
 		'<table class="example-files">'
 	+		examplesHTML
