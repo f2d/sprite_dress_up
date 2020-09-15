@@ -8630,9 +8630,6 @@ var	logLabel = `Init localization "${LANG}"`;
 
 //* remember config defaults:
 
-	logLabel = 'Init config';
-	console.time(logLabel);
-
 var	configVarDefaults = {}
 ,	configVarNames = [
 		'DEFAULT_ALPHA_MASK_PADDING',
@@ -8657,7 +8654,12 @@ var	configVarDefaults = {}
 
 //* load redefined config:
 
+	logLabel = 'Init external config';
+	console.time(logLabel);
+
 	await loadLibPromise(configFilePath);
+
+	console.timeEnd(logLabel);
 
 //* restore invalid config values to default:
 
@@ -8696,8 +8698,6 @@ var	configVarDefaults = {}
 		]
 	,	'/'
 	);
-
-	console.timeEnd(logLabel);
 
 //* check loading local files:
 
@@ -8792,7 +8792,7 @@ var	supportedFileTypesText = (
 
 	console.timeEnd(logLabel);
 
-	logLabel = 'Init menu: examples files';
+	logLabel = 'Init menu: example files';
 	console.time(logLabel);
 
 	console.timeEnd(logLabel);
@@ -9096,6 +9096,32 @@ var	helpSections = {
 		'batch': [
 			{
 				'text_key': 'notes',
+				'text_replace_values': [
+					getTableHTML(
+						[
+							'1.',
+							[
+								'<code>',
+									wrap.span.name('{help_code_list_name_parts}'),
+									wrap.span.param('[parts batch]'),
+								'</code>',
+							],
+						], [
+							'2.',
+							[
+								'<code>',
+									wrap.span.name('{help_code_list_name_colors}'),
+									wrap.span.param('[colors rows]'),
+								'</code>',
+							],
+						], [
+							'3.',
+							[
+								wrap.code.param('[zoom=50/100% no-batch]'),
+							],
+						],
+					),
+				],
 			}, {
 				'code_sample': [
 					wrap.span.name('{help_code_list_name}') + '[batch]',
@@ -10095,9 +10121,6 @@ var	toggleTextSizeHTML = (
 
 	console.timeEnd(logLabel);
 
-	logLabel = 'Init GUI events';
-	console.time(logLabel);
-
 //* enable/disable main menu buttons:
 
 	setGlobalWIPstate(false);
@@ -10114,8 +10137,6 @@ var	toggleTextSizeHTML = (
 	].forEach(
 		([eventName, handlerFunction]) => window.addEventListener(eventName, handlerFunction, false)
 	);
-
-	console.timeEnd(logLabel);
 
 //* open or restore state of UI parts:
 

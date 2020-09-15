@@ -124,8 +124,12 @@ const LOCALIZATION_TEXT = {
 	'help_batch': 'Batch and layout',
 	'help_batch_notes': [
 		'For batch and collage rendering, these parameters affect initial settings for each option list.',
+		'These parameters only work when added directly on a layer or folder which is an option list.',
 		,
-		'First found explicit setting makes the inverse to be global default for all option lists in the file.',
+		'For example:',
+		'{0}',
+		,
+		'First found explicit setting makes the inverse to be global default for all other option lists in the file.',
 	],
 	'help_batch_all': [
 		'Create images for each option of this list, selected or not.',
@@ -205,7 +209,7 @@ const LOCALIZATION_TEXT = {
 	'help_color_value_table_short_hex': 'Hex shorthand',
 	'help_color_value_table_split_hex': 'Hex by channels',
 	'help_color_value_table_split_dec': 'Decimal by channels',
-	'help_color_value_transparent': 'Same effect as this value: {0}.',
+	'help_color_value_transparent': 'Completely transparent, equivalent to this value: {0}.',
 	'help_color_value_short_hex': [
 		'Hexadecimal shorthand format, 1 or 2 symbols per channel in RGBA order.',
 		'For consistent results all channels in a color value should have the same number of symbols.',
@@ -281,13 +285,13 @@ const LOCALIZATION_TEXT = {
 	'help_other_preselect': 'Select this option initially.',
 	'help_other_no_prefix': 'For exported file names, add option name without list title prefix.',
 	'help_other_no_render': [
-		'Skip this layer when rendering.',
+		'Skip this layer or folder when rendering.',
 		'This is useful for organizing collection of options separately from artwork content.',
 		,
 		'Note that any layers clipped to a layer which is not rendered will be skipped too.',
 	],
 	'help_other_skip': [
-		'Skip this layer in any context, i.e. reading the file, collecting options and rendering images.',
+		'Skip this layer or folder in any context, i.e. reading the file, collecting options and rendering images.',
 		'This is useful for disabling things, but keeping a backup of their content in the project file.',
 		,
 		'Note that any layers clipped to a layer which is not used will be skipped too.',
@@ -415,7 +419,7 @@ const LOCALIZATION_TEXT = {
 	'help_path_logic_if_not_any': 'Invert the logic, layer is rendered if none of identifiers match a list with non-empty selection.',
 	'help_path_logic_any': 'No effect without {0}.',
 	'help_path_logic_not': 'Same effect on lists and options without {0} or {1}.',
-	'help_path_logic_none': `Add empty name to layer's option identifiers.`,
+	'help_path_logic_none': `Equivalent to empty option, adds empty name to layer's option identifiers.`,
 
 	'help_separate': 'How to show parts separately',
 	'help_separate_notes': [
