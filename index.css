@@ -390,6 +390,11 @@ img.larger {
 #top-menu-help .name {		background-color: #d7d7f3;}
 #top-menu-help .param {		background-color: #d7f3d7;}
 #top-menu-help .path {		background-color: #f3f300;}
+#top-menu-help .ignore {
+	min-width: 2em;
+	text-align: center;
+	display: inline-block;
+}
 #loaded-files-selection .button > * {
 	display: inline-flex;	/* <- modern way to vertically fill parent height */
 }
@@ -579,6 +584,9 @@ p.warning {
 }
 .count-label:empty::after {
 	content: "?)";
+}
+.folder::before {
+	content: "📂";
 }
 .nested-layer::before {
 	content: "\21B3";

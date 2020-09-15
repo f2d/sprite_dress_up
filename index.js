@@ -9051,6 +9051,7 @@ var	wrap = {
 
 	[
 		'comment',
+		'folder ignore',
 		'ignore',
 		'name',
 		'nested-layer ignore',
@@ -9270,6 +9271,7 @@ var	helpSections = {
 							'{help_code_list_folder}:',
 							[
 								'<code>',
+									wrap.span.folder(),
 									wrap.span.param('[colors]'),
 									wrap.span.name('{help_code_list_name_colors}'),
 								'</code>',
@@ -9468,17 +9470,20 @@ var	helpSections = {
 					wrap.span.name('{help_code_list_name}') + '[outline red (-1...1)/(5...10)px]',
 				],
 				'text_key': 'outer_radius',
+				'text_replace_values': wrap.code.param('/'),
 			}, {
 				'code_sample': [
 					wrap.span.name('{help_code_list_name}') + '[outline 1:2px]',
 					wrap.span.name('{help_code_list_name}') + '[outline ((0,1,2...5):(5...10))px]',
 				],
 				'text_key': 'inner_radius',
+				'text_replace_values': wrap.code.param(':'),
 			}, {
 				'code_sample': [
 					wrap.span.name('{help_code_list_name}') + '[outline 1x2px]',
 				],
 				'text_key': 'outer_box',
+				'text_replace_values': wrap.code.param('x'),
 			}, {
 				'code_sample': [
 					wrap.span.name('{help_code_list_name}') + '[outline ((1:2)x(3:4))px]',
@@ -9581,6 +9586,7 @@ var	helpSections = {
 							'{help_code_list_folder}:',
 							[
 								'<code>',
+									wrap.span.folder(),
 									wrap.span.param('[parts]'),
 									wrap.span.name('{help_code_list_name_parts}'),
 								'</code>',
@@ -9821,6 +9827,7 @@ var	helpSections = {
 							'{help_code_folder}:',
 							[
 								'<code>',
+									wrap.span.folder(),
 									wrap.span.name('{help_code_parent_name}'),
 									wrap.span.param('[{help_code_parent_param}]'),
 								'</code>',
