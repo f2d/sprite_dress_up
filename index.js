@@ -1586,7 +1586,7 @@ var	helperObject;
 }
 
 function toggleClass(element, className, keep) {
-	if (!className) return;
+	if (!className || !element) return;
 
 var	keep = orz(keep)
 ,	oldText = element.className || element.getAttribute('className') || ''
@@ -10151,7 +10151,7 @@ var	button, oldSetting;
 	}
 
 	if (OPEN_FIRST_MENU_TAB_AT_START) {
-		toggleDropdownMenu(gt('header')[0]);
+		toggleClass(gt('header')[0], 'show');
 
 		updateDropdownMenuPositions();
 	}
