@@ -8966,7 +8966,7 @@ var	tabsCountMax = 0
 			var	batchButtonsHTML = (
 					filesCount > 1
 					? getExampleButtonsRow(EXAMPLE_CONTROLS, tabsCount)
-					: ''
+					: '<tr><td colspan="' + tabsCountMax + '"></td></tr>'
 				);
 
 				totalFilesCount += filesCount;
