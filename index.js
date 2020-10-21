@@ -29,12 +29,13 @@
 //* TODO: revoke any image blob urls right after image element's loading, without ever tracking/listing them?
 
 //* other:
-//* TODO: make visible user manual from notes and examples.
 //* TODO: find zoom/scale of the screen/page before regenerating thumbnails.
 //* TODO: consistent UI colors (what blue, yellow, white, etc. means across the whole page).
 //* TODO: global job list for WIP cancelling instead of spaghetti-coded flag checks.
 //* TODO: split JS files in a way that lets older browsers to use parts they can parse and execute (only show menu, or only load ORA, etc.).
 //* TODO: split functionality into modules to reuse with drawpad, etc.
+
+//* ---------------------------------------------------------------------------
 
 //* Config: defaults, do not change here, redefine in external config file *---
 
@@ -444,7 +445,7 @@ const	libRootDir = 'lib/'
 //* source: https://github.com/gildas-lormeau/zip.js
 
 			'varName': 'zip'
-		,	'dir': libFormatsDir + 'zip/'
+		,	'dir': libFormatsDir + 'zip/zip_js/'
 		,	'files': [
 				'zip.js',
 				'zip-fs.js',
@@ -475,7 +476,7 @@ const	libRootDir = 'lib/'
 //* wish: draw in SAI2 → export ORA (all layers rasterized + all blending properties and modes included as attributes)
 
 			'varName': 'ora'
-		,	'dir': libFormatsDir + 'ora/'
+		,	'dir': libFormatsDir + 'ora/ora_js/'
 		,	'files': [
 				'ora.js',
 				// 'ora-blending.js',
@@ -529,7 +530,7 @@ const	libRootDir = 'lib/'
 
 //* To be figured on the go *--------------------------------------------------
 
-var	ora, zip, PSD	//* <- external variable names, do not change
+var	ora, zip, PSD, UPNG	//* <- external variable names, do not change
 
 ,	PSD_JS
 ,	CompositionModule
@@ -2570,9 +2571,9 @@ var	depends = lib.depends || null;
 
 						if (USE_ZLIB_ASM) {
 						var	zipWorkerScripts = [
-								dir + 'z-worker.js',
 								dir + zlibAsmSubDir + 'zlib.js',
 								dir + 'zlib-asm/codecs.js',
+								dir + 'z-worker.js',
 							];
 
 							zip.workerScripts = {
