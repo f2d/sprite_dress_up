@@ -185,10 +185,14 @@ label:hover {
 	text-align: center;
 	content: "⌛";
 }
+.example-files tbody:not(:first-child),
+.example-files tfoot:not(:first-child),
 .example-files:not(:first-child) tbody,
 .example-files:not(:first-child) tfoot {
 	border-top: 0.0625em solid gray;
 }
+.example-files tbody:not(:last-child),
+.example-files tfoot:not(:last-child),
 .example-files:not(:last-child) tbody,
 .example-files:not(:last-child) tfoot {
 	border-bottom: 0.0625em solid gray;

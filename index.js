@@ -8857,6 +8857,7 @@ var	supportedFileTypesText = (
 	}
 
 var	tabsCountMax = 0
+,	totalFilesCount = 0
 ,	examplesHTML = getNestedFilteredArrayJoinedText(
 		exampleProjectFiles.map(
 			(fileGroup) => {
@@ -8870,6 +8871,7 @@ var	tabsCountMax = 0
 				+	'</header>'
 				)
 			,	tabsCount = 0
+			,	filesCount = fileGroup.files.length
 			,	fileListHTML = getNestedFilteredArrayJoinedText(
 					fileGroup.files.map(
 						(file) => {
@@ -8961,7 +8963,13 @@ var	tabsCountMax = 0
 					)
 				);
 
-			var	batchButtonsHTML = getExampleButtonsRow(EXAMPLE_CONTROLS, tabsCount);
+			var	batchButtonsHTML = (
+					filesCount > 1
+					? getExampleButtonsRow(EXAMPLE_CONTROLS, tabsCount)
+					: ''
+				);
+
+				totalFilesCount += filesCount;
 
 				return (
 					'<tbody class="example-file-type">'
@@ -8973,8 +8981,14 @@ var	tabsCountMax = 0
 			}
 		)
 	)
-,	batchButtonsHTML = getExampleButtonsRow(EXAMPLE_CONTROLS, tabsCountMax)
-	;
+,	batchButtonsHTML = (
+		totalFilesCount > 1
+		? (
+			'<tfoot>'
+		+		getExampleButtonsRow(EXAMPLE_CONTROLS, tabsCountMax)
+		+	'</tfoot>'
+		) : ''
+	);
 
 	menuHTMLparts.examples = (
 		!EXAMPLE_NOTICE
@@ -8985,9 +8999,7 @@ var	tabsCountMax = 0
 	) + (
 		'<table class="example-files">'
 	+		examplesHTML
-	+		'<tfoot>'
-	+			batchButtonsHTML
-	+		'</tfoot>'
+	+		batchButtonsHTML
 	+	'</table>'
 	);
 
