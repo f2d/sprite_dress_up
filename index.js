@@ -541,12 +541,14 @@ const	libRootDir = 'lib/'
 ,	fileTypeLoaders = [
 		{
 			'dropFileExts': ['ora', 'zip']
+		,	'inputFileAcceptMimeTypes': ['image/openraster', 'application/zip']
 		,	'handlerFuncs': [
 				loadORA,
 			]
 		},
 		{
 			'dropFileExts': ['psd']
+		,	'inputFileAcceptMimeTypes': ['image/x-photoshop', 'image/vnd.adobe.photoshop']
 		,	'handlerFuncs': [
 				// loadPSD,
 				loadPSDBrowser,
@@ -8768,17 +8770,29 @@ var	configVarDefaults = {}
 var	todoText = getLocalizedText('todo')
 ,	todoHTML = '<p>' + getLocalizedHTML('todo') + '</p>'
 ,	fileTypesByKeys = {}
+,	inputFileAcceptTypes = []
 	;
 
 	fileTypeLoaders.forEach(
 		(loader) => {
-		var	exts = loader.dropFileExts.map((ext) => ext.toUpperCase())
-		,	key = exts.shift()
+		var	exts = loader.dropFileExts || []
+		,	mimeTypes = loader.inputFileAcceptMimeTypes || []
+		,	lowerCaseExts = exts.map((ext) => ext.toLowerCase())
+		,	upperCaseExts = exts.map((ext) => ext.toUpperCase())
+		,	key = upperCaseExts.shift()
 		,	otherTypesByKey = getOrInitChild(fileTypesByKeys, key, Array)
 			;
 
-			exts.forEach(
+			upperCaseExts.forEach(
 				(ext) => addToListIfNotYet(otherTypesByKey, ext)
+			);
+
+			lowerCaseExts.forEach(
+				(ext) => addToListIfNotYet(inputFileAcceptTypes, '.' + ext)
+			);
+
+			mimeTypes.forEach(
+				(mimeType) => addToListIfNotYet(inputFileAcceptTypes, mimeType.toLowerCase())
 			);
 		}
 	);
@@ -8801,6 +8815,7 @@ var	supportedFileTypesText = (
 		)
 		.join(', ')
 	)
+,	inputFileAcceptTypesText = inputFileAcceptTypes.sort().join(', ')
 ,	openingNotesHTML = getLocalizedHTML('file_notes')
 ,	menuHTMLparts = {};
 
@@ -8809,7 +8824,9 @@ var	supportedFileTypesText = (
 	+		getLocalizedHTML('file_select_project')
 	+		':'
 	+	'</p>'
-	+	'<input type="file" onchange="onPageDrop(this)">'
+	+	'<input type="file" onchange="onPageDrop(this)" accept="'
+	+		encodeTagAttr(inputFileAcceptTypesText)
+	+	'">'
 	+	'<p>'
 	+		getLocalizedHTML('file_formats')
 	+		':\n'
