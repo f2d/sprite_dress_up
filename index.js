@@ -8827,8 +8827,6 @@ var	supportedFileTypesText = (
 	logLabel = 'Init menu: example files';
 	console.time(logLabel);
 
-	console.timeEnd(logLabel);
-
 	function getExampleHeaderRow(content, rowLength) {
 		return (
 			'<tr>'
