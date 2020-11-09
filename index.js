@@ -85,6 +85,30 @@ var	exampleRootDir = ''
 ,	ZERO_PERCENT_EQUALS_EMPTY		= false
 	;
 
+//* ---------------------------------------------------------------------------
+
+//* Create type-checking functions, e.g. "isString()" or "isImageElement()":
+//* source: https://stackoverflow.com/a/17772086
+[
+	'Array',
+	'Date',
+	'Function',
+	'Number',
+	'RegExp',
+	'String',
+	'HTMLCanvasElement',
+	'HTMLImageElement',
+	'HTMLSelectElement',
+].forEach(
+	function(typeName) {
+		window[
+			'is' + typeName.replace('HTML', '')
+		] = function(value) {
+			return (toString.call(value).slice(8, -1) === typeName);
+		};
+	}
+);
+
 //* Config: internal, do not change *------------------------------------------
 
 const	configFilePath = 'config.js'			//* <- declarations-only file to redefine any of the above variables
@@ -172,10 +196,10 @@ const	configFilePath = 'config.js'			//* <- declarations-only file to redefine a
 ,	regTrimNaNorSign	= getTrimReg('^\\d\\.+-')
 ,	regTrimNewLine		= /[^\S\r\n]*(\r\n|\r|\n)/g
 ,	regTrimTailBrTags	= /(\<br\/\>\s*)+$/gi
-,	regClassOption		= getClassReg('project-option|option')
-,	regClassExampleFiles	= getClassReg('example-file-type|example-files|files')
-,	regClassExampleFile	= getClassReg('example-file|file')
-,	regClassLoadedFile	= getClassReg('loaded-file|file')
+,	regClassOption		= getClassReg('project-option', 'option')
+,	regClassExampleFiles	= getClassReg('example-file-type', 'example-files', 'files')
+,	regClassExampleFile	= getClassReg('example-file', 'file')
+,	regClassLoadedFile	= getClassReg('loaded-file', 'file')
 ,	regClassMenuBar		= getClassReg('menu-bar')
 ,	regClassButton		= getClassReg('button')
 ,	regClassFailed		= getClassReg('failed')
@@ -417,10 +441,12 @@ const	LS = window.localStorage || localStorage
 	,	'Lab'
 	];
 
-//* Config: internal, loaders of project files *-------------------------------
+//* Config: internal, included scripts and loaders of project files *----------
 
 const	libRootDir = 'lib/'
 ,	libFormatsDir = libRootDir + 'formats/'
+,	libLangDir = libRootDir + 'localization/'
+,	libUtilDir = libRootDir + 'util/'
 
 //* source: https://github.com/ukyo/zlib-asm
 
@@ -552,26 +578,45 @@ function isNonNullObject(value) {
 	);
 }
 
-//* Create type-checking functions, e.g. "isString()" or "isImageElement()":
-//* source: https://stackoverflow.com/a/17772086
-[
-	'Array',
-	'Date',
-	'Function',
-	'Number',
-	'String',
-	'HTMLCanvasElement',
-	'HTMLImageElement',
-	'HTMLSelectElement',
-].forEach(
-	(typeName) => {
-		window[
-			'is' + typeName.replace('HTML', '')
-		] = function(value) {
-			return (toString.call(value).slice(8, -1) === typeName);
-		};
-	}
-);
+function isURLFromDisk(url) {
+var	match = String(url).match(/^(\w+):(\/\/|$)/)
+,	protocol = (
+		(
+			match
+			? match[1]
+			: location.protocol
+		)
+		.split(':', 1)[0]
+		.toLowerCase()
+	);
+
+	return (protocol === 'file');
+}
+
+//* source: https://stackoverflow.com/a/55896125
+function isImageTypeExportSupported(type) {
+var	canvas = cre('canvas');
+	canvas.width = 1;
+	canvas.height = 1;
+
+	return (
+		canvas
+		.toDataURL(type)
+		.indexOf(type) >= 0
+	);
+}
+
+function getTrimReg(chars) {
+	return new RegExp('^[' + chars + ']+|[' + chars + ']+$', 'gi');
+}
+
+function getClassReg() {
+	return (
+		isRegExp(arguments[0])
+		? arguments[0]
+		: new RegExp('(^|\\s)(' + getFlatArray(arguments).join('|') + ')($|\\s)', 'i')
+	);
+}
 
 //* Get array of all possible combinations of values from multiple arrays:
 //* source: https://cwestblog.com/2011/05/02/cartesian-product-of-multiple-arrays/
@@ -687,7 +732,7 @@ function getFlatArray(array, maxDepth) {
 
 var	flatArray = [];
 
-	array.forEach(
+	Array.from(array).forEach(
 		(value) => {
 			if (isArray(value)) {
 				if (maxDepth > 0) {
@@ -1074,34 +1119,6 @@ var	error = new Error(message || 'Unknown error');
 	if (isFunction(callback)) callback(error);
 
 	return error;
-}
-
-function isURLFromDisk(url) {
-var	match = url.match(/^(\w+):(\/\/|$)/)
-,	protocol = (
-		(
-			match
-			? match[1]
-			: location.protocol
-		)
-		.split(':', 1)[0]
-		.toLowerCase()
-	);
-
-	return (protocol === 'file');
-}
-
-//* source: https://stackoverflow.com/a/55896125
-function isImageTypeExportSupported(type) {
-var	canvas = cre('canvas');
-	canvas.width = 1;
-	canvas.height = 1;
-
-	return (
-		canvas
-		.toDataURL(type)
-		.indexOf(type) >= 0
-	);
 }
 
 function getNormalizedColorText(color) {
@@ -1589,6 +1606,23 @@ var	helperObject;
 function toggleClass(element, className, keep) {
 	if (!className || !element) return;
 
+//* modern way:
+
+	if (classNames = element.classList) {
+		if (keep > 0) {
+			classNames.add(className);
+		} else
+		if (keep < 0) {
+			classNames.remove(className);
+		} else {
+			classNames.toggle(className);
+		}
+
+		return classNames.contains(className);
+	}
+
+//* legacy way:
+
 var	keep = orz(keep)
 ,	oldText = element.className || element.getAttribute('className') || ''
 ,	classNames = oldText.split(regSpace).filter(arrayFilterNonEmptyValues)
@@ -1613,9 +1647,6 @@ var	keep = orz(keep)
 	return (classNames.indexOf(className) >= 0);
 }
 
-function getClassReg(className) {return new RegExp('(^|\\s)(' + className + ')($|\\s)', 'i');}
-function getTrimReg(chars) {return new RegExp('^[' + chars + ']+|[' + chars + ']+$', 'gi');}
-
 function getChildByAttr(element, attrName, attrValue) {
 	if (element) {
 		element = element.firstElementChild;
@@ -1630,7 +1661,7 @@ function getChildByAttr(element, attrName, attrValue) {
 }
 
 function getPreviousSiblingByClass(element, className) {
-var	regClassName = (className.test ? className : getClassReg(className));
+var	regClassName = getClassReg(className);
 
 	while (element && (element = element.previousElementSibling)) {
 		if (element.className && regClassName.test(element.className)) {
@@ -1642,7 +1673,7 @@ var	regClassName = (className.test ? className : getClassReg(className));
 }
 
 function getNextSiblingByClass(element, className) {
-var	regClassName = (className.test ? className : getClassReg(className));
+var	regClassName = getClassReg(className);
 
 	while (element && (element = element.nextElementSibling)) {
 		if (element.className && regClassName.test(element.className)) {
@@ -1654,7 +1685,7 @@ var	regClassName = (className.test ? className : getClassReg(className));
 }
 
 function getThisOrParentByClass(element, className) {
-var	regClassName = (className.test ? className : getClassReg(className));
+var	regClassName = getClassReg(className);
 
 	while (element) {
 		if (element.className && regClassName.test(element.className)) {
@@ -8624,7 +8655,7 @@ var	logLabel = `Init localization "${LANG}"`;
 	console.time(logLabel);
 
 	toggleClass(document.body, 'loading', 1);
-	await loadLibPromise('localization.' + LANG + '.js');
+	await loadLibPromise(libLangDir + 'localization.' + LANG + '.js');
 	document.body.innerHTML = getLocalizedHTML('loading');
 
 	console.timeEnd(logLabel);
@@ -8721,7 +8752,7 @@ var	configVarDefaults = {}
 	logLabel = 'Init libraries';
 	console.time(logLabel);
 
-	await loadLibPromise(libRootDir + 'composition.asm.js');
+	await loadLibPromise(libUtilDir + 'composition.asm.js');
 
 	if (CompositionModule = AsmCompositionModule) {
 		CompositionFuncList = Object.keys(CompositionModule(window, null, new ArrayBuffer(nextValidHeapSize(0))));
@@ -9936,6 +9967,8 @@ var	helpSections = {
 		}
 	}
 
+//* help sections order is defined here:
+
 	menuHTMLparts.help = getNestedFilteredArrayJoinedText([
 		getHeaderWithToggleButtons('all_sections')
 	,	[
@@ -9968,8 +10001,8 @@ var	helpSections = {
 						(entry) => [
 							(
 								!entry.code_sample
-								? ''
-								: (
+								? '' :
+								(
 									'<pre class="' + (entry.code_class || 'param') + '">'
 								+		getLocalizedHTML(entry.code_sample)
 								+	'</pre>'
@@ -10142,11 +10175,11 @@ var	toggleTextSizeHTML = (
 //* Note: drop event may not work without dragover.
 
 	[
-		['beforeunload',onBeforeUnload]
-	,	['dragover',	onPageDragOver]
-	,	['drop',	onPageDrop]
-	,	['keypress',	onPageKeyPress]
-	,	['resize',	onResize]
+		['beforeunload',onBeforeUnload],
+		['dragover',	onPageDragOver],
+		['drop',	onPageDrop],
+		['keypress',	onPageKeyPress],
+		['resize',	onResize],
 	].forEach(
 		([eventName, handlerFunction]) => window.addEventListener(eventName, handlerFunction, false)
 	);
@@ -10179,5 +10212,7 @@ var	button, oldSetting;
 
 	logTime('Init: ready to work.');
 }
+
+//* Runtime *------------------------------------------------------------------
 
 document.addEventListener('DOMContentLoaded', init, false);
