@@ -3,13 +3,16 @@
 
 
 
-## purpose
+## Purpose
 
-Parse artwork project files (ORA, PSD) into menu of parts and batch export of all versions to image files (PNG) completely on the client side, using a web browser with modern JavaScript support.
+1. Parse artwork project files (ORA, PSD) into menu of parts to preview preset versions.
+2. Easy batch export of all versions into image files (PNG), separated or joined.
+
+Completely on the client side, using a web browser with modern JavaScript support.
 
 
 
-## client side
+## Client side
 
 Open one of `index.<lang>.htm` files in a web-browser, drop files on the page or use menu at the top.
 
@@ -19,7 +22,7 @@ Recomposition functionality is already usable to some extent, but lacks support 
 
 
 
-## server side
+## Server side
 
 ### update_config.py
 
@@ -95,7 +98,7 @@ python ./update_config.py -im7 -filter Sinc
 
 
 
-## included libraries
+## Included libraries
 
 ORA file parser - modified version of [ora.js](https://github.com/zsgalusz/ora.js).
 
