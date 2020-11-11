@@ -79,6 +79,7 @@ var	exampleRootDir = ''
 ,	TAB_THUMBNAIL_ZOOM		= true
 ,	TESTING				= false
 ,	TESTING_RENDER			= false
+,	USE_WORKERS			= true
 ,	USE_ZLIB_ASM			= true
 ,	VERIFY_PARAM_COLOR_VS_LAYER_CONTENT	= false
 ,	ZERO_PERCENT_EQUALS_EMPTY		= false
@@ -218,10 +219,11 @@ const	LS = window.localStorage || localStorage
 ,	URL = window.URL || window.webkitURL || URL
 ,	LANG = document.documentElement.lang || 'en'
 
+,	RUNNING_FROM_DISK = isURLFromDisk('/')
+,	CAN_USE_WORKERS = (typeof Worker === 'function' && !RUNNING_FROM_DISK)
 ,	CAN_CAST_TO_ARRAY = (typeof Array.from === 'function')
 ,	CAN_EXPORT_BLOB = (typeof HTMLCanvasElement.prototype.toBlob === 'function')
 ,	CAN_EXPORT_WEBP = isImageTypeExportSupported('image/webp')
-,	RUNNING_FROM_DISK = isURLFromDisk('/')
 
 ,	SPLIT_SEC = 60
 ,	MIN_CHANNEL_VALUE = 0
@@ -478,17 +480,19 @@ const	libRootDir = 'lib/'
 
 //* CORS workaround: https://github.com/gildas-lormeau/zip.js/issues/169#issuecomment-312110395
 
-			].concat(RUNNING_FROM_DISK ? (
-				USE_ZLIB_ASM
+			].concat(
+				USE_WORKERS && CAN_USE_WORKERS
+				? []
+				: USE_ZLIB_ASM
 				? [
 					zlibAsmSubDir + 'zlib.js',
 					'zlib-asm/codecs.js',
 				]
 				: [
-					'inflate.js',
 					'deflate.js',
+					'inflate.js',
 				]
-			) : [])
+			)
 		},
 
 		'ora.js': {
@@ -2240,8 +2244,12 @@ var	text = getLogTime();
 	console.log(text);
 }
 
-function logError(args, error) {
-	console.log(['Error in "' + args.callee.name + '" with arguments:', args, error]);
+function logError(args, error, context) {
+	console.log([
+		'Error:', error
+	,	'In "' + args.callee.name + '" with arguments:', args
+	,	'Context:', context
+	]);
 }
 
 function getFilePromise(file) {
@@ -2597,16 +2605,18 @@ var	depends = lib.depends || null;
 //* some var init, no better place for this:
 
 				if (varName === 'zip' && window[varName]) {
-					if (zip.useWebWorkers = !RUNNING_FROM_DISK) {
+					if (zip.useWebWorkers = USE_WORKERS && CAN_USE_WORKERS) {
 
-//* Note: either zip.workerScripts or zip.workerScriptsPath may be set, not both.
+//* Notes:
+//*	Either zip.workerScripts or zip.workerScriptsPath may be set, not both.
+//*	Scripts in the array are executed in order, and the first one should be z-worker.js, which is used to start the worker.
 //* source: http://gildas-lormeau.github.io/zip.js/core-api.html#alternative-codecs
 
 						if (USE_ZLIB_ASM) {
 						var	zipWorkerScripts = [
+								dir + 'z-worker.js',
 								dir + zlibAsmSubDir + 'zlib.js',
 								dir + 'zlib-asm/codecs.js',
-								dir + 'z-worker.js',
 							];
 
 							zip.workerScripts = {
@@ -2621,7 +2631,7 @@ var	depends = lib.depends || null;
 
 				if (varName === 'ora' && window[varName]) {
 					ora.preloadImages = false;
-					ora.enableWorkers = !RUNNING_FROM_DISK;
+					ora.enableWorkers = USE_WORKERS && CAN_USE_WORKERS;
 					ora.scriptsPath = dir;
 				}
 
@@ -3383,7 +3393,7 @@ async function thisToPng(targetLayer) {
 		if (t = targetLayer) {
 			logTime('cannot get layer image: ' + getLayerPathText(t));
 		} else {
-			logError(arguments, error);
+			logError(arguments, error, this);
 		}
 
 		return null;
@@ -4141,24 +4151,26 @@ async function getProjectViewMenu(project) {
 
 		project.layers = getUnskippedProcessedLayers(project.layers);
 
-		for (let sectionName in PARAM_OPTIONS_ADD_BY_DEFAULT) if (!options[sectionName]) {
-			getProcessedLayerInBranch(
-				getLayerWithParamsFromParamList(
-					PARAM_OPTIONS_ADD_BY_DEFAULT[sectionName]
-				)
-			);
-		}
+		if (options) {
+			for (let sectionName in PARAM_OPTIONS_ADD_BY_DEFAULT) if (!options[sectionName]) {
+				getProcessedLayerInBranch(
+					getLayerWithParamsFromParamList(
+						PARAM_OPTIONS_ADD_BY_DEFAULT[sectionName]
+					)
+				);
+			}
 
-		for (let switchType in SWITCH_NAMES_BY_TYPE) {
-		var	switchParam = getOrInitChild(project, 'switchParamNames')
-		,	switchParam = getOrInitChild(switchParam, switchType)
-			;
+			for (let switchType in SWITCH_NAMES_BY_TYPE) {
+			var	switchParam = getOrInitChild(project, 'switchParamNames')
+			,	switchParam = getOrInitChild(switchParam, switchType)
+				;
 
-			if (!switchParam.implicit) {
-			var	switchName = SWITCH_NAMES_DEFAULT[switchType];
+				if (!switchParam.implicit) {
+				var	switchName = SWITCH_NAMES_DEFAULT[switchType];
 
-				switchParam.implicit = switchName;
-				switchParam.explicit = getOtherSwitchParamName(switchType, switchName);
+					switchParam.implicit = switchName;
+					switchParam.explicit = getOtherSwitchParamName(switchType, switchName);
+				}
 			}
 		}
 
