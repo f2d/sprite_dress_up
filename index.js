@@ -1,7 +1,6 @@
 
 //* source file data:
 //* TODO: keep all layer-name parameters single-word if possible.
-//* TODO: lazy loading only needed images in ORA one by one, as in PSD, after new tree structure is finished.
 //* TODO: whole config in JSON-format?
 
 //* menu:
@@ -370,6 +369,7 @@ const	LS = window.localStorage || localStorage
 
 ,	CLEANUP_KEYS_TESTING = [
 		'loading'
+	,	'loadImage'
 	,	'toPng'
 	]
 
@@ -2620,7 +2620,7 @@ var	depends = lib.depends || null;
 				}
 
 				if (varName === 'ora' && window[varName]) {
-					ora.enableImageAsBlob = true;
+					ora.preloadImages = false;
 					ora.enableWorkers = !RUNNING_FROM_DISK;
 					ora.scriptsPath = dir;
 				}
@@ -3324,40 +3324,70 @@ var	arrayBuffer = await getFilePromiseFromURL(url)
 
 //* pile of hacks and glue to get things working, don't bother with readability, redo later:
 
-function thisToPng(targetLayer) {
-	try {
-	var	t = targetLayer || this
-	,	e = t.sourceData || t
-	,	i = e.prerendered || e.thumbnail
-		;
+async function thisToPng(targetLayer) {
 
-		if (i) {
-			return i;
-		}
+	async function thisToPngTryOne(e) {
 
-		if (isImageElement(e = e.image || e)) {
+		if (isImageElement(e)) {
 			return e;
 		}
 
 		if (
-			e.toPng
-		&&	(
-				e.toPng != thisToPng
-			||	t != e
-			)	//* <- to avoid infinite recursion
-		&&	(i = e.toPng())
+			e.loadImage
+		&&	isFunction(e.loadImage)
 		) {
-			return i;
+			return new Promise(
+				(resolve, reject) => e.loadImage(resolve, reject)
+			);
 		}
-	} catch (error) {
-		if (i = targetLayer) {
-			logTime('cannot get layer image: ' + getLayerPathText(i));
-		} else {
-			logError(arguments, error);
+
+		if (
+			e.toPng
+		&&	isFunction(e.toPng)
+		&&	(
+				e.toPng !== thisToPng
+			||	t !== e
+			)	//* <- to avoid infinite recursion
+		&&	(e = await e.toPng())
+		) {
+			return e;
 		}
 	}
 
-	return null;
+	async function thisToPngTryEach() {
+		for (var i in arguments) {
+		var	e;
+
+			if (
+				(e = arguments[i])
+			&&	(e = e.image || e.img || e)
+			&&	(e = await thisToPngTryOne(e))
+			) {
+				return e.image || e.img || e;
+			}
+		}
+	}
+
+	try {
+	var	t = targetLayer || this
+	,	e = t.sourceData || t
+	,	e = await thisToPngTryEach(
+			e.prerendered
+		,	e.thumbnail
+		,	e
+		);
+
+		return e;
+
+	} catch (error) {
+		if (t = targetLayer) {
+			logTime('cannot get layer image: ' + getLayerPathText(t));
+		} else {
+			logError(arguments, error);
+		}
+
+		return null;
+	}
 }
 
 //* Page-specific functions: internal, loading *-------------------------------
@@ -3629,7 +3659,7 @@ async function getProjectViewMenu(project) {
 				&&	(layer = images.pop())
 				&&	(result = !isStopRequestedAnywhere(project))
 				&&	(result = await getLayerImgLoadPromise(layer, project))
-				&&	(result = await getLayerMaskLoadPromise(layer, project))
+				&&	(result = await getLayerMaskLoadPromise(layer.mask, project))
 				);
 
 			var	tookTime = getTimeNow() - startTime;
@@ -4046,9 +4076,13 @@ async function getProjectViewMenu(project) {
 				layer.opacity > 0
 			&&	(
 					params.color_code
+				||	layer.loadImage
 				||	(
 						layer.mask
-					&&	layer.mask.maskData
+					&&	(
+							layer.mask.maskData
+						||	layer.mask.loadImage
+						)
 					)
 				||	(
 						!layersInside
@@ -4135,12 +4169,13 @@ async function getProjectViewMenu(project) {
 		return new Promise(
 			(resolve, reject) => {
 				if (layer.layers) {
-					if (TESTING) console.log(
+					if (TESTING > 1) console.log(
 						'No image loaded because it is folder at: '
 					+	getLayerPathText(layer)
 					);
 
 					resolve(true);
+
 					return;
 				}
 
@@ -4150,115 +4185,127 @@ async function getProjectViewMenu(project) {
 					colorCode
 				&&	!VERIFY_PARAM_COLOR_VS_LAYER_CONTENT
 				) {
-					// if (TESTING) console.log(
-						// 'got color code in param: '
-					// +	getColorTextFromArray(colorCode)
-					// +	', layer content not checked at: '
-					// +	getLayerPathText(layer)
-					// );
-
-					layer.img = colorCode;
-
-					resolve(true);
-					return;
-				}
-
-			var	img = null;
-
-				try {
-					img = project.toPng(layer);
-				} catch (error) {
-					logError(arguments, error);
-				}
-
-				if (
-					img
-				&&	isImageElement(img)
-				) {
-					img.onload = (evt) => {
-						if (layer.isColor) {
-							layer.img = getFirstPixelRGBA(img);
-
-							if (colorCode) {
-							var	colorCodeText = getColorTextFromArray(colorCode)
-							,	layerRGBAText = getColorTextFromArray(layer.img)
-								;
-
-								if (layerRGBAText != colorCodeText) {
-									console.log(
-										'got color code in param: '
-									+	colorCodeText
-									+	', prefered instead of layer content: '
-									+	layerRGBAText
-									+	', at:'
-									+	getLayerPathText(layer)
-									);
-								}
-
-								layer.img = colorCode;
-							}
-						} else {
-							img.top  = layer.top;
-							img.left = layer.left;
-
-							layer.img = img;
-						}
-
-						resolve(true);
-					};
-
-					img.onerror = (evt) => {
-						if (img.complete) {
-							resolve(true);
-							return;
-						}
-
-						if (TESTING) console.log(['img.onerror:', img, evt]);
-
-						resolve(false);
-					}
-
-					if (img.complete) {
-						img.onload();
-					}
-				} else
-				if (colorCode) {
-					if (TESTING) console.log(
+					if (TESTING > 1) console.log(
 						'got color code in param: '
 					+	getColorTextFromArray(colorCode)
-					+	', layer content not found at: '
+					+	', layer content not checked at: '
 					+	getLayerPathText(layer)
 					);
 
 					layer.img = colorCode;
 
 					resolve(true);
-				} else {
-					resolve(false);
+
+					return;
 				}
+
+				getLayerMaskLoadPromise(layer, project).then(
+					(img) => {
+						if (
+							img
+						&&	isImageElement(img)
+						) {
+							img.onload = (evt) => {
+								if (layer.isColor) {
+									layer.img = getFirstPixelRGBA(img);
+
+									if (colorCode) {
+									var	colorCodeText = getColorTextFromArray(colorCode)
+									,	layerRGBAText = getColorTextFromArray(layer.img)
+										;
+
+										if (layerRGBAText != colorCodeText) {
+											console.log(
+												'got color code in param: '
+											+	colorCodeText
+											+	', prefered instead of layer content: '
+											+	layerRGBAText
+											+	', at:'
+											+	getLayerPathText(layer)
+											);
+										}
+
+										layer.img = colorCode;
+									}
+								} else {
+									img.top  = layer.top;
+									img.left = layer.left;
+
+									layer.img = img;
+								}
+
+								resolve(true);
+							};
+
+							img.onerror = (evt) => {
+								if (img.complete) {
+									resolve(true);
+
+									return;
+								}
+
+								if (TESTING) console.log(['img.onerror:', img, evt]);
+
+								resolve(false);
+							}
+
+							if (img.complete) {
+								img.onload();
+							}
+						} else
+						if (colorCode) {
+							if (TESTING) console.log(
+								'got color code in param: '
+							+	getColorTextFromArray(colorCode)
+							+	', layer content not found at: '
+							+	getLayerPathText(layer)
+							);
+
+							layer.img = colorCode;
+
+							resolve(true);
+						} else {
+							resolve(false);
+						}
+					}
+				).catch(
+					(error) => {
+						console.log(error);
+
+						resolve(false);
+					}
+				);
 			}
 		);
 	}
 
-	function getLayerMaskLoadPromise(layer, project) {
+	function getLayerMaskLoadPromise(mask, project) {
 		return new Promise(
 			(resolve, reject) => {
-				if (
-					(mask = layer.mask)
-				&&	(maskData = mask.maskData)
-				) {
-				var	mask, maskData
-				,	w = mask.width
-				,	h = mask.height
-				,	canvas = getCanvasFromByteArray(maskData, w,h)
-					;
+				if (mask) {
+					if (mask.maskData) {
+					var	canvas = getCanvasFromByteArray(
+							mask.maskData
+						,	mask.width
+						,	mask.height
+						)
+					,	imagePromise = getImagePromiseFromCanvasToBlob(canvas, project)
+						;
+					} else
+					if (mask.loadImage) {
+						imagePromise = new Promise(
+							(resolve, reject) => mask.loadImage(resolve, reject)
+						);
+					} else {
+						imagePromise = project.toPng(mask);
+					}
+				}
 
-					getImagePromiseFromCanvasToBlob(canvas, project).then(
+				if (imagePromise) {
+					imagePromise.then(
 						(img) => {
 							if (img) {
-								layer.mask.img = img;
-
-								resolve(true);
+								resolve(mask.img = img);
 							} else {
 								resolve(false);
 							}
@@ -4701,11 +4748,11 @@ function setProjectThumbnail(project, fullImage) {
 	}
 }
 
-function getProjectViewImage(project, img) {
+async function getProjectViewImage(project, img) {
 	if (
 		project
 	&&	project.toPng
-	&&	(img = project.toPng())
+	&&	(img = await project.toPng())
 	) {
 		img.onload = () => setProjectThumbnail(project, img);
 
@@ -4873,14 +4920,6 @@ var	params = getOrInitChild(layer, 'params');
 							hasPrefix(paramTextPart, 'at')
 						||	(paramTextPart.replace(regNumDots, '') === 'a')
 						) {
-							// paramTextPart
-							// .replace(regTrimParamRadius, '')
-							// .split(regNaNorDot)
-							// .filter(arrayFilterNonEmptyValues)
-							// .forEach(
-								// (rangeText) => addRangeToList(thresholds, rangeText)
-							// );
-
 							getRangeValuesFromText(
 								paramTextPart
 								.replace(regTrimParamRadius, '')
@@ -5210,7 +5249,7 @@ var	params = getOrInitChild(layer, 'params');
 				params[paramType] = param || paramType;
 			}
 
-			// if (TESTING) console.log('param type [' + paramType + '], value = [' + param + '] at: ' + getWIPLayerPathText());
+			if (TESTING > 1) console.log('param type [' + paramType + '], value = [' + param + '] at: ' + getWIPLayerPathText());
 
 			// break param_types;
 			continue param_list;
@@ -5491,6 +5530,13 @@ async function loadORA(project) {
 //* gather layers into a tree object:
 
 			async function addLayerToTree(layer, parentGroup) {
+
+				function getImageLoadWrapper(imageHolder) {
+					return function (onDone, onError) {
+						imageHolder.loadImage(onDone, onError);
+					}
+				}
+
 			var	name	= layer.name || ''
 			,	mode	= layer.composite || ''
 			,	mask	= layer.mask || null
@@ -5524,18 +5570,29 @@ async function loadORA(project) {
 				,	blendModeOriginal: mode
 				};
 
+				if (layer.loadImage) {
+					layerWIP.loadImage = getImageLoadWrapper(layer);
+				}
+
 //* Note: layer masks also may be emulated via compositing modes in ORA
 
 				if (mask) {
-				var	img = getPropByAnyOfNamesChain(mask, 'img', 'image');	//* <- already loaded img element
+				var	img = getPropByAnyOfNamesChain(mask, 'img', 'image');	//* <- may be already loaded img element
 
 					layerWIP.mask = {
 						top:    orz(mask.top   || mask.y)
 					,	left:   orz(mask.left  || mask.x)
 					,	width:  orz(img.width  || mask.width)
 					,	height: orz(img.height || mask.height)
-					,	img: img
+					// ,	img: img
 					};
+
+					if (img && img !== mask) {
+						layerWIP.mask.img = img;
+					} else
+					if (mask.loadImage) {
+						layerWIP.mask.loadImage = getImageLoadWrapper(mask);
+					}
 				}
 
 				parentGroup = await getNextParentAfterAddingLayerToTree(
