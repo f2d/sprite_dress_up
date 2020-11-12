@@ -2029,7 +2029,7 @@ function getFormattedFileNamePart(name) {return (name ? '[' + name + ']' : '');}
 
 function getFormattedFileSize(shortened, bytes) {
 	if (bytes) {
-		bytes += ' ' + getLocalizedText('file_bytes');
+		bytes = getLocalizedText('file_bytes', bytes);
 	}
 
 	if (shortened && bytes) {
@@ -3598,6 +3598,8 @@ var	startTime = getTimeNow();
 	var	project = {
 			fileName: fileName
 		,	baseName: baseName
+		,	imagesCount: 0
+		,	imagesLoadedCount: 0
 		,	loading: {
 				startTime: getTimeNow()
 			,	data: sourceFile
@@ -4317,6 +4319,8 @@ async function getProjectViewMenu(project) {
 					imagePromise.then(
 						(img) => {
 							if (img) {
+								++project.imagesLoadedCount;
+
 								resolve(mask.img = img);
 							} else {
 								resolve(false);
@@ -4638,36 +4642,33 @@ var	summary       = cre('section', header)
 	summaryHeader.className = 'filename';
 	summaryHeader.textContent = project.fileName;
 
-var	bitDepthText = '';
+var	bitDepthText = ''
+,	colorModeText = project.colorMode || ''
+	;
 
 	if (project.channels && project.bitDepth) {
-		bitDepthText = project.channels + 'x' + project.bitDepth + ' ' + getLocalizedText('project_bits');
+		bitDepthText = getLocalizedText('project_bits_channels', project.channels, project.bitDepth);
 	} else
 	if (project.channels) {
-		bitDepthText = project.channels + ' ' + getLocalizedText('project_channels');
+		bitDepthText = getLocalizedText('project_channels', project.channels);
 	} else
 	if (project.bitDepth) {
-		bitDepthText = project.bitDepth + ' ' + getLocalizedText('project_bits');
+		bitDepthText = getLocalizedText('project_bits', project.bitDepth);
 	}
 
-var	canvasSizeText = (
-		project.width + 'x'
-	+	project.height + ' '
-	+	getLocalizedText('project_pixels')
-	)
-,	colorModeText  = getNestedFilteredArrayJoinedText([project.colorMode, bitDepthText], ' ')
-,	resolutionText = getNestedFilteredArrayJoinedText([canvasSizeText, colorModeText], ', ')
+var	canvasSizeText = (getLocalizedText('project_pixels', project.width, project.height))
+,	resolutionText = getNestedFilteredArrayJoinedText([canvasSizeText, bitDepthText, colorModeText], ', ')
 	;
 
 var	foldersCount = project.foldersCount
 ,	layersCount  = project.layersCount
-,	imagesCount  = project.loading.imagesCount
+,	imagesCount  = project.imagesCount || project.loading.imagesCount
+,	imagesLoadedCount = project.imagesLoadedCount
 ,	layersTextParts = []
 	;
 
-	if (foldersCount) layersTextParts.push(foldersCount + ' ' + getLocalizedText('project_folders'));
-	if (layersCount)  layersTextParts.push(layersCount  + ' ' + getLocalizedText('project_layers'));
-	if (imagesCount)  layersTextParts.push(imagesCount  + ' ' + getLocalizedText('project_images'));
+	if (foldersCount) layersTextParts.push(getLocalizedText('project_folders', foldersCount));
+	if (layersCount)  layersTextParts.push(getLocalizedText('project_layers', layersCount));
 
 var	layersText = getNestedFilteredArrayJoinedText(layersTextParts, ', ')
 ,	summaryTextParts = [resolutionText, layersText]
@@ -4677,8 +4678,24 @@ var	sourceFile = project.loading.data.file || {}
 ,	sourceFileTime = sourceFile.lastModified || sourceFile.lastModifiedDate
 	;
 
-	if (sourceFile.size) summaryTextParts.push(sourceFile.size + ' ' + getLocalizedText('file_bytes'));
-	if (sourceFileTime)  summaryTextParts.push(getLocalizedText('file_date') + ' ' + getFormattedTime(sourceFileTime));
+	if (imagesCount) {
+		summaryTextParts.push(
+			imagesLoadedCount
+		&&	imagesLoadedCount !== imagesCount
+			? getLocalizedText('project_images_loaded', imagesLoadedCount, imagesCount)
+			: getLocalizedText(
+				(
+					imagesLoadedCount
+					? 'project_images_loaded_all'
+					: 'project_images'
+				)
+			,	imagesCount
+			)
+		);
+	}
+
+	if (sourceFile.size) summaryTextParts.push(getLocalizedText('file_bytes', sourceFile.size));
+	if (sourceFileTime)  summaryTextParts.push(getLocalizedText('file_date', getFormattedTime(sourceFileTime)));
 
 	summaryBody.innerHTML = getNestedFilteredArrayJoinedText(summaryTextParts, '<br>');
 
@@ -5544,6 +5561,9 @@ async function loadORA(project) {
 			async function addLayerToTree(layer, parentGroup) {
 
 				function getImageLoadWrapper(imageHolder) {
+
+					++project.imagesCount;
+
 					return function (onDone, onError) {
 						imageHolder.loadImage(onDone, onError);
 					}
@@ -5582,6 +5602,12 @@ async function loadORA(project) {
 				,	blendModeOriginal: mode
 				};
 
+			var	img = getPropByAnyOfNamesChain(layer, 'img', 'image');
+
+				if (img && img !== layer) {
+					++project.imagesCount;
+					++project.imagesLoadedCount;
+				} else
 				if (layer.loadImage) {
 					layerWIP.loadImage = getImageLoadWrapper(layer);
 				}
@@ -5601,6 +5627,9 @@ async function loadORA(project) {
 
 					if (img && img !== mask) {
 						layerWIP.mask.img = img;
+
+						++project.imagesCount;
+						++project.imagesLoadedCount;
 					} else
 					if (mask.loadImage) {
 						layerWIP.mask.loadImage = getImageLoadWrapper(mask);
@@ -5707,20 +5736,26 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 				,	blendModeOriginal: mode
 				};
 
-				if (
-					mask
-				&&	!(mask.disabled || (mask.flags & 2))	//* <- mask visibility checkbox, supposedly
-				&&	img.hasMask
-				&&	img.maskData
-				) {
-					layerWIP.mask = {
-						top:    orz(mask.top  || mask.y)
-					,	left:   orz(mask.left || mask.x)
-					,	width:  orz(mask.width)
-					,	height: orz(mask.height)
-					,	defaultColor: orz(mask.defaultColor)
-					,	maskData: img.maskData		//* <- RGBA byte array
-					};
+				if (img) {
+					++project.imagesCount;
+
+					if (
+						img.hasMask
+					&&	img.maskData
+					&&	mask
+					&&	!(mask.disabled || (mask.flags & 2))	//* <- mask visibility checkbox, supposedly
+					) {
+						layerWIP.mask = {
+							top:    orz(mask.top  || mask.y)
+						,	left:   orz(mask.left || mask.x)
+						,	width:  orz(mask.width)
+						,	height: orz(mask.height)
+						,	defaultColor: orz(mask.defaultColor)
+						,	maskData: img.maskData		//* <- RGBA byte array
+						};
+
+						++project.imagesCount;
+					}
 				}
 
 				parentGroup = await getNextParentAfterAddingLayerToTree(
