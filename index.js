@@ -75,6 +75,7 @@ var	exampleRootDir = ''
 ,	DOWNSCALE_BY_MAX_FACTOR_FIRST	= true
 ,	EXAMPLE_NOTICE			= false
 ,	FILE_NAME_ADD_PARAM_KEY		= true
+,	LOCALIZED_CASE_BY_CROSS_COUNT	= false
 ,	OPEN_FIRST_MENU_TAB_AT_START	= true
 ,	TAB_THUMBNAIL_ZOOM		= true
 ,	TESTING				= false
@@ -1004,34 +1005,75 @@ var	wrapText = {
 	);
 }
 
-function getLocalizedKeyByCount(defaultKey, num) {
-var	key, keyCase;
+function getLocalizedKeyOrNull(key) {
+	key = String(key);
 
-	if (
-		isFunction(getLocalizedCaseByCount)
-	&&	(keyCase = getLocalizedCaseByCount(num))
-	&&	(key = defaultKey + '_' + keyCase)
-	&&	(key in LOCALIZATION_TEXT)
-	) {
+	if (key in LOCALIZATION_TEXT) {
 		return key;
 	}
 
-	return defaultKey;
+var	lowKey = key.toLowerCase();
+
+	if (lowKey in LOCALIZATION_TEXT) {
+		return lowKey;
+	}
+
+	return null;
+}
+
+function getLocalizedKeyByCount(key, ...args) {
+	key = String(key);
+
+	if (
+		(args.length > 0)
+	&&	isFunction(getLocalizedCaseByCount)
+	) {
+	var	finalCount = (
+			LOCALIZED_CASE_BY_CROSS_COUNT
+			? args.reduce(
+				(result, arg) => (
+					isNaN(arg)
+					? result
+					: (
+						(
+							result === null
+							? 1
+							: result
+						) * arg
+					)
+				)
+			,	null
+			)
+			: args.reduce(
+				(result, arg) => (
+					isNaN(arg)
+					? result
+					: arg
+				)
+			,	0
+			)
+		)
+	,	keyCase = getLocalizedCaseByCount(finalCount)
+	,	keyByCase = getLocalizedKeyOrNull(key + '_' + keyCase)
+		;
+
+		if (keyByCase !== null) {
+			return keyByCase;
+		}
+	}
+
+	return getLocalizedKeyOrNull(key);
 }
 
 function getLocalizedOrDefaultText(key, defaultText, ...replacements) {
-var	lowKey
+var	foundKey = getLocalizedKeyByCount(key, ...replacements)
 ,	text = getJoinedOrEmptyText(
-		key in LOCALIZATION_TEXT
-		? LOCALIZATION_TEXT[key]
+		foundKey !== null
+		? LOCALIZATION_TEXT[foundKey]
 		: (
-			(lowKey = String(key).toLowerCase()) in LOCALIZATION_TEXT
-			? LOCALIZATION_TEXT[lowKey]
-			: (
-				defaultText === true
-				? getNestedJoinedText(key, '\n', '')
-				: defaultText
-			)
+			defaultText === true
+			? getNestedJoinedText(key, '\n', '')
+			: defaultText
 		)
 	);
 
@@ -2027,9 +2069,9 @@ function getFileBaseName(name) {var index = name.lastIndexOf('.'); return (index
 function getFilePathFromUrl(url) {return url.split(/\#/g).shift().split(/\?/g).shift();}
 function getFormattedFileNamePart(name) {return (name ? '[' + name + ']' : '');}
 
-function getFormattedFileSize(shortened, bytes) {
+function getFormattedFileSize(shortened, bytes, bytesNumber) {
 	if (bytes) {
-		bytes = getLocalizedText('file_bytes', bytes);
+		bytes = getLocalizedText('file_bytes', bytes, bytesNumber);
 	}
 
 	if (shortened && bytes) {
@@ -3598,6 +3640,8 @@ var	startTime = getTimeNow();
 	var	project = {
 			fileName: fileName
 		,	baseName: baseName
+		,	foldersCount: 0
+		,	layersCount: 0
 		,	imagesCount: 0
 		,	imagesLoadedCount: 0
 		,	loading: {
@@ -4667,8 +4711,8 @@ var	foldersCount = project.foldersCount
 ,	layersTextParts = []
 	;
 
-	if (foldersCount) layersTextParts.push(getLocalizedText('project_folders', foldersCount));
 	if (layersCount)  layersTextParts.push(getLocalizedText('project_layers', layersCount));
+	if (foldersCount) layersTextParts.push(getLocalizedText('project_folders', foldersCount));
 
 var	layersText = getNestedFilteredArrayJoinedText(layersTextParts, ', ')
 ,	summaryTextParts = [resolutionText, layersText]
@@ -5546,12 +5590,17 @@ async function loadORA(project) {
 			);
 		}
 	,	async function treeConstructorFunc(project, sourceData) {
-			if (!sourceData.layers) return;
+			if (
+				!sourceData.layers
+			||	!sourceData.layers.length
+			||	!sourceData.layersCount
+			) {
+				return;
+			}
 
-			project.layersCount = orz(sourceData.layersCount);
-			project.foldersCount = orz(sourceData.stacksCount);
-
-			if (!project.layersCount) return;
+			project.foldersCount	= orz(sourceData.stacksCount);
+			project.layersCount	= orz(sourceData.layersCount);
+			project.nodesCount	= sourceData.layers.length;
 
 			project.width	= sourceData.width;
 			project.height	= sourceData.height;
@@ -5560,12 +5609,26 @@ async function loadORA(project) {
 
 			async function addLayerToTree(layer, parentGroup) {
 
-				function getImageLoadWrapper(imageHolder) {
+				function setImageLoadOrCountIfLoaded(imageHolder, newHolder) {
+				var	img = getPropByAnyOfNamesChain(imageHolder, 'img', 'image');
 
-					++project.imagesCount;
+				//* already loaded img element:
 
-					return function (onDone, onError) {
-						imageHolder.loadImage(onDone, onError);
+					if (img && img !== imageHolder) {
+						newHolder.img = img;
+
+						++project.imagesCount;
+						++project.imagesLoadedCount;
+					} else
+
+				//* deferred loading, only when needed:
+
+					if (imageHolder.loadImage) {
+						newHolder.loadImage = function (onDone, onError) {
+							imageHolder.loadImage(onDone, onError);
+						};
+
+						++project.imagesCount;
 					}
 				}
 
@@ -5602,38 +5665,19 @@ async function loadORA(project) {
 				,	blendModeOriginal: mode
 				};
 
-			var	img = getPropByAnyOfNamesChain(layer, 'img', 'image');
-
-				if (img && img !== layer) {
-					++project.imagesCount;
-					++project.imagesLoadedCount;
-				} else
-				if (layer.loadImage) {
-					layerWIP.loadImage = getImageLoadWrapper(layer);
-				}
+				setImageLoadOrCountIfLoaded(layer, layerWIP);
 
 //* Note: layer masks also may be emulated via compositing modes in ORA
 
 				if (mask) {
-				var	img = getPropByAnyOfNamesChain(mask, 'img', 'image');	//* <- may be already loaded img element
-
 					layerWIP.mask = {
 						top:    orz(mask.top   || mask.y)
 					,	left:   orz(mask.left  || mask.x)
 					,	width:  orz(img.width  || mask.width)
 					,	height: orz(img.height || mask.height)
-					// ,	img: img
 					};
 
-					if (img && img !== mask) {
-						layerWIP.mask.img = img;
-
-						++project.imagesCount;
-						++project.imagesLoadedCount;
-					} else
-					if (mask.loadImage) {
-						layerWIP.mask.loadImage = getImageLoadWrapper(mask);
-					}
+					setImageLoadOrCountIfLoaded(mask, layerWIP.mask);
 				}
 
 				parentGroup = await getNextParentAfterAddingLayerToTree(
@@ -5670,23 +5714,25 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 			return await window[varName].fromDroppedFile(file);
 		}
 	,	async function treeConstructorFunc(project, sourceData) {
-			if (!sourceData.layers) return;
-
-			project.layersCount = sourceData.layers.length;
-			project.foldersCount = 0;
-
-			if (!project.layersCount) return;
+			if (
+				!sourceData.layers
+			||	!sourceData.layers.length
+			) {
+				return;
+			}
 
 		var	projectHeader = sourceData.header || sourceData
 		,	layerMasks = getPropByNameChain(sourceData, 'layerMask', 'obj', 'layers')
 		,	projectMode = projectHeader.mode
 			;
 
-			project.width		= projectHeader.cols;
-			project.height		= projectHeader.rows;
-			project.bitDepth	= projectHeader.depth;
-			project.channels	= projectHeader.channels;
-			project.colorMode	= (
+			project.nodesCount = sourceData.layers.length;
+
+			project.width	= projectHeader.cols;
+			project.height	= projectHeader.rows;
+			project.bitDepth = projectHeader.depth;
+			project.channels = projectHeader.channels;
+			project.colorMode = (
 				isNaN(projectMode)
 				? projectMode
 				: PSD_COLOR_MODES[projectMode]
@@ -5718,7 +5764,7 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 					: null
 				)
 			,	blendMode = getNormalizedBlendMode(mode)
-			,	isLayerFolder = (layers && layers.length > 0)
+			,	isLayerFolder = (layers && typeof layers.length !== 'undefined')
 			,	isPassThrough = (
 					regLayerBlendModePass.test(modePass)
 				||	regLayerBlendModePass.test(blendMode)
@@ -5737,7 +5783,9 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 				};
 
 				if (img) {
-					++project.imagesCount;
+					if (!isLayerFolder) {
+						++project.imagesCount;
+					}
 
 					if (
 						img.hasMask
@@ -5770,6 +5818,8 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 					++project.foldersCount;
 
 					await addLayerGroupCommonWrapper(project, parentGroup, layers, addLayerToTree);
+				} else {
+					++project.layersCount;
 				}
 			}
 
@@ -9040,7 +9090,11 @@ var	tabsCountMax = 0
 								: getNestedFilteredArrayJoinedText(
 									[
 										file.pixels
-									,	getFormattedFileSize(file.filesize, file.bytes)
+									,	getFormattedFileSize(
+											file.filesize
+										,	file.bytes
+										,	orz(file.bytes.replace(regNaN, ''))
+										)
 									]
 								,	', '
 								)
@@ -9064,7 +9118,7 @@ var	tabsCountMax = 0
 							+	'</div>'
 							)
 						,	filePath = getNestedFilteredArrayJoinedText([exampleRootDir, subdir, fileName], '/')
-						,	fileURL = filePath + '?version=' + file.modtime.replace(/\W+/g, '_')
+						,	fileURL = filePath + '?version=' + file.modtime.replace(regNonWord, '_')
 						,	nameAttr = encodeTagAttr(fileName)
 						,	pathAttr = encodeTagAttr(fileURL)
 						,	downloadLink = (
