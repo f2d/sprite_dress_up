@@ -80,6 +80,7 @@ var	exampleRootDir = ''
 ,	TAB_THUMBNAIL_ZOOM		= true
 ,	TESTING				= false
 ,	TESTING_RENDER			= false
+,	USE_ONE_FILE_ZIP_WORKER		= false
 ,	USE_WORKERS			= true
 ,	USE_ZLIB_ASM			= true
 ,	VERIFY_PARAM_COLOR_VS_LAYER_CONTENT	= false
@@ -456,6 +457,9 @@ const	libRootDir = 'lib/'
 ,	zlibAsmSubDir = 'zlib-asm/v0.2.2/'	//* <- last version supported by zip.js, ~ x2 faster than default
 // ,	zlibAsmSubDir = 'zlib-asm/v1.0.7/'	//* <- not supported by zip.js, works in some cases (with same speed as v0.2.2)
 
+,	zipAllInOneFileName = 'z-worker-copy-all-in-one-file.js'
+,	zipAllInOneFileNameAsm = 'z-worker-copy-all-in-one-file-asm.js'
+
 ,	fileTypeLibs = {
 		'UPNG.js': {
 
@@ -484,6 +488,13 @@ const	libRootDir = 'lib/'
 			].concat(
 				USE_WORKERS && CAN_USE_WORKERS
 				? []
+				:
+				USE_ONE_FILE_ZIP_WORKER
+				? (
+					USE_ZLIB_ASM
+					? [zipAllInOneFileNameAsm]
+					: [zipAllInOneFileName]
+				)
 				: USE_ZLIB_ASM
 				? [
 					zlibAsmSubDir + 'zlib.js',
@@ -2654,13 +2665,26 @@ var	depends = lib.depends || null;
 //*	Scripts in the array are executed in order, and the first one should be z-worker.js, which is used to start the worker.
 //* source: http://gildas-lormeau.github.io/zip.js/core-api.html#alternative-codecs
 
+					var	zipWorkerScripts = null;
+
+						if (USE_ONE_FILE_ZIP_WORKER) {
+							zipWorkerScripts = [
+								dir + (
+									USE_ZLIB_ASM
+									? [zipAllInOneFileNameAsm]
+									: [zipAllInOneFileName]
+								)
+							];
+						} else
 						if (USE_ZLIB_ASM) {
-						var	zipWorkerScripts = [
+							zipWorkerScripts = [
 								dir + 'z-worker.js',
 								dir + zlibAsmSubDir + 'zlib.js',
 								dir + 'zlib-asm/codecs.js',
 							];
+						}
 
+						if (zipWorkerScripts) {
 							zip.workerScripts = {
 								deflater: zipWorkerScripts,
 								inflater: zipWorkerScripts,
@@ -3669,11 +3693,11 @@ var	tookTime = getTimeNow() - startTime;
 	+	(
 			project
 			? ' finished ' + actionLabel + ', took '
-			: (
+			: ' stopped by ' + (
 				isStopRequestedAnywhere(project, button)
-				? ' stopped by request '
-				: ' failed '
-			) + actionLabel + ' after '
+				? 'request'
+				: 'error'
+			) + ' while ' + actionLabel + ' after '
 		)
 	+	tookTime
 	+	' ms total'
@@ -3718,18 +3742,27 @@ async function getProjectViewMenu(project) {
 				&&	(result = await getLayerMaskLoadPromise(layer.mask, project))
 				);
 
-			var	tookTime = getTimeNow() - startTime;
+			var	tookTime = getTimeNow() - startTime
+			,	imagesLoaded = project.imagesLoadedCount
+			,	imagesSkipped = imagesCount - imagesLoaded
+			,	actionSummary = (
+					!imagesSkipped
+					? '' : (
+						', skipped ' + imagesSkipped
+					+	', loaded ' + imagesLoaded
+					)
+				);
 
 				logTime(
 					'"' + fileName + '"'
 				+	(
 						result
-						? ' finished ' + actionLabel + ', took '
-						: (
+						? ' finished ' + actionLabel + actionSummary + ', took '
+						: ' stopped by ' + (
 							isStopRequestedAnywhere(project)
-							? ' stopped by request '
-							: ' failed '
-						) + actionLabel + ' after '
+							? 'request'
+							: 'error'
+						) + ' while ' + actionLabel + actionSummary + ' after '
 					)
 				+	tookTime
 				+	' ms'
@@ -5550,11 +5583,11 @@ var	actionLabel = 'opening with ' + libName;
 	+	(
 			sourceData
 			? ' finished ' + actionLabel + ', took '
-			: (
+			: ' stopped by ' + (
 				isStopRequestedAnywhere(project)
-				? ' stopped by request '
-				: ' failed '
-			) + actionLabel + ' after '
+				? 'request'
+				: 'error'
+			) + ' while ' + actionLabel + ' after '
 		)
 	+	(getTimeNow() - project.loading.startParsingTime)
 	+	' ms'
