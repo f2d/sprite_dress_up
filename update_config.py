@@ -2,7 +2,7 @@
 # -*- coding: UTF-8 -*-
 # Python 2 or 3 should work.
 
-import base64, datetime, json, math, os, re, subprocess, sys, time, zipfile
+import base64, datetime, io, json, math, os, re, subprocess, sys, time, zipfile
 
 # Use colored text if available:
 try:
@@ -22,6 +22,8 @@ try:
 	FileNotFoundError
 except NameError:
 	FileNotFoundError = IOError
+
+file_encoding = print_encoding = sys.getfilesystemencoding() or 'utf-8'
 
 
 
@@ -173,6 +175,7 @@ pat_check_image_size = re.compile(r'^(\d+)x(\d+)$', re.U | re.I)
 
 pat_comment_line = re.compile(r'((?:^|[\r\n])\s*)(//([^\r\n]*))', re.U | re.S)
 pat_comment_block = re.compile(r'((?:^|[\r\n])\s*)(/\*(.*?)\*/)', re.U | re.S)
+pat_trailing_space = re.compile(r'[^\S\r\n]+(?=$|[\r\n])', re.U)
 pat_unslash = re.compile(r'\\(.)', re.U | re.S)
 
 format_epoch = '%Epoch'	# <- not from python library, but custom str-replaced
@@ -231,12 +234,25 @@ def print_with_colored_title(title=None, content=None, title_color=None, content
 		else:
 			print(content)
 
-def is_type_str(v): return isinstance(v, s_type) or isinstance(v, u_type)
-def get_str_from_bytes(v): return v if is_type_str(v) else v.decode()
+def is_type_str(v):
+	return isinstance(v, s_type) or isinstance(v, u_type)
+
+def get_str_from_bytes(v):
+	return v if is_type_str(v) else v.decode()
+
+def get_text_encoded_for_print(text):
+	return text.encode(print_encoding) if sys.version_info.major == 2 else text
 
 def is_any_char_of_a_in_b(chars, text):
 	for char in chars:
 		if text.find(char) >= 0:
+			return True
+
+	return False
+
+def is_any_char_code_out_of_normal_range(text):
+	for char in text:
+		if ord(char) > 127:
 			return True
 
 	return False
@@ -249,11 +265,14 @@ def is_quoted(text):
 	return False
 
 def quoted_if_must(text):
-	text = '%s' % text
+	text = get_text_encoded_for_print(text)
 
 	return (
-		('"%s"' % text)
-		if not is_quoted(text) and is_any_char_of_a_in_b(must_quote_chars, text)
+		'"{}"'.format(text)
+		if not is_quoted(text) and (
+			is_any_char_of_a_in_b(must_quote_chars, text)
+		or	is_any_char_code_out_of_normal_range(text)
+		)
 		else text
 	)
 
@@ -310,15 +329,23 @@ def read_file(path, mode='r'):
 	if not os.path.isfile(path):
 		return ''
 
-	file = open(path, mode)
+	if not 'b' in mode:
+		file = io.open(path, mode, encoding=file_encoding)
+	else:
+		file = open(path, mode)
+
 	result = file.read()
 	file.close()
 
 	return result
 
-def write_file(path, content, mode='a+b'):
+def write_file(path, content, mode='a'):
 	result = None
-	file = open(path, mode)
+
+	if not 'b' in mode and isinstance(content, u_type):
+		file = io.open(path, mode, encoding=file_encoding)
+	else:
+		file = open(path, mode)
 
 	try:
 		result = file.write(content)
@@ -417,7 +444,7 @@ def get_image_path_for_cmd(src_file_path, check_thumbnail=False):
 					src_file_path = remove_temp_file(temp_extracted_file_path)
 					src_file_ext = get_file_ext(src_file_path)
 
-					write_file(src_file_path, unzipped_content)
+					write_file(src_file_path, unzipped_content, mode='w+b')
 
 					break
 
@@ -584,7 +611,7 @@ old_files = None
 old_content = read_file(dest_file_path)
 
 if old_content:
-	print('%d bytes' % len(old_content))
+	print('{} bytes'.format(len(old_content)))
 
 	pat_array_value = re.compile(
 		r'''^
@@ -617,7 +644,7 @@ if old_content:
 		old_files_text = remove_comments(match.group('OldFileList'))
 
 		print_with_colored_title('Parsing old file list:')
-		print('%d bytes' % len(old_files_text))
+		print('{} bytes'.format(len(old_files_text)))
 
 		old_files = json.loads(old_files_text)	# <- 'encoding' is ignored and deprecated.
 
@@ -793,7 +820,11 @@ except TypeError:
 	json_text = json.dumps(new_files, sort_keys=True, indent=4, default=repr)	# <- use spaces, fallback for python 2
 
 json_lines = (
-	json_text
+	re.sub(
+		pat_trailing_space
+	,	''
+	,	json_text
+	)
 	.replace(' '*4, '\t')	# <- use tabs anyway
 	.split('\n')
 )
@@ -841,22 +872,25 @@ if old_content:
 
 	for replacement in replacements:
 		if not replacement['encounters']:
-			content_after += '\n\nvar %s = %s;' % (replacement['var_name'], replacement['new_value'])
+			content_after += '\n\nvar {} = {};'.format(replacement['var_name'], replacement['new_value'])
 
 else:
 	content_before = '\n\n'.join([
 		'\n'.join([
 			''
+		,	'//* Remove slashes before the variables to override default values.'
+		,	'//* See more available settings in the main script file (index.js).'
+		,	'//* Add any overrides only here, to this file.'
 		,	'//* Notes to avoid generation trouble:'
 		,	'//*	Keep paths as simple one-line strings.'
 		,	'//*	Keep JSON as strictly simple and valid.'
 		])
 	,	'// var TESTING = true;'
-	,	'// var EXAMPLE_NOTICE = true;'
-	,	'var %s = %s;' % (preview_size_var_name, preview_size)
-	,	'var %s = %s;' % (thumbnail_size_var_name, thumbnail_size)
-	,	'var %s = %s;' % (src_dir_var_name, get_quoted_value_text(src_root_path))
-	,	'var %s =' % (filelist_var_name)
+	,	'// var EXAMPLE_NOTICE = false;'
+	,	'var {} = {};'.format(preview_size_var_name, preview_size)
+	,	'var {} = {};'.format(thumbnail_size_var_name, thumbnail_size)
+	,	'var {} = {};'.format(src_dir_var_name, get_quoted_value_text(src_root_path))
+	,	'var {} ='.format(filelist_var_name)
 	])
 
 	content_after = ';'
