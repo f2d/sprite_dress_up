@@ -26,6 +26,7 @@
 //* TODO: use ImageBitmaps for speed?
 //* TODO: revoke collage blob urls when cleaning view container?
 //* TODO: revoke any image blob urls right after image element's loading, without ever tracking/listing them?
+//* TODO: store list of render-changing changable options in each folder, cache merged folder images by changable options combo
 
 //* other:
 //* TODO: find zoom/scale of the screen/page before regenerating thumbnails.
@@ -371,6 +372,13 @@ const	LS = window.localStorage || localStorage
 	,	'undefined'
 	]
 
+,	IMAGE_GEOMETRY_KEYS = [
+		['top', 'y'],
+		['left', 'x'],
+		['width', 'w'],
+		['height', 'h'],
+	]
+
 ,	CLEANUP_KEYS_TESTING = [
 		'loading'
 	,	'loadImage'
@@ -429,6 +437,18 @@ const	LS = window.localStorage || localStorage
 	,	'shade-shine':	'linear-light'
 	,	'shine':	BLEND_MODE_ADD
 	}
+
+,	BLEND_MODES_WITH_TS_VERSION = [
+		BLEND_MODE_ADD
+	,	'color-burn'
+	,	'color-dodge'
+	,	'difference'
+	,	'hard-mix'
+	,	'linear-burn'
+	,	'linear-dodge'
+	,	'linear-light'
+	,	'vivid-light'
+	]
 
 //* taken from PSDLIB.js:
 
@@ -495,7 +515,8 @@ const	libRootDir = 'lib/'
 					? [zipAllInOneFileNameAsm]
 					: [zipAllInOneFileName]
 				)
-				: USE_ZLIB_ASM
+				:
+				USE_ZLIB_ASM
 				? [
 					zlibAsmSubDir + 'zlib.js',
 					'zlib-asm/codecs.js',
@@ -1413,7 +1434,7 @@ const	allKeys = [];
 	return JSON.stringify(obj, allKeys, space);
 }
 
-function getOrInitChild() {
+function getOrInitChild(obj, key, ...args) {
 
 	function getInitChild(args) {
 	var	constructor = args.find(isFunction) || Object
@@ -1434,11 +1455,6 @@ function getOrInitChild() {
 		return child;
 	}
 
-var	args = Array.from(arguments)
-,	obj = args.shift()
-,	key = args.shift()
-	;
-
 	if (!isNonNullObject(obj)) {
 		return;
 	}
@@ -1450,11 +1466,18 @@ var	args = Array.from(arguments)
 	);
 }
 
-function getPropByNameChain() {
-var	keys = Array.from(arguments)
-,	obj = keys.shift()
-	;
+function getPropFromAnySource(key, ...sources) {
+	for (let obj of sources) if (
+		isNonNullObject(obj)
+	&&	key in obj
+	) {
+		return obj[key];
+	}
 
+	return null;
+}
+
+function getPropByNameChain(obj, ...keys) {
 	while (keys.length > 0) {
 	var	key = keys.shift();
 
@@ -1471,11 +1494,7 @@ var	keys = Array.from(arguments)
 	return obj;
 }
 
-function getPropByAnyOfNamesChain() {
-var	keys = Array.from(arguments)
-,	obj = keys.shift()
-	;
-
+function getPropByAnyOfNamesChain(obj, ...keys) {
 	deeper:
 	while (isNonNullObject(obj)) {
 
@@ -1570,12 +1589,12 @@ function getElementsArray(by, text, parent) {
 	return [];
 }
 
-function gc(text, parent) {return getElementsArray('getElementsByClassName', text, parent);}
-function gt(text, parent) {return getElementsArray('getElementsByTagName', text, parent);}
-function gy(text, parent) {return getElementsArray('getElementsByType', text, parent);}
-function gn(text, parent) {return getElementsArray('getElementsByName', text, parent);}
-function gi(text, parent) {return getElementsArray('getElementsById', text, parent);}
-function id(text) {return document.getElementById(text);}
+function getAllByClass	(text, parent) {return getElementsArray('getElementsByClassName', text, parent);}
+function getAllByTag	(text, parent) {return getElementsArray('getElementsByTagName', text, parent);}
+function getAllByType	(text, parent) {return getElementsArray('getElementsByType', text, parent);}
+function getAllByName	(text, parent) {return getElementsArray('getElementsByName', text, parent);}
+function getAllById	(text, parent) {return getElementsArray('getElementsById', text, parent);}
+function getOneById	(text) {return document.getElementById(text);}
 
 function cre(tagName, parent, before) {
 var	element = document.createElement(tagName);
@@ -1814,10 +1833,10 @@ var	tagName = String(tagName || '') || 'td'
 	);
 }
 
-function getTableHTML() {
+function getTableHTML(...rows) {
 	return (
 		'<table><tr>'
-	+	Array.from(arguments).map(
+	+	rows.map(
 			(row) => (
 				isNonNullObject(row) && (row.cells || row.cell_tag_name)
 				? getTableRowHTML(row.cells, row.cell_tag_name)
@@ -1866,9 +1885,9 @@ var	tagName = tagName || 'div'
 }
 
 function closeAllDropdownMenuTabs(element) {
-	gc('menu-head', getThisOrParentByClass(element, regClassMenuBar)).forEach(
+	getAllByClass('menu-head', getThisOrParentByClass(element, regClassMenuBar)).forEach(
 		(tabContainer) => {
-		var	header = gt('header', tabContainer)[0];
+		var	header = getAllByTag('header', tabContainer)[0];
 
 			if (header && header !== element) {
 				toggleClass(header, 'show', -1);
@@ -1931,8 +1950,8 @@ var	header = getThisOrParentByTagName(element, 'header');
 		;
 
 		if (isActionAll) {
-			gt('section', header.parentNode).forEach(
-				(section) => toggleAllSections(gt('header', section)[0])
+			getAllByTag('section', header.parentNode).forEach(
+				(section) => toggleAllSections(getAllByTag('header', section)[0])
 			);
 
 			if (!toggledCount) {
@@ -1947,13 +1966,13 @@ var	header = getThisOrParentByTagName(element, 'header');
 }
 
 function showHelpSection(sectionName, source) {
-var	header = id('top-menu-' + sectionName);
+var	header = getOneById('top-menu-' + sectionName);
 
 	if (header) {
 		toggleSection(header, 'open');
 
 		if (source) {
-		var	sourceElement = (isString(source) ? id('top-menu-' + source) : source)
+		var	sourceElement = (isString(source) ? getOneById('top-menu-' + source) : source)
 		,	fromSection = getThisOrParentByTagName(sourceElement, 'section')
 		,	toSection = getThisOrParentByTagName(header, 'section')
 		,	alignWithTop = true
@@ -2591,27 +2610,47 @@ var	size = dataURI.length
 	return size;
 }
 
-function loadLibPromise(lib) {
+function loadLibPromise(...libs) {
+var	libs = getFlatArray(libs)
+,	lib, dir, src, scripts
+	;
+
 	return new Promise(
 		(resolve, reject) => {
-
 			function addNextScript() {
-				if (scripts.length > 0) {
-				var	script = cre('script', document.head);
-					script.onload = addNextScript;
-					script.onerror = (evt) => getErrorFromEvent(evt, 'Script loading failed.', reject);
-					script.src = dir + scripts.shift();
+				if (
+					scripts
+				&&	scripts.length > 0
+				) {
+				var	src = scripts.shift();
+
+					if (isString(src)) {
+					var	script = cre('script', document.head);
+						script.onload = addNextScript;
+						script.onerror = (evt) => getErrorFromEvent(evt, 'Script loading failed.', reject);
+						script.src = dir + src;
+					} else {
+						addNextScript();
+					}
+				} else if (
+					libs
+				&&	libs.length > 0
+				) {
+					lib = libs.shift();
+					dir = lib.dir || '';
+					scripts = lib.files || lib;
+
+					if (isArray(scripts)) {
+						scripts = getFlatArray(scripts);
+					} else {
+						scripts = [scripts];
+					}
+
+					addNextScript();
 				} else {
 					resolve(true);
 				}
 			}
-
-		var	dir = lib.dir || ''
-		,	scripts = lib.files || getFlatArray(
-				isArray(lib)
-				? lib
-				: Array.from(arguments)
-			);
 
 			addNextScript();
 		}
@@ -2726,7 +2765,7 @@ var	depends = lib.depends || null;
 //* otherwise, cleanup and report fail:
 
 					del(
-						gt('script', document.head)
+						getAllByTag('script', document.head)
 						.filter(
 							(script) => (script.getAttribute('data-lib-name') === libName)
 						)
@@ -3431,7 +3470,7 @@ async function thisToPng(targetLayer) {
 	}
 
 	async function thisToPngTryEach() {
-		for (var i in arguments) {
+		for (let i in arguments) {
 		var	e;
 
 			if (
@@ -3468,10 +3507,10 @@ async function thisToPng(targetLayer) {
 
 //* Page-specific functions: internal, loading *-------------------------------
 
-function isStopRequestedAnywhere() {
+function isStopRequestedAnywhere(...sources) {
 	return (
 		isStopRequested
-	||	Array.from(arguments).some(
+	||	sources.some(
 			(obj) => (
 				isNonNullObject(obj)
 			&&	obj.isStopRequested
@@ -3481,7 +3520,7 @@ function isStopRequestedAnywhere() {
 }
 
 async function removeProjectView(fileId) {
-var	countDeleted = gi(fileId).reduce(
+var	countDeleted = getAllById(fileId).reduce(
 		(count, container) => {
 			if (container.project) {
 				container.project.isStopRequested = true;
@@ -3528,7 +3567,7 @@ async function addProjectView(sourceFile) {
 
 //* prepare detached branch of DOM:
 
-var	buttonTab = cre('div', id('loaded-files-selection'));
+var	buttonTab = cre('div', getOneById('loaded-files-selection'));
 	buttonTab.className = 'button loading';
 
 var	buttonThumb = cre('button', buttonTab);
@@ -3600,13 +3639,13 @@ var	buttonClose = cre('button', buttonTab);
 
 			if (result) {
 				if (OPEN_FIRST_MENU_TAB_AT_START) {
-					closeAllDropdownMenuTabs(gc('menu-bar')[0]);
+					closeAllDropdownMenuTabs(getAllByClass('menu-bar')[0]);
 				}
 
 				removeProjectView(fileId);
 
 				container.id = buttonTab.id = fileId;
-				id('loaded-files-view').appendChild(container);
+				getOneById('loaded-files-view').appendChild(container);
 
 				buttonText.setAttribute('onclick', 'selectProject(this)');
 				buttonThumb.setAttribute('onclick', 'selectProject(this)');
@@ -3777,7 +3816,7 @@ async function getProjectViewMenu(project) {
 					project.layersTopSeparated = getLayersTopSeparated(project.layers);
 
 				var	container = createProjectView(project);
-					createOptionsMenu(project, gc('project-options', container)[0]);
+					createOptionsMenu(project, getAllByClass('project-options', container)[0]);
 
 					return container;
 				}
@@ -4651,7 +4690,7 @@ async function getProjectViewMenu(project) {
 					: selectValueByPos(selectBox, params.last ? 'bottom' : 'top')
 				);
 
-			var	tabCount = gt('td', tr).length;
+			var	tabCount = getAllByTag('td', tr).length;
 				if (maxTabCount < tabCount) maxTabCount = tabCount;
 			}
 		}
@@ -4691,7 +4730,7 @@ async function getProjectViewMenu(project) {
 			}
 		}
 
-		gt('th', table).forEach(
+		getAllByTag('th', table).forEach(
 			(th) => {
 				th.colSpan = maxTabCount;
 			}
@@ -4865,8 +4904,8 @@ async function getProjectViewImage(project, img) {
 		if (img.complete) img.onload();
 
 	var	container = createProjectView(project)
-	,	header = gt('header', container)[0]
-	,	footer = gt('footer', container)[0]
+	,	header = getAllByTag('header', container)[0]
+	,	footer = getAllByTag('footer', container)[0]
 	,	comment = (
 			footer
 			? cre('header', footer, footer.firstElementChild)
@@ -5554,6 +5593,27 @@ async function addLayerGroupCommonWrapper(project, parentGroup, layers, callback
 	return true;
 }
 
+function setImageGeometryProperties(target, ...sources) {
+	IMAGE_GEOMETRY_KEYS.forEach(
+		(keys) => {
+		let	targetKey = keys[0];
+
+			if (targetKey in target) {
+				return;
+			}
+
+			for (let source of sources) if (isNonNullObject(source))
+			for (let key of keys) if (source[key]) {
+				target[targetKey] = orz(source[key]);
+
+				return;
+			}
+
+			// target[targetKey] = 0;
+		}
+	);
+}
+
 //* Page-specific functions: internal, loading from file *---------------------
 
 async function loadCommonWrapper(project, libName, fileParserFunc, treeConstructorFunc) {
@@ -5663,6 +5723,8 @@ async function loadORA(project) {
 
 						++project.imagesCount;
 					}
+
+					setImageGeometryProperties(newHolder, imageHolder, img);
 				}
 
 			var	name	= layer.name || ''
@@ -5686,16 +5748,12 @@ async function loadORA(project) {
 				||	getTruthyValue(layer.visibility)	//* <- non-standard, for testing
 				)
 			,	layerWIP = {
-					top:    orz(layer.top    || layer.y)
-				,	left:   orz(layer.left   || layer.x)
-				,	width:  orz(layer.width  || layer.w)
-				,	height: orz(layer.height || layer.h)
-				,	opacity: orzFloat(layer.opacity)
-				,	isVisible: isVisible
+					blendMode: blendMode
+				,	blendModeOriginal: mode
 				,	isClipped: isClipped
 				,	isPassThrough: isPassThrough
-				,	blendMode: blendMode
-				,	blendModeOriginal: mode
+				,	isVisible: isVisible
+				,	opacity: orzFloat(layer.opacity)
 				};
 
 				setImageLoadOrCountIfLoaded(layer, layerWIP);
@@ -5703,14 +5761,7 @@ async function loadORA(project) {
 //* Note: layer masks also may be emulated via compositing modes in ORA
 
 				if (mask) {
-					layerWIP.mask = {
-						top:    orz(mask.top   || mask.y)
-					,	left:   orz(mask.left  || mask.x)
-					,	width:  orz(img.width  || mask.width)
-					,	height: orz(img.height || mask.height)
-					};
-
-					setImageLoadOrCountIfLoaded(mask, layerWIP.mask);
+					setImageLoadOrCountIfLoaded(mask, layerWIP.mask = {});
 				}
 
 				parentGroup = await getNextParentAfterAddingLayerToTree(
@@ -5761,8 +5812,8 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 
 			project.nodesCount = sourceData.layers.length;
 
-			project.width	= projectHeader.cols;
-			project.height	= projectHeader.rows;
+			project.width	= projectHeader.cols || projectHeader.width;
+			project.height	= projectHeader.rows || projectHeader.height;
 			project.bitDepth = projectHeader.depth;
 			project.channels = projectHeader.channels;
 			project.colorMode = (
@@ -5774,46 +5825,58 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 //* gather layers into a tree object:
 
 			async function addLayerToTree(layer, parentGroup) {
-			var	node	= layer
-			,	layer	= node.layer  || node
-			,	name	= layer.name  || node.name  || ''
-			,	img	= layer.image || node.image || null
-			,	mask	= layer.mask  || node.mask  || img.mask || null
-			,	mode		= getPropByAnyOfNamesChain(layer, 'blendMode', 'mode')
-			,	clipping	= getPropByAnyOfNamesChain(layer, 'blendMode', 'clipped', 'clipping')
-			,	modePass	= getPropByNameChain(layer, 'adjustments', 'sectionDivider', 'obj', 'blendMode')
-
-//* Note: "fill" opacity is used by SAI2 instead of usual one for layers with certain blending modes when exporting to PSD.
-//* source: https://github.com/meltingice/psd.js/issues/153#issuecomment-436456896
-
+			var	node = layer
+			,	layer = node.layer || node
+			,	name = getPropFromAnySource('name',  layer, node) || ''
+			,	img  = getPropFromAnySource('image', layer, node)
+			,	mask = getPropFromAnySource('mask',  layer, node, img)
+			,	blending = getPropByAnyOfNamesChain(layer, 'blendMode', 'blending', 'mode')
+			,	clipping = getPropByAnyOfNamesChain(layer, 'blendMode', 'clipping', 'clipped')
+			,	modePass = getPropByNameChain(layer, 'adjustments', 'sectionDivider', 'obj', 'blendMode')
 			,	fillOpacity = (
 					isFunction(layer.fillOpacity)
-					? getNormalizedOpacity(layer.fillOpacity().layer.adjustments.fillOpacity.obj.value)
-					: 1
+					? layer.fillOpacity().layer.adjustments.fillOpacity.obj.value
+					: null
 				)
 			,	layers = (
 					node.hasChildren()
 					? node.children()
 					: null
 				)
-			,	blendMode = getNormalizedBlendMode(mode)
+			,	blendMode = getNormalizedBlendMode(blending)
 			,	isLayerFolder = (layers && typeof layers.length !== 'undefined')
 			,	isPassThrough = (
 					regLayerBlendModePass.test(modePass)
 				||	regLayerBlendModePass.test(blendMode)
 				)
+			,	hasNoFillOpacityValue = (
+					fillOpacity === null
+				||	isNaN(fillOpacity)
+				)
 			,	layerWIP = {
-					top:    orz(layer.top)
-				,	left:   orz(layer.left)
-				,	width:  orz(layer.width)
-				,	height: orz(layer.height)
-				,	opacity: getNormalizedOpacity(layer.opacity) * fillOpacity
-				,	isVisible: getTruthyValue(layer.visible)
-				,	isClipped: getTruthyValue(clipping)
+					blendMode: blendMode
+				,	blendModeOriginal: blending
 				,	isPassThrough: isPassThrough
-				,	blendMode: blendMode
-				,	blendModeOriginal: mode
+				,	isClipped: getTruthyValue(clipping)
+				,	isVisible: getTruthyValue(layer.visible)
+
+//* Note:
+//*	"Fill" opacity is used in PSD from SAI2
+//*	to store opacity value instead of standard opacity
+//*	for layers with certain blending modes (non-TS versions).
+//* source: https://github.com/meltingice/psd.js/issues/153#issuecomment-436456896
+
+				,	isBlendModeTS: (
+						hasNoFillOpacityValue
+					&&	BLEND_MODES_WITH_TS_VERSION.indexOf(blendMode) >= 0
+					)
+				,	opacity: (
+						getNormalizedOpacity(layer.opacity)
+					*	(hasNoFillOpacityValue ? 1 : getNormalizedOpacity(fillOpacity))
+					)
 				};
+
+				setImageGeometryProperties(layerWIP, layer, img);
 
 				if (img) {
 					if (!isLayerFolder) {
@@ -5827,13 +5890,11 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 					&&	!(mask.disabled || (mask.flags & 2))	//* <- mask visibility checkbox, supposedly
 					) {
 						layerWIP.mask = {
-							top:    orz(mask.top  || mask.y)
-						,	left:   orz(mask.left || mask.x)
-						,	width:  orz(mask.width)
-						,	height: orz(mask.height)
-						,	defaultColor: orz(mask.defaultColor)
+							defaultColor: orz(mask.defaultColor)
 						,	maskData: img.maskData		//* <- RGBA byte array
 						};
+
+						setImageGeometryProperties(layerWIP.mask, mask, img);
 
 						++project.imagesCount;
 					}
@@ -5976,7 +6037,7 @@ function selectValue(selectBox, newValue) {
 }
 
 function updateSelectStyle(selectBox) {
-var	optionItem = gt('option', selectBox).find(
+var	optionItem = getAllByTag('option', selectBox).find(
 		(option) => (
 			option.selected
 		||	option.value === selectBox.value
@@ -6008,7 +6069,7 @@ var	optionItem = gt('option', selectBox).find(
 }
 
 function setAllValues(project, targetPosition) {
-	gt('select', project.container).forEach(
+	getAllByTag('select', project.container).forEach(
 		(selectBox) => selectValueByPos(selectBox, targetPosition)
 	);
 
@@ -6016,7 +6077,7 @@ function setAllValues(project, targetPosition) {
 		targetPosition === 'init'
 	||	targetPosition === 'empty'
 	) {
-		gy('checkbox', project.container).forEach(
+		getAllByType('checkbox', project.container).forEach(
 			(checkBox) => {
 				checkBox.checked = (
 					targetPosition === 'init'
@@ -6036,7 +6097,7 @@ function setAllValues(project, targetPosition) {
 function getAllMenuValues(project, checkSelectedValue) {
 var	values = {};
 
-	gt('select', project.container).forEach(
+	getAllByTag('select', project.container).forEach(
 		(selectBox) => {
 		var	sectionName = selectBox.getAttribute('data-section')
 		,	listName    = selectBox.name
@@ -6050,7 +6111,7 @@ var	values = {};
 				&&	getPropByNameChain(project, 'options', sectionName, listName, 'params', 'single')
 				)
 				? [selectBox.value]
-				: gt('option', selectBox).map((option) => option.value)
+				: getAllByTag('option', selectBox).map((option) => option.value)
 			);
 		}
 	);
@@ -6177,7 +6238,7 @@ var	valueSets = getAllValueSets(
 function getUpdatedMenuValues(project, updatedValues) {
 var	values = {};
 
-	gt('select', project.container).forEach(
+	getAllByTag('select', project.container).forEach(
 		(selectBox) => {
 
 //* 1) check current selected values:
@@ -6196,7 +6257,7 @@ var	values = {};
 			,	allHidden = true
 				;
 
-				gt('option', selectBox).forEach(
+				getAllByTag('option', selectBox).forEach(
 					(option) => {
 					var	optionName = option.value || ''
 					,	hide = !isOptionRelevant(project, updatedValues, sectionName, listName, optionName)
@@ -6457,8 +6518,8 @@ function getPaddedImageData(referenceImageData, method, threshold, dimensions) {
 
 	function addPadding(referenceImageData, dimensions) {
 
-		function addRoundPadding() {
-		const	paddingRadius = Math.abs(orz(arguments[0]))
+		function addRoundPadding(r) {
+		const	paddingRadius = Math.abs(orz(r))
 		,	pixelsAround = Math.ceil(paddingRadius)
 		,	startDistance = (isMethodMin ? -Infinity : +Infinity)
 			;
@@ -6513,9 +6574,9 @@ function getPaddedImageData(referenceImageData, method, threshold, dimensions) {
 			}
 		}
 
-		function addBoxPadding() {
-		const	pixelsAroundX = Math.ceil(Math.abs(orz(arguments[0])))
-		,	pixelsAroundY = Math.ceil(Math.abs(orz(arguments[1])))
+		function addBoxPadding(x,y) {
+		const	pixelsAroundX = Math.ceil(Math.abs(orz(x)))
+		,	pixelsAroundY = Math.ceil(Math.abs(orz(y)))
 		,	startAlpha = (isMethodMin ? MAX_CHANNEL_VALUE : MIN_CHANNEL_VALUE)
 			;
 
@@ -6611,8 +6672,8 @@ const	w = referenceImageData.width
 
 function padCanvas(ctx, padding) {
 
-	function addPaddingByDimensions() {
-	var	dimensions = Array.from(arguments).filter(
+	function addPaddingByDimensions(...dimensions) {
+	var	dimensions = dimensions.filter(
 			(dimension) => isNonNullObject(dimension)
 		)
 	,	isHollow = dimensions.every(
@@ -6912,7 +6973,7 @@ var	selectedName = getPropByNameChain(values, sectionName, listName)
 }
 
 function getSelectedMenuValue(project, sectionName, listName, defaultValue) {
-var	selectBox = gt('select', project.container).find(
+var	selectBox = getAllByTag('select', project.container).find(
 		(selectBox) => (
 			sectionName === selectBox.getAttribute('data-section')
 		&&	listName === selectBox.name
@@ -8250,7 +8311,7 @@ async function getRenderedImg(project, render) {
 function getEmptyRenderContainer(project) {
 	return delAllChildNodes(
 		project.renderContainer
-	||	(project.renderContainer = gc('project-render', project.container)[0])
+	||	(project.renderContainer = getAllByClass('project-render', project.container)[0])
 	);
 }
 
@@ -8287,7 +8348,7 @@ function updateBatchCount(project) {
 var	precounts = getOrInitChild(project, 'renderBatchCounts')
 ,	key = (
 		(
-			gc('batch-checkbox', project.container)
+			getAllByClass('batch-checkbox', project.container)
 			.map((checkBox) => (checkBox.checked ? 1 : 0))
 			.join('')
 		)
@@ -8313,7 +8374,7 @@ var	precounts = getOrInitChild(project, 'renderBatchCounts')
 
 	if (ADD_COUNT_ON_BUTTON_LABEL) {
 		['show_all', 'save_all'].forEach(
-			(name) => gn(name, project.container).forEach(
+			(name) => getAllByName(name, project.container).forEach(
 				(button) => {
 				var	label = button.lastElementChild || cre('span', button);
 					label.className = 'count-label';
@@ -8323,11 +8384,11 @@ var	precounts = getOrInitChild(project, 'renderBatchCounts')
 		);
 	} else {
 	var	labelClass = 'count-line'
-	,	label = gc(labelClass, project.container)[0]
+	,	label = getAllByClass(labelClass, project.container)[0]
 		;
 
 		if (!label) {
-		var	container = gn('show_all', project.container)[0] || project.container
+		var	container = getAllByName('show_all', project.container)[0] || project.container
 		,	container = getThisOrParentByTagName(container, 'section')
 		,	label = cre('div', container, container.lastElementChild)
 			;
@@ -8349,7 +8410,7 @@ var	state = !!isWIP;
 	project.isBatchWIP = state;
 
 	['button', 'select', 'input'].forEach(
-		(tagName) => gt(tagName, project.container).forEach(
+		(tagName) => getAllByTag(tagName, project.container).forEach(
 			(element) => (
 				element.disabled = (
 					tagName === 'button'
@@ -8370,7 +8431,7 @@ var	state = !!isWIP;
 	isStopRequested = false;
 	isBatchWIP = state;
 
-	gt('button', gc('menu-bar')[0]).forEach(
+	getAllByTag('button', getAllByClass('menu-bar')[0]).forEach(
 		(element) => {
 			if (element.name !== 'download_all') {
 				element.disabled = (
@@ -8390,7 +8451,7 @@ var	state = !!isWIP;
 function onBeforeUnload(evt) {
 var	evt = eventStop(evt, FLAG_EVENT_STOP_IMMEDIATE);
 
-	if (!TESTING && id('loaded-files-view').firstElementChild) {
+	if (!TESTING && getOneById('loaded-files-view').firstElementChild) {
 
 //* Note: given message text won't be used in modern browsers.
 //* source: https://habr.com/ru/post/141793/
@@ -8418,7 +8479,7 @@ function onResize(evt) {
 function updateDropdownMenuPositions(evt) {
 	eventStop(evt, FLAG_EVENT_STOP_IMMEDIATE);
 
-	gc('menu-hid').forEach(
+	getAllByClass('menu-hid').forEach(
 		(menuPanel) => putInView(menuPanel, 0,0, true)
 	);
 }
@@ -8429,11 +8490,11 @@ var	evt = evt || window.event;
 //* Esc:
 
 	if (evt.keyCode === 27) {
-		gn('stop').forEach(
+		getAllByName('stop').forEach(
 			(button) => button.click()
 		);
 
-		gc('loading', id('loaded-files-selection')).forEach(
+		getAllByClass('loading', getOneById('loaded-files-selection')).forEach(
 			(button) => {
 				(button.project || button).isStopRequested = true;
 			}
@@ -8661,7 +8722,7 @@ async function loadFromButton(button, inBatch) {
 		if (
 			!url
 		&&	(container = getThisOrParentByClass(button, 'example-file'))
-		&&	(link = gt('a', container)[0])
+		&&	(link = getAllByTag('a', container)[0])
 		) {
 			url = link.href;
 		}
@@ -8688,7 +8749,7 @@ var	action, url;
 		if (action === 'download_all') {
 		var	countWithoutPause = 0;
 
-			for (let link of gt('a', filesTable)) if (link.download) {
+			for (let link of getAllByTag('a', filesTable)) if (link.download) {
 				link.click();
 
 //* Note: Chrome skips downloads if more than 10 in 1 second.
@@ -8707,7 +8768,7 @@ var	action, url;
 		,	urls = []
 			;
 
-			for (let otherButton of gt('button', filesTable)) if (url = getButtonURL(otherButton)) {
+			for (let otherButton of getAllByTag('button', filesTable)) if (url = getButtonURL(otherButton)) {
 				addToListIfNotYet(urls, url);
 
 				if (await loadFromButton(otherButton, true)) {
@@ -8786,7 +8847,7 @@ function selectProject(buttonTab) {
 		while (otherButtonTab) {
 		var	selectedState = (otherButtonTab === buttonTab ? 1 : -1);
 
-			gi(otherButtonTab.id).forEach(
+			getAllById(otherButtonTab.id).forEach(
 				(element) => toggleClass(element, 'show', selectedState)
 			);
 
@@ -9284,8 +9345,8 @@ var	tabsCountMax = 0
 		);
 	}
 
-	function getArrayCodeReplaceSlashToNewLine() {
-		return Array.from(arguments).map(
+	function getArrayCodeReplaceSlashToNewLine(...values) {
+		return values.map(
 			(value) => wrap.code.param(
 				isFunction(value.split)
 				? value.split('/').join('\n')
@@ -9312,10 +9373,10 @@ var	wrap = {
 		var	key = className.split(regNonAlphaNum)[0];
 
 			for (let tagName in wrap) {
-				wrap[tagName][key] = function() {
+				wrap[tagName][key] = function(...values) {
 					return (
 						'<' + tagName + ' class="' + className + '">'
-					+		Array.from(arguments).join('')
+					+		values.join('')
 					+	'</' + tagName + '>'
 					);
 				};
@@ -10258,7 +10319,7 @@ var	aboutLinks = [
 	,	{
 			'header': getLocalizedHTML('about_lang')
 		,	'links': (
-				gt('link')
+				getAllByTag('link')
 				.filter(
 					(element) => (
 						element.getAttribute('rel') == 'alternate'
@@ -10347,7 +10408,7 @@ var	toggleTextSizeHTML = (
 	+	toggleTextSizeHTML
 	);
 
-	gc('thumbnail').forEach(
+	getAllByClass('thumbnail').forEach(
 		(element) => {
 			if (!element.firstElementChild) {
 				setImageSrc(element);
@@ -10360,7 +10421,7 @@ var	toggleTextSizeHTML = (
 		['local-link', 'page_version_link'],
 		['external-link', 'external_link'],
 	].forEach(
-		([className, textKey]) => gc(className).forEach(
+		([className, textKey]) => getAllByClass(className).forEach(
 			(element) => {
 			var	url = element.getAttribute('href');
 
@@ -10403,7 +10464,7 @@ var	button, oldSetting;
 	}
 
 	if (OPEN_FIRST_MENU_TAB_AT_START) {
-		toggleClass(gt('header')[0], 'show');
+		toggleClass(getAllByTag('header')[0], 'show');
 
 		updateDropdownMenuPositions();
 	}
