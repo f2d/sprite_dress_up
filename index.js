@@ -26,7 +26,7 @@
 //* TODO: use ImageBitmaps for speed?
 //* TODO: revoke collage blob urls when cleaning view container?
 //* TODO: revoke any image blob urls right after image element's loading, without ever tracking/listing them?
-//* TODO: store list of render-changing changable options in each folder, cache merged folder images by changable options combo
+//* TODO: store list of render-changing changable options in each folder, cache merged folder images by changable options combo. Or conversely - only cache merged images of unchangeable folders directly inside changeable folders, possibly even removing cached layer tree substructure from memory (not possible because of planned option to export files later).
 
 //* other:
 //* TODO: find zoom/scale of the screen/page before regenerating thumbnails.
@@ -221,12 +221,6 @@ const	configFilePath = 'config.js'			//* <- declarations-only file to redefine a
 const	LS = window.localStorage || localStorage
 ,	URL = window.URL || window.webkitURL || URL
 ,	LANG = document.documentElement.lang || 'en'
-
-,	RUNNING_FROM_DISK = isURLFromDisk('/')
-,	CAN_USE_WORKERS = (typeof Worker === 'function' && !RUNNING_FROM_DISK)
-,	CAN_CAST_TO_ARRAY = (typeof Array.from === 'function')
-,	CAN_EXPORT_BLOB = (typeof HTMLCanvasElement.prototype.toBlob === 'function')
-,	CAN_EXPORT_WEBP = isImageTypeExportSupported('image/webp')
 
 ,	SPLIT_SEC = 60
 ,	MIN_CHANNEL_VALUE = 0
@@ -465,6 +459,13 @@ const	LS = window.localStorage || localStorage
 	,	'Lab'
 	];
 
+const	RUNNING_FROM_DISK = isURLFromDisk('/')
+,	CAN_USE_WORKERS = (typeof Worker === 'function' && !RUNNING_FROM_DISK)
+,	CAN_CAST_TO_ARRAY = (typeof Array.from === 'function')
+// ,	CAN_EXPORT_BLOB = (typeof HTMLCanvasElement.prototype.toBlob === 'function')
+// ,	CAN_EXPORT_WEBP = isImageTypeExportSupported('image/webp')
+	;
+
 //* Config: internal, included scripts and loaders of project files *----------
 
 const	libRootDir = 'lib/'
@@ -641,7 +642,7 @@ var	canvas = cre('canvas');
 	return (
 		canvas
 		.toDataURL(type)
-		.indexOf(type) >= 0
+		.includes(DATA_PREFIX + type)
 	);
 }
 
@@ -872,13 +873,13 @@ function hasFraming(value, prefix, postfix) {
 }
 
 function addToListIfNotYet(values, value) {
-	if (values.indexOf(value) < 0) {
-		values.push(value);
-
-		return 1;
+	if (values.includes(value)) {
+		return 0;
 	}
 
-	return 0;
+	values.push(value);
+
+	return 1;
 }
 
 function addRangeToList(values, newValuesText) {
@@ -1722,7 +1723,7 @@ var	keep = orz(keep)
 		element.removeAttribute('className');
 	}
 
-	return (classNames.indexOf(className) >= 0);
+	return classNames.includes(className);
 }
 
 function getChildByAttr(element, attrName, attrValue) {
@@ -1942,9 +1943,9 @@ var	header = getThisOrParentByTagName(element, 'header');
 
 	if (header) {
 	var	actionWords = (action || element.name || '').split('_')
-	,	isActionAll = (actionWords.indexOf('all') >= 0)
-	,	isActionOpen = (actionWords.indexOf('open') >= 0)
-	,	isActionClose = (actionWords.indexOf('close') >= 0)
+	,	isActionAll = actionWords.includes('all')
+	,	isActionOpen = actionWords.includes('open')
+	,	isActionClose = actionWords.includes('close')
 	,	tagName = header.tagName
 	,	toggledCount = 0
 		;
@@ -2298,7 +2299,7 @@ var	text = getLogTime();
 	if (typeof argValue !== 'undefined') {
 	var	textValue = getJoinedOrEmptyText(argValue, '\n');
 
-		if (textValue.indexOf('\n') >= 0) {
+		if (textValue.includes('\n')) {
 			if (
 				hasFraming(textValue, '(', ')')
 			||	hasFraming(textValue, '{', '}')
@@ -3285,18 +3286,14 @@ var	names = SWITCH_NAMES_BY_TYPE[switchType]
 ,	index = names.indexOf(switchName)
 	;
 
-	return names[
-		index < 0
-		? 0
-		: 1 - index
-	];
+	return names[index === 0 ? 1 : 0];
 }
 
 function getTruthyValue(value) {
 	return !(
 		!value
 	||	!(value = String(value))
-	||	FALSY_STRINGS.indexOf(value.toLowerCase()) >= 0
+	||	FALSY_STRINGS.includes(value.toLowerCase())
 	);
 }
 
@@ -3698,7 +3695,7 @@ var	fileName = sourceFile.name
 var	startTime = getTimeNow();
 
 	try_loaders:
-	for (let loader of fileTypeLoaders) if (loader.dropFileExts.indexOf(ext) >= 0)
+	for (let loader of fileTypeLoaders) if (loader.dropFileExts.includes(ext))
 	for (let func of loader.handlerFuncs) {
 	var	project = {
 			fileName: fileName
@@ -3943,14 +3940,14 @@ async function getProjectViewMenu(project) {
 							if (isNaN(optionValue)) {
 								optionName = optionName.replace(regNonAlphaNum, '').toLowerCase();
 
-								if (PARAM_KEYWORDS_SHORTCUT_FOR_ALL.indexOf(optionName) >= 0) {
+								if (PARAM_KEYWORDS_SHORTCUT_FOR_ALL.includes(optionName)) {
 									keywordsList.forEach(
 										(optionName) => {
 											optionItems[optionName] = optionName;
 										}
 									);
 								} else
-								if (keywordsList.indexOf(optionName) >= 0) {
+								if (keywordsList.includes(optionName)) {
 									optionItems[optionName] = optionName;
 								} else
 								if (getRGBAFromColorCodeOrName(optionValue)) {
@@ -4503,7 +4500,7 @@ async function getProjectViewMenu(project) {
 			,	params = optionList.params
 			,	isZeroSameAsEmpty = (
 					ZERO_PERCENT_EQUALS_EMPTY
-				&&	NAME_PARTS_PERCENTAGES.indexOf(sectionName) >= 0
+				&&	NAME_PARTS_PERCENTAGES.includes(sectionName)
 				)
 			,	addEmpty = !(
 					sectionName === 'side'
@@ -4622,7 +4619,7 @@ async function getProjectViewMenu(project) {
 
 							if (
 								!colorListNames
-							||	colorListNames.indexOf(listName) >= 0
+							||	colorListNames.includes(listName)
 							) {
 								if (
 									optionName !== 'transparent'
@@ -5008,7 +5005,7 @@ var	params = getOrInitChild(layer, 'params');
 		param_types:
 		for (let paramType in regLayerNameParamType) if (match = param.match(regLayerNameParamType[paramType])) {
 
-			if (NAME_PARTS_FOLDERS.indexOf(paramType) >= 0) {
+			if (NAME_PARTS_FOLDERS.includes(paramType)) {
 				layer.type = paramType;
 				layer.isVisibilityOptional = true;
 			} else
@@ -5050,12 +5047,12 @@ var	params = getOrInitChild(layer, 'params');
 
 				//* methods:
 
-						if (PARAM_KEYWORDS_SHORTCUT_FOR_ALL.indexOf(paramTextPart) >= 0) {
+						if (PARAM_KEYWORDS_SHORTCUT_FOR_ALL.includes(paramTextPart)) {
 							PARAM_KEYWORDS_PADDING_METHODS.forEach(
 								(keyword) => addToListIfNotYet(methods, keyword)
 							);
 						} else
-						if (PARAM_KEYWORDS_PADDING_METHODS.indexOf(paramTextPart) >= 0) {
+						if (PARAM_KEYWORDS_PADDING_METHODS.includes(paramTextPart)) {
 							addToListIfNotYet(methods, paramTextPart);
 						} else
 
@@ -5306,7 +5303,7 @@ var	params = getOrInitChild(layer, 'params');
 			} else
 			if (paramType === 'preselect') {
 				key = 'last';
-				params[param.indexOf(key) >= 0 ? key : paramType] = true;
+				params[param.includes(key) ? key : paramType] = true;
 			} else
 			if (paramType === 'batch') {
 				params[param === paramType ? paramType : 'single'] = true;
@@ -5335,8 +5332,8 @@ var	params = getOrInitChild(layer, 'params');
 						;
 
 						if (
-							PARAM_KEYWORDS_COLLAGE_ALIGN.indexOf(keyword) >= 0
-						||	PARAM_KEYWORDS_SHORTCUT_FOR_ALL.indexOf(keyword) >= 0
+							PARAM_KEYWORDS_COLLAGE_ALIGN.includes(keyword)
+						||	PARAM_KEYWORDS_SHORTCUT_FOR_ALL.includes(keyword)
 						) {
 							listName = 'align';
 						} else
@@ -5345,7 +5342,7 @@ var	params = getOrInitChild(layer, 'params');
 
 							if (
 								!listName
-							||	PARAM_KEYWORDS_COLLAGE_PAD.indexOf(listName) < 0
+							||	!PARAM_KEYWORDS_COLLAGE_PAD.includes(listName)
 							) {
 								listName = PARAM_KEYWORDS_COLLAGE_PAD;	//* <- add all with same value
 							}
@@ -5530,7 +5527,7 @@ var	checkVirtualPath = (
 				}
 			} else {
 				if (isLayerFolder) {
-					if (NAME_PARTS_FOLDERS.indexOf(layerType) >= 0) {
+					if (NAME_PARTS_FOLDERS.includes(layerType)) {
 						layer.isOptionList = true;
 
 						if (layerType === 'colors') {
@@ -5868,7 +5865,7 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 
 				,	isBlendModeTS: (
 						hasNoFillOpacityValue
-					&&	BLEND_MODES_WITH_TS_VERSION.indexOf(blendMode) >= 0
+					&&	BLEND_MODES_WITH_TS_VERSION.includes(blendMode)
 					)
 				,	opacity: (
 						getNormalizedOpacity(layer.opacity)
@@ -6058,7 +6055,7 @@ var	optionItem = getAllByTag('option', selectBox).find(
 		'value'
 	,	(
 			ZERO_PERCENT_EQUALS_EMPTY
-		&&	NAME_PARTS_PERCENTAGES.indexOf(selectBox.getAttribute('data-section')) >= 0
+		&&	NAME_PARTS_PERCENTAGES.includes(selectBox.getAttribute('data-section'))
 		&&	selectBox.value === '0%'
 			? '' :
 			selectBox.value
@@ -6467,7 +6464,7 @@ function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
 		if (
 			CompositionModule
 		&&	CompositionFuncList
-		&&	CompositionFuncList.indexOf(funcName) >= 0
+		&&	CompositionFuncList.includes(funcName)
 		&&	tryEmulation(usingAsmJS)
 		) {
 			return true;
@@ -7663,7 +7660,7 @@ function getFileNameByValues(project, values, flags) {
 
 					if (
 						ZERO_PERCENT_EQUALS_EMPTY
-					&&	NAME_PARTS_PERCENTAGES.indexOf(sectionName) >= 0
+					&&	NAME_PARTS_PERCENTAGES.includes(sectionName)
 					&&	orz(optionName) == 0
 					) {
 						return;
@@ -8796,10 +8793,10 @@ var	action, url;
 		;
 
 		if (fileRow && fileRow.className) {
-			if (fileRow.className.indexOf(className) < 0) {
-				toggleClass(fileRow, className, 1);
-			} else {
+			if (fileRow.classList.contains(className)) {
 				return;
+			} else {
+				toggleClass(fileRow, className, 1);
 			}
 		}
 
@@ -8948,7 +8945,7 @@ var	configVarDefaults = {}
 	configVarNames.forEach(
 		(varName) => {
 		var	configuredValue = orz(window[varName])
-		,	invalidBottom = (varName.indexOf('FACTOR') < 0 ? 0 : 1)
+		,	invalidBottom = (varName.includes('FACTOR') ? 1 : 0)
 			;
 
 			window[varName] = (
@@ -9128,7 +9125,7 @@ var	supportedFileTypesText = (
 				([name, label]) => (
 					(
 						!canLoadLocalFiles
-					&&	name.indexOf('download') < 0
+					&&	!name.includes('download')
 					) ? '' : (
 						'<td>'
 					+		'<button onclick="return loadFromButton(this)" name="'
@@ -10353,9 +10350,9 @@ var	aboutLinks = [
 							'<a href="'
 						+		encodeTagAttr(url)
 						+	(
-								url.indexOf('//') < 0
-								? '" class="local-link'
-								: '" class="external-link'
+								url.includes('//')
+								? '" class="external-link'
+								: '" class="local-link'
 							)
 						+	'">'
 						+		text
@@ -10458,7 +10455,7 @@ var	button, oldSetting;
 	if (
 		LS
 	&&	(oldSetting = LS[LSKeyBigText])
-	&&	FALSY_STRINGS.indexOf(oldSetting) < 0
+	&&	!FALSY_STRINGS.includes(oldSetting)
 	) {
 		toggleTextSize();
 	}
