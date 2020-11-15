@@ -1,3 +1,4 @@
+'use strict';
 
 //* source file data:
 //* TODO: keep all layer-name parameters single-word if possible.
@@ -726,7 +727,7 @@ function forEachSetInCrossProduct(arrays, callback, thisContext) {
 	,	count = counts[arrayIndex]
 		;
 
-		if (arrayIndex == lastArrayIndex) {
+		if (arrayIndex === lastArrayIndex) {
 			for (let i = 0; i < count; ++i) {
 				variantSet[arrayIndex] = variants[i];
 				callback.apply(thisContext, variantSet);
@@ -1716,7 +1717,7 @@ var	keep = orz(keep)
 
 	if (classNames.length > 0) {
 	var	newText = classNames.join(' ');
-		if (oldText != newText) element.className = newText;
+		if (oldText !== newText) element.className = newText;
 	} else
 	if (oldText) {
 		element.className = '';
@@ -2318,11 +2319,17 @@ var	text = getLogTime();
 }
 
 function logError(args, error, context) {
-	console.log([
-		'Error:', error
-	,	'In "' + args.callee.name + '" with arguments:', args
-	,	'Context:', context
-	]);
+	console.log(
+		[
+			'Error:', error
+		// ,	'In function:', args.callee.name	//* <- not available in strict mode
+		,	'With arguments:', args
+		].concat(
+			typeof context === 'undefined'
+			? []
+			: ['Context:', context]
+		)
+	);
 }
 
 function getFilePromise(file) {
@@ -2501,7 +2508,7 @@ function dataToBlob(data, trackList) {
 				data = decodeURIComponent(data);
 			} else {
 				type = meta.slice(0,k);
-				if (meta.slice(k+1) == 'base64') data = atob(data);
+				if (meta.slice(k+1) === 'base64') data = atob(data);
 			}
 		}
 	var	data = Uint8Array.from(Array.prototype.map.call(data, ((v) => v.charCodeAt(0))))
@@ -2570,7 +2577,7 @@ var	size = dataURI.length
 					ext = type.split('/').slice(-1)[0];
 				}
 			}
-			if (ext == 'plain') ext = 'txt';
+			if (ext === 'plain') ext = 'txt';
 
 		var	time = (
 				!fileName || addTime
@@ -4341,7 +4348,7 @@ async function getProjectViewMenu(project) {
 									,	layerRGBAText = getColorTextFromArray(layer.img)
 										;
 
-										if (layerRGBAText != colorCodeText) {
+										if (layerRGBAText !== colorCodeText) {
 											console.log(
 												'got color code in param: '
 											+	colorCodeText
@@ -4564,7 +4571,7 @@ async function getProjectViewMenu(project) {
 						optionName === ''
 					||	(
 							isZeroSameAsEmpty
-						&&	orz(optionName) == 0
+						&&	orz(optionName) === 0
 						)
 					) {
 						addEmpty = true;
@@ -4585,7 +4592,7 @@ async function getProjectViewMenu(project) {
 					var	zoomPercentage = orz(optionName);
 
 						if (
-							zoomPercentage == 100
+							zoomPercentage === 100
 						||	zoomPercentage <= 0
 						) {
 							if (addedDefaultZoom) {
@@ -4854,7 +4861,7 @@ var	infoButton = addButton(summaryFooter, getLocalizedText('console_log'));
 
 //* place for results:
 
-		tr = cre('tr', cre('table', container));
+	var	tr = cre('tr', cre('table', container));
 		cre('td', tr).className = 'project-options';
 		cre('td', tr).className = 'project-render';
 	}
@@ -5000,7 +5007,7 @@ var	params = getOrInitChild(layer, 'params');
 
 	param_list:
 	for (let param of paramList) {
-	var	match, key, values;
+	var	match, key, value, values;
 
 		param_types:
 		for (let paramType in regLayerNameParamType) if (match = param.match(regLayerNameParamType[paramType])) {
@@ -6525,7 +6532,7 @@ function getPaddedImageData(referenceImageData, method, threshold, dimensions) {
 			for (let resultX = w; resultX--;) {
 
 			var	resultByteIndex = getAlphaDataIndex(resultX, resultY, w)
-				resultDistance = startDistance
+			,	resultDistance = startDistance
 				;
 
 				look_around:
@@ -7647,11 +7654,11 @@ function getFileNameByValues(project, values, flags) {
 				}
 
 				if (flags.skipDefaultPercent) {
-					if (sectionName == 'zoom') {
+					if (sectionName === 'zoom') {
 					var	zoomPercentage = orz(optionName);
 
 						if (
-							zoomPercentage == 100
+							zoomPercentage === 100
 						||	zoomPercentage <= 0
 						) {
 							return;
@@ -7661,7 +7668,7 @@ function getFileNameByValues(project, values, flags) {
 					if (
 						ZERO_PERCENT_EQUALS_EMPTY
 					&&	NAME_PARTS_PERCENTAGES.includes(sectionName)
-					&&	orz(optionName) == 0
+					&&	orz(optionName) === 0
 					) {
 						return;
 					}
@@ -7807,7 +7814,7 @@ var	values = render.values
 	;
 
 	if (!(img || isStopRequestedAnywhere(project))) {
-		if (fileName == refName) {
+		if (fileName === refName) {
 		var	canvas = await getRenderByValues(project, values);
 
 			if (isStopRequestedAnywhere(project)) {
@@ -7830,7 +7837,7 @@ var	values = render.values
 		img
 	&&	(zoomPercentage = orz(getPropBySameNameChain(values, 'zoom')))
 	&&	zoomPercentage > 0
-	&&	zoomPercentage != 100
+	&&	zoomPercentage !== 100
 	) {
 	var	zoomPercentage
 	,	zoomRatio = zoomPercentage / 100
@@ -8982,7 +8989,7 @@ var	configVarDefaults = {}
 
 	if (RUNNING_FROM_DISK) {
 		try {
-			canLoadLocalFiles = !!(await getFilePromiseFromURL(fetchTestFilePath));
+		var	canLoadLocalFiles = !!(await getFilePromiseFromURL(fetchTestFilePath));
 		} catch (error) {
 			canLoadLocalFiles = false;
 		}
@@ -9112,10 +9119,10 @@ var	supportedFileTypesText = (
 
 	var	padCount = orz(rowLength) - orz(tabs.length)
 	,	padHTML = (
-			padCount == 0
+			padCount === 0
 			? '' :
 			'<td' + (
-				padCount == 1
+				padCount === 1
 				? '' :
 				' colspan="' + padCount + '"'
 			) + '></td>'
@@ -10319,7 +10326,7 @@ var	aboutLinks = [
 				getAllByTag('link')
 				.filter(
 					(element) => (
-						element.getAttribute('rel') == 'alternate'
+						element.getAttribute('rel') === 'alternate'
 					&&	element.getAttribute('href')
 					&&	element.getAttribute('hreflang')
 					)
