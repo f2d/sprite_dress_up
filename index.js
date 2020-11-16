@@ -238,12 +238,96 @@ const	LS = window.localStorage || localStorage
 
 ,	DUMMY_ARRAY = [null]	//* <- for cross-product combinations
 
+,	FALSY_STRINGS = [
+		'0'
+	,	'no'
+	,	'none'
+	,	'null'
+	,	'false'
+	,	'hidden'
+	,	'disabled'
+	,	'undefined'
+	]
+
 ,	BLOB_PREFIX = 'blob:'
 ,	DATA_PREFIX = 'data:'
 ,	TYPE_TEXT = 'text/plain'
 
 ,	TIME_PARTS_YMD = ['FullYear', 'Month', 'Date']
 ,	TIME_PARTS_HMS = ['Hours', 'Minutes', 'Seconds']
+
+,	QUERY_SELECTOR = {
+		getElementsByClassName:	['.', ''],
+		getElementsByTagName:	['', ''],
+		getElementsByName:	['*[name="', '"]'],
+		getElementsByType:	['*[type="', '"]'],
+		getElementsById:	['*[id="', '"]'],
+	}
+
+,	BLEND_MODE_NORMAL = 'source-over'
+,	BLEND_MODE_CLIP = 'source-atop'
+,	BLEND_MODE_MASK = 'destination-in'
+,	BLEND_MODE_CUT = 'destination-out'
+,	BLEND_MODE_INVERT = 'source-out'
+,	BLEND_MODE_ADD = 'lighter'
+,	BLEND_MODE_PASS = 'pass'
+,	BLEND_MODE_TRANSIT = 'transition'
+
+,	BLEND_MODES_REPLACE = [
+		['src', 'source']
+	,	['dst', 'destination']
+	,	['liner', 'linear']
+	,	[/^.*:/g]		//* <- remove any "prefix:"
+	,	[/[\s\/_-]+/g, '-']	//* <- normalize word separators to use only dashes
+	,	[/^subs?tr[au]ct$/, 'subtract']
+	,	[regLayerBlendModePass, BLEND_MODE_PASS]
+	]
+
+,	BLEND_MODES_REMAP = {
+		'normal':	BLEND_MODE_NORMAL
+	,	'add':		BLEND_MODE_ADD
+	,	'plus':		BLEND_MODE_ADD
+	,	'linear-dodge':	BLEND_MODE_ADD
+
+//* from SAI2, remap according to PSD.js:
+
+	,	'burn':		'color-burn'
+	,	'burn-dodge':	'vivid-light'
+	,	'darken-color':	'darker-color'
+	,	'dodge':	'color-dodge'
+	,	'exclude':	'exclusion'
+	,	'lighten-color':'lighter-color'
+	,	'shade':	'linear-burn'
+	,	'shade-shine':	'linear-light'
+	,	'shine':	BLEND_MODE_ADD
+	}
+
+,	BLEND_MODES_WITH_TS_VERSION = [
+		BLEND_MODE_ADD
+	,	'color-burn'
+	,	'color-dodge'
+	,	'difference'
+	,	'hard-mix'
+	,	'linear-burn'
+	,	'linear-dodge'
+	,	'linear-light'
+	,	'vivid-light'
+	]
+
+//* taken from PSDLIB.js:
+
+,	PSD_COLOR_MODES = [
+		'Bitmap'
+	,	'Grayscale'
+	,	'Indexed'
+	,	'RGB'
+	,	'CMYK'
+	,	'HSL'
+	,	'HSB'
+	,	'Multichannel'
+	,	'Duotone'
+	,	'Lab'
+	]
 
 ,	OPEN_CLOSE = ['open', 'close']
 
@@ -357,22 +441,17 @@ const	LS = window.localStorage || localStorage
 		},
 	]
 
-,	FALSY_STRINGS = [
-		'0'
-	,	'no'
-	,	'none'
-	,	'null'
-	,	'false'
-	,	'hidden'
-	,	'disabled'
-	,	'undefined'
-	]
-
 ,	IMAGE_GEOMETRY_KEYS = [
 		['top', 'y'],
 		['left', 'x'],
 		['width', 'w'],
 		['height', 'h'],
+	]
+
+,	VIRTUAL_FOLDER_TAKEOVER_PROPERTIES = [
+		['blendMode', BLEND_MODE_NORMAL],
+		['isBlendModeTS', false],
+		['isClipped', false],
 	]
 
 ,	CLEANUP_KEYS_TESTING = [
@@ -386,80 +465,7 @@ const	LS = window.localStorage || localStorage
 	,	'nameOriginal'
 	,	'sourceData'
 	,	'maskData'
-	])
-
-,	QUERY_SELECTOR = {
-		getElementsByClassName:	['.', ''],
-		getElementsByTagName:	['', ''],
-		getElementsByName:	['*[name="', '"]'],
-		getElementsByType:	['*[type="', '"]'],
-		getElementsById:	['*[id="', '"]'],
-	}
-
-,	BLEND_MODE_NORMAL = 'source-over'
-,	BLEND_MODE_CLIP = 'source-atop'
-,	BLEND_MODE_MASK = 'destination-in'
-,	BLEND_MODE_CUT = 'destination-out'
-,	BLEND_MODE_INVERT = 'source-out'
-,	BLEND_MODE_ADD = 'lighter'
-,	BLEND_MODE_PASS = 'pass'
-,	BLEND_MODE_TRANSIT = 'transition'
-
-,	BLEND_MODES_REPLACE = [
-		['src', 'source']
-	,	['dst', 'destination']
-	,	['liner', 'linear']
-	,	[/^.*:/g]		//* <- remove any "prefix:"
-	,	[/[\s\/_-]+/g, '-']	//* <- normalize word separators to use only dashes
-	,	[/^subs?tr[au]ct$/, 'subtract']
-	,	[regLayerBlendModePass, BLEND_MODE_PASS]
-	]
-
-,	BLEND_MODES_REMAP = {
-		'normal':	BLEND_MODE_NORMAL
-	,	'add':		BLEND_MODE_ADD
-	,	'plus':		BLEND_MODE_ADD
-	,	'linear-dodge':	BLEND_MODE_ADD
-
-//* from SAI2, remap according to PSD.js:
-
-	,	'burn':		'color-burn'
-	,	'burn-dodge':	'vivid-light'
-	,	'darken-color':	'darker-color'
-	,	'dodge':	'color-dodge'
-	,	'exclude':	'exclusion'
-	,	'lighten-color':'lighter-color'
-	,	'shade':	'linear-burn'
-	,	'shade-shine':	'linear-light'
-	,	'shine':	BLEND_MODE_ADD
-	}
-
-,	BLEND_MODES_WITH_TS_VERSION = [
-		BLEND_MODE_ADD
-	,	'color-burn'
-	,	'color-dodge'
-	,	'difference'
-	,	'hard-mix'
-	,	'linear-burn'
-	,	'linear-dodge'
-	,	'linear-light'
-	,	'vivid-light'
-	]
-
-//* taken from PSDLIB.js:
-
-,	PSD_COLOR_MODES = [
-		'Bitmap'
-	,	'Grayscale'
-	,	'Indexed'
-	,	'RGB'
-	,	'CMYK'
-	,	'HSL'
-	,	'HSB'
-	,	'Multichannel'
-	,	'Duotone'
-	,	'Lab'
-	];
+	]);
 
 const	RUNNING_FROM_DISK = isURLFromDisk('/')
 ,	CAN_USE_WORKERS = (typeof Worker === 'function' && !RUNNING_FROM_DISK)
@@ -5519,11 +5525,7 @@ var	checkVirtualPath = (
 		,	opacity: 1
 		};
 
-		[
-			['blendMode', BLEND_MODE_NORMAL],
-			['isBlendModeTS', false],
-			['isClipped', false],
-		].forEach(
+		VIRTUAL_FOLDER_TAKEOVER_PROPERTIES.forEach(
 			([key, defaultValue]) => {
 				if (subLayer[key] !== defaultValue) {
 					layer[key] = subLayer[key];
