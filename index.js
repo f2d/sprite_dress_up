@@ -7279,30 +7279,31 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 			if (TESTING_RENDER) addDebugImage(project, img, 'clippingGroupResult: img = getRenderByValues', 'cyan');
 		} else {
 
-		var	aliases = null
+		var	addCopyPaste = (
+				renderParams.skipCopyPaste
+				? null
+				: getPropByNameChain(params, 'copypaste', 'paste')
+			)
 		,	layers = layer.layers || null
 			;
 
 //* append copypasted layers to subqueue:
 
-			if (aliases = getPropByNameChain(params, 'copypaste', 'paste')) {
-				layers = (
-					(layers || [])
-					.concat([layer.img])	//* <- TODO: proper copypaste stack; img in array of layers, is it even working?
-					.filter(arrayFilterNonEmptyValues)
-				);
+			if (isArray(addCopyPaste)) {
+				if (!isArray(layers)) {
+					layers = (layer.img ? [layer] : []);
+				}
 
-				aliases.forEach(
+				addCopyPaste.forEach(
 					(alias) => (
-						getPropByNameChain(project, 'layersForCopyPaste', 'copy', alias)
-					||	[]
+						getPropByNameChain(project, 'layersForCopyPaste', 'copy', alias) || []
 					).forEach(
 						(layer) => addToListIfNotYet(layers, layer)
 					)
 				);
 			}
 
-			if (layers) {
+			if (isArray(layers)) {
 
 //* get a flat color fill, using the first non-empty value found in associated lists:
 
@@ -7361,7 +7362,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 						if (
 							flipSide
-						||	isPassThroughAndClippingBase
+						||	isPassThroughAndClippingBase	//* <- TODO: blending modes and non-virtual folders
 						||	blendMode !== BLEND_MODE_NORMAL
 						||	opacity != 1
 						||	layer.mask
@@ -7385,7 +7386,8 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 					,	{
 							ignoreColors: (ignoreColors || isToRecolor)
 						,	baseCanvas: canvasCopy
-						,	opacity: (aliases ? opacity : 0)	//* <- TODO: properly check copypaste visibility
+						,	opacity: (addCopyPaste ? opacity : 0)	//* <- TODO: properly check copypaste visibility
+						,	skipCopyPaste: !!addCopyPaste
 						}
 					);
 
