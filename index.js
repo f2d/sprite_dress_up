@@ -695,18 +695,25 @@ const getCrossProductArr = (a, b, ...c) => (b ? getCrossProductArr(getCrossProdu
 //*	var count = combos.length;
 function CrossProductIterator() {
 	for (
-	var	dimensions = [], totalCount = 1, subCount, argIndex = arguments.length;
+	var	dimensions = []
+	,	totalCount = 1
+	,	subCount
+	,	argIndex = arguments.length;
 		argIndex--;
 		totalCount *= subCount
 	) {
-		dimensions[argIndex] = [totalCount, subCount = arguments[argIndex].length];
+		dimensions[argIndex] = [
+			totalCount
+		,	subCount = arguments[argIndex].length
+		];
 	}
 
 	this.length = totalCount;
 
 	this.item = (comboIndex) => {
 		for (
-		var	combo = [], argIndex = arguments.length;
+		var	combo = []
+		,	argIndex = arguments.length;
 			argIndex--;
 		) {
 			combo[argIndex] = arguments[argIndex][(comboIndex / dimensions[argIndex][0] << 0) % dimensions[argIndex][1]];
@@ -1194,6 +1201,12 @@ function eventStop(evt, flags) {
 	return evt;
 }
 
+function catchPromiseError() {
+	console.log('Promise error:', arguments);
+
+	return null;
+}
+
 function getErrorFromEvent(evt, message, callback) {
 var	error = new Error(message || 'Unknown error');
 	error.event = evt;
@@ -1524,7 +1537,7 @@ function getPropBySameNameChain(obj, key) {
 }
 
 function cleanupObjectTree(obj, childKeys, keysToRemove) {
-	if (obj) {
+	if (isNonNullObject(obj)) {
 		Array.from(keysToRemove).forEach(
 			(key) => {
 				if (key in obj) {
@@ -2361,7 +2374,7 @@ function getFilePromise(file) {
 
 			reader.readAsArrayBuffer(file);
 		}
-	);
+	).catch(catchPromiseError);
 }
 
 function getFilePromiseFromURL(url, responseType) {
@@ -2395,7 +2408,7 @@ function getFilePromiseFromURL(url, responseType) {
 			request.open('GET', url, true);
 			request.send();
 		}
-	);
+	).catch(catchPromiseError);
 }
 
 function getImagePromiseFromCanvasToBlob(canvas, trackList, mimeType, quality) {
@@ -2446,7 +2459,7 @@ function getImagePromiseFromCanvasToBlob(canvas, trackList, mimeType, quality) {
 			,	quality || 1
 			);
 		}
-	);
+	).catch(catchPromiseError);
 }
 
 //* Note: cannot save image by revoked url, so better keep it and revoke later.
@@ -2662,7 +2675,7 @@ var	libs = getFlatArray(libs)
 
 			addNextScript();
 		}
-	);
+	).catch(catchPromiseError);
 }
 
 async function loadLibOnDemandPromise(libName) {
@@ -2787,7 +2800,7 @@ var	depends = lib.depends || null;
 
 			addNextScript();
 		}
-	);
+	).catch(catchPromiseError);
 }
 
 //* Page-specific functions: internal, utility *-------------------------------
@@ -3429,8 +3442,17 @@ function isLayerSkipped(layer) {
 }
 
 async function getImageDataFromURL(url) {
-var	arrayBuffer = await getFilePromiseFromURL(url)
-,	img  = UPNG.decode(arrayBuffer)
+	if (!url) {
+		return null;
+	}
+
+var	arrayBuffer = await getFilePromiseFromURL(url);
+
+	if (!arrayBuffer) {
+		return null;
+	}
+
+var	img  = UPNG.decode(arrayBuffer)
 ,	rgba = UPNG.toRGBA8(img)[0]	//* <- UPNG.toRGBA8 returns array of frames, size = width * height * 4 bytes.
 	;
 
@@ -3457,7 +3479,7 @@ async function thisToPng(targetLayer) {
 		) {
 			return new Promise(
 				(resolve, reject) => e.loadImage(resolve, reject)
-			);
+			).catch(catchPromiseError);
 		}
 
 		if (
@@ -4238,16 +4260,21 @@ async function getProjectViewMenu(project) {
 		}
 
 		function getUnskippedProcessedLayers(layers, isInsideColorList) {
-		var	index = layers.length
-		,	clippingLayer = null
-		,	layer
-			;
+		var	clippingLayer = null;
 
-			while (index--) if (layer = layers[index]) {
+//* https://stackoverflow.com/questions/30610523/reverse-array-in-javascript-without-mutating-original-array#comment100151603_30610528
+//* Compare array cloning methods: https://jsben.ch/lO6C5
+//* Top results for Vivaldi (Chrome-based): 1. slice(), 2. [...spread], 3. Array.from()
+
+			for (let layer of layers.slice().reverse()) {
 				if (layer.isClipped) {
 					layer.clippingLayer = clippingLayer;
 				} else {
-					clippingLayer = (layer.isPassThrough ? null : layer);
+					clippingLayer = (
+						layer.isPassThrough
+						? null	//* <- clipping to passthrough is not yet supported here (or in SAI2)
+						: layer
+					);
 				}
 			}
 
@@ -4410,7 +4437,7 @@ async function getProjectViewMenu(project) {
 					}
 				);
 			}
-		);
+		).catch(catchPromiseError);
 	}
 
 	function getLayerMaskLoadPromise(mask, project) {
@@ -4429,7 +4456,7 @@ async function getProjectViewMenu(project) {
 					if (mask.loadImage) {
 						imagePromise = new Promise(
 							(resolve, reject) => mask.loadImage(resolve, reject)
-						);
+						).catch(catchPromiseError);
 					} else {
 						imagePromise = project.toPng(mask);
 					}
@@ -4457,7 +4484,7 @@ async function getProjectViewMenu(project) {
 					resolve(true);
 				}
 			}
-		);
+		).catch(catchPromiseError);
 	}
 
 	function createOptionsMenu(project, container) {
@@ -5684,7 +5711,7 @@ async function loadORA(project) {
 				(resolve, reject) => {
 					ora.load(file, resolve);
 				}
-			);
+			).catch(catchPromiseError);
 		}
 	,	async function treeConstructorFunc(project, sourceData) {
 			if (
@@ -7288,7 +7315,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 				if (layers.length > 0) {
 					if (backward) {
-						layers = Array.from(layers).reverse();
+						layers = layers.slice().reverse();
 					}
 
 //* passthrough mode:
@@ -7763,6 +7790,10 @@ async function getOrCreateRenderedImg(project, render) {
 	function getAndCacheRenderedImgElementPromise(canvas, fileName) {
 		return getImagePromiseFromCanvasToBlob(canvas, project).then(
 			(img) => {
+				if (!isNonNullObject(img)) {
+					return null;
+				}
+
 			var	msec = canvas.renderingTime;
 
 				img.title = img.alt = (
@@ -7781,16 +7812,12 @@ async function getOrCreateRenderedImg(project, render) {
 
 				return img;
 			}
-		).catch(
-			(error) => {
-				console.log(error);
-
-				return null;
-			}
-		);
+		).catch(catchPromiseError);
 	}
 
-	if (!render) render = await getOrCreateRender(project);
+	if (!render) {
+		render = await getOrCreateRender(project);
+	}
 
 	if (img = render.img) {
 		return img;
@@ -8208,13 +8235,7 @@ var	startTime = getTimeNow()
 
 						return img;
 					}
-				).catch(
-					(error) => {
-						console.log(error);
-
-						return null;
-					}
-				);
+				).catch(catchPromiseError);
 
 				if (img) {
 					if (flags.showOnPage) getEmptyRenderContainer(project).appendChild(img);
@@ -8760,8 +8781,9 @@ var	action, url;
 //* source: https://stackoverflow.com/a/53841885
 
 				if (++countWithoutPause >= 10) {
-					await pause(1000);
 					countWithoutPause = 0;
+
+					await pause(1000);
 				}
 			}
 		} else
