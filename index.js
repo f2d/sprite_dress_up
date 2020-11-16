@@ -4272,6 +4272,7 @@ async function getProjectViewMenu(project) {
 				} else {
 					clippingLayer = (
 						layer.isPassThrough
+					&&	!layer.isVirtualFolder	//* <- TODO: non-normal blending modes inside
 						? null	//* <- clipping to passthrough is not yet supported here (or in SAI2)
 						: layer
 					);
@@ -4288,6 +4289,7 @@ async function getProjectViewMenu(project) {
 							if (isInsideColorList) {
 								layer.isInsideColorList = true;
 							}
+
 							return true;
 						}
 					}
@@ -4301,6 +4303,9 @@ async function getProjectViewMenu(project) {
 		project.layers = getUnskippedProcessedLayers(project.layers);
 
 		if (options) {
+
+//* Use dummy layers to process default parameters without adding them to the tree:
+
 			for (let sectionName in PARAM_OPTIONS_ADD_BY_DEFAULT) if (!options[sectionName]) {
 				getProcessedLayerInBranch(
 					getLayerWithParamsFromParamList(
@@ -4308,6 +4313,8 @@ async function getProjectViewMenu(project) {
 					)
 				);
 			}
+
+//* Set any undefined batch/layout settings to computed default:
 
 			for (let switchType in SWITCH_NAMES_BY_TYPE) {
 			var	switchParam = getOrInitChild(project, 'switchParamNames')
@@ -5512,7 +5519,6 @@ var	checkVirtualPath = (
 		,	isVisible: true
 		,	blendMode: BLEND_MODE_NORMAL
 		,	opacity: 1
-		,	layers: []
 		};
 
 		subLayer.isClipped = false;
@@ -7282,7 +7288,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 			if (aliases = getPropByNameChain(params, 'copypaste', 'paste')) {
 				layers = (
 					(layers || [])
-					.concat([layer.img])
+					.concat([layer.img])	//* <- TODO: proper copypaste stack; img in array of layers, is it even working?
 					.filter(arrayFilterNonEmptyValues)
 				);
 
@@ -7347,8 +7353,15 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 						!isToRecolor
 					&&	layer.isPassThrough
 					) {
+					var	isPassThroughAndClippingBase = (
+							indexToRender > 0
+						&&	layer.isVirtualFolder
+						&&	layer === layersToRender[indexToRender - 1].clippingLayer
+						);
+
 						if (
 							flipSide
+						||	isPassThroughAndClippingBase
 						||	blendMode !== BLEND_MODE_NORMAL
 						||	opacity != 1
 						||	layer.mask
