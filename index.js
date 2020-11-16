@@ -74,6 +74,7 @@ var	exampleRootDir = ''
 ,	ADD_COUNT_ON_BUTTON_LABEL	= false
 ,	ADD_PAUSE_BEFORE_EACH_FOLDER	= true	//* <- when loading file and rendering
 ,	ADD_PAUSE_BEFORE_EACH_LAYER	= false
+,	ASK_BEFORE_EXIT_IF_OPENED_FILES	= true
 ,	DOWNSCALE_BY_MAX_FACTOR_FIRST	= true
 ,	EXAMPLE_NOTICE			= false
 ,	FILE_NAME_ADD_PARAM_KEY		= true
@@ -4272,7 +4273,7 @@ async function getProjectViewMenu(project) {
 				} else {
 					clippingLayer = (
 						layer.isPassThrough
-					&&	!layer.isVirtualFolder	//* <- TODO: non-normal blending modes inside
+					&&	!layer.isVirtualFolder
 						? null	//* <- clipping to passthrough is not yet supported here (or in SAI2)
 						: layer
 					);
@@ -5513,15 +5514,27 @@ var	checkVirtualPath = (
 		subLayer.name = match[4].replace(regTrimCommaSpace, '');
 		layer = {
 			nameOriginal: layer.nameOriginal
-		,	isClipped: layer.isClipped
 		,	isVirtualFolder: true
-		,	isPassThrough: true
 		,	isVisible: true
-		,	blendMode: BLEND_MODE_NORMAL
 		,	opacity: 1
 		};
 
-		subLayer.isClipped = false;
+		[
+			['blendMode', BLEND_MODE_NORMAL],
+			['isBlendModeTS', false],
+			['isClipped', false],
+		].forEach(
+			([key, defaultValue]) => {
+				if (subLayer[key] !== defaultValue) {
+					layer[key] = subLayer[key];
+					subLayer[key] = defaultValue;
+				} else {
+					layer[key] = defaultValue;
+				}
+			}
+		);
+
+		layer.isPassThrough = (layer.blendMode === BLEND_MODE_NORMAL);
 
 		break;
 	} else {
@@ -8491,7 +8504,10 @@ var	state = !!isWIP;
 function onBeforeUnload(evt) {
 var	evt = eventStop(evt, FLAG_EVENT_STOP_IMMEDIATE);
 
-	if (!TESTING && getOneById('loaded-files-view').firstElementChild) {
+	if (
+		ASK_BEFORE_EXIT_IF_OPENED_FILES
+	&&	getOneById('loaded-files-view').firstElementChild
+	) {
 
 //* Note: given message text won't be used in modern browsers.
 //* source: https://habr.com/ru/post/141793/
