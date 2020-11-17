@@ -1,10 +1,11 @@
+
 'use strict';
 
-//* source file data:
+//* TODO - source file data:
 //* TODO: keep all layer-name parameters single-word if possible.
 //* TODO: whole config in JSON-format?
 
-//* menu:
+//* TODO - menu:
 //* TODO: checkbox (on project selection bar?) to sync all option/export actions in selected project onto all opened projects where possible.
 //* TODO: zoom format in filenames: [x1, x1.00, x100%].
 //* TODO: progress/status panel + [stop operation] button.
@@ -14,7 +15,7 @@
 //* TODO: save opened project as restructured ORA/PSD. Try https://github.com/Agamnentzar/ag-psd
 //* TODO: save rendered image as WebP. https://bugs.chromium.org/p/chromium/issues/detail?id=170565#c77 - toDataURL/toBlob quality 1.0 = lossless.
 
-//* rendering:
+//* TODO - rendering:
 //* TODO: properly check copypaste visibility.
 //* TODO: stop images moving to hidden container when save collage button was clicked.
 //* TODO: fix hiding of clipping group with skipped/invisible/empty base layer.
@@ -29,7 +30,7 @@
 //* TODO: revoke any image blob urls right after image element's loading, without ever tracking/listing them?
 //* TODO: store list of render-changing changable options in each folder, cache merged folder images by changable options combo. Or conversely - only cache merged images of unchangeable folders directly inside changeable folders, possibly even removing cached layer tree substructure from memory (not possible because of planned option to export files later).
 
-//* other:
+//* TODO - other:
 //* TODO: find zoom/scale of the screen/page before regenerating thumbnails.
 //* TODO: consistent UI colors (what blue, yellow, white, etc. means across the whole page).
 //* TODO: global job list for WIP cancelling instead of spaghetti-coded flag checks.
@@ -37,7 +38,6 @@
 //* TODO: split functionality into modules to reuse with drawpad, etc.
 
 //* ---------------------------------------------------------------------------
-
 //* Config: defaults, do not change here, redefine in external config file *---
 
 var	exampleRootDir = ''
@@ -91,7 +91,6 @@ var	exampleRootDir = ''
 	;
 
 //* ---------------------------------------------------------------------------
-
 //* Create type-checking functions, e.g. "isString()" or "isImageElement()":
 //* source: https://stackoverflow.com/a/17772086
 [
@@ -465,14 +464,13 @@ const	LS = window.localStorage || localStorage
 	,	'nameOriginal'
 	,	'sourceData'
 	,	'maskData'
-	]);
+	])
 
 const	RUNNING_FROM_DISK = isURLFromDisk('/')
 ,	CAN_USE_WORKERS = (typeof Worker === 'function' && !RUNNING_FROM_DISK)
 ,	CAN_CAST_TO_ARRAY = (typeof Array.from === 'function')
 // ,	CAN_EXPORT_BLOB = (typeof HTMLCanvasElement.prototype.toBlob === 'function')
 // ,	CAN_EXPORT_WEBP = isImageTypeExportSupported('image/webp')
-	;
 
 //* Config: internal, included scripts and loaders of project files *----------
 
@@ -2404,6 +2402,18 @@ function getFilePromiseFromURL(url, responseType) {
 				var	response = evt.target.response;
 
 					if (response) {
+						if (isFunction(request.getAllResponseHeaders)) {
+							response.headers = request.getAllResponseHeaders();
+						}
+
+						if (isFunction(request.getResponseHeader)) {
+						var	lastModText = request.getResponseHeader('Last-Modified');
+
+							if (lastModText) {
+								response.lastModified = +new Date(lastModText);
+							}
+						}
+
 						resolve(response);
 					} else {
 						getErrorFromEvent(evt, 'Request completed, got empty or no response.', reject);
@@ -2531,9 +2541,9 @@ function dataToBlob(data, trackList) {
 				if (meta.slice(k+1) === 'base64') data = atob(data);
 			}
 		}
-	var	data = Uint8Array.from(Array.prototype.map.call(data, ((v) => v.charCodeAt(0))))
+	var	data = Uint8Array.from(data, (v) => v.charCodeAt(0))
 	,	size = data.length
-	,	url = URL.createObjectURL(new Blob([data], {'type': type}))
+	,	url = URL.createObjectURL(new Blob(data, {'type': type}))
 		;
 
 		if (url) {
@@ -5681,11 +5691,19 @@ var	actionLabel = 'opening with ' + libName;
 
 	try {
 	var	loadingData = project.loading.data
-	,	sourceData = await fileParserFunc(
-			loadingData.url
-			? (loadingData.file = await getFilePromiseFromURL(loadingData.url, 'blob'))
-			: loadingData.file
-		);
+	,	sourceData = null
+		;
+
+		if (
+			!loadingData.file
+		&&	loadingData.url
+		) {
+			loadingData.file = await getFilePromiseFromURL(loadingData.url, 'blob');
+		}
+
+		if (loadingData.file) {
+			sourceData = await fileParserFunc(loadingData.file);
+		}
 	} catch (error) {
 		logError(arguments, error);
 	}
@@ -8728,7 +8746,15 @@ async function loadFromFileList(files, evt) {
 		files
 	&&	files.length > 0
 	) {
-	var	logLabel = 'Load ' + files.length + ' project files: ' + getNestedFilteredArrayJoinedText(files.map((file) => file.name), ', ')
+	var	logLabel = [
+			'Load'
+		,	files.length
+		,	'project files:'
+		,	getNestedFilteredArrayJoinedText(
+				files.map((file) => file.name)
+			,	', '
+			)
+		].join(' ')
 	,	loadedProjectsCount = 0
 		;
 
@@ -8807,16 +8833,19 @@ var	action, url;
 		if (action === 'download_all') {
 		var	countWithoutPause = 0;
 
-			for (let link of getAllByTag('a', filesTable)) if (link.download) {
-				link.click();
+			for (let link of getAllByTag('a', filesTable)) {
+				if (link.download) {
+
+					link.click();
 
 //* Note: Chrome skips downloads if more than 10 in 1 second.
 //* source: https://stackoverflow.com/a/53841885
 
-				if (++countWithoutPause >= 10) {
-					countWithoutPause = 0;
+					if (++countWithoutPause >= 10) {
+						countWithoutPause = 0;
 
-					await pause(1000);
+						await pause(1000);
+					}
 				}
 			}
 		} else
@@ -8827,17 +8856,20 @@ var	action, url;
 		,	urls = []
 			;
 
-			for (let otherButton of getAllByTag('button', filesTable)) if (url = getButtonURL(otherButton)) {
-				addToListIfNotYet(urls, url);
+			for (let otherButton of getAllByTag('button', filesTable)) {
+				if (url = getButtonURL(otherButton)) {
 
-				if (await loadFromButton(otherButton, true)) {
-					++isProjectLoaded;
-				}
+					addToListIfNotYet(urls, url);
 
-				if (isStopRequested) {
-					isStopRequested = false;
+					if (await loadFromButton(otherButton, true)) {
+						++isProjectLoaded;
+					}
 
-					break;
+					if (isStopRequested) {
+						isStopRequested = false;
+
+						break;
+					}
 				}
 			}
 
