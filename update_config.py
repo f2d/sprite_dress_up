@@ -93,11 +93,14 @@ IM_6 = get_first_found_arg_in_cmd(['imagemagick6', 'im6', '6'])
 IM_7 = get_first_found_arg_in_cmd(['imagemagick7', 'im7', '7'])
 IM_UNDEFINED = not (IM_6 or IM_7)
 
-arg_src_root_path    = get_cmd_arg_after_arg(['src', 'src_path', 'src_root_path'])
-arg_dest_file_path   = get_cmd_arg_after_arg(['dest', 'dest_path', 'dest_file_path'])
-arg_resize_filter    = get_cmd_arg_after_arg(['r', 'filter', 'thumb_filter', 'thumbnail_filter', 'resize_filter'])
-arg_thumbnail_size   = get_cmd_arg_after_arg(['s', 'size', 'thumb_size', 'thumbnail_size'], natural_number=True)
-arg_preview_size     = get_cmd_arg_after_arg(['z', 'zoom_size', 'preview_size'], natural_number=True)
+USE_OPTIPNG = get_first_found_arg_in_cmd(['o', 'optipng'])
+USE_LEANIFY = get_first_found_arg_in_cmd(['l', 'leanify'])
+
+arg_src_root_path  = get_cmd_arg_after_arg(['src', 'src_path', 'src_root_path'])
+arg_dest_file_path = get_cmd_arg_after_arg(['dest', 'dest_path', 'dest_file_path'])
+arg_resize_filter  = get_cmd_arg_after_arg(['r', 'filter', 'thumb_filter', 'thumbnail_filter', 'resize_filter'])
+arg_thumbnail_size = get_cmd_arg_after_arg(['s', 'size', 'thumb_size', 'thumbnail_size'], natural_number=True)
+arg_preview_size   = get_cmd_arg_after_arg(['z', 'zoom_size', 'preview_size'], natural_number=True)
 
 
 
@@ -140,7 +143,7 @@ zipped_fullsize_filenames = [
 	'mergedimage.png'
 ]
 
-cmd_get_image_size_args = [
+cmd_args_to_get_image_size = [
 	'identify'
 ,	'-verbose'
 ,	'-format'
@@ -148,7 +151,7 @@ cmd_get_image_size_args = [
 ,	src_file_path_placeholder
 ]
 
-cmd_make_resized_image_args = [
+cmd_args_to_make_resized_image = [
 	'convert'
 ,	src_file_path_placeholder
 ,	'-verbose'
@@ -159,10 +162,24 @@ cmd_make_resized_image_args = [
 ,	'png32:' + temp_resized_file_path
 ]
 
-cmd_get_filters = [
+cmd_args_to_get_filters = [
 	'convert'
 ,	'-list'
 ,	'filter'
+]
+
+cmd_args_to_optimize_image_with_optipng = [
+	'optipng'
+,	'-i'
+,	'0'
+,	'-fix'
+,	src_file_path_placeholder
+]
+
+cmd_args_to_optimize_image_with_leanify = [
+	'leanify'
+,	'-v'
+,	src_file_path_placeholder
 ]
 
 pat_check_image_size = re.compile(r'^(\d+)x(\d+)$', re.U | re.I)
@@ -485,12 +502,12 @@ def get_converter_filters():
 	global converter_filters
 
 	if not converter_filters:
-		for cmd_args in get_image_cmd_versions(cmd_get_filters):
+		for cmd_args in get_image_cmd_versions(cmd_args_to_get_filters):
 			cmd_result = get_cmd_result(cmd_args)
 
 			if cmd_result:
 				a = cmd_result.split('\n')
-				a = map(lambda x: x.strip(), a)
+				a = [line.strip() for line in a]
 				a = filter(None, a)
 				a = sorted(list(set(a)))
 				converter_filters = a
@@ -507,25 +524,24 @@ def get_image_cmd_result(src_file_path, cmd_args, new_size_arg=None, check_thumb
 	src_file_path = get_image_path_for_cmd(src_file_path, check_thumbnail=False)
 
 	# must get list instead of map object, or it will not run in python3:
-	cmd_args_with_src_path = list(map(
-		lambda x: (
-			resize_filter if (not TEST_FILTERS) and (x == filter_placeholder)
-			else new_size_arg if (x == new_size_placeholder)
-			else src_file_path if (x == src_file_path_placeholder)
-			else x
-		)
-	,	cmd_args
-	))
+	cmd_args_with_src_path = [
+		(
+			resize_filter if (not TEST_FILTERS) and (arg == filter_placeholder)
+			else new_size_arg if (arg == new_size_placeholder)
+			else src_file_path if (arg == src_file_path_placeholder)
+			else arg
+		) for arg in cmd_args
+	]
 
 	if filter_placeholder in cmd_args_with_src_path:
 		if not os.path.isdir(new_size_arg):
 			os.makedirs(new_size_arg)
 
 		for filter_name in get_converter_filters():
-			cmd_args_with_filter = list(map(
-				lambda x: (
-					filter_name if (x == filter_placeholder)
-					else x if (x.find(temp_resized_file_path) < 0)
+			cmd_args_with_filter = [
+				(
+					filter_name if (arg == filter_placeholder)
+					else arg if (arg.find(temp_resized_file_path) < 0)
 					else (
 						'_' + src_file_name +
 						'_' + new_size_arg +
@@ -533,17 +549,16 @@ def get_image_cmd_result(src_file_path, cmd_args, new_size_arg=None, check_thumb
 						'.'
 					).join(
 						(
-							(new_size_arg + '/' + x) if (x.find(':') < 0)
+							(new_size_arg + '/' + arg) if (arg.find(':') < 0)
 							else (
 								':' + new_size_arg + '/'
 							).join(
-								x.split(':', 1)
+								arg.split(':', 1)
 							)
 						).rsplit('.', 1)
 					)
-				)
-			,	cmd_args_with_src_path
-			))
+				) for arg in cmd_args_with_src_path
+			]
 
 			get_cmd_result(cmd_args_with_filter)
 
@@ -553,8 +568,12 @@ def get_image_cmd_result(src_file_path, cmd_args, new_size_arg=None, check_thumb
 	return get_cmd_result(cmd_args_with_src_path)
 
 def get_image_size(src_file_path):
-	for cmd_args in get_image_cmd_versions(cmd_get_image_size_args):
-		cmd_result = get_image_cmd_result(src_file_path, cmd_args)
+	for try_cmd_args_to_resize_image in get_image_cmd_versions(cmd_args_to_get_image_size):
+
+		cmd_result = get_image_cmd_result(
+			src_file_path
+		,	try_cmd_args_to_resize_image
+		)
 
 		image_size = cmd_result.strip().lower()
 
@@ -569,12 +588,39 @@ def get_resized_image_as_base64(src_file_path, new_size_arg=None):
 	if not new_size_arg:
 		new_size_arg = thumbnail_size_arg
 
-	for cmd_args in get_image_cmd_versions(cmd_make_resized_image_args):
+	for try_cmd_args_to_resize_image in get_image_cmd_versions(cmd_args_to_make_resized_image):
+
 		temp_file_path = remove_temp_file(temp_resized_file_path)
 
-		cmd_result = get_image_cmd_result(src_file_path, cmd_args, new_size_arg=new_size_arg, check_thumbnail=True)
+		cmd_result = get_image_cmd_result(
+			src_file_path
+		,	try_cmd_args_to_resize_image
+		,	new_size_arg=new_size_arg
+		,	check_thumbnail=True
+		)
 
 		if os.path.isfile(temp_file_path):
+			optimizer_commands = []
+
+			if USE_OPTIPNG:
+				optimizer_commands.append(cmd_args_to_optimize_image_with_optipng)
+
+			if USE_LEANIFY:
+				optimizer_commands.append(cmd_args_to_optimize_image_with_leanify)
+
+			for try_cmd_args_to_optimize_image in optimizer_commands:
+				cmd_result = get_cmd_result(
+					[
+						(
+							temp_file_path
+							if arg == src_file_path_placeholder
+							else arg
+						) for arg in try_cmd_args_to_optimize_image
+					]
+					if src_file_path_placeholder in try_cmd_args_to_optimize_image
+					else (try_cmd_args_to_optimize_image + [temp_file_path])
+				)
+
 			raw_content = read_file(temp_file_path, mode='r+b')
 
 			base64_content = (

@@ -80,6 +80,14 @@ This script can be used manually on the server side to quickly update the table 
 `-7`
 — use ImageMagick version 7.x command format, such as `magick convert <args>`. If no version is given, script will try them all, starting with later.
 
+`-optipng` or
+`-o`
+— use OptiPNG command with `-fix` argument on each image after resize.
+
+`-leanify` or
+`-l`
+— use Leanify command on each image after resize. If OptiPNG if also used, it is called first to fix and prevent possible Leanify errors.
+
 
 
 #### Command line example:
