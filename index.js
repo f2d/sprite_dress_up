@@ -29,6 +29,7 @@
 //* TODO: revoke collage blob urls when cleaning view container?
 //* TODO: revoke any image blob urls right after image element's loading, without ever tracking/listing them?
 //* TODO: store list of render-changing changable options in each folder, cache merged folder images by changable options combo. Or conversely - only cache merged images of unchangeable folders directly inside changeable folders, possibly even removing cached layer tree substructure from memory (not possible because of planned option to export files later).
+//* TODO: lazy-load layer/mask images only when needed; source file object will not get garbage-collected until all usable images are loaded.
 
 //* TODO - other:
 //* TODO: find zoom/scale of the screen/page before regenerating thumbnails.
@@ -464,6 +465,7 @@ const	LS = window.localStorage || localStorage
 	,	'nameOriginal'
 	,	'sourceData'
 	,	'maskData'
+	,	'imgData'
 	])
 
 const	RUNNING_FROM_DISK = isURLFromDisk('/')
@@ -3484,62 +3486,98 @@ var	img  = UPNG.decode(arrayBuffer)
 
 async function thisToPng(targetLayer) {
 
-	async function thisToPngTryOne(e) {
+	async function thisToPngTryOne(node) {
 
-		if (isImageElement(e)) {
-			return e;
+		function getAndCountLoadedImage(node) {
+			++project.imagesLoadedCount;
+
+			return node.image || node.img || node;
 		}
 
+		function isNonRecursiveFunction(func) {
+			return (
+				func
+			&&	isFunction(func)
+			&&	(
+					func !== thisToPng
+				||	node !== target
+				)
+			);
+		}
+
+	var	data, canvas, result;
+
+		if (!node) {
+			return null;
+		}
+
+	const	imgNode = node.image || node.img || node;
+
+		if (isImageElement(imgNode)) {
+			return imgNode;
+		}
+
+		for (let imgOrNode of [imgNode, node])
 		if (
-			e.loadImage
-		&&	isFunction(e.loadImage)
+			isNonRecursiveFunction(imgOrNode.toPng)
+		&&	(result = await imgOrNode.toPng())
 		) {
-			return new Promise(
-				(resolve, reject) => e.loadImage(resolve, reject)
-			).catch(catchPromiseError);
+			return getAndCountLoadedImage(result);
 		}
 
 		if (
-			e.toPng
-		&&	isFunction(e.toPng)
+			isNonRecursiveFunction(node.loadImage)
 		&&	(
-				e.toPng !== thisToPng
-			||	t !== e
-			)	//* <- to avoid infinite recursion
-		&&	(e = await e.toPng())
+				result = await new Promise(
+					(resolve, reject) => node.loadImage(resolve, reject)
+				).catch(catchPromiseError)
+			)
 		) {
-			return e;
+			return getAndCountLoadedImage(result);
 		}
+
+		if (
+			(data = node.imgData || node.maskData)
+		&&	(
+				canvas = getCanvasFromByteArray(
+					data.data || data
+				,	data.width || target.width || imgNode.width || node.width
+				,	data.height || target.height || imgNode.height || node.height
+				)
+			)
+		&&	(result = await getImagePromiseFromCanvasToBlob(canvas, project))
+		) {
+			return getAndCountLoadedImage(result);
+		}
+
+		return null;
 	}
 
-	async function thisToPngTryEach() {
-		for (let i in arguments) {
-		var	e;
+	async function thisToPngTryEach(...nodes) {
+	var	result;
 
-			if (
-				(e = arguments[i])
-			&&	(e = e.image || e.img || e)
-			&&	(e = await thisToPngTryOne(e))
-			) {
-				return e.image || e.img || e;
-			}
+		for (let node of nodes) if (result = await thisToPngTryOne(node)) {
+			break;
 		}
+
+		return result;
 	}
 
 	try {
-	var	t = targetLayer || this
-	,	e = t.sourceData || t
-	,	e = await thisToPngTryEach(
-			e.prerendered
-		,	e.thumbnail
-		,	e
+	var	project = this
+	,	target = targetLayer || project
+	,	node = target.sourceData || target
+	,	result = await thisToPngTryEach(
+			node.prerendered
+		,	node.thumbnail
+		,	node
 		);
 
-		return e;
+		return result;
 
 	} catch (error) {
-		if (t = targetLayer) {
-			logTime('cannot get layer image: ' + getLayerPathText(t));
+		if (target = targetLayer) {
+			logTime('cannot get layer image: ' + getLayerPathText(target));
 		} else {
 			logError(arguments, error, this);
 		}
@@ -4247,11 +4285,13 @@ async function getProjectViewMenu(project) {
 				layer.opacity > 0
 			&&	(
 					params.color_code
+				||	layer.imgData
 				||	layer.loadImage
 				||	(
 						layer.mask
 					&&	(
-							layer.mask.maskData
+							layer.mask.imgData
+						||	layer.mask.maskData
 						||	layer.mask.loadImage
 						)
 					)
@@ -4467,31 +4507,16 @@ async function getProjectViewMenu(project) {
 	function getLayerMaskLoadPromise(mask, project) {
 		return new Promise(
 			(resolve, reject) => {
+			var	imagePromise;
+
 				if (mask) {
-					if (mask.maskData) {
-					var	canvas = getCanvasFromByteArray(
-							mask.maskData
-						,	mask.width
-						,	mask.height
-						)
-					,	imagePromise = getImagePromiseFromCanvasToBlob(canvas, project)
-						;
-					} else
-					if (mask.loadImage) {
-						imagePromise = new Promise(
-							(resolve, reject) => mask.loadImage(resolve, reject)
-						).catch(catchPromiseError);
-					} else {
-						imagePromise = project.toPng(mask);
-					}
+					imagePromise = project.toPng(mask);
 				}
 
 				if (imagePromise) {
 					imagePromise.then(
 						(img) => {
 							if (img) {
-								++project.imagesLoadedCount;
-
 								resolve(mask.img = img);
 							} else {
 								resolve(false);
@@ -5826,7 +5851,9 @@ async function loadORA(project) {
 				,	opacity: orzFloat(layer.opacity)
 				};
 
-				setImageLoadOrCountIfLoaded(layer, layerWIP);
+				if (!isLayerFolder) {
+					setImageLoadOrCountIfLoaded(layer, layerWIP);
+				}
 
 //* Note: layer masks also may be emulated via compositing modes in ORA
 
