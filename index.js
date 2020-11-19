@@ -627,8 +627,8 @@ function isNonNullObject(value) {
 }
 
 function isURLFromDisk(url) {
-var	match = String(url).match(/^(\w+):(\/\/|$)/)
-,	protocol = (
+const	match = String(url).match(/^(\w+):(\/\/|$)/);
+const	protocol = (
 		(
 			match
 			? match[1]
@@ -643,7 +643,7 @@ var	match = String(url).match(/^(\w+):(\/\/|$)/)
 
 //* source: https://stackoverflow.com/a/55896125
 function isImageTypeExportSupported(type) {
-var	canvas = cre('canvas');
+const	canvas = cre('canvas');
 	canvas.width = 1;
 	canvas.height = 1;
 
@@ -676,7 +676,7 @@ function getCrossProductArray() {
 	return Array.prototype.reduce.call(
 		arguments
 	,	(a, b) => {
-		var	result = [];
+		const	result = [];
 
 			a.forEach(
 				(a) => b.forEach(
@@ -701,10 +701,11 @@ const getCrossProductArr = (a, b, ...c) => (b ? getCrossProductArr(getCrossProdu
 //*	var combo = combos.item(123);
 //*	var count = combos.length;
 function CrossProductIterator() {
+const	dimensions = [];
+let	totalCount = 1;
+
 	for (
-	var	dimensions = []
-	,	totalCount = 1
-	,	subCount
+	let	subCount = 0
 	,	argIndex = arguments.length;
 		argIndex--;
 		totalCount *= subCount
@@ -718,9 +719,10 @@ function CrossProductIterator() {
 	this.length = totalCount;
 
 	this.item = (comboIndex) => {
+	const	combo = [];
+
 		for (
-		var	combo = []
-		,	argIndex = arguments.length;
+		let	argIndex = arguments.length;
 			argIndex--;
 		) {
 			combo[argIndex] = arguments[argIndex][(comboIndex / dimensions[argIndex][0] << 0) % dimensions[argIndex][1]];
@@ -737,9 +739,8 @@ function CrossProductIterator() {
 function forEachSetInCrossProduct(arrays, callback, thisContext) {
 
 	function dive(arrayIndex) {
-	var	variants = arrays[arrayIndex]
-	,	count = counts[arrayIndex]
-		;
+	const	variants = arrays[arrayIndex];
+	const	count = counts[arrayIndex];
 
 		if (arrayIndex === lastArrayIndex) {
 			for (let i = 0; i < count; ++i) {
@@ -760,10 +761,9 @@ function forEachSetInCrossProduct(arrays, callback, thisContext) {
 		thisContext = this;
 	}
 
-var	lastArrayIndex = arrays.length - 1
-,	variantSet = []
-,	counts = []
-	;
+const	lastArrayIndex = arrays.length - 1;
+const	variantSet = [];
+const	counts = [];
 
 	for (let i = arrays.length; i--; ) {
 		counts[i] = arrays[i].length;
@@ -785,7 +785,7 @@ function getFlatArray(array, maxDepth) {
 		maxDepth = Infinity;
 	}
 
-var	flatArray = [];
+const	flatArray = [];
 
 	Array.from(array).forEach(
 		(value) => {
@@ -902,7 +902,7 @@ function addRangeToList(values, newValuesText) {
 	.split(regCommaSpace)
 	.forEach(
 		(rangeText) => {
-		var	range = (
+		const	range = (
 				String(rangeText)
 				.split(regMultiDot)
 				.map((textPart) => textPart.replace(regTrimNaNorSign, ''))
@@ -911,10 +911,9 @@ function addRangeToList(values, newValuesText) {
 			);
 
 			if (range.length > 0) {
-			var	min = Math.min(...range)
-			,	max = Math.max(...range)
-			,	isCountDown = range.indexOf(min) > range.indexOf(max)
-				;
+			const	min = Math.min(...range);
+			const	max = Math.max(...range);
+			const	isCountDown = range.indexOf(min) > range.indexOf(max);
 
 				if (
 					!values
@@ -949,29 +948,23 @@ function getRangeValuesFromText(rangeText) {
 }
 
 function getThisOrAnyNonEmptyItem(value, index, values) {
-var	foundValue;
-
 	if (value) {
 		return value;
 	}
 
-	if (
-		(isNumber(index) || isString(index))
-	&&	(foundValue = value[index])
-	) {
-		return foundValue;
-	}
+let	foundValue = undefined;
 
 	if (
-		isFunction(values.find)
-	&&	(foundValue = values.find((value) => !!value))
-	) {
-		return foundValue;
-	}
-
-	if (
-		isFunction(index.find)
-	&&	(foundValue = index.find((value) => !!value))
+		(
+			(isNumber(index) || isString(index))
+		&&	(foundValue = value[index])
+		) || (
+			isFunction(values.find)
+		&&	(foundValue = values.find((value) => !!value))
+		) || (
+			isFunction(index.find)
+		&&	(foundValue = index.find((value) => !!value))
+		)
 	) {
 		return foundValue;
 	}
@@ -1017,7 +1010,7 @@ function getNestedArrayJoinedText(value, flags, ...joinTexts) {
 		joinTexts = [''];
 	}
 
-var	wrapText = {
+const	wrapText = {
 		'prefix': '',
 		'suffix': '',
 	};
@@ -1029,7 +1022,7 @@ var	wrapText = {
 	}
 
 	if (isArray(value)) {
-	var	joinText = (
+	const	joinText = (
 			joinTexts.length > 1
 			? joinTexts.shift()
 			: joinTexts[0]
@@ -1060,7 +1053,7 @@ function getLocalizedKeyOrNull(key) {
 		return key;
 	}
 
-var	lowKey = key.toLowerCase();
+const	lowKey = key.toLowerCase();
 
 	if (lowKey in LOCALIZATION_TEXT) {
 		return lowKey;
@@ -1076,7 +1069,7 @@ function getLocalizedKeyByCount(key, ...args) {
 		(args.length > 0)
 	&&	isFunction(getLocalizedCaseByCount)
 	) {
-	var	finalCount = (
+	const	finalCount = (
 			LOCALIZED_CASE_BY_CROSS_COUNT
 			? args.reduce(
 				(result, arg) => (
@@ -1100,10 +1093,10 @@ function getLocalizedKeyByCount(key, ...args) {
 				)
 			,	0
 			)
-		)
-	,	keyCase = getLocalizedCaseByCount(finalCount)
-	,	keyByCase = getLocalizedKeyOrNull(key + '_' + keyCase)
-		;
+		);
+
+	const	keyCase = getLocalizedCaseByCount(finalCount);
+	const	keyByCase = getLocalizedKeyOrNull(key + '_' + keyCase);
 
 		if (keyByCase !== null) {
 			return keyByCase;
@@ -1114,8 +1107,8 @@ function getLocalizedKeyByCount(key, ...args) {
 }
 
 function getLocalizedOrDefaultText(key, defaultText, ...replacements) {
-var	foundKey = getLocalizedKeyByCount(key, ...replacements)
-,	text = getJoinedOrEmptyText(
+const	foundKey = getLocalizedKeyByCount(key, ...replacements);
+let	text = getJoinedOrEmptyText(
 		foundKey !== null
 		? LOCALIZATION_TEXT[foundKey]
 		: (
@@ -1200,8 +1193,11 @@ function eventStop(evt, flags) {
 		if (evt.cancelBubble !== null) evt.cancelBubble = true;
 		if (evt.stopPropagation) evt.stopPropagation();
 
-		for (let key in flags) {
-			if (flags[key] && isFunction(evt[key])) evt[key]();
+		for (let key in flags) if (
+			flags[key]
+		&&	isFunction(evt[key])
+		) {
+			evt[key]();
 		}
 	}
 
@@ -1215,10 +1211,12 @@ function catchPromiseError() {
 }
 
 function getErrorFromEvent(evt, message, callback) {
-var	error = new Error(message || 'Unknown error');
+const	error = new Error(message || 'Unknown error');
 	error.event = evt;
 
-	if (isFunction(callback)) callback(error);
+	if (isFunction(callback)) {
+		callback(error);
+	}
 
 	return error;
 }
@@ -1235,9 +1233,9 @@ function getRGBAFromHex(text) {
 
 //* extend shortcut notation:
 
-var	text = String(text).replace(regNonHex, '')
-,	charsNum = text.length
-	;
+	text = String(text).replace(regNonHex, '');
+
+const	charsNum = text.length;
 
 	if (charsNum === 1) text = repeatText(text, 6); else	//* #1 -> #111111
 	if (charsNum === 2) text = repeatText(text, 3); else	//* #12 -> #121212
@@ -1252,10 +1250,10 @@ var	text = String(text).replace(regNonHex, '')
 
 //* parse string into array of up to 4 numbers, taking up to 2 chars from left at each step:
 
-var	rgba = [0,0,0,255];
+const	rgba = [0,0,0,255];
 
 	for (let index = 0; index < rgba.length && text.length > 0; index++) {
-		charsNum = Math.min(2, text.length);
+	const	charsNum = Math.min(2, text.length);
 		rgba[index] = parseInt(text.substr(0, charsNum), 16);
 		text = text.substr(charsNum);
 	}
@@ -1264,7 +1262,7 @@ var	rgba = [0,0,0,255];
 }
 
 function getRGBAFromColorCodeMatch(match) {
-var	rgba = [0,0,0,255];
+const	rgba = [0,0,0,255];
 
 //* split RGB(A):
 
@@ -1296,7 +1294,7 @@ var	rgba = [0,0,0,255];
 }
 
 function getRGBAFromColorCodeText(color) {
-var	match = String(color).match(regColorCode);
+const	match = String(color).match(regColorCode);
 
 	if (match) {
 		return getRGBAFromColorCodeMatch(match);
@@ -1304,7 +1302,7 @@ var	match = String(color).match(regColorCode);
 }
 
 function getRGBAFromColorCodeOrName(color, maxCount) {
-var	rgba = getRGBAFromColorCodeText(color);
+let	rgba = getRGBAFromColorCodeText(color);
 
 	if (rgba) {
 		return rgba;
@@ -1312,16 +1310,16 @@ var	rgba = getRGBAFromColorCodeText(color);
 
 //* ask browser built-in API what a color word means:
 
-var	canvas = cre('canvas')
-,	ctx = canvas.getContext('2d')
-,	normalizedColorText = getNormalizedColorText(color)
-,	rgbaFromCanvas
-	;
+const	canvas = cre('canvas');
+const	ctx = canvas.getContext('2d');
+const	normalizedColorText = getNormalizedColorText(color);
 
 	canvas.width = 1;
 	canvas.height = 1;
 	ctx.fillStyle = 'transparent';
 	ctx.fillStyle = normalizedColorText;
+
+let	rgbaFromCanvas;
 
 	if (
 		normalizedColorText === 'transparent'
@@ -1360,7 +1358,7 @@ function getRGBAFromColorCodeOrArray(color, maxCount) {
 }
 
 function isColorDark(color) {
-var	[r, g, b] = getRGBAFromColorCodeOrArray(color, 3);
+const	[r, g, b] = getRGBAFromColorCodeOrArray(color, 3);
 
 //* sources:
 //* https://awik.io/determine-color-bright-dark-using-javascript/
@@ -1377,7 +1375,7 @@ function isColorTransparent(color) {
 		return true;
 	}
 
-var	rgba = getRGBAFromColorCodeOrArray(color);
+const	rgba = getRGBAFromColorCodeOrArray(color);
 
 	return (
 		rgba
@@ -1411,7 +1409,7 @@ function getColorTextFromArray(rgba, maxCount) {
 	&&	rgba.slice
 	&&	!isString(rgba)
 	) {
-	var	rgba = rgba.slice(0, orzClamp(maxCount || 4, 1,4)).map(
+		rgba = rgba.slice(0, orzClamp(maxCount || 4, 1,4)).map(
 			(channelValue, index) => (
 				index === 3
 				? getNormalizedOpacity(channelValue).toFixed(3)
@@ -1459,22 +1457,21 @@ const	allKeys = [];
 function getOrInitChild(obj, key, ...args) {
 
 	function getInitChild(args) {
-	var	constructor = args.find(isFunction) || Object
-	,	keys = args.filter(isString)
-		;
+	const	constructor = args.find(isFunction) || Object;
+	const	keys = args.filter(isString);
 
 		if (keys.length > 0) {
-		var	child = {};
+		const	child = {};
 
 			while (keys.length > 0) {
-			var	key = keys.shift();
+			const	key = keys.shift();
 				child[key] = new constructor();
 			}
-		} else {
-			child = new constructor();
-		}
 
-		return child;
+			return child;
+		} else {
+			return new constructor();
+		}
 	}
 
 	if (!isNonNullObject(obj)) {
@@ -1501,7 +1498,7 @@ function getPropFromAnySource(key, ...sources) {
 
 function getPropByNameChain(obj, ...keys) {
 	while (keys.length > 0) {
-	var	key = keys.shift();
+	const	key = keys.shift();
 
 		if (
 			typeof key === 'undefined'
@@ -1556,7 +1553,8 @@ function cleanupObjectTree(obj, childKeys, keysToRemove) {
 
 		Array.from(childKeys).forEach(
 			(key) => {
-			var	child = obj[key];
+			const	child = obj[key];
+
 				if (child) {
 					if (child.forEach) {
 						child.forEach((child) => cleanupObjectTree(child, childKeys, keysToRemove));
@@ -1573,9 +1571,8 @@ function cleanupObjectTree(obj, childKeys, keysToRemove) {
 
 //* source: https://gist.github.com/wellcaffeinated/5399067#gistcomment-1364265
 function nextValidHeapSize(realSize) {
-var	SIZE_64_KB = 65536	// 0x10000
-,	SIZE_64_MB = 67108864	// 0x4000000
-	;
+const	SIZE_64_KB = 65536;	// 0x10000
+const	SIZE_64_MB = 67108864;	// 0x4000000
 
 	if (realSize <= SIZE_64_KB) {
 		return SIZE_64_KB;
@@ -1593,7 +1590,7 @@ function getElementsArray(by, text, parent) {
 	}
 
 	try {
-	var	results = (
+	const	results = (
 			isFunction(parent[by])
 			? parent[by](text)
 			: parent.querySelectorAll(QUERY_SELECTOR[by].join(text))
@@ -1619,7 +1616,7 @@ function getAllById	(text, parent) {return getElementsArray('getElementsById', t
 function getOneById	(text) {return document.getElementById(text);}
 
 function cre(tagName, parent, before) {
-var	element = document.createElement(tagName);
+const	element = document.createElement(tagName);
 
 	if (parent) {
 		if (before) {
@@ -1641,7 +1638,8 @@ function del(element) {
 		return element.map(del);
 	}
 
-var	parent = element.parentNode;
+const	parent = element.parentNode;
+
 	if (parent) {
 		parent.removeChild(element);
 
@@ -1690,7 +1688,7 @@ function dashedToCamelCase(text) {
 }
 
 function getStyleValue(element, prop) {
-var	helperObject;
+let	helperObject;
 
 	if (helperObject = element.currentStyle) {
 		return helperObject[dashedToCamelCase(prop)];
@@ -1704,11 +1702,17 @@ var	helperObject;
 }
 
 function toggleClass(element, className, keep) {
-	if (!className || !element) return;
+	if (!className || !element) {
+		return;
+	}
+
+	keep = orz(keep);
 
 //* modern way:
 
-	if (classNames = element.classList) {
+const	classNames = element.classList;
+
+	if (classNames) {
 		if (keep > 0) {
 			classNames.add(className);
 		} else
@@ -1719,32 +1723,31 @@ function toggleClass(element, className, keep) {
 		}
 
 		return classNames.contains(className);
-	}
+	} else {
 
 //* legacy way:
 
-var	keep = orz(keep)
-,	oldText = element.className || element.getAttribute('className') || ''
-,	classNames = oldText.split(regSpace).filter(arrayFilterNonEmptyValues)
-,	index = classNames.indexOf(className)
-	;
+	const	oldText = element.className || element.getAttribute('className') || '';
+	const	classNames = oldText.split(regSpace).filter(arrayFilterNonEmptyValues);
+	const	index = classNames.indexOf(className);
 
-	if (index < 0) {
-		if (keep >= 0) classNames.push(className);
-	} else {
-		if (keep <= 0) classNames.splice(index, 1);
+		if (index < 0) {
+			if (keep >= 0) classNames.push(className);
+		} else {
+			if (keep <= 0) classNames.splice(index, 1);
+		}
+
+		if (classNames.length > 0) {
+		const	newText = classNames.join(' ');
+			if (oldText !== newText) element.className = newText;
+		} else
+		if (oldText) {
+			element.className = '';
+			element.removeAttribute('className');
+		}
+
+		return classNames.includes(className);
 	}
-
-	if (classNames.length > 0) {
-	var	newText = classNames.join(' ');
-		if (oldText !== newText) element.className = newText;
-	} else
-	if (oldText) {
-		element.className = '';
-		element.removeAttribute('className');
-	}
-
-	return classNames.includes(className);
 }
 
 function getChildByAttr(element, attrName, attrValue) {
@@ -1761,7 +1764,7 @@ function getChildByAttr(element, attrName, attrValue) {
 }
 
 function getPreviousSiblingByClass(element, className) {
-var	regClassName = getClassReg(className);
+const	regClassName = getClassReg(className);
 
 	while (element && (element = element.previousElementSibling)) {
 		if (element.className && regClassName.test(element.className)) {
@@ -1773,7 +1776,7 @@ var	regClassName = getClassReg(className);
 }
 
 function getNextSiblingByClass(element, className) {
-var	regClassName = getClassReg(className);
+const	regClassName = getClassReg(className);
 
 	while (element && (element = element.nextElementSibling)) {
 		if (element.className && regClassName.test(element.className)) {
@@ -1785,7 +1788,7 @@ var	regClassName = getClassReg(className);
 }
 
 function getThisOrParentByClass(element, className) {
-var	regClassName = getClassReg(className);
+const	regClassName = getClassReg(className);
 
 	while (element) {
 		if (element.className && regClassName.test(element.className)) {
@@ -1843,10 +1846,10 @@ function getTagAttrIfNotEmpty(name, values, delim) {
 }
 
 function getTableRowHTML(cells, tagName) {
-var	tagName = String(tagName || '') || 'td'
-,	openTag = '<' + tagName + '>'
-,	closeTag = '</' + tagName + '>'
-	;
+	tagName = String(tagName || '') || 'td';
+
+const	openTag = '<' + tagName + '>';
+const	closeTag = '</' + tagName + '>';
 
 	return (
 		openTag
@@ -1874,11 +1877,11 @@ function getDropdownMenuHTML(headContent, listContent, headId, tagName) {
 		[headContent, listContent, headId, tagName] = arguments[0];
 	}
 
-var	tagName = tagName || 'div'
-,	openTag = '<' + tagName + ' class="'
-,	closeTag = '</' + tagName + '>'
-,	headContent = String(headContent)
-	;
+	tagName = String(tagName || '') || 'div';
+	headContent = String(headContent);
+
+const	openTag = '<' + tagName + ' class="';
+const	closeTag = '</' + tagName + '>';
 
 	return(
 		openTag + 'menu-head"'
@@ -1909,7 +1912,7 @@ var	tagName = tagName || 'div'
 function closeAllDropdownMenuTabs(element) {
 	getAllByClass('menu-head', getThisOrParentByClass(element, regClassMenuBar)).forEach(
 		(tabContainer) => {
-		var	header = getAllByTag('header', tabContainer)[0];
+		const	header = getAllByTag('header', tabContainer)[0];
 
 			if (header && header !== element) {
 				toggleClass(header, 'show', -1);
@@ -1927,49 +1930,52 @@ function toggleDropdownMenu(element) {
 
 function toggleSection(element, action) {
 
-	function toggleSectionClass(header, element) {
-	var	wasOpen = regClassShow.test(header.className);
 
-		toggleClass(header,  'show',   isActionOpen ?  1 : isActionClose ? -1 : 0);
-		toggleClass(element, 'hidden', isActionOpen ? -1 : isActionClose ?  1 : 0);
-
-	var	justOpened = !wasOpen && regClassShow.test(header.className);
-
-		if (
-			isActionAll
-			? justOpened
-			: (isActionOpen || justOpened)
-		) {
-			toggleClass(element, 'open-up', 1);
-
-			setTimeout(() => toggleClass(element, 'open-up', -1), 300);
-		}
-	}
-
-	function toggleAllSections(element) {
-		while (element) {
-			if (header) {
-				toggleSectionClass(header, element);
-
-				++toggledCount;
-			}
-
-		var	header = (element.tagName === tagName ? element : null);
-
-			element = element.nextElementSibling;
-		}
-	}
-
-var	header = getThisOrParentByTagName(element, 'header');
+const	header = getThisOrParentByTagName(element, 'header');
 
 	if (header) {
-	var	actionWords = (action || element.name || '').split('_')
-	,	isActionAll = actionWords.includes('all')
-	,	isActionOpen = actionWords.includes('open')
-	,	isActionClose = actionWords.includes('close')
-	,	tagName = header.tagName
-	,	toggledCount = 0
-		;
+
+		function toggleSectionClass(header, element) {
+		const	wasOpen = regClassShow.test(header.className);
+
+			toggleClass(header,  'show',   isActionOpen ?  1 : isActionClose ? -1 : 0);
+			toggleClass(element, 'hidden', isActionOpen ? -1 : isActionClose ?  1 : 0);
+
+		const	justOpened = !wasOpen && regClassShow.test(header.className);
+
+			if (
+				isActionAll
+				? justOpened
+				: (isActionOpen || justOpened)
+			) {
+				toggleClass(element, 'open-up', 1);
+
+				setTimeout(() => toggleClass(element, 'open-up', -1), 300);
+			}
+		}
+
+		function toggleAllSections(element) {
+		let	header = null;
+
+			while (element) {
+				if (header) {
+					toggleSectionClass(header, element);
+
+					++toggledCount;
+				}
+
+				header = (element.tagName === tagName ? element : null);
+				element = element.nextElementSibling;
+			}
+		}
+
+	const	actionWords = (action || element.name || '').split('_');
+	const	isActionAll = actionWords.includes('all');
+	const	isActionOpen = actionWords.includes('open');
+	const	isActionClose = actionWords.includes('close');
+	const	tagName = header.tagName;
+
+	let	toggledCount = 0;
 
 		if (isActionAll) {
 			getAllByTag('section', header.parentNode).forEach(
@@ -1988,23 +1994,24 @@ var	header = getThisOrParentByTagName(element, 'header');
 }
 
 function showHelpSection(sectionName, source) {
-var	header = getOneById('top-menu-' + sectionName);
+const	header = getOneById('top-menu-' + sectionName);
 
 	if (header) {
 		toggleSection(header, 'open');
 
 		if (source) {
-		var	sourceElement = (isString(source) ? getOneById('top-menu-' + source) : source)
-		,	fromSection = getThisOrParentByTagName(sourceElement, 'section')
-		,	toSection = getThisOrParentByTagName(header, 'section')
-		,	alignWithTop = true
-			;
+		const	sourceElement = (isString(source) ? getOneById('top-menu-' + source) : source);
+		const	fromSection = getThisOrParentByTagName(sourceElement, 'section');
+		const	toSection = getThisOrParentByTagName(header, 'section');
+
+		let	alignWithTop = true;
 
 			while (fromSection && toSection) {
 				fromSection = fromSection.nextElementSibling;
 
 				if (fromSection === toSection) {
 					alignWithTop = false;
+
 					break;
 				}
 			}
@@ -2017,7 +2024,7 @@ var	header = getOneById('top-menu-' + sectionName);
 }
 
 function toggleTextSize() {
-var	isBigTextEnabled = toggleClass(document.body, 'larger-text');
+const	isBigTextEnabled = toggleClass(document.body, 'larger-text');
 
 	updateDropdownMenuPositions();
 
@@ -2027,9 +2034,8 @@ var	isBigTextEnabled = toggleClass(document.body, 'larger-text');
 }
 
 function getOffsetXY(element) {
-var	x = 0
-,	y = 0
-	;
+let	x = 0;
+let	y = 0;
 
 	while (element) {
 		x += element.offsetLeft;
@@ -2041,21 +2047,22 @@ var	x = 0
 }
 
 function putInView(element, x,y, changeOnlyX, changeOnlyY) {
-var	parentOffsetX = 0
-,	parentOffsetY = 0
-,	viewport = window.visualViewport
-,	positionType = getStyleValue(element, 'position')
-,	isPositionFixed = (positionType === 'fixed')
-	;
+
+const	viewport = window.visualViewport;
+const	positionType = getStyleValue(element, 'position');
+const	isPositionFixed = (positionType === 'fixed');
+
+let	parentOffsetX = 0;
+let	parentOffsetY = 0;
 
 	if (positionType === 'absolute') {
-	var	offset = getOffsetXY(element.offsetParent);
+	let	offset = getOffsetXY(element.offsetParent);
 		parentOffsetX = offset.x;
 		parentOffsetY = offset.y;
 	}
 
 	if (isNaN(x)) {
-	var	offset = getOffsetXY(element);
+	let	offset = getOffsetXY(element);
 		x = offset.x;
 		y = offset.y;
 	} else {
@@ -2064,9 +2071,8 @@ var	parentOffsetX = 0
 	}
 
 	if (!changeOnlyY) {
-	var	xMin = orz(isPositionFixed ? (document.body.scrollLeft || document.documentElement.scrollLeft) : 0)
-	,	xMax = xMin + (viewport ? viewport.width : window.innerWidth) - element.offsetWidth
-		;
+	let	xMin = orz(isPositionFixed ? (document.body.scrollLeft || document.documentElement.scrollLeft) : 0);
+	let	xMax = xMin + (viewport ? viewport.width : window.innerWidth) - element.offsetWidth;
 
 		if (x > xMax) x = xMax;
 		if (x < xMin) x = xMin;
@@ -2075,9 +2081,8 @@ var	parentOffsetX = 0
 	}
 
 	if (!changeOnlyX) {
-	var	yMin = orz(isPositionFixed ? (document.body.scrollTop || document.documentElement.scrollTop) : 0)
-	,	yMax = yMin + (viewport ? viewport.height : window.innerHeight) - element.offsetHeight
-		;
+	let	yMin = orz(isPositionFixed ? (document.body.scrollTop || document.documentElement.scrollTop) : 0);
+	let	yMax = yMin + (viewport ? viewport.height : window.innerHeight) - element.offsetHeight;
 
 		if (y > yMax) y = yMax;
 		if (y < yMin) y = yMin;
@@ -2089,18 +2094,18 @@ var	parentOffsetX = 0
 }
 
 function getNumbersArray(data, maxCount, splitBy, transformFunction) {
-	if (isSlicableNotString(data)) {
-	var	values = Array.from(
+const	values = (
+		isSlicableNotString(data)
+		? Array.from(
 			data
 			.slice(0, orz(maxCount) || Infinity)
-		);
-	} else {
-		values = (
+		)
+		: (
 			String(data)
 			.split(splitBy || regNaN, orz(maxCount) || -1)
 			.filter(isNotEmptyString)
-		);
-	}
+		)
+	);
 
 	return (
 		values
@@ -2115,9 +2120,18 @@ function getUniqueNumbersArray() {
 	);
 }
 
+function getFileBaseName(name) {
+const	index = name.lastIndexOf('.');
+
+	return (
+		index > 0
+		? name.substr(0, index)
+		: name
+	);
+}
+
 function getFileExt(name) {return name.split(/\./g).pop().toLowerCase();}
 function getFileName(path) {return path.split(/\//g).pop();}
-function getFileBaseName(name) {var index = name.lastIndexOf('.'); return (index > 0 ? name.substr(0, index) : name);}
 function getFilePathFromUrl(url) {return url.split(/\#/g).shift().split(/\?/g).shift();}
 function getFormattedFileNamePart(name) {return (name ? '[' + name + ']' : '');}
 
@@ -2134,7 +2148,7 @@ function getFormattedFileSize(shortened, bytes, bytesNumber) {
 }
 
 function leftPadNum(numValue, padToLength, paddingText) {
-var	text = String(orz(numValue));
+let	text = String(orz(numValue));
 	padToLength = orz(padToLength) || 2;
 	paddingText = String(paddingText || 0);
 
@@ -2150,19 +2164,18 @@ function getFormattedTimezoneOffset(date) {
 		date = new Date();
 	}
 
-var	offset = date.getTimezoneOffset();
+let	offset = date.getTimezoneOffset();
 
 	if (offset) {
+	let	sign = '-';
+
 		if (offset < 0) {
 			offset = -offset;
-		var	sign = '+';
-		} else {
-			sign = '-';
+			sign = '+';
 		}
 
-	var	offsetHours = leftPadNum(Math.floor(offset / SPLIT_SEC))
-	,	offsetMinutes = leftPadNum(offset % SPLIT_SEC)
-		;
+	const	offsetHours = leftPadNum(Math.floor(offset / SPLIT_SEC));
+	const	offsetMinutes = leftPadNum(offset % SPLIT_SEC);
 
 		return sign + offsetHours + ':' + offsetMinutes;
 	} else {
@@ -2171,18 +2184,22 @@ var	offset = date.getTimezoneOffset();
 }
 
 function getFormattedHMS(msec) {
-var	msec = orz(msec)
-,	sign = (msec < 0?'-':'')
-,	values = [0, 0, Math.floor(Math.abs(msec) / 1000)]
-,	index = values.length
-	;
+	msec = orz(msec);
+
+const	sign = (msec < 0 ? '-' : '');
+const	values = [0, 0, Math.floor(Math.abs(msec) / 1000)];
+
+let	index = values.length;
 
 	while (--index) {
 		if (values[index] >= SPLIT_SEC) {
 			values[index - 1] = Math.floor(values[index] / SPLIT_SEC);
 			values[index] %= SPLIT_SEC;
 		}
-		if (values[index] < 10) values[index] = '0' + values[index];
+
+		if (values[index] < 10) {
+			values[index] = '0' + values[index];
+		}
 	}
 
 	return sign + values.join(':');
@@ -2191,7 +2208,8 @@ var	msec = orz(msec)
 function getFormattedTime() {
 
 	function getDatePartText(name) {
-	var	num = date['get' + name]();
+	let	num = date['get' + name]();
+
 		if (name === 'Month') ++num;
 
 		return leftPadNum(num);
@@ -2199,14 +2217,13 @@ function getFormattedTime() {
 
 //* check arguments out of order:
 
-var	flags = {}
-,	arg, date
-	;
+const	flags = {};
+let	arg, argDate, argNum, argText, date, YMD, HMS;
 
 	for (let index in arguments) if (arg = arguments[index]) {
-		if (isDate(arg)) var argDate = arg; else
-		if (isNumber(arg)) var argNum = arg; else
-		if (isString(arg)) var argText = arg; else
+		if (isDate(arg)) argDate = arg; else
+		if (isNumber(arg)) argNum = arg; else
+		if (isString(arg)) argText = arg; else
 		if (isNonNullObject(arg)) {
 			for (let key in arg) {
 				flags[key] = !!arg[key];
@@ -2233,13 +2250,13 @@ var	flags = {}
 
 //* get date text parts:
 
-var	textParts = [];
+const	textParts = [];
 
 	if (
 		flags.onlyYMD
 	||	!flags.onlyHMS
 	) {
-	var	YMD = (
+		YMD = (
 			TIME_PARTS_YMD
 			.map(getDatePartText)
 			.join('-')
@@ -2252,14 +2269,14 @@ var	textParts = [];
 		flags.onlyHMS
 	||	!flags.onlyYMD
 	) {
-	var	HMS = (
+		HMS = (
 			TIME_PARTS_HMS
 			.map(getDatePartText)
 			.join(flags.fileNameFormat ? '-' : ':')
 		);
 
 		if (flags.logFormat) {
-		var	msec = (
+		const	msec = (
 				isFunction(date.getMilliseconds)
 				? date.getMilliseconds()
 				: (date % 1000)
@@ -2311,14 +2328,14 @@ function getTimeNow() {return +new Date();}
 function getLogTime() {return getFormattedTime({logFormat: true});}
 
 function logTime(argName, argValue) {
-var	text = getLogTime();
+let	logText = getLogTime();
 
 	if (typeof argName !== 'undefined') {
-		text += ' - ' + argName;
+		logText += ' - ' + argName;
 	}
 
 	if (typeof argValue !== 'undefined') {
-	var	textValue = getJoinedOrEmptyText(argValue, '\n');
+	const	textValue = getJoinedOrEmptyText(argValue, '\n');
 
 		if (textValue.includes('\n')) {
 			if (
@@ -2326,16 +2343,16 @@ var	text = getLogTime();
 			||	hasFraming(textValue, '{', '}')
 			||	hasFraming(textValue, '[', ']')
 			) {
-				text += ':\n' + textValue;
+				logText += ':\n' + textValue;
 			} else {
-				text += ':\n[\n' + textValue + '\n]';
+				logText += ':\n[\n' + textValue + '\n]';
 			}
 		} else {
-			text += ' = "' + textValue + '"';
+			logText += ' = "' + textValue + '"';
 		}
 	}
 
-	console.log(text);
+	console.log(logText);
 }
 
 function logError(args, error, context) {
@@ -2359,7 +2376,7 @@ function getFilePromise(file) {
 
 	return new Promise(
 		(resolve, reject) => {
-		var	reader = new FileReader();
+		const	reader = new FileReader();
 
 			reader.addEventListener(
 				'error'
@@ -2369,7 +2386,7 @@ function getFilePromise(file) {
 			reader.addEventListener(
 				'load'
 			,	(evt) => {
-				var	result = evt.target.result;
+				const	result = evt.target.result;
 
 					if (result) {
 						resolve(result);
@@ -2391,7 +2408,7 @@ function getFilePromiseFromURL(url, responseType) {
 
 	return new Promise(
 		(resolve, reject) => {
-		var	request = new XMLHttpRequest();
+		const	request = new XMLHttpRequest();
 
 			request.addEventListener(
 				'error'
@@ -2401,7 +2418,7 @@ function getFilePromiseFromURL(url, responseType) {
 			request.addEventListener(
 				'load'
 			,	(evt) => {
-				var	response = evt.target.response;
+				const	response = evt.target.response;
 
 					if (response) {
 						if (isFunction(request.getAllResponseHeaders)) {
@@ -2409,7 +2426,7 @@ function getFilePromiseFromURL(url, responseType) {
 						}
 
 						if (isFunction(request.getResponseHeader)) {
-						var	lastModText = request.getResponseHeader('Last-Modified');
+						const	lastModText = request.getResponseHeader('Last-Modified');
 
 							if (lastModText) {
 								response.lastModified = +new Date(lastModText);
@@ -2430,26 +2447,30 @@ function getFilePromiseFromURL(url, responseType) {
 	).catch(catchPromiseError);
 }
 
-function getImagePromiseFromCanvasToBlob(canvas, trackList, mimeType, quality) {
+function getImagePromiseFromCanvasToBlob(canvas, trackList, mimeType, quality, img) {
 	return new Promise(
 		(resolve, reject) => {
 			canvas.toBlob(
 				(blob) => {
 					if (!blob) {
 						reject(new Error('Canvas to blob: got empty or no blob.'));
+
 						return;
 					}
 
-				var	url = URL.createObjectURL(blob);
+				const	url = URL.createObjectURL(blob);
 
 					if (!url) {
 						reject(new Error('Canvas to blob: got empty or no URL.'));
+
 						return;
 					}
 
 					trackList = addURLToTrackList(url, trackList);
 
-				var	img = cre('img');
+					if (!img) {
+						img = cre('img');
+					}
 
 					img.onload = (evt) => {
 						// URL.revokeObjectURL(url);	//* <- let the outside code clean up after it's done
@@ -2460,6 +2481,7 @@ function getImagePromiseFromCanvasToBlob(canvas, trackList, mimeType, quality) {
 					img.onerror = (evt) => {
 						if (img.complete) {
 							resolve(img);
+
 							return;
 						}
 
@@ -2497,7 +2519,7 @@ function addURLToTrackList(url, trackList) {
 }
 
 function revokeBlobsFromTrackList(trackList) {
-var	count = 0;
+let	count = 0;
 
 	if (isNonNullObject(trackList)) {
 
@@ -2527,13 +2549,14 @@ var	count = 0;
 
 function dataToBlob(data, trackList) {
 	if (URL && URL.createObjectURL) {
-	var	type = TYPE_TEXT;
+	let	type = TYPE_TEXT;
+
 		if (hasPrefix(data, DATA_PREFIX)) {
-		var	i = data.indexOf(',')
-		,	meta = data.slice(k,i)
-		,	data = data.slice(i+1)
-		,	k = meta.indexOf(';')
-			;
+		const	i = data.indexOf(',');
+		const	meta = data.slice(0,i);
+		const	k = meta.indexOf(';');
+
+			data = data.slice(i+1);
 
 			if (k < 0) {
 				type = meta;
@@ -2543,10 +2566,10 @@ function dataToBlob(data, trackList) {
 				if (meta.slice(k+1) === 'base64') data = atob(data);
 			}
 		}
-	var	data = Uint8Array.from(data, (v) => v.charCodeAt(0))
-	,	size = data.length
-	,	url = URL.createObjectURL(new Blob(data, {'type': type}))
-		;
+
+	const	bytes = Uint8Array.from(data, (v) => v.charCodeAt(0));
+	const	size = bytes.length;
+	const	url = URL.createObjectURL(new Blob(bytes, {'type': type}));
 
 		if (url) {
 			addURLToTrackList(url, trackList);
@@ -2567,8 +2590,7 @@ function saveDL(data, fileName, ext, addTime, jsonReplacerFunc) {
 		if (blob) URL.revokeObjectURL(blob.url);
 	}
 
-var	type = TYPE_TEXT
-,	data = (
+	data = (
 		isNonNullObject(data)
 		? JSON.stringify(
 			data
@@ -2578,10 +2600,13 @@ var	type = TYPE_TEXT
 		: String(data)
 	);
 
+let	dataURI = '';
+let	type = TYPE_TEXT;
+let	blob = false;
+
 	if (hasPrefix(data, BLOB_PREFIX)) {
-	var	dataURI = data
-	,	blob = true
-		;
+		dataURI = data;
+		blob = true;
 	} else
 	if (hasPrefix(data, DATA_PREFIX)) {
 		dataURI = data;
@@ -2589,11 +2614,21 @@ var	type = TYPE_TEXT
 		dataURI = DATA_PREFIX + type + ',' + encodeURIComponent(data);
 	}
 
-var	size = dataURI.length
-,	a = cre('a', document.body)
-	;
+let	size = dataURI.length;
 
-	logTime('saving "' + fileName + '", data = ' + data.length + ' bytes, dataURI = ' + size + ' bytes' + (blob ? ', URI = ' + dataURI : ''));
+	logTime(
+		[
+			'saving "' + fileName + '"'
+		,	'data size = ' + data.length + ' bytes'
+		,
+		].concat(
+			blob
+			? ['blob URI = ' + dataURI]
+			: ['data URI size = ' + size + ' bytes']
+		).join(', ')
+	);
+
+const	a = cre('a', document.body);
 
 	if ('download' in a) {
 		try {
@@ -2611,21 +2646,20 @@ var	size = dataURI.length
 			}
 			if (ext === 'plain') ext = 'txt';
 
-		var	time = (
+		const	time = (
 				!fileName || addTime
 				? getFormattedTime({fileNameFormat: true})
 				: ''
-			)
-		,	baseName = (
-				function() {
-					if (!fileName) return time;
-					if (addTime > 0) return fileName + '_' + time;
-					if (addTime < 0) return time + '_' + fileName;
-					return fileName;
-				}
-			)()
-		,	fileName = baseName + (ext ? '.' + ext : '')
-			;
+			);
+
+		const	baseName = (
+				!fileName ? time
+				: (addTime > 0) ? fileName + '_' + time
+				: (addTime < 0) ? time + '_' + fileName
+				: fileName
+			);
+
+			fileName = baseName + (ext ? '.' + ext : '');
 
 			a.onclick = cleanUpAfterDL;	//* <- https://stackoverflow.com/a/26643754
 			a.download = fileName;
@@ -2651,9 +2685,9 @@ var	size = dataURI.length
 }
 
 function loadLibPromise(...libs) {
-var	libs = getFlatArray(libs)
-,	lib, dir, src, scripts
-	;
+let	dir, scripts;
+
+	libs = getFlatArray(libs);
 
 	return new Promise(
 		(resolve, reject) => {
@@ -2662,10 +2696,10 @@ var	libs = getFlatArray(libs)
 					scripts
 				&&	scripts.length > 0
 				) {
-				var	src = scripts.shift();
+				const	src = scripts.shift();
 
 					if (isString(src)) {
-					var	script = cre('script', document.head);
+					const	script = cre('script', document.head);
 						script.onload = addNextScript;
 						script.onerror = (evt) => getErrorFromEvent(evt, 'Script loading failed.', reject);
 						script.src = dir + src;
@@ -2676,7 +2710,8 @@ var	libs = getFlatArray(libs)
 					libs
 				&&	libs.length > 0
 				) {
-					lib = libs.shift();
+				const	lib = libs.shift();
+
 					dir = lib.dir || '';
 					scripts = lib.files || lib;
 
@@ -2702,27 +2737,29 @@ async function loadLibOnDemandPromise(libName) {
 		return false;
 	}
 
-var	lib = fileTypeLibs[libName] || {};
+const	lib = fileTypeLibs[libName] || {};
+
 	if (!lib) {
 		return false;
 	}
 
-var	varName = lib.varName || '';
+const	varName = lib.varName || '';
+
 	if (varName && window[varName]) {
 		return true;
 	}
 
-var	dir = lib.dir || ''
-,	scripts = Array.from(lib.files || [])
-	;
+const	dir = lib.dir || '';
+const	scripts = Array.from(lib.files || []);
 
 	if (!scripts.length) {
 		return false;
 	}
 
-var	depends = lib.depends || null;
+const	depends = lib.depends || null;
+
 	if (depends) {
-		for (let name of Array.from(depends)) if (name) {
+		for (let name of asArray(depends)) if (name) {
 			if (!(await loadLibOnDemandPromise(name))) {
 				return false;
 			}
@@ -2744,7 +2781,7 @@ var	depends = lib.depends || null;
 //*	Scripts in the array are executed in order, and the first one should be z-worker.js, which is used to start the worker.
 //* source: http://gildas-lormeau.github.io/zip.js/core-api.html#alternative-codecs
 
-					var	zipWorkerScripts = null;
+					let	zipWorkerScripts = null;
 
 						if (USE_ONE_FILE_ZIP_WORKER) {
 							zipWorkerScripts = [
@@ -2787,7 +2824,7 @@ var	depends = lib.depends || null;
 //* add scripts one by one:
 
 				if (scripts.length > 0) {
-				var	script = cre('script', document.head);
+				const	script = cre('script', document.head);
 					script.setAttribute('data-lib-name', libName);
 					script.onload = addNextScript;
 					script.onerror = (evt) => getErrorFromEvent(evt, 'Script loading failed.', reject);
@@ -2845,7 +2882,7 @@ function replaceJSONpartsForZoomRef(key, value) {
 //* remove invalid values, reassure the percent sign:
 
 		if (isString(value)) {
-		var	targetRefZoom = orz(value);
+		const	targetRefZoom = orz(value);
 
 			if (targetRefZoom <= 0 || targetRefZoom === 100) {
 				return;
@@ -2853,13 +2890,13 @@ function replaceJSONpartsForZoomRef(key, value) {
 
 //* zoom in steps, downscale by no more than x2, starting from 100 to nearest-sized reference:
 
-		var	nearestRefZoom = 100;
+		let	nearestRefZoom = 100;
 
 			while (
 				nearestRefZoom > 0
 			&&	nearestRefZoom > targetRefZoom
 			) {
-			var	nextStepZoom = Math.floor(nearestRefZoom / ZOOM_STEP_MAX_FACTOR);
+			const	nextStepZoom = Math.floor(nearestRefZoom / ZOOM_STEP_MAX_FACTOR);
 
 				if (targetRefZoom >= nextStepZoom) {
 					break;
@@ -2899,12 +2936,11 @@ function clearCanvasBeforeGC(canvas) {
 
 function getImageSrcPlaceholder() {
 	if (!thumbnailPlaceholder) {
-	var	canvas = cre('canvas')
-	,	ctx = canvas.getContext('2d')
-	,	w = canvas.width  = THUMBNAIL_SIZE
-	,	h = canvas.height = THUMBNAIL_SIZE
-	,	textHeight = THUMBNAIL_SIZE - 2
-		;
+	const	canvas = cre('canvas');
+	const	ctx = canvas.getContext('2d');
+	const	w = canvas.width  = THUMBNAIL_SIZE;
+	const	h = canvas.height = THUMBNAIL_SIZE;
+	const	textHeight = THUMBNAIL_SIZE - 2;
 
 		ctx.fillStyle = 'lightgray';
 		ctx.fillRect(0,0, w,h);
@@ -2919,11 +2955,10 @@ function getImageSrcPlaceholder() {
 		ctx.textBaseline = 'top';
 		ctx.font = 'bold ' + textHeight + 'px sans-serif';
 
-	var	text = '?'
-	,	textWidth = ctx.measureText(text).width
-	,	x = Math.round((w - textWidth) / 2)
-	,	y = Math.round((h - textHeight) / 2)
-		;
+	const	text = '?';
+	const	textWidth = ctx.measureText(text).width;
+	const	x = Math.round((w - textWidth) / 2);
+	const	y = Math.round((h - textHeight) / 2);
 
 		ctx.fillText(text, x,y);
 
@@ -2950,15 +2985,16 @@ function setImageSrc(img, data) {
 }
 
 function getResizedCanvasFromImg(img, w,h) {
-var	canvas = cre('canvas')
-,	ctx = canvas.getContext('2d')
-,	widthFrom  = img.width
-,	heightFrom = img.height
-,	widthTo  = w || widthFrom || 1
-,	heightTo = h || w || heightFrom || 1
-,	widthRatio  = widthFrom/widthTo
-,	heightRatio = heightFrom/heightTo
-	;
+const	canvas = cre('canvas');
+const	ctx = canvas.getContext('2d');
+const	widthFrom  = img.width;
+const	heightFrom = img.height;
+
+let	widthTo  = w || widthFrom || 1;
+let	heightTo = h || w || heightFrom || 1;
+
+const	widthRatio  = widthFrom/widthTo;
+const	heightRatio = heightFrom/heightTo;
 
 	if (
 		widthRatio  > THUMBNAIL_ZOOM_STEP_MAX_FACTOR
@@ -2981,9 +3017,8 @@ var	canvas = cre('canvas')
 				heightTo = Math.round(heightFrom / widthRatio);
 			}
 
-		var	widthToUp  = widthTo
-		,	heightToUp = heightTo
-			;
+		let	widthToUp  = widthTo;
+		let	heightToUp = heightTo;
 
 			while (
 				widthTo  < widthFrom
@@ -3011,9 +3046,8 @@ var	canvas = cre('canvas')
 
 		return getResizedCanvasFromImg(canvas, w,h);
 	} else {
-	var	xOffset = 0
-	,	yOffset = 0
-		;
+	let	xOffset = 0;
+	let	yOffset = 0;
 
 		canvas.width = widthTo;
 		canvas.height = heightTo;
@@ -3034,14 +3068,13 @@ var	canvas = cre('canvas')
 }
 
 function getCanvasFromByteArray(rgbaArray, w,h) {
-var	canvas = cre('canvas')
-,	ctx = canvas.getContext('2d')
-	;
+const	canvas = cre('canvas');
+const	ctx = canvas.getContext('2d');
 
 	canvas.width = w;
 	canvas.height = h;
 
-var	imageData = ctx.createImageData(w,h);
+const	imageData = ctx.createImageData(w,h);
 	imageData.data.set(rgbaArray);
 
 	ctx.putImageData(imageData, 0,0);
@@ -3050,10 +3083,11 @@ var	imageData = ctx.createImageData(w,h);
 }
 
 function getImageData(img, x,y, w,h) {
+let	ctx = null;
+
 	if (isCanvasElement(img)) {
-	var	canvas = img
-	,	ctx = canvas.getContext('2d')
-		;
+	const	canvas = img;
+		ctx = canvas.getContext('2d');
 
 		x = orz(x);
 		y = orz(y);
@@ -3061,9 +3095,8 @@ function getImageData(img, x,y, w,h) {
 		h = orz(h) || (canvas.height - y);
 	} else
 	if (isImageElement(img)) {
-	var	canvas = cre('canvas')
-	,	ctx = canvas.getContext('2d')
-		;
+	const	canvas = cre('canvas');
+		ctx = canvas.getContext('2d');
 
 		canvas.width  = w = orz(w || img.width)  - orz(x);
 		canvas.height = h = orz(h || img.height) - orz(y);
@@ -3079,9 +3112,8 @@ function getImageData(img, x,y, w,h) {
 }
 
 function getCtxFromImageData(imageData) {
-var	canvas = cre('canvas')
-,	ctx = canvas.getContext('2d')
-	;
+const	canvas = cre('canvas');
+const	ctx = canvas.getContext('2d');
 
 	canvas.width = imageData.width;
 	canvas.height = imageData.height;
@@ -3092,10 +3124,9 @@ var	canvas = cre('canvas')
 }
 
 function getImageDataInverted(imageData) {
-var	ctx = getCtxFromImageData(imageData)
-,	w = imageData.width
-,	h = imageData.height
-	;
+const	ctx = getCtxFromImageData(imageData);
+const	w = imageData.width;
+const	h = imageData.height;
 
 	ctx.globalAlpha = 1;
 	ctx.globalCompositeOperation = BLEND_MODE_INVERT;
@@ -3120,14 +3151,18 @@ function getAutoCropArea(img, bgToCheck) {
 		return;
 	}
 
-var	data = img.data
-,	totalBytes = data.length
-,	w = img.width
-,	h = img.height
-,	horizontalBytes = w << 2
-,	bgRGBA, bgPixelIndex, index, x
-,	foundTop, foundLeft, foundBottom, foundRight
-	;
+const	data = img.data;
+const	totalBytes = data.length;
+const	w = img.width;
+const	h = img.height;
+const	horizontalBytes = w << 2;
+
+let	bgRGBA = null;
+let	bgPixelIndex = -1;
+let	foundBottom = -1;
+let	foundRight = -1;
+let	foundLeft = -1;
+let	foundTop = -1;
 
 	if (
 		bgToCheck
@@ -3139,8 +3174,9 @@ var	data = img.data
 		if (bgToCheck === 'bottomleft') bgPixelIndex = w*(h - 1); else
 		if (bgToCheck === 'bottomright') bgPixelIndex = (w*h) - 1;
 
-		if (typeof bgPixelIndex !== 'undefined') {
-		var	bgByteIndex = bgPixelIndex << 2;
+		if (bgPixelIndex >= 0) {
+		const	bgByteIndex = bgPixelIndex << 2;
+
 			bgRGBA = data.slice(bgByteIndex, bgByteIndex + 4);
 		} else {
 			if (bgToCheck.match) {
@@ -3148,7 +3184,8 @@ var	data = img.data
 			}
 
 			if (bgToCheck.concat) {
-				index = bgToCheck.length;
+			const	index = bgToCheck.length;
+
 				bgRGBA = (
 					index >= 4
 					? bgToCheck.slice(0,4)
@@ -3158,56 +3195,63 @@ var	data = img.data
 		}
 	}
 
-	bgRGBA = (bgRGBA ? Array.from(bgRGBA) : [0,0,0,0]);
+	bgRGBA = (
+		bgRGBA
+		? Array.from(bgRGBA)
+		: [0,0,0,0]
+	);
 
 //* find fully transparent areas:
 
 	if (bgRGBA[3] === 0) {
 
 		find_top:
-		for (index = 3; index < totalBytes; index += 4) {
+		for (let index = 3; index < totalBytes; index += 4) {
 			if (data[index]) {
 				foundTop = Math.floor(index / horizontalBytes);
+
 				break find_top;
 			}
 		}
 
 	//* found no content:
 
-		if (typeof foundTop === 'undefined') {
+		if (foundTop < 0) {
 			return;
 		}
 
 	//* found something:
 
 		find_bottom:
-		for (index = totalBytes - 1; index >= 0; index -= 4) {
+		for (let index = totalBytes - 1; index >= 0; index -= 4) {
 			if (data[index]) {
 				foundBottom = Math.floor(index / horizontalBytes);
+
 				break find_bottom;
 			}
 		}
 
 	//* reduce field of search:
 
-	var	foundTopIndex = (foundTop * horizontalBytes) + 3
-	,	foundBottomIndex = (foundBottom * horizontalBytes) + 3
-		;
+	const	foundTopIndex = (foundTop * horizontalBytes) + 3;
+	const	foundBottomIndex = (foundBottom * horizontalBytes) + 3;
 
 		find_left:
-		for (x = 0; x < w; ++x)
-		for (index = (x << 2) + foundTopIndex; index <= foundBottomIndex; index += horizontalBytes) {
+		for (let x = 0; x < w; ++x)
+		for (let index = (x << 2) + foundTopIndex; index <= foundBottomIndex; index += horizontalBytes) {
 			if (data[index]) {
 				foundLeft = x;
+
 				break find_left;
 			}
 		}
 
 		find_right:
-		for (x = w-1; x >= 0; --x)
-		for (index = (x << 2) + foundTopIndex; index <= foundBottomIndex; index += horizontalBytes) {
+		for (let x = w-1; x >= 0; --x)
+		for (let index = (x << 2) + foundTopIndex; index <= foundBottomIndex; index += horizontalBytes) {
 			if (data[index]) {
 				foundRight = x;
+
 				break find_right;
 			}
 		}
@@ -3215,41 +3259,42 @@ var	data = img.data
 
 //* find same RGBA filled areas:
 
-		index = totalBytes;
+	let	index = totalBytes;
 
 		find_bottom:
 		while (index--) {
 			if (data[index] !== bgRGBA[index & 3]) {
 				foundBottom = Math.floor(index / horizontalBytes);
+
 				break find_bottom;
 			}
 		}
 
 	//* found no content:
 
-		if (typeof foundBottom === 'undefined') {
+		if (foundBottom < 0) {
 			return;
 		}
 
 	//* found something:
 
 		find_top:
-		for (index = 0; index < totalBytes; index++) {
+		for (let index = 0; index < totalBytes; index++) {
 			if (data[index] !== bgRGBA[index & 3]) {
 				foundTop = Math.floor(index / horizontalBytes);
+
 				break find_top;
 			}
 		}
 
 	//* reduce field of search:
 
-	var	foundTopIndex = (foundTop * horizontalBytes)
-	,	foundBottomIndex = (foundBottom * horizontalBytes)
-		;
+	const	foundTopIndex = (foundTop * horizontalBytes);
+	const	foundBottomIndex = (foundBottom * horizontalBytes);
 
 		find_left:
-		for (x = 0; x < w; ++x)
-		for (index = (x << 2) + foundTopIndex; index <= foundBottomIndex; index += horizontalBytes) {
+		for (let x = 0; x < w; ++x)
+		for (let index = (x << 2) + foundTopIndex; index <= foundBottomIndex; index += horizontalBytes) {
 			if (
 				data[index  ] !== bgRGBA[0]
 			||	data[index|1] !== bgRGBA[1]
@@ -3257,13 +3302,14 @@ var	data = img.data
 			||	data[index|3] !== bgRGBA[3]
 			) {
 				foundLeft = x;
+
 				break find_left;
 			}
 		}
 
 		find_right:
-		for (x = w-1; x >= 0; --x)
-		for (index = (x << 2) + foundTopIndex; index <= foundBottomIndex; index += horizontalBytes) {
+		for (let x = w-1; x >= 0; --x)
+		for (let index = (x << 2) + foundTopIndex; index <= foundBottomIndex; index += horizontalBytes) {
 			if (
 				data[index  ] !== bgRGBA[0]
 			||	data[index|1] !== bgRGBA[1]
@@ -3271,14 +3317,14 @@ var	data = img.data
 			||	data[index|3] !== bgRGBA[3]
 			) {
 				foundRight = x;
+
 				break find_right;
 			}
 		}
 	}
 
-var	foundWidth = foundRight - foundLeft + 1
-,	foundHeight = foundBottom - foundTop + 1
-	;
+const	foundWidth = foundRight - foundLeft + 1;
+const	foundHeight = foundBottom - foundTop + 1;
 
 	return {
 		'left': foundLeft
@@ -3293,19 +3339,21 @@ var	foundWidth = foundRight - foundLeft + 1
 }
 
 function addButton(parent, text, func) {
-var	button = cre('button', parent);
-
+const	button = cre('button', parent);
 	button.textContent = text || button.tagName;
-	if (func) button.setAttribute('onclick', func);
+
+	if (func) {
+		button.setAttribute('onclick', func);
+	}
 
 	return button;
 }
 
 function addOption(parent, text, value) {
-var	option = cre('option', parent)
-,	text = getJoinedOrEmptyText(text)
-,	value = getJoinedOrEmptyText(value) || text
-	;
+const	option = cre('option', parent);
+
+	text = getJoinedOrEmptyText(text);
+	value = getJoinedOrEmptyText(value) || text;
 
 	option.value = value;
 	option.textContent = text;
@@ -3321,9 +3369,8 @@ function trimParam(text) {
 }
 
 function getOtherSwitchParamName(switchType, switchName) {
-var	names = SWITCH_NAMES_BY_TYPE[switchType]
-,	index = names.indexOf(switchName)
-	;
+const	names = SWITCH_NAMES_BY_TYPE[switchType];
+const	index = names.indexOf(switchName);
 
 	return names[index === 0 ? 1 : 0];
 }
@@ -3341,9 +3388,8 @@ function getNormalizedOpacity(numValue) {
 }
 
 function getNormalizedBlendMode(text) {
-var	blendMode = String(text).toLowerCase()
-,	replaced
-	;
+const	blendMode = String(text).toLowerCase();
+let	replaced;
 
 	return (
 		BLEND_MODES_REMAP[blendMode]
@@ -3389,7 +3435,7 @@ function getLayerPath(layer, flags) {
 		flags = {};
 	}
 
-var	path = (flags.includeSelf ? [layer.name] : []);
+const	path = (flags.includeSelf ? [layer.name] : []);
 
 	while (layer = getParentLayer(layer)) {
 		path.unshift(layer.name);
@@ -3407,7 +3453,7 @@ function getLayerPathText(layer) {
 }
 
 function getLayerVisibilityChain(layer) {
-var	layers = [];
+const	layers = [];
 
 	while (layer) {
 		layers.push(layer);
@@ -3419,7 +3465,7 @@ var	layers = [];
 }
 
 function getLayersTopSeparated(layers) {
-var	layersToRender = [];
+let	layersToRender = [];
 
 	while (
 		isArray(layers)
@@ -3465,15 +3511,14 @@ async function getImageDataFromURL(url) {
 		return null;
 	}
 
-var	arrayBuffer = await getFilePromiseFromURL(url);
+const	arrayBuffer = await getFilePromiseFromURL(url);
 
 	if (!arrayBuffer) {
 		return null;
 	}
 
-var	img  = UPNG.decode(arrayBuffer)
-,	rgba = UPNG.toRGBA8(img)[0]	//* <- UPNG.toRGBA8 returns array of frames, size = width * height * 4 bytes.
-	;
+const	img  = UPNG.decode(arrayBuffer);
+const	rgba = UPNG.toRGBA8(img)[0];	//* <- UPNG.toRGBA8 returns array of frames, size = width * height * 4 bytes.
 
 	return {
 		width: img.width
@@ -3505,7 +3550,7 @@ async function thisToPng(targetLayer) {
 			);
 		}
 
-	var	data, canvas, result;
+	let	data, canvas, result;
 
 		if (!node) {
 			return null;
@@ -3554,7 +3599,7 @@ async function thisToPng(targetLayer) {
 	}
 
 	async function thisToPngTryEach(...nodes) {
-	var	result;
+	let	result;
 
 		for (let node of nodes) if (result = await thisToPngTryOne(node)) {
 			break;
@@ -3563,21 +3608,19 @@ async function thisToPng(targetLayer) {
 		return result;
 	}
 
+const	project = this;
+const	target = targetLayer || project;
+const	node = target.sourceData || target;
+
 	try {
-	var	project = this
-	,	target = targetLayer || project
-	,	node = target.sourceData || target
-	,	result = await thisToPngTryEach(
+		return await thisToPngTryEach(
 			node.prerendered
 		,	node.thumbnail
 		,	node
 		);
-
-		return result;
-
 	} catch (error) {
-		if (target = targetLayer) {
-			logTime('cannot get layer image: ' + getLayerPathText(target));
+		if (targetLayer) {
+			logTime('cannot get layer image: ' + getLayerPathText(targetLayer));
 		} else {
 			logError(arguments, error, this);
 		}
@@ -3601,7 +3644,7 @@ function isStopRequestedAnywhere(...sources) {
 }
 
 async function removeProjectView(fileId) {
-var	countDeleted = getAllById(fileId).reduce(
+const	countDeleted = getAllById(fileId).reduce(
 		(count, container) => {
 			if (container.project) {
 				container.project.isStopRequested = true;
@@ -3648,19 +3691,19 @@ async function addProjectView(sourceFile) {
 
 //* prepare detached branch of DOM:
 
-var	buttonTab = cre('div', getOneById('loaded-files-selection'));
+const	buttonTab = cre('div', getOneById('loaded-files-selection'));
 	buttonTab.className = 'button loading';
 
-var	buttonThumb = cre('button', buttonTab);
+const	buttonThumb = cre('button', buttonTab);
 	buttonThumb.className = 'thumbnail-button';
 
-var	thumbImg = cre('img', buttonThumb);
+const	thumbImg = cre('img', buttonThumb);
 	thumbImg.className = 'thumbnail';
 
-var	buttonText = cre('button', buttonTab);
+const	buttonText = cre('button', buttonTab);
 	buttonText.textContent = sourceFile.name;
 
-var	buttonClose = cre('button', buttonTab);
+const	buttonClose = cre('button', buttonTab);
 	buttonClose.className = 'close-button';
 	buttonClose.textContent = 'X';
 
@@ -3668,8 +3711,10 @@ var	buttonClose = cre('button', buttonTab);
 
 	setImageSrc(thumbImg);
 
+let	container = null;
+
 	try {
-	var	project = await getNormalizedProjectData(sourceFile, buttonTab);
+	const	project = await getNormalizedProjectData(sourceFile, buttonTab);
 
 		if (project) {
 			buttonTab.project = project;
@@ -3679,7 +3724,7 @@ var	buttonClose = cre('button', buttonTab);
 			} else {
 				project.thumbnail = thumbImg;
 
-			var	container = (
+				container = (
 					await getProjectViewMenu(project)
 				||	await getProjectViewImage(project)
 				);
@@ -3691,9 +3736,8 @@ var	buttonClose = cre('button', buttonTab);
 		}
 
 		if (container) {
-		var	fileId = 'loaded-file: ' + sourceFile.name
-		,	childKeys = ['layers']
-			;
+		const	fileId = 'loaded-file: ' + sourceFile.name;
+		const	childKeys = ['layers'];
 
 			cleanupObjectTree(project, childKeys, TESTING ? CLEANUP_KEYS_TESTING : CLEANUP_KEYS);
 
@@ -3702,9 +3746,9 @@ var	buttonClose = cre('button', buttonTab);
 			project.container = container;
 			container.project = project;
 
-		var	result = !isStopRequestedAnywhere(project, buttonTab);
+		let	result = null;
 
-			if (result) {
+			if (!isStopRequestedAnywhere(project, buttonTab)) {
 				if (project.options) {
 					updateBatchCount(project);
 
@@ -3768,20 +3812,21 @@ async function getNormalizedProjectData(sourceFile, button) {
 		return null;
 	}
 
-var	fileName = sourceFile.name
-,	baseName = sourceFile.baseName
-,	ext      = sourceFile.ext
-,	actionLabel = 'processing document structure';
-	;
+const	fileName = sourceFile.name;
+const	baseName = sourceFile.baseName;
+const	ext      = sourceFile.ext;
+const	actionLabel = 'processing document structure';
+
+let	project = null;
 
 	logTime('"' + fileName + '" started ' + actionLabel);
 
-var	startTime = getTimeNow();
+const	startTime = getTimeNow();
 
 	try_loaders:
 	for (let loader of fileTypeLoaders) if (loader.dropFileExts.includes(ext))
 	for (let func of loader.handlerFuncs) {
-	var	project = {
+		project = {
 			fileName: fileName
 		,	baseName: baseName
 		,	foldersCount: 0
@@ -3799,14 +3844,14 @@ var	startTime = getTimeNow();
 			break try_loaders;
 		} else {
 			project = null;
-		}
 
-		if (isStopRequestedAnywhere(project, button)) {
-			 break;
+			if (isStopRequestedAnywhere(project, button)) {
+				break try_loaders;
+			}
 		}
 	}
 
-var	tookTime = getTimeNow() - startTime;
+const	tookTime = getTimeNow() - startTime;
 
 	logTime(
 		'"' + fileName + '"'
@@ -3837,22 +3882,22 @@ async function getProjectViewMenu(project) {
 //* render default set when everything is ready:
 
 		try {
-		var	options = getProjectOptions(project)
-		,	fileName = project.fileName
-			;
+		const	options = getProjectOptions(project);
+		const	fileName = project.fileName;
 
 			if (options) {
-			var	images = project.loading.images
-			,	imagesCount = project.loading.imagesCount = images.length
-			,	actionLabel = 'preloading ' + imagesCount + ' images'
-			,	result, layer
-				;
+			const	images = project.loading.images;
+			const	imagesCount = project.loading.imagesCount = images.length;
+			const	actionLabel = 'preloading ' + imagesCount + ' images';
 
 				logTime('"' + fileName + '" started ' + actionLabel);
 
 //* try loading one by one to avoid flood of errors:
 
-			var	startTime = getTimeNow();
+			let	result = null;
+			let	layer = null;
+
+			const	startTime = getTimeNow();
 
 				while (
 					images.length > 0
@@ -3862,10 +3907,10 @@ async function getProjectViewMenu(project) {
 				&&	(result = await getLayerMaskLoadPromise(layer.mask, project))
 				);
 
-			var	tookTime = getTimeNow() - startTime
-			,	imagesLoaded = project.imagesLoadedCount
-			,	imagesSkipped = imagesCount - imagesLoaded
-			,	actionSummary = (
+			const	tookTime = getTimeNow() - startTime;
+			const	imagesLoaded = project.imagesLoadedCount;
+			const	imagesSkipped = imagesCount - imagesLoaded;
+			const	actionSummary = (
 					!imagesSkipped
 					? '' : (
 						', skipped ' + imagesSkipped
@@ -3896,7 +3941,7 @@ async function getProjectViewMenu(project) {
 					project.options = options;
 					project.layersTopSeparated = getLayersTopSeparated(project.layers);
 
-				var	container = createProjectView(project);
+				const	container = createProjectView(project);
 					createOptionsMenu(project, getAllByClass('project-options', container)[0]);
 
 					return container;
@@ -3925,11 +3970,11 @@ async function getProjectViewMenu(project) {
 					options = {};
 				}
 
-			var	sectionName = String(sectionName)
-			,	listName    = String(listName)
-			,	sections    = getOrInitChild(options, sectionName)
-			,	optionGroup = getOrInitChild(sections, listName, 'params', 'items')
-				;
+				sectionName = String(sectionName);
+				listName    = String(listName);
+
+			const	sections    = getOrInitChild(options, sectionName);
+			const	optionGroup = getOrInitChild(sections, listName, 'params', 'items');
 
 				return optionGroup;
 			}
@@ -3937,9 +3982,8 @@ async function getProjectViewMenu(project) {
 			function checkSwitchParams(globalOptionParams) {
 				for (let switchType in SWITCH_NAMES_BY_TYPE)
 				for (let switchName of SWITCH_NAMES_BY_TYPE[switchType]) if (params[switchName]) {
-				var	switchParam = getOrInitChild(project, 'switchParamNames')
-				,	switchParam = getOrInitChild(switchParam, switchType)
-					;
+				const	switchParams = getOrInitChild(project, 'switchParamNames');
+				const	switchParam  = getOrInitChild(switchParams, switchType);
 
 					if (!switchParam.implicit) {
 						switchParam.implicit = getOtherSwitchParamName(switchType, switchName);
@@ -3951,10 +3995,10 @@ async function getProjectViewMenu(project) {
 			}
 
 			function checkMinMaxParams(params, optionParams, paramName) {
-			var	paramMS = params[paramName];
+			const	paramMS = params[paramName];
 
 				if (isNonNullObject(paramMS)) {
-				var	optionMS = optionParams[paramName];
+				const	optionMS = optionParams[paramName];
 
 					if (isNonNullObject(optionMS)) {
 						if (optionMS.min > paramMS.min) optionMS.min = paramMS.min;
@@ -3970,9 +4014,8 @@ async function getProjectViewMenu(project) {
 			}
 
 			function addOptionGroup(sectionName, listName) {
-			var	optionGroup = getOptionGroup(sectionName, listName)
-			,	optionParams = optionGroup.params
-				;
+			const	optionGroup = getOptionGroup(sectionName, listName);
+			const	optionParams = optionGroup.params;
 
 				checkSwitchParams(optionParams);
 				checkMinMaxParams(params, optionParams, 'multi_select');
@@ -3995,11 +4038,10 @@ async function getProjectViewMenu(project) {
 					layer.type = sectionName.replace(regLayerTypeSingleTrim, '');
 				}
 
-			var	optionGroup = getOptionGroup(sectionName, listName)
-			,	optionParams = optionGroup.params
-			,	optionItems = optionGroup.items
-			,	optionItemLayers = getOrInitChild(optionItems, optionName, Array)
-				;
+			const	optionGroup = getOptionGroup(sectionName, listName);
+			const	optionParams = optionGroup.params;
+			const	optionItems = optionGroup.items;
+			const	optionItemLayers = getOrInitChild(optionItems, optionName, Array);
 
 				if (optionName !== '') {
 					PARAM_KEYWORDS_SET_VALUE_TO_NAME.forEach(
@@ -4019,7 +4061,7 @@ async function getProjectViewMenu(project) {
 				function addOptionsFromParamKeywords(keywordsList, paramList) {
 					paramList.forEach(
 						(optionValue) => {
-						var	optionName = String(optionValue);
+						let	optionName = String(optionValue);
 
 							if (isNaN(optionValue)) {
 								optionName = optionName.replace(regNonAlphaNum, '').toLowerCase();
@@ -4044,7 +4086,7 @@ async function getProjectViewMenu(project) {
 					);
 				}
 
-			var	param = params[sectionName];
+			const	param = params[sectionName];
 
 				if (!param) {
 					return;
@@ -4054,13 +4096,13 @@ async function getProjectViewMenu(project) {
 					for (let listName in param) {
 						addOptionsFromParam(sectionName, listName);
 					}
+
 					return;
 				}
 
-			var	optionGroup = addOptionGroup(sectionName, listName || sectionName)
-			,	optionParams = optionGroup.params
-			,	optionItems = optionGroup.items
-				;
+			const	optionGroup = addOptionGroup(sectionName, listName || sectionName);
+			const	optionParams = optionGroup.params;
+			const	optionItems = optionGroup.items;
 
 				checkSwitchParams(optionParams);
 
@@ -4072,7 +4114,7 @@ async function getProjectViewMenu(project) {
 						optionItems[optionName] = getLocalizedText(sectionName + '_' + optionName);
 					}
 
-				var	index = VIEW_SIDES.indexOf(param);
+				const	index = VIEW_SIDES.indexOf(param);
 
 					if (index >= 0) {
 						params[sectionName] = (
@@ -4092,17 +4134,19 @@ async function getProjectViewMenu(project) {
 					}
 				} else
 				if (sectionName === 'paddings') {
-					if (param = params['radius']) {
-						param.forEach(
+				const	paddings = params['radius'];
+
+					if (paddings) {
+						paddings.forEach(
 							(padding) => {
 								if (isString(padding)) {
 									padding = JSON.parse(padding);
 								}
 
-							var	{method, threshold, dimensions} = padding
-							,	isBox = ('x' in dimensions)
-							,	[openBracket, closeBracket] = (isBox ? '[]' : '()')
-							,	optionNameParts = [
+							const	{method, threshold, dimensions} = padding;
+							const	isBox = ('x' in dimensions);
+							const	[openBracket, closeBracket] = (isBox ? '[]' : '()');
+							const	optionNameParts = [
 									(
 										isBox
 										? [dimensions.x, dimensions.y]
@@ -4131,8 +4175,9 @@ async function getProjectViewMenu(project) {
 										? '' :
 										method
 									)
-								]
-							,	optionName = (
+								];
+
+							const	optionName = (
 									optionNameParts
 									.filter(arrayFilterNonEmptyValues)
 									.join(', ')
@@ -4142,6 +4187,7 @@ async function getProjectViewMenu(project) {
 							}
 						);
 					}
+
 					layer.isMaskGenerated = true;
 				} else
 				if (sectionName === 'autocrop') {
@@ -4153,20 +4199,20 @@ async function getProjectViewMenu(project) {
 					} else {
 						param[listName].forEach(
 							(optionValue) => {
-							var	optionName = String(optionValue);
+							const	optionName = String(optionValue);
 								optionItems[optionName] = optionValue;
 							}
 						);
 					}
 				} else
 				if (sectionName === 'zoom' || sectionName === 'opacities') {
-				var	format = param.format;
+				const	format = param.format;
 
 					if (format) {
 						optionParams.format = format;
 					}
 
-				var	values = param.values;
+				const	values = param.values;
 
 					if (values) {
 						values.forEach(
@@ -4174,7 +4220,7 @@ async function getProjectViewMenu(project) {
 
 //* pad bare numbers to avoid numeric autosorting in <select>:
 
-							var	optionName = optionValue + '%';
+							const	optionName = optionValue + '%';
 
 								if (sectionName === 'opacities') {
 									optionValue = (orz(optionValue) / 100);
@@ -4187,9 +4233,9 @@ async function getProjectViewMenu(project) {
 				}
 			}
 
-		var	params = layer.params
-		,	name = layer.name
-		,	names = layer.names = (
+		const	params = layer.params;
+		const	name = layer.name;
+		const	names = layer.names = (
 				name
 				.split(regSplitLayerNames)
 				.map(trim)
@@ -4205,19 +4251,18 @@ async function getProjectViewMenu(project) {
 				names.push('');
 			}
 
-		var	layersInside = layer.layers
-		,	layerCopyParams = params.copypaste
-			;
+		const	layersInside = layer.layers;
+		const	layerCopyParams = params.copypaste;
 
 			if (layerCopyParams) {
-			var	aliasTypes = getOrInitChild(project, 'layersForCopyPaste');
+			const	aliasTypes = getOrInitChild(project, 'layersForCopyPaste');
 
 				for (let paramType in layerCopyParams) {
-				var	aliases = getOrInitChild(aliasTypes, paramType);
+				const	aliases = getOrInitChild(aliasTypes, paramType);
 
 					layerCopyParams[paramType].forEach(
 						(alias) => {
-						var	layersByAlias = getOrInitChild(aliases, alias, Array);
+						const	layersByAlias = getOrInitChild(aliases, alias, Array);
 
 							addToListIfNotYet(layersByAlias, layer);
 						}
@@ -4240,7 +4285,7 @@ async function getProjectViewMenu(project) {
 					(listName) => addOptionGroup(layer.type, listName)
 				);
 			} else {
-			var	parent = getParentLayer(layer);
+			let	parent = getParentLayer(layer);
 
 				if (
 					parent
@@ -4317,7 +4362,7 @@ async function getProjectViewMenu(project) {
 		}
 
 		function getUnskippedProcessedLayers(layers, isInsideColorList) {
-		var	clippingLayer = null;
+		let	clippingLayer = null;
 
 //* https://stackoverflow.com/questions/30610523/reverse-array-in-javascript-without-mutating-original-array#comment100151603_30610528
 //* Compare array cloning methods: https://jsben.ch/lO6C5
@@ -4355,7 +4400,7 @@ async function getProjectViewMenu(project) {
 			);
 		}
 
-	var	options;
+	let	options = null;
 
 		project.layers = getUnskippedProcessedLayers(project.layers);
 
@@ -4374,12 +4419,11 @@ async function getProjectViewMenu(project) {
 //* Set any undefined batch/layout settings to computed default:
 
 			for (let switchType in SWITCH_NAMES_BY_TYPE) {
-			var	switchParam = getOrInitChild(project, 'switchParamNames')
-			,	switchParam = getOrInitChild(switchParam, switchType)
-				;
+			const	switchParams = getOrInitChild(project, 'switchParamNames');
+			const	switchParam  = getOrInitChild(switchParams, switchType);
 
 				if (!switchParam.implicit) {
-				var	switchName = SWITCH_NAMES_DEFAULT[switchType];
+				const	switchName = SWITCH_NAMES_DEFAULT[switchType];
 
 					switchParam.implicit = switchName;
 					switchParam.explicit = getOtherSwitchParamName(switchType, switchName);
@@ -4404,7 +4448,7 @@ async function getProjectViewMenu(project) {
 					return;
 				}
 
-			var	colorCode = getPropByNameChain(layer, 'params', 'color_code');
+			const	colorCode = getPropByNameChain(layer, 'params', 'color_code');
 
 				if (
 					colorCode
@@ -4435,9 +4479,8 @@ async function getProjectViewMenu(project) {
 									layer.img = getFirstPixelRGBA(img);
 
 									if (colorCode) {
-									var	colorCodeText = getColorTextFromArray(colorCode)
-									,	layerRGBAText = getColorTextFromArray(layer.img)
-										;
+									const	colorCodeText = getColorTextFromArray(colorCode);
+									const	layerRGBAText = getColorTextFromArray(layer.img);
 
 										if (layerRGBAText !== colorCodeText) {
 											console.log(
@@ -4507,11 +4550,11 @@ async function getProjectViewMenu(project) {
 	function getLayerMaskLoadPromise(mask, project) {
 		return new Promise(
 			(resolve, reject) => {
-			var	imagePromise;
-
-				if (mask) {
-					imagePromise = project.toPng(mask);
-				}
+			const	imagePromise = (
+					mask
+					? project.toPng(mask)
+					: null
+				);
 
 				if (imagePromise) {
 					imagePromise.then(
@@ -4542,7 +4585,7 @@ async function getProjectViewMenu(project) {
 
 			function addOptionColor(rgba) {
 				if (rgba) {
-				var	colorStyle = getColorTextFromArray(rgba, 3);
+				const	colorStyle = getColorTextFromArray(rgba, 3);
 
 					if (colorStyle) {
 						addToListIfNotYet(colorStyles, colorStyle);
@@ -4551,9 +4594,8 @@ async function getProjectViewMenu(project) {
 			}
 
 			function getOptionLabelFromColor(colorCode, prefix) {
-			var	rgba = getRGBAFromColorCodeOrName(colorCode)
-			,	text = String(colorCode)
-				;
+			const	rgba = getRGBAFromColorCodeOrName(colorCode);
+			let	text = String(colorCode);
 
 				if (prefix) {
 					text = prefix + ', ' + text;
@@ -4569,23 +4611,26 @@ async function getProjectViewMenu(project) {
 
 //* section = type of use (fill colors, draw parts, etc):
 
-		var	section = options[sectionName]
-		,	isEntryList = (entry && !isString(entry))
-		,	optionLists = (isEntryList ? entry : section)
-		,	optionList
-			;
+		const	section = options[sectionName];
+		const	isEntryList = (entry && !isString(entry));
+		const	optionLists = (isEntryList ? entry : section);
+
+		let	optionList = null;
+		let	colorStyles = null;
 
 //* list box = set of parts:
 
 			for (let listName in optionLists) if (optionList = section[listName]) {
-			var	listLabel = getLocalizedText((isEntryList ? optionLists[listName] : entry) || listName)
-			,	items = optionList.items
-			,	params = optionList.params
-			,	isZeroSameAsEmpty = (
+			const	listLabel = getLocalizedText((isEntryList ? optionLists[listName] : entry) || listName);
+			const	items = optionList.items;
+			const	params = optionList.params;
+
+			const	isZeroSameAsEmpty = (
 					ZERO_PERCENT_EQUALS_EMPTY
 				&&	NAME_PARTS_PERCENTAGES.includes(sectionName)
-				)
-			,	addEmpty = !(
+				);
+
+			let	addEmpty = !(
 					sectionName === 'side'
 				||	'' in items
 				) && (
@@ -4593,32 +4638,30 @@ async function getProjectViewMenu(project) {
 				&&	params.multi_select.min <= 0
 				);
 
-			var	tr = cre('tr', table);
+			const	tr = cre('tr', table);
 				tr.className = 'project-option';
 
-			var	td = cre('td', tr);
+			const	td = cre('td', tr);
 				td.title = listLabel;
 				td.textContent = listLabel + ':';
 
-			var	selectBox = cre('select', cre('td', tr));
+			const	selectBox = cre('select', cre('td', tr));
 				selectBox.name = listName;
 				selectBox.setAttribute('data-section', sectionName);
 
 				if (sectionName !== 'collage')
 				for (let switchType in SWITCH_NAMES_BY_TYPE) {
-				var	implicitName = getPropByNameChain(project, 'switchParamNames', switchType, 'implicit')
-				,	explicitName = getPropByNameChain(project, 'switchParamNames', switchType, 'explicit')
-				,	isImplied = (typeof params[explicitName] === 'undefined')
-					;
+				const	implicitName = getPropByNameChain(project, 'switchParamNames', switchType, 'implicit');
+				const	explicitName = getPropByNameChain(project, 'switchParamNames', switchType, 'explicit');
+				const	isImplied = (typeof params[explicitName] === 'undefined');
 
 					params[implicitName] = isImplied;
 					params[explicitName] = !isImplied;
 
-				var	switchNames = SWITCH_CLASS_BY_TYPE[switchType]
-				,	td = cre('td', tr)
-				,	label = cre('label', td)
-				,	checkBox = cre('input', label)
-					;
+				const	switchNames = SWITCH_CLASS_BY_TYPE[switchType];
+				const	td = cre('td', tr);
+				const	label = cre('label', td);
+				const	checkBox = cre('input', label);
 
 					checkBox.type = 'checkbox';
 					checkBox.className = switchType + '-checkbox';
@@ -4627,9 +4670,8 @@ async function getProjectViewMenu(project) {
 					checkBox.params = params;
 
 					for (let index in switchNames) {
-					var	switchName = switchNames[index]
-					,	button = cre('div', label)
-						;
+					const	switchName = switchNames[index];
+					const	button = cre('div', label);
 
 						button.className = switchType + '-' + switchName + ' ' + SWITCH_CLASS_BY_INDEX[index];
 						button.title = (
@@ -4665,7 +4707,7 @@ async function getProjectViewMenu(project) {
 						}
 					} else
 					if (sectionName === 'zoom') {
-					var	zoomPercentage = orz(optionName);
+					const	zoomPercentage = orz(optionName);
 
 						if (
 							zoomPercentage === 100
@@ -4675,7 +4717,7 @@ async function getProjectViewMenu(project) {
 								continue;
 							}
 
-						var	addedDefaultZoom = true;
+							addedDefaultZoom = true;
 							addEmpty = false;
 
 							addOption(selectBox, '100%');
@@ -4685,14 +4727,14 @@ async function getProjectViewMenu(project) {
 
 						addOption(selectBox, optionName);
 					} else {
-					var	optionLabel = optionName
-					,	optionValue = optionName
-					,	colorStyles = []
-						;
+					let	optionLabel = optionName;
+					let	optionValue = optionName;
+
+						colorStyles = [];
 
 						function setLocalizedColorOptionLabel(key, colorListNames) {
 
-						var	localizedLabel = getLocalizedOrEmptyText(key);
+						const	localizedLabel = getLocalizedOrEmptyText(key);
 
 							if (localizedLabel) {
 								optionLabel = localizedLabel;
@@ -4740,7 +4782,7 @@ async function getProjectViewMenu(project) {
 							);
 						}
 
-					var	optionItem = addOption(selectBox, optionLabel, optionValue);
+					const	optionItem = addOption(selectBox, optionLabel, optionValue);
 
 						colorStyles.forEach(
 							(colorStyle) => {
@@ -4762,7 +4804,7 @@ async function getProjectViewMenu(project) {
 					addOption(selectBox, '', isZeroSameAsEmpty ? '0%' : '');
 				}
 
-			var	preselectByValue = getPropByNameChain(project, 'options', sectionName, listName, 'params', 'preselect');
+			const	preselectByValue = getPropByNameChain(project, 'options', sectionName, listName, 'params', 'preselect');
 
 				selectBox.initialValue = (
 					preselectByValue
@@ -4770,25 +4812,28 @@ async function getProjectViewMenu(project) {
 					: selectValueByPos(selectBox, params.last ? 'bottom' : 'top')
 				);
 
-			var	tabCount = getAllByTag('td', tr).length;
-				if (maxTabCount < tabCount) maxTabCount = tabCount;
+			const	tabCount = getAllByTag('td', tr).length;
+
+				if (maxTabCount < tabCount) {
+					maxTabCount = tabCount;
+				}
 			}
 		}
 
 		function addHeader(text) {
-		var	th = cre('header', cre('th', cre('tr', table)));
+		const	th = cre('header', cre('th', cre('tr', table)));
 			th.textContent = getLocalizedText(text) + ':';
 		}
 
-	var	options = project.options
-	,	table = cre('table', container)
-	,	maxTabCount = 0
-		;
+	const	options = project.options;
+	const	table = cre('table', container);
+
+	let	maxTabCount = 0;
+	let	addedDefaultZoom = false;
 
 		for (let sections of PROJECT_OPTION_GROUPS) {
 			if (sections.header) {
-			var	header = sections.header;
-
+			let	header = sections.header;
 				sections = sections.select;
 
 				for (let sectionName in sections) {
@@ -4797,6 +4842,7 @@ async function getProjectViewMenu(project) {
 							addHeader(header);
 							header = null;
 						}
+
 						addOptions(sectionName, sections[sectionName]);
 					}
 				}
@@ -4821,58 +4867,47 @@ async function getProjectViewMenu(project) {
 }
 
 function createProjectView(project) {
-var	container = cre('div')
-,	header = cre('header', container)
-	;
+const	container = cre('div');
+const	header = cre('header', container);
 
 	header.className = 'project-header';
 
 //* show overall project info:
 
-var	summary       = cre('section', header)
-,	summaryHeader = cre('header', summary)
-,	summaryBody   = cre('div',    summary)
-,	summaryFooter = cre('footer', summary)
-	;
+const	summary       = cre('section', header);
+const	summaryHeader = cre('header', summary);
+const	summaryBody   = cre('div',    summary);
+const	summaryFooter = cre('footer', summary);
 
 	summaryHeader.className = 'filename';
 	summaryHeader.textContent = project.fileName;
 
-var	bitDepthText = ''
-,	colorModeText = project.colorMode || ''
-	;
+const	bitDepthText = (
+		project.channels && project.bitDepth
+		? getLocalizedText('project_bits_channels', project.channels, project.bitDepth)
+		: project.channels ? getLocalizedText('project_channels', project.channels)
+		: project.bitDepth ? getLocalizedText('project_bits', project.bitDepth)
+		: ''
+	);
 
-	if (project.channels && project.bitDepth) {
-		bitDepthText = getLocalizedText('project_bits_channels', project.channels, project.bitDepth);
-	} else
-	if (project.channels) {
-		bitDepthText = getLocalizedText('project_channels', project.channels);
-	} else
-	if (project.bitDepth) {
-		bitDepthText = getLocalizedText('project_bits', project.bitDepth);
-	}
+const	colorModeText = project.colorMode || '';
+const	canvasSizeText = (getLocalizedText('project_pixels', project.width, project.height));
+const	resolutionText = getNestedFilteredArrayJoinedText([canvasSizeText, bitDepthText, colorModeText], ', ');
 
-var	canvasSizeText = (getLocalizedText('project_pixels', project.width, project.height))
-,	resolutionText = getNestedFilteredArrayJoinedText([canvasSizeText, bitDepthText, colorModeText], ', ')
-	;
-
-var	foldersCount = project.foldersCount
-,	layersCount  = project.layersCount
-,	imagesCount  = project.imagesCount || project.loading.imagesCount
-,	imagesLoadedCount = project.imagesLoadedCount
-,	layersTextParts = []
-	;
+const	foldersCount = project.foldersCount;
+const	layersCount  = project.layersCount;
+const	imagesCount  = project.imagesCount || project.loading.imagesCount;
+const	imagesLoadedCount = project.imagesLoadedCount;
+const	layersTextParts = [];
 
 	if (layersCount)  layersTextParts.push(getLocalizedText('project_layers', layersCount));
 	if (foldersCount) layersTextParts.push(getLocalizedText('project_folders', foldersCount));
 
-var	layersText = getNestedFilteredArrayJoinedText(layersTextParts, ', ')
-,	summaryTextParts = [resolutionText, layersText]
-	;
+const	layersText = getNestedFilteredArrayJoinedText(layersTextParts, ', ');
+const	summaryTextParts = [resolutionText, layersText];
 
-var	sourceFile = project.loading.data.file || {}
-,	sourceFileTime = sourceFile.lastModified || sourceFile.lastModifiedDate
-	;
+const	sourceFile = project.loading.data.file || {};
+const	sourceFileTime = sourceFile.lastModified || sourceFile.lastModifiedDate;
 
 	if (imagesCount) {
 		summaryTextParts.push(
@@ -4895,7 +4930,7 @@ var	sourceFile = project.loading.data.file || {}
 
 	summaryBody.innerHTML = getNestedFilteredArrayJoinedText(summaryTextParts, '<br>');
 
-var	infoButton = addButton(summaryFooter, getLocalizedText('console_log'));
+const	infoButton = addButton(summaryFooter, getLocalizedText('console_log'));
 	infoButton.name = 'console_log';
 
 	container.addEventListener('click', onProjectButtonClick, false);
@@ -4909,7 +4944,7 @@ var	infoButton = addButton(summaryFooter, getLocalizedText('console_log'));
 		}
 
 		for (let buttonName in group) {
-		var	entry = group[buttonName];
+		const	entry = group[buttonName];
 
 			if (isString(entry)) {
 				addNamedButton(container, buttonName, entry);
@@ -4922,11 +4957,10 @@ var	infoButton = addButton(summaryFooter, getLocalizedText('console_log'));
 
 	if (project.options) {
 		for (let controlGroup of PROJECT_CONTROLS) {
-		var	buttons = controlGroup.buttons
-		,	buttonsGroup = cre('section', header)
-		,	buttonsHeader = cre('header', buttonsGroup)
-		,	buttonsFooter = cre('footer', buttonsGroup)
-			;
+		const	buttons = controlGroup.buttons;
+		const	buttonsGroup = cre('section', header);
+		const	buttonsHeader = cre('header', buttonsGroup);
+		const	buttonsFooter = cre('footer', buttonsGroup);
 
 			buttonsHeader.textContent = getLocalizedText(controlGroup.header) + ':';
 
@@ -4937,7 +4971,7 @@ var	infoButton = addButton(summaryFooter, getLocalizedText('console_log'));
 
 //* place for results:
 
-	var	tr = cre('tr', cre('table', container));
+	const	tr = cre('tr', cre('table', container));
 		cre('td', tr).className = 'project-options';
 		cre('td', tr).className = 'project-render';
 	}
@@ -4951,21 +4985,25 @@ function setProjectThumbnail(project, fullImage) {
 	&&	project
 	&&	project.thumbnail
 	) {
-	var	canvas = getResizedCanvasFromImg(fullImage, THUMBNAIL_SIZE);
+	const	canvas = getResizedCanvasFromImg(fullImage, THUMBNAIL_SIZE);
+
 		if (canvas) {
 			setImageSrc(project.thumbnail, canvas.toDataURL());
 		}
 
 		if (TAB_THUMBNAIL_ZOOM) {
-		var	preview = project.thumbnail.nextElementSibling;
+		let	preview = project.thumbnail.nextElementSibling;
+
 			if (!preview) {
-			var	container = project.thumbnail.parentNode;
+			const	container = project.thumbnail.parentNode;
 				toggleClass(container, 'thumbnail-hover', 1);
+
 				preview = cre('img', container);
 				preview.className = 'thumbnail larger';
 			}
 
-			canvas = getResizedCanvasFromImg(fullImage, PREVIEW_SIZE);
+		const	canvas = getResizedCanvasFromImg(fullImage, PREVIEW_SIZE);
+
 			if (canvas) {
 				setImageSrc(preview, canvas.toDataURL());
 			}
@@ -4981,12 +5019,15 @@ async function getProjectViewImage(project, img) {
 	) {
 		img.onload = () => setProjectThumbnail(project, img);
 
-		if (img.complete) img.onload();
+		if (img.complete) {
+			img.onload();
+		}
 
-	var	container = createProjectView(project)
-	,	header = getAllByTag('header', container)[0]
-	,	footer = getAllByTag('footer', container)[0]
-	,	comment = (
+	const	container = createProjectView(project);
+	const	header = getAllByTag('header', container)[0];
+	const	footer = getAllByTag('footer', container)[0];
+
+	const	comment = (
 			footer
 			? cre('header', footer, footer.firstElementChild)
 			: header || cre('header', container)
@@ -4994,7 +5035,7 @@ async function getProjectViewImage(project, img) {
 
 		comment.innerHTML = getLocalizedHTML('error_options');
 
-	var	preview = cre('div', container)
+	const	preview = cre('div', container)
 		preview.className = 'preview';
 		preview.appendChild(img);
 
@@ -5009,7 +5050,7 @@ function isParamInLayerName(name) {
 		name
 	&&	name.length > 0
 	) {
-	var	paramStart = name.indexOf('[');
+	const	paramStart = name.indexOf('[');
 
 //* no "[param]", nothing else to see:
 
@@ -5017,7 +5058,7 @@ function isParamInLayerName(name) {
 			return false;
 		}
 
-	var	commentStart = name.indexOf('(');
+	const	commentStart = name.indexOf('(');
 
 //* has "[param]" and no "(comment)":
 
@@ -5031,7 +5072,7 @@ function isParamInLayerName(name) {
 			return true;
 		}
 
-	var	commentEnd = name.indexOf(')', commentStart);
+	const	commentEnd = name.indexOf(')', commentStart);
 
 //* the rest is unclosed "(comment...", nothing else to see:
 
@@ -5050,7 +5091,7 @@ function isParamInLayerName(name) {
 function getLayerWithParamsFromParamList(paramList, layer) {
 
 	function addUniqueParamValuesToList(paramType, values) {
-	var	collection = getOrInitChild(params, paramType, Array);
+	const	collection = getOrInitChild(params, paramType, Array);
 
 		values.forEach(
 			(value) => addToListIfNotYet(collection, value)
@@ -5058,9 +5099,8 @@ function getLayerWithParamsFromParamList(paramList, layer) {
 	}
 
 	function addUniqueParamPartsToList(sectionName, listName, value) {
-	var	section = getOrInitChild(params, sectionName)
-	,	collection = getOrInitChild(section, listName, Array)
-		;
+	const	section = getOrInitChild(params, sectionName);
+	const	collection = getOrInitChild(section, listName, Array);
 
 		addToListIfNotYet(collection, value);
 	}
@@ -5073,7 +5113,7 @@ function getLayerWithParamsFromParamList(paramList, layer) {
 		layer = {name: 'dummy'};
 	}
 
-var	params = getOrInitChild(layer, 'params');
+const	params = getOrInitChild(layer, 'params');
 
 	if (!isArray(paramList)) {
 		return layer;
@@ -5083,7 +5123,7 @@ var	params = getOrInitChild(layer, 'params');
 
 	param_list:
 	for (let param of paramList) {
-	var	match, key, value, values;
+	let	match;
 
 		param_types:
 		for (let paramType in regLayerNameParamType) if (match = param.match(regLayerNameParamType[paramType])) {
@@ -5093,10 +5133,9 @@ var	params = getOrInitChild(layer, 'params');
 				layer.isVisibilityOptional = true;
 			} else
 			if (paramType === 'zoom' || paramType === 'opacities') {
-			var	values = getUniqueNumbersArray(match[1])
-			,	format = orz(match[2])
-			,	collection = params[paramType]
-				;
+			const	values = getUniqueNumbersArray(match[1]);
+			const	format = orz(match[2]);
+			const	collection = params[paramType];
 
 				if (collection) {
 					values.forEach(
@@ -5114,16 +5153,16 @@ var	params = getOrInitChild(layer, 'params');
 			if (paramType === 'radius') {
 				layer.isVisibilityOptional = true;
 
-			var	paramTextParts = (
+			let	methods = [];
+			let	thresholds = [];
+			let	boundaries = [];
+
+			const	paramTextParts = (
 					param
 					.split('/')
 					.filter(arrayFilterNonEmptyValues)
 					.map((text) => text.toLowerCase())
-				)
-			,	methods = []
-			,	thresholds = []
-			,	boundaries = []
-				;
+				);
 
 				paramTextParts.forEach(
 					(paramTextPart) => {
@@ -5163,8 +5202,9 @@ var	params = getOrInitChild(layer, 'params');
 							hasPostfix(paramTextPart, 'px')
 						||	(paramTextPart.replace(regNumDots, '') === '')
 						) {
-						var	isHollow = false
-						,	dimensions = (
+						let	isHollow = false;
+
+						const	dimensions = (
 								paramTextPart
 								.replace(regTrimParamRadius, '')
 								.split('x', 2)
@@ -5183,8 +5223,9 @@ var	params = getOrInitChild(layer, 'params');
 										)
 									)
 								)
-							)
-						,	explicitDimensions = (
+							);
+
+						const	explicitDimensions = (
 								dimensions
 								.map(
 									(dimensionBoundaries) => {
@@ -5193,7 +5234,7 @@ var	params = getOrInitChild(layer, 'params');
 												isHollow = true;
 											}
 
-										var	explicitBoundaries = (
+										const	explicitBoundaries = (
 												dimensionBoundaries
 												.filter(arrayFilterNonEmptyValues)
 											);
@@ -5207,16 +5248,17 @@ var	params = getOrInitChild(layer, 'params');
 									}
 								)
 								.filter(arrayFilterNonEmptyValues)
-							)
-						,	isBox = (explicitDimensions.length > 1)
-						,	isRound = (explicitDimensions.length === 1) && (dimensions.length === 1)
-						,	isSquare = (explicitDimensions.length === 1) && (dimensions.length > 1)
-						,	count = 0
-							;
+							);
+
+						const	isBox = (explicitDimensions.length > 1);
+						const	isRound = (explicitDimensions.length === 1) && (dimensions.length === 1);
+						const	isSquare = (explicitDimensions.length === 1) && (dimensions.length > 1);
+
+						let	count = 0;
 
 							if (isRound || isSquare) {
-							var	directions = explicitDimensions[0]
-							,	addToBoundaryList = (
+							const	directions = explicitDimensions[0];
+							const	addToBoundaryList = (
 									isRound
 									? function(interval) {
 										count += addToListIfNotYet(
@@ -5241,7 +5283,7 @@ var	params = getOrInitChild(layer, 'params');
 									forEachSetInCrossProduct(
 										directions
 									,	function() {
-										var	interval = {
+										const	interval = {
 												'in': Math.min(...arguments)
 											,	'out': Math.max(...arguments)
 											};
@@ -5252,7 +5294,7 @@ var	params = getOrInitChild(layer, 'params');
 								} else {
 									directions[0].forEach(
 										(outerRadius) => {
-										var	interval = (
+										const	interval = (
 												isHollow
 												? {
 													'in': outerRadius
@@ -5339,7 +5381,7 @@ var	params = getOrInitChild(layer, 'params');
 				||	methods.length > 0
 				||	thresholds.length > 0
 				) {
-				var	collection = getOrInitChild(params, paramType, Array);
+				const	collection = getOrInitChild(params, paramType, Array);
 
 					if (!boundaries.length) {
 						boundaries = [{'radius': {'out': DEFAULT_ALPHA_MASK_PADDING}}];
@@ -5370,7 +5412,7 @@ var	params = getOrInitChild(layer, 'params');
 				addUniqueParamPartsToList(paramType, match[1], match[2]);
 			} else
 			if (paramType === 'multi_select') {
-				values = (
+			const	values = (
 					match[1] === 'optional'
 					? [0,1]
 					: getNumbersArray(match[2], 2)
@@ -5385,14 +5427,14 @@ var	params = getOrInitChild(layer, 'params');
 				params[paramType] = match[1];
 			} else
 			if (paramType === 'preselect') {
-				key = 'last';
+			const	key = 'last';
 				params[param.includes(key) ? key : paramType] = true;
 			} else
 			if (paramType === 'batch') {
 				params[param === paramType ? paramType : 'single'] = true;
 			} else
 			if (paramType === 'autocrop') {
-				values = (
+			const	values = (
 					(match[2] || DEFAULT_AUTOCROP)
 					.split('/')
 					.filter(arrayFilterNonEmptyValues)
@@ -5401,7 +5443,7 @@ var	params = getOrInitChild(layer, 'params');
 				addUniqueParamValuesToList(paramType, values);
 			} else
 			if (paramType === 'collage') {
-				values = (
+			const	values = (
 					(match[2] || DEFAULT_COLLAGE)
 					.split('/')
 					.filter(arrayFilterNonEmptyValues)
@@ -5409,10 +5451,10 @@ var	params = getOrInitChild(layer, 'params');
 
 				values.forEach(
 					(value) => {
-					var	match
-					,	listName = 'background'
-					,	keyword = value.replace(regNonAlphaNum, '').toLowerCase()
-						;
+					let	listName = 'background';
+					let	match, values;
+
+					const	keyword = value.replace(regNonAlphaNum, '').toLowerCase()
 
 						if (
 							PARAM_KEYWORDS_COLLAGE_ALIGN.includes(keyword)
@@ -5427,10 +5469,10 @@ var	params = getOrInitChild(layer, 'params');
 								!listName
 							||	!PARAM_KEYWORDS_COLLAGE_PAD.includes(listName)
 							) {
-								listName = PARAM_KEYWORDS_COLLAGE_PAD;	//* <- add all with same value
+								listName = PARAM_KEYWORDS_COLLAGE_PAD;	//* <- add same value to all lists
 							}
 
-						var	values = (
+							values = (
 								getRangeValuesFromText(value)
 								.map(
 									(value) => (
@@ -5462,12 +5504,12 @@ var	params = getOrInitChild(layer, 'params');
 			} else {
 				if (paramType === 'side') {
 					layer.isVisibilityOptional = true;
-					if (
-						(key = match[2])
-					&&	(key = key[0])
-					) {
-						if (key === 'h') layer.flipSide = orz(layer.flipSide) | FLAG_FLIP_HORIZONTAL;
-						if (key === 'v') layer.flipSide = orz(layer.flipSide) | FLAG_FLIP_VERTICAL;
+
+				const	side = match[2];
+
+					if (side) {
+						if (side[0] === 'h') layer.flipSide = orz(layer.flipSide) | FLAG_FLIP_HORIZONTAL; else
+						if (side[0] === 'v') layer.flipSide = orz(layer.flipSide) | FLAG_FLIP_VERTICAL;
 					}
 				}
 
@@ -5480,8 +5522,10 @@ var	params = getOrInitChild(layer, 'params');
 			continue param_list;
 		}
 
-		if (value = getRGBAFromColorCodeOrName(param)) {
-			params.color_code = value;
+	const	colorCode = getRGBAFromColorCodeOrName(param);
+
+		if (colorCode) {
+			params.color_code = colorCode;
 
 			continue param_list;
 		}
@@ -5504,16 +5548,15 @@ async function getNextParentAfterAddingLayerToTree(layer, sourceData, name, pare
 		await pause(1);
 	}
 
-var	paramList = []
-,	params = {}
-	;
+const	paramList = [];
+const	params = {};
 
 	if (typeof layer.sourceData   === 'undefined') layer.sourceData   = sourceData;
 	if (typeof layer.nameOriginal === 'undefined') layer.nameOriginal = name;
 
 	name = name.replace(regTrimCommaSpace, '');
 
-var	checkVirtualPath = (
+const	checkVirtualPath = (
 		isInsideVirtualPath
 	||	isParamInLayerName(name)
 	);
@@ -5540,19 +5583,22 @@ var	checkVirtualPath = (
 
 //* make virtual subfolder from layer name:
 
+let	match = null;
+let	separator = null;
+let	subLayer = null;
+let	isSubLayerFolder = false;
+
 	while (match = name.match(regLayerNameParamOrComment)) if (
 		checkVirtualPath
 	&&	(separator = match[2])
 	&&	(separator === '/')
 	) {
-	var	match, separator
-	,	subLayer = layer
-	,	isSubLayerFolder = isLayerFolder
-		;
-
+		subLayer = layer;
+		isSubLayerFolder = isLayerFolder;
 		isLayerFolder = true;
 		name          = match[1].replace(regTrimCommaSpace, '');
 		subLayer.name = match[4].replace(regTrimCommaSpace, '');
+
 		layer = {
 			nameOriginal: layer.nameOriginal
 		,	isVirtualFolder: true
@@ -5578,7 +5624,7 @@ var	checkVirtualPath = (
 
 //* gather "[params]", remove "(comments)":
 
-	var	paramGroupText = match[3];
+	const	paramGroupText = match[3];
 
 		if (isNotEmptyString(paramGroupText)) {
 			paramGroupText
@@ -5603,7 +5649,7 @@ var	checkVirtualPath = (
 	if (paramList.length > 0) {
 		getLayerWithParamsFromParamList(paramList, layer);
 
-	var	layerType = layer.type;
+	const	layerType = layer.type;
 
 		if (isNotEmptyString(layerType)) {
 			if (params.if_only) {
@@ -5635,15 +5681,14 @@ var	checkVirtualPath = (
 
 	parentGroup.push(layer);
 
-var	paramName = 'check_order'
-,	parentValue
-	;
+const	paramName = 'check_order';
 
-	if (
-		!params[paramName]
-	&&	(parentValue = getPropByNameChain(getParentLayer(layer), 'params', paramName))
-	) {
-		params[paramName] = parentValue;
+	if (!params[paramName]) {
+	const	parentValue = getPropByNameChain(getParentLayer(layer), 'params', paramName);
+
+		if (parentValue) {
+			params[paramName] = parentValue;
+		}
 	}
 
 	if (isLayerFolder) {
@@ -5683,7 +5728,7 @@ async function addLayerGroupCommonWrapper(project, parentGroup, layers, callback
 function setImageGeometryProperties(target, ...sources) {
 	IMAGE_GEOMETRY_KEYS.forEach(
 		(keys) => {
-		let	targetKey = keys[0];
+		const	targetKey = keys[0];
 
 			if (targetKey in target) {
 				return;
@@ -5708,16 +5753,15 @@ async function loadCommonWrapper(project, libName, fileParserFunc, treeConstruct
 		return;
 	}
 
-var	actionLabel = 'opening with ' + libName;
+let	sourceData = null;
+const	actionLabel = 'opening with ' + libName;
 
 	logTime('"' + project.fileName + '" started ' + actionLabel);
 
 	project.loading.startParsingTime = getTimeNow();
 
 	try {
-	var	loadingData = project.loading.data
-	,	sourceData = null
-		;
+	const	loadingData = project.loading.data;
 
 		if (
 			!loadingData.file
@@ -5798,7 +5842,7 @@ async function loadORA(project) {
 			async function addLayerToTree(layer, parentGroup) {
 
 				function setImageLoadOrCountIfLoaded(imageHolder, newHolder) {
-				var	img = getPropByAnyOfNamesChain(imageHolder, 'img', 'image');
+				const	img = getPropByAnyOfNamesChain(imageHolder, 'img', 'image');
 
 				//* already loaded img element:
 
@@ -5822,27 +5866,31 @@ async function loadORA(project) {
 					setImageGeometryProperties(newHolder, imageHolder, img);
 				}
 
-			var	name	= layer.name || ''
-			,	mode	= layer.composite || ''
-			,	mask	= layer.mask || null
-			,	layers	= layer.layers || null
-			,	blendMode = getNormalizedBlendMode(mode)
-			,	isLayerFolder = (layers && layers.length > 0)
-			,	isPassThrough = (
+			const	name	= layer.name || '';
+			const	mode	= layer.composite || '';
+			const	mask	= layer.mask || null;
+			const	layers	= layer.layers || null;
+			const	blendMode = getNormalizedBlendMode(mode);
+			const	isLayerFolder = (layers && layers.length > 0);
+
+			const	isPassThrough = (
 					blendMode === BLEND_MODE_PASS
 				||	layer.isolation === 'auto'
-				)
-			,	isClipped = (
+				);
+
+			const	isClipped = (
 					blendMode === BLEND_MODE_CLIP
 				||	getTruthyValue(layer.clipping)		//* <- non-standard, for testing
-				)
-			,	isVisible = (
+				);
+
+			const	isVisible = (
 					typeof layer.visibility === 'undefined'
 				||	layer.visibility === 'visible'
 				||	layer.visibility !== 'hidden'
 				||	getTruthyValue(layer.visibility)	//* <- non-standard, for testing
-				)
-			,	layerWIP = {
+				);
+
+			const	layerWIP = {
 					blendMode: blendMode
 				,	blendModeOriginal: mode
 				,	isClipped: isClipped
@@ -5902,10 +5950,8 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 				return;
 			}
 
-		var	projectHeader = sourceData.header || sourceData
-		,	layerMasks = getPropByNameChain(sourceData, 'layerMask', 'obj', 'layers')
-		,	projectMode = projectHeader.mode
-			;
+		const	projectHeader = sourceData.header || sourceData;
+		const	projectMode = projectHeader.mode;
 
 			project.nodesCount = sourceData.layers.length;
 
@@ -5922,35 +5968,42 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 //* gather layers into a tree object:
 
 			async function addLayerToTree(layer, parentGroup) {
-			var	node = layer
-			,	layer = node.layer || node
-			,	name = getPropFromAnySource('name',  layer, node) || ''
-			,	img  = getPropFromAnySource('image', layer, node)
-			,	mask = getPropFromAnySource('mask',  layer, node, img)
-			,	blending = getPropByAnyOfNamesChain(layer, 'blendMode', 'blending', 'mode')
-			,	clipping = getPropByAnyOfNamesChain(layer, 'blendMode', 'clipping', 'clipped')
-			,	modePass = getPropByNameChain(layer, 'adjustments', 'sectionDivider', 'obj', 'blendMode')
-			,	fillOpacity = (
+			const	node = layer;
+				layer = node.layer || node;
+
+			const	name = getPropFromAnySource('name',  layer, node) || '';
+			const	img  = getPropFromAnySource('image', layer, node);
+			const	mask = getPropFromAnySource('mask',  layer, node, img);
+			const	blending = getPropByAnyOfNamesChain(layer, 'blendMode', 'blending', 'mode');
+			const	clipping = getPropByAnyOfNamesChain(layer, 'blendMode', 'clipping', 'clipped');
+			const	modePass = getPropByNameChain(layer, 'adjustments', 'sectionDivider', 'obj', 'blendMode');
+			const	blendMode = getNormalizedBlendMode(blending);
+
+			const	isPassThrough = (
+					regLayerBlendModePass.test(modePass)
+				||	regLayerBlendModePass.test(blendMode)
+				);
+
+			const	fillOpacity = (
 					isFunction(layer.fillOpacity)
 					? layer.fillOpacity().layer.adjustments.fillOpacity.obj.value
 					: null
-				)
-			,	layers = (
+				);
+
+			const	hasNoFillOpacityValue = (
+					fillOpacity === null
+				||	isNaN(fillOpacity)
+				);
+
+			const	layers = (
 					node.hasChildren()
 					? node.children()
 					: null
-				)
-			,	blendMode = getNormalizedBlendMode(blending)
-			,	isLayerFolder = (layers && typeof layers.length !== 'undefined')
-			,	isPassThrough = (
-					regLayerBlendModePass.test(modePass)
-				||	regLayerBlendModePass.test(blendMode)
-				)
-			,	hasNoFillOpacityValue = (
-					fillOpacity === null
-				||	isNaN(fillOpacity)
-				)
-			,	layerWIP = {
+				);
+
+			const	isLayerFolder = (layers && typeof layers.length !== 'undefined');
+
+			const	layerWIP = {
 					blendMode: blendMode
 				,	blendModeOriginal: blending
 				,	isPassThrough: isPassThrough
@@ -6028,17 +6081,17 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 
 function isOptionRelevant(project, values, sectionName, listName, optionName) {
 
-var	relevantLayers = getProjectOptionValue(project, sectionName, listName, optionName);
+const	relevantLayers = getProjectOptionValue(project, sectionName, listName, optionName);
 
 	if (
 		isArray(relevantLayers)
 	&&	relevantLayers.length > 0
 	) {
-	var	section = values[sectionName]
-	,	oldOptionName = section[listName]
-	,	isOptionNameChanged = (oldOptionName !== optionName)
-	,	result = false
-		;
+	const	section = values[sectionName];
+	const	oldOptionName = section[listName];
+	const	isOptionNameChanged = (oldOptionName !== optionName);
+
+	let	result = false;
 
 		if (isOptionNameChanged) {
 			section[listName] = optionName;
@@ -6047,6 +6100,7 @@ var	relevantLayers = getProjectOptionValue(project, sectionName, listName, optio
 		for (let layer of relevantLayers) {
 			if (getLayerPathVisibilityByValues(project, layer, values, listName)) {
 				result = true;
+
 				break;
 			}
 		}
@@ -6062,14 +6116,17 @@ var	relevantLayers = getProjectOptionValue(project, sectionName, listName, optio
 }
 
 function isSetOfValuesOK(project, values) {
-var	section;
+	for (let sectionName in values) {
+	const	section = values[sectionName];
 
-	for (let sectionName in values) if (section = values[sectionName])
-	for (let listName in section) {
-	var	optionName = section[listName];
+		if (section) {
+			for (let listName in section) {
+			const	optionName = section[listName];
 
-		if (!isOptionRelevant(project, values, sectionName, listName, optionName)) {
-			return false;
+				if (!isOptionRelevant(project, values, sectionName, listName, optionName)) {
+					return false;
+				}
+			}
 		}
 	}
 
@@ -6077,28 +6134,30 @@ var	section;
 }
 
 function getSetOfRelevantValues(project, values) {
-var	section
-,	resultSet = {}
-	;
+const	resultSet = {};
 
-	for (let sectionName in values) if (section = values[sectionName])
-	for (let listName in section) {
-	var	optionName = section[listName]
-	,	resultSection = getOrInitChild(resultSet, sectionName)
-		;
+	for (let sectionName in values) {
+	const	section = values[sectionName];
 
-		resultSection[listName] = (
-			isOptionRelevant(project, values, sectionName, listName, optionName)
-			? optionName
-			: ''
-		);
+		if (section) {
+			for (let listName in section) {
+			const	optionName = section[listName];
+			const	resultSection = getOrInitChild(resultSet, sectionName);
+
+				resultSection[listName] = (
+					isOptionRelevant(project, values, sectionName, listName, optionName)
+					? optionName
+					: ''
+				);
+			}
+		}
 	}
 
 	return resultSet;
 }
 
 function selectValueByPos(selectBox, targetPosition) {
-var	newValue = selectBox.value;
+let	newValue = selectBox.value;
 
 	if (targetPosition === 'top') {
 		newValue = selectBox.options[0].value;
@@ -6114,6 +6173,7 @@ var	newValue = selectBox.value;
 		||	'' === trim(option.textContent)
 		) {
 			newValue = option.value;
+
 			break;
 		}
 	}
@@ -6134,7 +6194,7 @@ function selectValue(selectBox, newValue) {
 }
 
 function updateSelectStyle(selectBox) {
-var	optionItem = getAllByTag('option', selectBox).find(
+const	optionItem = getAllByTag('option', selectBox).find(
 		(option) => (
 			option.selected
 		||	option.value === selectBox.value
@@ -6192,14 +6252,13 @@ function setAllValues(project, targetPosition) {
 }
 
 function getAllMenuValues(project, checkSelectedValue) {
-var	values = {};
+const	values = {};
 
 	getAllByTag('select', project.container).forEach(
 		(selectBox) => {
-		var	sectionName = selectBox.getAttribute('data-section')
-		,	listName    = selectBox.name
-		,	optionLists = getOrInitChild(values, sectionName)
-			;
+		const	sectionName = selectBox.getAttribute('data-section');
+		const	listName    = selectBox.name;
+		const	optionLists = getOrInitChild(values, sectionName);
 
 			optionLists[listName] = (
 				sectionName === 'collage'
@@ -6223,11 +6282,11 @@ function getAllValueSets(project, flags) {
 			optionLists
 		&&	optionLists.length > 0
 		) {
-		var	optionList  = optionLists[0]
-		,	sectionName = optionList.sectionName
-		,	listName    = optionList.listName
-		,	optionNames = optionList.optionNames
-		,	optionsLeft = (
+		const	optionList  = optionLists[0];
+		const	sectionName = optionList.sectionName;
+		const	listName    = optionList.listName;
+		const	optionNames = optionList.optionNames;
+		const	optionsLeft = (
 				optionLists.length > 1
 				? optionLists.slice(1)
 				: null
@@ -6242,9 +6301,8 @@ function getAllValueSets(project, flags) {
 					return;
 				}
 
-			var	values = JSON.parse(JSON.stringify(partialValueSet || {}))
-			,	section = getOrInitChild(values, sectionName)
-				;
+			let	values = JSON.parse(JSON.stringify(partialValueSet || {}));
+			const	section = getOrInitChild(values, sectionName);
 
 				section[listName] = optionName;
 
@@ -6252,20 +6310,19 @@ function getAllValueSets(project, flags) {
 					goDeeper(optionsLeft, values);
 				} else
 				if (isSetOfValuesOK(project, values = getSetOfRelevantValues(project, values))) {
-				var	fileName = getFileNameByValuesToSave(
-						project,
-						values,
-						{
+				const	fileName = getFileNameByValuesToSave(
+						project
+					,	values
+					,	{
 							addAllListNames: true,
 						}
 					);
 
 					if (getOnlyNames) {
 						addToListIfNotYet(valueSets, fileName);
-					} else {
-						if (!(fileName in valueSets)) {
-							valueSets[fileName] = values;
-						}
+					} else
+					if (!(fileName in valueSets)) {
+						valueSets[fileName] = values;
 					}
 				}
 			}
@@ -6276,19 +6333,16 @@ function getAllValueSets(project, flags) {
 		flags = {};
 	}
 
-const	getOnlyNames		= !!flags.getOnlyNames
-,	stopAtMaxCount		= !!flags.stopAtMaxCount
-,	checkSelectedValue	= !!flags.checkSelectedValue
-,	values = getAllMenuValues(project, checkSelectedValue);
+const	getOnlyNames		= !!flags.getOnlyNames;
+const	stopAtMaxCount		= !!flags.stopAtMaxCount;
+const	checkSelectedValue	= !!flags.checkSelectedValue;
+const	values = getAllMenuValues(project, checkSelectedValue);
 
-var	valueSets = getOnlyNames ? [] : {}
-,	optionLists = []
-,	section
-,	sectionName
-,	optionNames
-,	listName
-,	maxPossibleCount = 1
-	;
+const	valueSets = getOnlyNames ? [] : {};
+const	optionLists = [];
+
+let	maxPossibleCount = 1;
+let	section, optionNames;
 
 	for (let sectionName in values) if (section = values[sectionName])
 	for (let listName in section) if (optionNames = section[listName]) {
@@ -6297,6 +6351,7 @@ var	valueSets = getOnlyNames ? [] : {}
 		,	'listName'   : listName
 		,	'optionNames': optionNames
 		});
+
 		if (getOnlyNames) {
 			maxPossibleCount *= optionNames.length;
 		}
@@ -6316,7 +6371,7 @@ var	valueSets = getOnlyNames ? [] : {}
 }
 
 function getAllValueSetsCount(project) {
-var	valueSets = getAllValueSets(
+const	valueSets = getAllValueSets(
 		project
 	,	{
 			getOnlyNames: true,
@@ -6333,32 +6388,30 @@ var	valueSets = getAllValueSets(
 }
 
 function getUpdatedMenuValues(project, updatedValues) {
-var	values = {};
+const	values = {};
 
 	getAllByTag('select', project.container).forEach(
 		(selectBox) => {
 
 //* 1) check current selected values:
 
-		var	sectionName   = selectBox.getAttribute('data-section')
-		,	listName      = selectBox.name
-		,	selectedValue = selectBox.value || ''
-		,	hide = false
-			;
+		const	sectionName   = selectBox.getAttribute('data-section');
+		const	listName      = selectBox.name;
+		const	selectedValue = selectBox.value || '';
+
+		let	hide = false;
 
 //* 2) hide irrelevant options:
 
 			if (updatedValues && updatedValues !== true) {
-			var	fallbackValue = ''
-			,	selectedValueHidden = false
-			,	allHidden = true
-				;
+			let	fallbackValue = '';
+			let	selectedValueHidden = false;
+			let	allHidden = true;
 
 				getAllByTag('option', selectBox).forEach(
 					(option) => {
-					var	optionName = option.value || ''
-					,	hide = !isOptionRelevant(project, updatedValues, sectionName, listName, optionName)
-						;
+					const	optionName = option.value || '';
+					const	hide = !isOptionRelevant(project, updatedValues, sectionName, listName, optionName);
 
 						if (hide) {
 							if (optionName === selectedValue) {
@@ -6381,16 +6434,16 @@ var	values = {};
 					}
 				);
 
-			var	hide = (allHidden ? 'none' : '')
-			,	container = getThisOrParentByClass(selectBox, 'project-option') || selectBox.parentNode
-			,	style = container.style
-				;
+				hide = (allHidden ? 'none' : '');
 
 				selectValue(selectBox, (
 					!hide && selectedValueHidden
 					? fallbackValue
 					: selectedValue
 				));
+
+			const	container = getThisOrParentByClass(selectBox, 'project-option') || selectBox.parentNode;
+			const	style = container.style;
 
 				if (style.display != hide) {
 					style.display = hide;
@@ -6399,13 +6452,14 @@ var	values = {};
 
 //* 3) get new values after update:
 
-		var	section = getOrInitChild(values, sectionName);
+		const	section = getOrInitChild(values, sectionName);
+		const	newSelectedValue = selectBox.value;
 
 			section[listName] = (
 				!hide
-			&&	trim(listName = selectBox.name).length > 0
-			&&	trim(selectedValue = selectBox.value).length > 0
-				? selectedValue
+			&&	trim(listName).length > 0
+			&&	trim(newSelectedValue).length > 0
+				? newSelectedValue
 				: ''
 			);
 		}
@@ -6419,158 +6473,19 @@ var	values = {};
 }
 
 function getOrCreateReusableHeap(project) {
-var	buffer = project.renderingBuffer;
+let	buffer = project.renderingBuffer;
 
 	if (!buffer) {
-	var	realSize = project.width * project.height * 4 * 3	//* <- 2 RGBA pixel buffers + 1 Alpha mask (as RGBA too for convenience)
-	,	paddedSize = nextValidHeapSize(realSize)
-	,	buffer = project.renderingBuffer = new ArrayBuffer(paddedSize)
-		;
+	const	realSize = project.width * project.height * 4 * 3;	//* <- 2 RGBA pixel buffers + 1 Alpha mask (as RGBA too for convenience)
+	const	paddedSize = nextValidHeapSize(realSize);
+
+		buffer = project.renderingBuffer = new ArrayBuffer(paddedSize);
 	}
 
 	return new Uint8Array(buffer);
 }
 
 function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
-
-	function drawImageOrColorInside(img) {
-		if (
-			img.join
-		||	img.split
-		) {
-			ctx.fillStyle = getColorTextFromArray(img);
-			ctx.fillRect(0,0, w,h);
-		} else {
-			ctx.drawImage(img, x,y);
-		}
-	}
-
-	function tryBlendingEmulation(blendMode) {
-
-		function tryEmulation(callback) {
-
-			if (TESTING_RENDER) {
-				console.log(['blendMode =', blendMode, 'opacity =', opacity, mask ? 'callback with mask' : 'callback']);
-
-			var	logLabelWrap = blendMode + ': ' + project.rendering.nestedLayers.map((layer) => layer.name).join(' / ');
-				console.time(logLabelWrap);
-				console.group(logLabelWrap);
-
-			var	logLabel = blendMode + ': loading image data';
-				console.time(logLabel);
-			}
-
-//* get pixels of layer below (B):
-
-			ctx.globalAlpha = 1;
-			ctx.globalCompositeOperation = BLEND_MODE_NORMAL;
-
-			if (TESTING_RENDER) {
-			var	testPrefix = 'tryBlendingEmulation: ' + blendMode + ', layer ';
-				addDebugImage(project, canvas, testPrefix + 'below at ' + (ctx.globalAlpha * 100) + '%', 'yellow');
-			}
-
-		var	dataBelow = ctx.getImageData(0,0, w,h)
-		,	rgbaBelow = dataBelow.data
-			;
-
-//* get pixels of layer above (A):
-
-			ctx.clearRect(0,0, w,h);
-			ctx.globalAlpha = (isTransition ? 1 : opacity);
-
-			drawImageOrColorInside(img);
-
-			if (TESTING_RENDER) addDebugImage(project, canvas, testPrefix + 'above at ' + (ctx.globalAlpha * 100) + '%', 'orange');
-
-			ctx.globalAlpha = 1;
-
-		var	dataAbove = ctx.getImageData(0,0, w,h)
-		,	rgbaAbove = dataAbove.data
-			;
-
-//* get pixels of transition mask (M):
-
-			if (isTransition) {
-				ctx.clearRect(0,0, w,h);
-				ctx.globalAlpha = opacity;
-
-				drawImageOrColorInside(mask || 'white');
-
-				if (TESTING_RENDER) addDebugImage(project, canvas, testPrefix + 'mask at ' + (ctx.globalAlpha * 100) + '%', 'brown');
-
-				ctx.globalAlpha = 1;
-
-			var	maskData = ctx.getImageData(0,0, w,h)
-			,	rgbaMask = maskData.data
-				;
-			}
-
-//* compute resulting pixels linearly into dataAbove, and save result back onto canvas:
-
-			if (TESTING_RENDER) {
-				console.timeEnd(logLabel);
-				logLabel = blendMode + ': running calculation';
-				console.time(logLabel);
-			}
-
-		var	isDone = callback(rgbaAbove, rgbaBelow, rgbaMask);
-
-			if (TESTING_RENDER) {
-				console.timeEnd(logLabel);
-				logLabel = blendMode + ': saving result to canvas';
-				console.time(logLabel);
-			}
-
-			ctx.putImageData(isDone ? dataAbove : dataBelow, 0,0);
-
-			if (TESTING_RENDER) {
-				console.timeEnd(logLabel);
-				console.groupEnd(logLabelWrap);
-				console.timeEnd(logLabelWrap);
-			}
-
-			return isDone;
-		}
-
-		function usingAsmJS(rgbaAbove, rgbaBelow, rgbaMask) {
-			try {
-			var	arrayLength = rgbaAbove.length
-			,	uint8array = getOrCreateReusableHeap(project)
-			,	env = null
-			,	heap = uint8array.buffer
-			,	compute = CompositionModule(window, env, heap)
-				;
-
-				uint8array.set(rgbaBelow, 0);
-				uint8array.set(rgbaAbove, arrayLength);
-
-				if (rgbaMask) uint8array.set(rgbaMask, arrayLength << 1);
-
-				compute[funcName](arrayLength);
-				rgbaAbove.set(uint8array.slice(0, arrayLength));
-
-				return true;
-
-			} catch (error) {
-				logError(arguments, error);
-			}
-		}
-
-//* try computing in asm.js:
-
-	var	funcName = blendMode.replace(/\W+/g, '_').toLowerCase();
-
-		if (
-			CompositionModule
-		&&	CompositionFuncList
-		&&	CompositionFuncList.includes(funcName)
-		&&	tryEmulation(usingAsmJS)
-		) {
-			return true;
-		}
-	}
-
 	if (!ctx || !img) {
 		return null;
 	}
@@ -6578,18 +6493,157 @@ function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
 	if (typeof opacity === 'undefined') opacity = 1;
 	if (typeof blendMode === 'undefined') blendMode = BLEND_MODE_NORMAL;
 
-var	canvas = ctx.canvas;
+const	canvas = ctx.canvas;
 
 	if (canvas && opacity > 0) {
+	const	x = orz(img.left);
+	const	y = orz(img.top);
+	const	w = canvas.width;
+	const	h = canvas.height;
+
+		function drawImageOrColorInside(img) {
+			if (
+				img.join
+			||	img.split
+			) {
+				ctx.fillStyle = getColorTextFromArray(img);
+				ctx.fillRect(0,0, w,h);
+			} else {
+				ctx.drawImage(img, x,y);
+			}
+		}
+
+		function tryBlendingEmulation(blendMode) {
+
+			function tryEmulation(callback) {
+			let	logLabelWrap, logLabel, testPrefix;
+
+				if (TESTING_RENDER) {
+					console.log(['blendMode =', blendMode, 'opacity =', opacity, mask ? 'callback with mask' : 'callback']);
+
+					logLabelWrap = blendMode + ': ' + project.rendering.nestedLayers.map((layer) => layer.name).join(' / ');
+					console.time(logLabelWrap);
+					console.group(logLabelWrap);
+
+					logLabel = blendMode + ': loading image data';
+					console.time(logLabel);
+				}
+
+//* get pixels of layer below (B):
+
+				ctx.globalAlpha = 1;
+				ctx.globalCompositeOperation = BLEND_MODE_NORMAL;
+
+				if (TESTING_RENDER) {
+					testPrefix = 'tryBlendingEmulation: ' + blendMode + ', layer ';
+					addDebugImage(project, canvas, testPrefix + 'below at ' + (ctx.globalAlpha * 100) + '%', 'yellow');
+				}
+
+			const	dataBelow = ctx.getImageData(0,0, w,h);
+			const	rgbaBelow = dataBelow.data;
+
+//* get pixels of layer above (A):
+
+				ctx.clearRect(0,0, w,h);
+				ctx.globalAlpha = (isTransition ? 1 : opacity);
+
+				drawImageOrColorInside(img);
+
+				if (TESTING_RENDER) addDebugImage(project, canvas, testPrefix + 'above at ' + (ctx.globalAlpha * 100) + '%', 'orange');
+
+				ctx.globalAlpha = 1;
+
+			const	dataAbove = ctx.getImageData(0,0, w,h);
+			const	rgbaAbove = dataAbove.data;
+
+//* get pixels of transition mask (M):
+
+			let	rgbaMask = null;
+
+				if (isTransition) {
+					ctx.clearRect(0,0, w,h);
+					ctx.globalAlpha = opacity;
+
+					drawImageOrColorInside(mask || 'white');
+
+					if (TESTING_RENDER) addDebugImage(project, canvas, testPrefix + 'mask at ' + (ctx.globalAlpha * 100) + '%', 'brown');
+
+					ctx.globalAlpha = 1;
+
+				const	maskData = ctx.getImageData(0,0, w,h);
+					rgbaMask = maskData.data;
+				}
+
+//* compute resulting pixels linearly into dataAbove, and save result back onto canvas:
+
+				if (TESTING_RENDER) {
+					console.timeEnd(logLabel);
+					logLabel = blendMode + ': running calculation';
+					console.time(logLabel);
+				}
+
+			const	isDone = callback(rgbaAbove, rgbaBelow, rgbaMask);
+
+				if (TESTING_RENDER) {
+					console.timeEnd(logLabel);
+					logLabel = blendMode + ': saving result to canvas';
+					console.time(logLabel);
+				}
+
+				ctx.putImageData(isDone ? dataAbove : dataBelow, 0,0);
+
+				if (TESTING_RENDER) {
+					console.timeEnd(logLabel);
+					console.groupEnd(logLabelWrap);
+					console.timeEnd(logLabelWrap);
+				}
+
+				return isDone;
+			}
+
+			function usingAsmJS(rgbaAbove, rgbaBelow, rgbaMask) {
+				try {
+				const	arrayLength = rgbaAbove.length;
+				const	uint8array = getOrCreateReusableHeap(project);
+				const	env = null;
+				const	heap = uint8array.buffer;
+				const	compute = CompositionModule(window, env, heap);
+
+					uint8array.set(rgbaBelow, 0);
+					uint8array.set(rgbaAbove, arrayLength);
+
+					if (rgbaMask) {
+						uint8array.set(rgbaMask, arrayLength << 1);
+					}
+
+					compute[funcName](arrayLength);
+					rgbaAbove.set(uint8array.slice(0, arrayLength));
+
+					return true;
+
+				} catch (error) {
+					logError(arguments, error);
+				}
+			}
+
+//* try computing in asm.js:
+
+		const	funcName = blendMode.replace(/\W+/g, '_').toLowerCase();
+
+			if (
+				CompositionModule
+			&&	CompositionFuncList
+			&&	CompositionFuncList.includes(funcName)
+			&&	tryEmulation(usingAsmJS)
+			) {
+				return true;
+			}
+		}
+
 		ctx.globalCompositeOperation = blendMode;
 
-	var	x = orz(img.left)
-	,	y = orz(img.top)
-	,	w = canvas.width
-	,	h = canvas.height
-	,	ctxBlendMode = ctx.globalCompositeOperation
-	,	isTransition = !!(mask || blendMode === BLEND_MODE_TRANSIT)
-		;
+	const	ctxBlendMode = ctx.globalCompositeOperation;
+	const	isTransition = !!(mask || blendMode === BLEND_MODE_TRANSIT);
 
 //* use native JS blending if available, or emulation fails/unavailable:
 
@@ -6616,29 +6670,27 @@ function getPaddedImageData(referenceImageData, method, threshold, dimensions) {
 	function addPadding(referenceImageData, dimensions) {
 
 		function addRoundPadding(r) {
-		const	paddingRadius = Math.abs(orz(r))
-		,	pixelsAround = Math.ceil(paddingRadius)
-		,	startDistance = (isMethodMin ? -Infinity : +Infinity)
-			;
+		const	paddingRadius = Math.abs(orz(r));
+		const	pixelsAround = Math.ceil(paddingRadius);
+		const	startDistance = (isMethodMin ? -Infinity : +Infinity);
 
 			for (let resultY = h; resultY--;) next_result_pixel:
 			for (let resultX = w; resultX--;) {
 
-			var	resultByteIndex = getAlphaDataIndex(resultX, resultY, w)
-			,	resultDistance = startDistance
-				;
+			const	resultByteIndex = getAlphaDataIndex(resultX, resultY, w);
+			let	resultDistance = startDistance;
 
 				look_around:
 				for (let referenceY, dy = -pixelsAround; dy <= pixelsAround; dy++) if ((referenceY = resultY + dy) >= 0 && referenceY < h) next_pixel_around:
 				for (let referenceX, dx = -pixelsAround; dx <= pixelsAround; dx++) if ((referenceX = resultX + dx) >= 0 && referenceX < w) {
 
-				var	referenceAlpha = referencePixels[getAlphaDataIndex(referenceX, referenceY, w)];
+				const	referenceAlpha = referencePixels[getAlphaDataIndex(referenceX, referenceY, w)];
 
 					if (referenceAlpha <= threshold) {
 						continue next_pixel_around;
 					}
 
-				var	referenceDistance = getDistance(dx, dy) + 1 - referenceAlpha/MAX_CHANNEL_VALUE;
+				const	referenceDistance = getDistance(dx, dy) + 1 - referenceAlpha/MAX_CHANNEL_VALUE;
 
 					if (isMethodMin) {
 						if (referenceDistance < paddingRadius) {
@@ -6661,7 +6713,7 @@ function getPaddedImageData(referenceImageData, method, threshold, dimensions) {
 					}
 				}
 
-			var	resultDistanceFloor = Math.floor(resultDistance);
+			const	resultDistanceFloor = Math.floor(resultDistance);
 
 				resultPixels[resultByteIndex] = (
 					resultDistanceFloor > paddingRadius
@@ -6672,23 +6724,21 @@ function getPaddedImageData(referenceImageData, method, threshold, dimensions) {
 		}
 
 		function addBoxPadding(x,y) {
-		const	pixelsAroundX = Math.ceil(Math.abs(orz(x)))
-		,	pixelsAroundY = Math.ceil(Math.abs(orz(y)))
-		,	startAlpha = (isMethodMin ? MAX_CHANNEL_VALUE : MIN_CHANNEL_VALUE)
-			;
+		const	pixelsAroundX = Math.ceil(Math.abs(orz(x)));
+		const	pixelsAroundY = Math.ceil(Math.abs(orz(y)));
+		const	startAlpha = (isMethodMin ? MAX_CHANNEL_VALUE : MIN_CHANNEL_VALUE);
 
 			for (let resultY = h; resultY--;) next_result_pixel:
 			for (let resultX = w; resultX--;) {
 
-			var	resultByteIndex = getAlphaDataIndex(resultX, resultY, w)
-			,	resultAlpha = startAlpha
-				;
+			const	resultByteIndex = getAlphaDataIndex(resultX, resultY, w);
+			let	resultAlpha = startAlpha;
 
 				look_around:
 				for (let referenceY, dy = -pixelsAroundY; dy <= pixelsAroundY; dy++) if ((referenceY = resultY + dy) >= 0 && referenceY < h) next_pixel_around:
 				for (let referenceX, dx = -pixelsAroundX; dx <= pixelsAroundX; dx++) if ((referenceX = resultX + dx) >= 0 && referenceX < w) {
 
-				var	referenceAlpha = referencePixels[getAlphaDataIndex(referenceX, referenceY, w)];
+				const	referenceAlpha = referencePixels[getAlphaDataIndex(referenceX, referenceY, w)];
 
 					if (referenceAlpha <= threshold) {
 						continue next_pixel_around;
@@ -6717,10 +6767,9 @@ function getPaddedImageData(referenceImageData, method, threshold, dimensions) {
 			}
 		}
 
-	const	resultImageData = new ImageData(w,h)
-	,	resultPixels = resultImageData.data
-	,	referencePixels = referenceImageData.data
-		;
+	const	resultImageData = new ImageData(w,h);
+	const	resultPixels = resultImageData.data;
+	const	referencePixels = referenceImageData.data;
 
 		(
 			dimensions.length > 1
@@ -6744,11 +6793,10 @@ function getPaddedImageData(referenceImageData, method, threshold, dimensions) {
 		return null;
 	}
 
-const	w = referenceImageData.width
-,	h = referenceImageData.height
-,	isMethodMin = (method === 'min')
-,	[paddingX, paddingY] = dimensions
-	;
+const	w = referenceImageData.width;
+const	h = referenceImageData.height;
+const	isMethodMin = (method === 'min');
+const	[paddingX, paddingY] = dimensions;
 
 	if (dimensions.length > 1) {
 		if ((paddingX < 0) !== (paddingY < 0)) {
@@ -6770,13 +6818,15 @@ const	w = referenceImageData.width
 function padCanvas(ctx, padding) {
 
 	function addPaddingByDimensions(...dimensions) {
-	var	dimensions = dimensions.filter(
+		dimensions = dimensions.filter(
 			(dimension) => isNonNullObject(dimension)
-		)
-	,	isHollow = dimensions.every(
+		);
+
+	const	isHollow = dimensions.every(
 			(dimension) => (typeof dimension.in !== 'undefined')
-		)
-	,	resultImageData = getPaddedImageData(
+		);
+
+	const	resultImageData = getPaddedImageData(
 			referenceImageData
 		,	method
 		,	threshold
@@ -6786,7 +6836,7 @@ function padCanvas(ctx, padding) {
 		ctx.putImageData(resultImageData, 0,0);
 
 		if (isHollow) {
-		var	cutImageData = getPaddedImageData(
+		const	cutImageData = getPaddedImageData(
 				referenceImageData
 			,	method
 			,	threshold
@@ -6803,24 +6853,31 @@ function padCanvas(ctx, padding) {
 	}
 
 	if (
-		!ctx
-	||	!padding
-	||	!padding.method
+		!isNonNullObject(ctx)
+	||	!isNonNullObject(padding)
 	) {
 		return;
 	}
 
-	if (ctx.getContext) {
+const	{method, dimensions} = padding;
+
+	if (
+		!method
+	||	!dimensions
+	) {
+		return;
+	}
+
+const	threshold = Math.abs(orz(padding.threshold));
+const	isBox = ('x' in dimensions);
+
+	if (isCanvasElement(ctx)) {
 		ctx = ctx.getContext('2d');
 	}
 
-var	w = ctx.canvas.width
-,	h = ctx.canvas.height
-,	referenceImageData = ctx.getImageData(0,0, w,h)
-,	{method, threshold, dimensions} = padding
-,	threshold = Math.abs(orz(threshold))
-,	isBox = ('x' in dimensions)
-	;
+const	w = ctx.canvas.width;
+const	h = ctx.canvas.height;
+const	referenceImageData = ctx.getImageData(0,0, w,h);
 
 	if (isBox) {
 		addPaddingByDimensions(dimensions.x, dimensions.y)
@@ -6832,15 +6889,19 @@ var	w = ctx.canvas.width
 function makeCanvasOpaqueAndGetItsMask(project, ctx) {
 	project.rendering.layersBatchCount++;
 
-var	canvas = cre('canvas')
-,	w = canvas.width  = ctx.canvas.width
-,	h = canvas.height = ctx.canvas.height
-,	img = ctx.getImageData(0,0, w,h)
-	;
+const	canvas = cre('canvas');
+const	w = canvas.width  = ctx.canvas.width;
+const	h = canvas.height = ctx.canvas.height;
+const	img = ctx.getImageData(0,0, w,h);
 
 	canvas.getContext('2d').putImageData(img, 0,0);
 
-	for (let data = img.data, index = data.length - 1; index >= 0; index -= 4) {
+	for (
+	let	data = img.data
+	,	index = data.length - 1;
+		index >= 0;
+		index -= 4
+	) {
 		data[index] = 255;
 	}
 
@@ -6849,14 +6910,17 @@ var	canvas = cre('canvas')
 	return canvas;
 }
 
-function addDebugImage(project, canvas, comment, highLightColor) {
-	if (TESTING_RENDER && canvas && canvas.toDataURL) {
-	var	img = cre('img', project.renderContainer);
+async function addDebugImage(project, canvas, comment, highLightColor) {
+	if (
+		TESTING_RENDER
+	&&	canvas
+	&&	canvas.toDataURL
+	) {
+	const	img = cre('img', project.renderContainer);
 
 		if (project) {
-		var	layers = project.rendering.nestedLayers
-		,	layer = layers[layers.length - 1]
-			;
+		const	layers = project.rendering.nestedLayers;
+		const	layer = layers[layers.length - 1];
 
 			img.alt = img.title = [
 				'render name: ' + project.rendering.fileName
@@ -6875,14 +6939,16 @@ function addDebugImage(project, canvas, comment, highLightColor) {
 			img.style.boxShadow = '3px 3px ' + highLightColor;
 		}
 
-		img.src = canvas.toDataURL();
+		if (!await getImagePromiseFromCanvasToBlob(canvas, project, 0, 0, img)) {
+			img.src = canvas.toDataURL();
+		}
 	}
 }
 
-function getNewCanvas(project) {
+function getNewCanvasForProject(project) {
 	project.rendering.layersBatchCount++;
 
-var	canvas = cre('canvas');
+const	canvas = cre('canvas');
 
 	canvas.width  = project.width;
 	canvas.height = project.height;
@@ -6893,7 +6959,7 @@ var	canvas = cre('canvas');
 function getNewCanvasForImg(project, img) {
 	project.rendering.layersBatchCount++;
 
-var	canvas = cre('canvas');
+const	canvas = cre('canvas');
 
 	canvas.width  = orz(img.width)  || project.width;
 	canvas.height = orz(img.height) || project.height;
@@ -6904,18 +6970,15 @@ var	canvas = cre('canvas');
 }
 
 function getCanvasCopy(project, img) {
-	if (!img) {
+	if (!isNonNullObject(img)) {
 		return null;
 	}
 
-var	canvas = getNewCanvasForImg(project, img)
-,	ctx = canvas.getContext('2d')
-,	w = canvas.width
-,	h = canvas.height
-	;
+const	canvas = getNewCanvasForImg(project, img);
+const	ctx = canvas.getContext('2d');
 
-	if (img.getContext) {
-		ctx.putImageData(img.getContext('2d').getImageData(0,0, w,h), 0,0);
+	if (isCanvasElement(img)) {
+		ctx.putImageData(img.getContext('2d').getImageData(0,0, canvas.width, canvas.height), 0,0);
 	} else {
 		ctx.drawImage(img, 0,0);
 	}
@@ -6924,7 +6987,7 @@ var	canvas = getNewCanvasForImg(project, img)
 }
 
 function getCanvasFlipped(project, img, flipSide, flags) {
-	if (!img) {
+	if (!isNonNullObject(img)) {
 		return null;
 	}
 
@@ -6940,23 +7003,20 @@ function getCanvasFlipped(project, img, flipSide, flags) {
 		);
 	}
 
-var	canvas = getNewCanvasForImg(project, img)
-,	ctx = canvas.getContext('2d')
-,	w = canvas.width
-,	h = canvas.height
-	;
+const	canvas = getNewCanvasForImg(project, img);
+const	ctx = canvas.getContext('2d');
 
 	ctx.save();
 
 //* flip: https://stackoverflow.com/a/3129152
 
 	if (flipSide & FLAG_FLIP_HORIZONTAL) {
-		ctx.translate(w, 0);
+		ctx.translate(canvas.width, 0);
 		ctx.scale(-1, 1);
 	}
 
 	if (flipSide & FLAG_FLIP_VERTICAL) {
-		ctx.translate(0, h);
+		ctx.translate(0, canvas.height);
 		ctx.scale(1, -1);
 	}
 
@@ -6970,11 +7030,11 @@ var	canvas = getNewCanvasForImg(project, img)
 }
 
 function getCanvasFilledOutsideOfImage(project, img, fillColor) {
-	if (!img) {
+	if (!isNonNullObject(img)) {
 		return null;
 	}
 
-var	imgElement = img.img || img;
+const	imgElement = img.img || img;
 
 	if (
 		!(
@@ -6983,29 +7043,26 @@ var	imgElement = img.img || img;
 		||	img.top
 		)
 	||	(
-			img.width  == project.width
-		&&	img.height == project.height
+			img.width  === project.width
+		&&	img.height === project.height
 		)
 	) {
 		return imgElement;
 	}
 
-var	canvas = getNewCanvas(project)
-,	ctx = canvas.getContext('2d')
-,	w = canvas.width
-,	h = canvas.height
-,	fillColor = Math.max(0, Math.min(255, orz(fillColor)))
-,	flatColorData = ctx.createImageData(w,h)
-	;
+const	canvas = getNewCanvasForProject(project);
+const	ctx = canvas.getContext('2d');
+const	flatColorData = ctx.createImageData(canvas.width, canvas.height);
+
+	fillColor = Math.max(0, Math.min(255, orz(fillColor)));
 
 	flatColorData.data.fill(fillColor);
 	ctx.putImageData(flatColorData, 0,0);
 
-var	w = orz(img.width)  || project.width
-,	h = orz(img.height) || project.height
-,	x = orz(img.left)
-,	y = orz(img.top)
-	;
+const	w = orz(img.width)  || project.width;
+const	h = orz(img.height) || project.height;
+const	x = orz(img.left);
+const	y = orz(img.top);
 
 	ctx.clearRect(x,y, w,h);
 	ctx.drawImage(imgElement, x,y);
@@ -7014,9 +7071,8 @@ var	w = orz(img.width)  || project.width
 }
 
 function getCanvasBlended(project, imgBelow, imgAbove, mode, maskOpacity) {
-var	canvas = getNewCanvas(project)
-,	ctx = canvas.getContext('2d')
-	;
+const	canvas = getNewCanvasForProject(project);
+const	ctx = canvas.getContext('2d');
 
 	if (imgBelow) drawImageOrColor(project, ctx, imgBelow);
 	if (imgAbove) drawImageOrColor(project, ctx, imgAbove, mode || BLEND_MODE_CLIP, maskOpacity);
@@ -7025,29 +7081,31 @@ var	canvas = getNewCanvas(project)
 }
 
 function getCanvasColored(project, values, listName, img) {
-var	color
-,	optionalColors
-,	selectedColors = project.rendering.colors
-	;
+let	canvas = null;
+let	color = null;
+const	selectedColors = project.rendering.colors;
 
 	if (selectedColors) {
 		if (listName in selectedColors) {
 			color = selectedColors[listName];
-		} else
-		if (optionalColors = getSelectedOptionValue(project, values, 'colors', listName)) {
-			for (let layer of optionalColors) if (
-				layer.isColor
-			&&	getLayerPathVisibilityByValues(project, layer, values, listName)
-			) {
-				color = selectedColors[listName] = getPropByAnyOfNamesChain(layer, 'color', 'img', 'layer');
+		} else {
+		const	optionalColors = getSelectedOptionValue(project, values, 'colors', listName);
 
-				break;
+			if (optionalColors) {
+				for (let layer of optionalColors) if (
+					layer.isColor
+				&&	getLayerPathVisibilityByValues(project, layer, values, listName)
+				) {
+					color = selectedColors[listName] = getPropByAnyOfNamesChain(layer, 'color', 'img', 'layer');
+
+					break;
+				}
 			}
 		}
 	}
 
 	if (color) {
-	var	canvas = getCanvasBlended(
+		canvas = getCanvasBlended(
 			project
 		,	(img || color)
 		,	(img ? color : null)
@@ -7062,15 +7120,14 @@ function getProjectOptionValue(project, sectionName, listName, optionName) {
 }
 
 function getSelectedOptionValue(project, values, sectionName, listName) {
-var	selectedName = getPropByNameChain(values, sectionName, listName)
-,	selectedValue = getProjectOptionValue(project, sectionName, listName, selectedName)
-	;
+const	selectedName = getPropByNameChain(values, sectionName, listName);
+const	selectedValue = getProjectOptionValue(project, sectionName, listName, selectedName);
 
 	return selectedValue;
 }
 
 function getSelectedMenuValue(project, sectionName, listName, defaultValue) {
-var	selectBox = getAllByTag('select', project.container).find(
+const	selectBox = getAllByTag('select', project.container).find(
 		(selectBox) => (
 			sectionName === selectBox.getAttribute('data-section')
 		&&	listName === selectBox.name
@@ -7078,7 +7135,7 @@ var	selectBox = getAllByTag('select', project.container).find(
 	);
 
 	if (selectBox) {
-	var	selectedValue = selectBox.value;
+	const	selectedValue = selectBox.value;
 
 		if (isNotEmptyString(selectedValue)) {
 			return selectedValue;
@@ -7117,23 +7174,23 @@ function getLayerVisibilityByValues(project, layer, values, listName) {
 			layer.names
 			? (
 				isNot
-				? layer.names.some(callback)
-				: layer.names.every(callback)
+				? layer.names.some((name) => callback(name, isNot))
+				: layer.names.every((name) => callback(name, isNot))
 			)
-			: callback(layer.name)
+			: callback(layer.name, isNot)
 		);
 	}
 
 	function skipByAnyName(listName) {
-	var	selectedName = getPropByNameChain(values, layer.type, listName) || '';
+	const	selectedName = getPropByNameChain(values, layer.type, listName) || '';
 
 		return (!layer.params.not === !selectedName);
 	}
 
-	function skipBySpecificName(optionName) {
+	function skipBySpecificName(optionName, isNot) {
 
 		function skipByListName(listName) {
-		var	selectedName = getPropByNameChain(values, parent.type, listName) || '';
+		const	selectedName = getPropByNameChain(values, parent.type, listName) || '';
 
 			return (optionName === selectedName) === isNot;
 		}
@@ -7142,12 +7199,11 @@ function getLayerVisibilityByValues(project, layer, values, listName) {
 	}
 
 	function getOpacityByAnyName(listNames) {
-	var	maxOpacity = -1
-	,	unselectable = false
-		;
+	let	maxOpacity = -1;
+	let	unselectable = false;
 
 		for (let listName of listNames) {
-		var	opacity = getSelectedOptionValue(project, values, 'opacities', listName);
+		const	opacity = getSelectedOptionValue(project, values, 'opacities', listName);
 
 			if (opacity === null) {
 				unselectable = true;
@@ -7172,14 +7228,14 @@ function getLayerVisibilityByValues(project, layer, values, listName) {
 
 //* skip not selected parts:
 
-var	isVisible = !!(
+let	isVisible = !!(
 		layer.isVisible
 	||	layer.isVisibilityOptional
 	||	layer.params.skip_render
 	);
 
 	if (layer.isOnlyForOneSide) {
-	var	selectedName = getPropBySameNameChain(values, 'side');
+	const	selectedName = getPropBySameNameChain(values, 'side');
 
 		if (layer.params.side !== selectedName) {
 			return 0;
@@ -7196,10 +7252,10 @@ var	isVisible = !!(
 		}
 	}
 
-var	parent = layer.optionParent;
+const	parent = layer.optionParent;
 
 	if (parent) {
-	var	isNot = (!layer.params.not !== !parent.params.not);
+	const	isNot = (!layer.params.not !== !parent.params.not);
 
 		if (skipByFunc(layer, skipBySpecificName, isNot)) {
 			return 0;
@@ -7218,29 +7274,31 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 	async function renderOneLayer(layer) {
 
 		function onReturnCleanup() {
-			project.rendering.nestedLayers.pop();
+			PR.nestedLayers.pop();
 		}
 
-	var	names = layer.names
-	,	params = layer.params
-	,	skipColoring = !!params.if_only			//* <- check logical visibility, but skip recolor
-	,	ignoreColors = !!renderParams.ignoreColors	//* <- only care about alpha channel, for mask generation
-	,	clippingGroupWIP = !!renderParams.clippingGroupWIP
-	,	clippingGroupResult = false
-	,	backward = (
-			layer.isOrderedBySide
-		&&	side === 'back'
-		)
-	,	flipSide = orz(backward ? layer.flipSide : 0)
-	,	PR = project.rendering
-		;
-
+	const	PR = project.rendering;
 		PR.nestedLayers.push(layer);
-
 		PR.nestedLevelMax = Math.max(
 			PR.nestedLevelMax
 		,	PR.nestedLayers.length
 		);
+
+	const	backward = (
+			layer.isOrderedBySide
+		&&	isBackSide
+		);
+
+	const	flipSide = orz(backward ? layer.flipSide : 0);
+
+	const	names = layer.names;
+	const	params = layer.params;
+	const	skipColoring = !!params.if_only;		//* <- check logical visibility, but skip recolor
+	const	ignoreColors = !!renderParams.ignoreColors;	//* <- only care about alpha channel, for mask generation
+	const	clippingGroupWIP = !!renderParams.clippingGroupWIP;
+
+	let	clippingGroupLayers = null;
+	let	clippingGroupResult = false;
 
 //* step over clipping group to render or skip at once:
 
@@ -7248,10 +7306,10 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 			!clippingGroupWIP
 		&&	!ignoreColors
 		) {
-		var	clippingGroupLayers = []
-		,	siblingIndex = indexToRender
-		,	siblingLayer
-			;
+			clippingGroupLayers = [];
+
+		let	siblingIndex = indexToRender;
+		let	siblingLayer = null;
 
 			while (
 				(siblingIndex-- > 0)
@@ -7274,7 +7332,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 //* skip not visible, not selected, etc:
 
-	var	opacity;
+	let	opacity = 0;
 
 		if (
 			!isLayerRendered(layer)
@@ -7285,7 +7343,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 //* skip unrelated to alpha composition when getting mask for padding:
 
-	var	blendMode = layer.blendMode;
+	let	blendMode = layer.blendMode;
 
 		if (ignoreColors) {
 			if (!regLayerBlendModeAlpha.test(blendMode)) {
@@ -7310,9 +7368,8 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 //* start rendering:
 
-	var	img = null
-	,	canvasCopy = null
-		;
+	let	img = null;
+	let	canvasCopy = null;
 
 		if (
 			!canvas
@@ -7339,13 +7396,13 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 			if (TESTING_RENDER) addDebugImage(project, img, 'clippingGroupResult: img = getRenderByValues', 'cyan');
 		} else {
 
-		var	addCopyPaste = (
+		const	addCopyPaste = (
 				renderParams.skipCopyPaste
 				? null
 				: getPropByNameChain(params, 'copypaste', 'paste')
-			)
-		,	layers = layer.layers || null
-			;
+			);
+
+		let	layers = layer.layers || null;
 
 //* append copypasted layers to subqueue:
 
@@ -7400,7 +7457,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 //* between before and after trivial-case rendering
 //* using mask x opacity as transition value map.
 
-				var	isToRecolor = (
+				const	isToRecolor = (
 						ignoreColors
 					||	names.some(
 							(listName) => (
@@ -7414,7 +7471,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 						!isToRecolor
 					&&	layer.isPassThrough
 					) {
-					var	isPassThroughAndClippingBase = (
+					const	isPassThroughAndClippingBase = (
 							indexToRender > 0
 						&&	layer.isVirtualFolder
 						&&	layer === layersToRender[indexToRender - 1].clippingLayer
@@ -7455,14 +7512,14 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 				}
 			} else {
 
-//* not a folder:
+//* not a folder, not a stack of copypaste:
 
 				img = layer.img;
 			}
 		}
 
 		if (img) {
-		var	mask = null;
+		let	mask = null;
 
 			if (clippingGroupResult) {
 				opacity = 1;
@@ -7471,7 +7528,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 //* get mask of neighbour content, rendered before or after this layer:
 
 				if (layer.isMaskGenerated) {
-				var	paddings = names.map(
+				const	paddings = names.map(
 						(listName) => getSelectedOptionValue(project, values, 'paddings', listName)
 					)
 					.filter(arrayFilterNonEmptyValues);
@@ -7503,7 +7560,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 //* get mask defined in the document:
 
 				if (mask = layer.mask) {
-				var	fillColor = orz(mask.defaultColor);
+				const	fillColor = orz(mask.defaultColor);
 
 					mask = getCanvasFilledOutsideOfImage(project, mask, fillColor);
 
@@ -7554,7 +7611,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 //* add content to current buffer canvas:
 
 			if (!ctx) {
-				canvas = getNewCanvas(project);
+				canvas = getNewCanvasForProject(project);
 				ctx = canvas.getContext('2d');
 			}
 
@@ -7575,7 +7632,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 				if (TESTING_RENDER) addDebugImage(project, canvas, 'drawImageOrColor: ' + blendMode);
 			}
 
-			++project.rendering.layersApplyCount;
+			++PR.layersApplyCount;
 
 //* store the mask of the clipping group:
 
@@ -7604,27 +7661,35 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 	if (project.loading) {
 		logTime('getRenderByValues - skipped while loading project.');
+
 		return;
 	}
+
+let	layersToRenderOne = null;
+let	layer = null;
 
 	if (project.rendering) {
 		if (nestedLayersBatch) {
 			project.rendering.layersBatchCount++;
 		} else {
 			logTime('getRenderByValues - skipped call without layers while rendering.');
+
 			return;
 		}
 	} else {
-		indexToRender = orz(getPropBySameNameChain(values, 'separate'));
+	const	indexToRender = orz(getPropBySameNameChain(values, 'separate'));
 
 		if (indexToRender > 0) {
+		const	layers = project.layersTopSeparated;
+
 			if (
-				(layers = project.layersTopSeparated)
+				layers
 			&&	(layer = layers[indexToRender - 1])
 			) {
-			var	layersToRenderOne = (getParentLayer(layer) || project).layers;
+				layersToRenderOne = (getParentLayer(layer) || project).layers;
 			} else {
 				logTime('getRenderByValues - skipped call, separate layer not found.');
+
 				return;
 			}
 		}
@@ -7644,14 +7709,19 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 		renderParams = {};
 	}
 
-var	layersToRender = layersToRenderOne || nestedLayersBatch || project.layers
-,	indexToRender = layersToRender.length
-,	indexToStop = 0
-,	bottomLayer = layersToRender[indexToRender - 1]
-,	side = getPropBySameNameChain(values, 'side')
-,	colors = getPropByNameChain(values, 'colors') || {}
-,	canvas, ctx, layers, layer, mask, clippingMask
-	;
+let	layersToRender = layersToRenderOne || nestedLayersBatch || project.layers;
+let	indexToRender = layersToRender.length;
+let	indexToStop = 0;
+
+const	bottomLayer = layersToRender[indexToRender - 1];
+const	isBackSide = (getPropBySameNameChain(values, 'side') === 'back');
+const	colors = getPropByNameChain(values, 'colors') || {};
+
+let	mask = null;
+let	clippingMask = null;
+
+let	canvas = null;
+let	ctx = null;
 
 	if (
 		!ADD_PAUSE_BEFORE_EACH_LAYER
@@ -7700,9 +7770,8 @@ var	layersToRender = layersToRenderOne || nestedLayersBatch || project.layers
 //* end of layer tree:
 
 	if (!nestedLayersBatch) {
-	var	renderingTime = getTimeNow() - project.rendering.startTime
-	,	renderName = project.rendering.fileName
-		;
+	const	renderingTime = getTimeNow() - project.rendering.startTime;
+	const	renderName = project.rendering.fileName;
 
 		if (isStopRequestedAnywhere(project)) {
 			canvas = ctx = null;
@@ -7737,13 +7806,13 @@ function getFileNameByValues(project, values, flags) {
 	function getProcessedSectionName(sectionName) {
 
 		function getProcessedListName(listName) {
-		var	optionName = section[listName];
+		let	optionName = section[listName];
 
 			if (!optionName.length) {
 				return;
 			}
 
-		var	params = getPropByNameChain(project, 'options', sectionName, listName, 'params');
+		const	params = getPropByNameChain(project, 'options', sectionName, listName, 'params');
 
 			if (params) {
 				if (flags.checkSelectedValue) {
@@ -7757,7 +7826,7 @@ function getFileNameByValues(project, values, flags) {
 
 				if (flags.skipDefaultPercent) {
 					if (sectionName === 'zoom') {
-					var	zoomPercentage = orz(optionName);
+					const	zoomPercentage = orz(optionName);
 
 						if (
 							zoomPercentage === 100
@@ -7790,17 +7859,17 @@ function getFileNameByValues(project, values, flags) {
 			return optionName;
 		}
 
-	var	section = values[sectionName];
+	const	section = values[sectionName];
 
 		if (!section) {
 			return;
 		}
 
-	var	listNames = Object.keys(section).filter(arrayFilterNonEmptyValues);
-		listNames.sort();
-
 		return (
-			listNames
+			Object
+			.keys(section)
+			.filter(arrayFilterNonEmptyValues)
+			.sort()
 			.map(getProcessedListName)
 			.filter(arrayFilterNonEmptyValues)
 			.map(getFormattedFileNamePart)
@@ -7841,8 +7910,8 @@ async function getOrCreateRender(project, render) {
 		render = {};
 	}
 
-var	values    = render.values    || (render.values    = getUpdatedMenuValues(project))
-,	refValues = render.refValues || (
+const	values    = render.values    || (render.values    = getUpdatedMenuValues(project));
+const	refValues = render.refValues || (
 		render.refValues = getPatchedObject(
 			values
 		,	(
@@ -7851,11 +7920,10 @@ var	values    = render.values    || (render.values    = getUpdatedMenuValues(pro
 				: replaceJSONpartsForZoomRef
 			)
 		)
-	)
-,	refName   = render.refName   || (render.refName   = getFileNameByValuesToSave(project, refValues))
-,	fileName  = render.fileName  || (render.fileName  = getFileNameByValuesToSave(project, values))
-,	img       = render.img       || (render.img       = await getOrCreateRenderedImg(project, render))
-	;
+	);
+const	refName   = render.refName   || (render.refName   = getFileNameByValuesToSave(project, refValues));
+const	fileName  = render.fileName  || (render.fileName  = getFileNameByValuesToSave(project, values));
+const	img       = render.img       || (render.img       = await getOrCreateRenderedImg(project, render));
 
 	return render;
 }
@@ -7869,7 +7937,7 @@ async function getOrCreateRenderedImg(project, render) {
 					return null;
 				}
 
-			var	msec = canvas.renderingTime;
+			const	msec = canvas.renderingTime;
 
 				img.title = img.alt = (
 					fileName + '.png'
@@ -7894,13 +7962,14 @@ async function getOrCreateRenderedImg(project, render) {
 		render = await getOrCreateRender(project);
 	}
 
-	if (img = render.img) {
+let	img = render.img;
+
+	if (img) {
 		return img;
 	}
 
-var	prerenders = getOrInitChild(project, 'renders')
-,	fileName = render.fileName
-	;
+const	prerenders = getOrInitChild(project, 'renders');
+const	fileName = render.fileName;
 
 	if (fileName in prerenders) {
 		return prerenders[fileName];
@@ -7910,14 +7979,14 @@ var	prerenders = getOrInitChild(project, 'renders')
 
 	await pause(1);
 
-var	values = render.values
-,	refName = render.refName
-,	img = prerenders[refName]
-	;
+const	values = render.values;
+const	refName = render.refName;
+
+	img = prerenders[refName];
 
 	if (!(img || isStopRequestedAnywhere(project))) {
 		if (fileName === refName) {
-		var	canvas = await getRenderByValues(project, values);
+		const	canvas = await getRenderByValues(project, values);
 
 			if (isStopRequestedAnywhere(project)) {
 				return;
@@ -7935,24 +8004,26 @@ var	values = render.values
 		}
 	}
 
+let	zoomPercentage;
+
 	if (
 		img
 	&&	(zoomPercentage = orz(getPropBySameNameChain(values, 'zoom')))
 	&&	zoomPercentage > 0
 	&&	zoomPercentage !== 100
 	) {
-	var	zoomPercentage
-	,	zoomRatio = zoomPercentage / 100
-	,	canvas = cre('canvas')
-	,	w = canvas.width  = Math.max(1, Math.round(zoomRatio * project.width))
-	,	h = canvas.height = Math.max(1, Math.round(zoomRatio * project.height))
-	,	ctx = canvas.getContext('2d')
-		;
+	const	zoomRatio = zoomPercentage / 100;
+	const	canvas = cre('canvas');
+	const	ctx = canvas.getContext('2d');
+	const	w = canvas.width  = Math.max(1, Math.round(zoomRatio * project.width));
+	const	h = canvas.height = Math.max(1, Math.round(zoomRatio * project.height));
 
 		ctx.drawImage(img, 0,0, w,h);
 
 		img = await getAndCacheRenderedImgElementPromise(canvas, fileName);
 	}
+
+let	autocrop, crop;
 
 	if (
 		img
@@ -7963,10 +8034,10 @@ var	values = render.values
 			crop.width > 0
 		&&	crop.height > 0
 		) {
-		var	autocrop, crop
-		,	cropValues = getPatchedObject(values, replaceJSONpartsForCropRef)
-		,	cropRefName = getFileNameByValuesToSave(project, cropValues)
-		,	cropId = [
+		const	cropValues = getPatchedObject(values, replaceJSONpartsForCropRef);
+		const	cropRefName = getFileNameByValuesToSave(project, cropValues);
+
+		const	cropId = [
 				'x=' + crop.left
 			,	'y=' + crop.top
 			,	'w=' + crop.width
@@ -7974,7 +8045,8 @@ var	values = render.values
 			].join(',');
 
 			cropValues.autocrop = {'autocrop': cropId};
-		var	cropName = getFileNameByValuesToSave(project, cropValues);
+
+		const	cropName = getFileNameByValuesToSave(project, cropValues);
 
 			if (cropName in prerenders) {
 				img = prerenders[fileName] = prerenders[cropName];
@@ -7983,11 +8055,10 @@ var	values = render.values
 				crop.width < img.width
 			||	crop.height < img.height
 			) {
-			var	canvas = cre('canvas')
-			,	w = canvas.width  = crop.width
-			,	h = canvas.height = crop.height
-			,	ctx = canvas.getContext('2d')
-				;
+			const	canvas = cre('canvas');
+			const	ctx = canvas.getContext('2d');
+			const	w = canvas.width  = crop.width;
+			const	h = canvas.height = crop.height;
 
 				ctx.drawImage(img, -crop.left, -crop.top);
 
@@ -8007,19 +8078,17 @@ var	values = render.values
 }
 
 function getNewLineOptionLists(project) {
-var	options = project.options
-,	optionsForNewLines = {}
-	;
+const	options = project.options;
+const	optionsForNewLines = {};
 
 	for (let sectionName in options) {
-	var	section = options[sectionName];
+	const	section = options[sectionName];
 
 		for (let listName in section) {
-		var	optionList = section[listName];
+		const	optionList = section[listName];
 
 			if (getPropByNameChain(optionList, 'params', 'newline')) {
-			var	listNames = getOrInitChild(optionsForNewLines, sectionName, Array);
-
+			const	listNames = getOrInitChild(optionsForNewLines, sectionName, Array);
 				addToListIfNotYet(listNames, listName);
 			}
 		}
@@ -8034,26 +8103,26 @@ function getNewLineSubcontainer(container, values, options) {
 	}
 
 	for (let sectionName in options) {
-	var	section = options[sectionName];
+	const	section = options[sectionName];
 
 		for (let listName of section) {
-		var	optionName = getPropByNameChain(values, sectionName, listName);
+		const	optionName = getPropByNameChain(values, sectionName, listName);
 
 			if (optionName !== null) {
-			var	optionId = [
+			const	optionId = [
 					sectionName
 				,	listName
 				,	optionName
 				].join('\n');
 
-			var	e = getChildByAttr(container, 'data-option-id', optionId);
+			let	element = getChildByAttr(container, 'data-option-id', optionId);
 
-				if (!e) {
-					e = cre('div', container);
-					e.setAttribute('data-option-id', optionId);
+				if (!element) {
+					element = cre('div', container);
+					element.setAttribute('data-option-id', optionId);
 				}
 
-				container = e;
+				container = element;
 			}
 		}
 	}
@@ -8070,23 +8139,23 @@ async function renderAll(project, flags) {
 
 	if (!flags.saveToFile) flags.showOnPage = true;
 
-var	logLabel = 'Render all: ' + project.fileName;
+const	logLabel = 'Render all: ' + project.fileName;
 
 	console.time(logLabel);
 	console.group(logLabel);
 
-var	startTime = getTimeNow()
-,	sets = getAllValueSets(project, {checkSelectedValue: true})
-,	lastPauseTime = getTimeNow()
-,	setsCountWithoutPause = 0
-,	setsCountTotal = Object.keys(sets).length
-,	setsCount = 0
-,	totalTime = 0
-,	renderedImages = []
-,	needWaitBetweenDL = (flags.saveToFile && !flags.asOneJoinedImage)
-,	optionsForNewLines = getNewLineOptionLists(project)
-,	batchContainer, subContainer, img
-	;
+const	startTime = getTimeNow();
+const	sets = getAllValueSets(project, {checkSelectedValue: true});
+let	lastPauseTime = getTimeNow();
+
+const	renderedImages = [];
+const	needWaitBetweenDL = (flags.saveToFile && !flags.asOneJoinedImage);
+const	optionsForNewLines = getNewLineOptionLists(project);
+const	setsCountTotal = Object.keys(sets).length;
+let	setsCountWithoutPause = 0;
+let	setsCount = 0;
+let	totalTime = 0;
+let	batchContainer, subContainer;
 
 	if (flags.showOnPage) batchContainer = getEmptyRenderContainer(project); else
 	if (flags.asOneJoinedImage) batchContainer = cre('div');
@@ -8099,16 +8168,17 @@ var	startTime = getTimeNow()
 	);
 
 	for (let fileName in sets) {
-	var	startTime = getTimeNow()
-	,	img = null
-	,	values = sets[fileName]
-	,	render = await getOrCreateRender(
+	const	startTime = getTimeNow();
+	const	values = sets[fileName];
+	const	render = await getOrCreateRender(
 			project
 		,	{
 				'values': values
 			,	'fileName': fileName
 			}
 		);
+
+	let	img = null;
 
 		if (batchContainer) {
 			subContainer = getNewLineSubcontainer(batchContainer, values, optionsForNewLines);
@@ -8150,7 +8220,7 @@ var	startTime = getTimeNow()
 			);
 		}
 
-	var	endTime = getTimeNow();
+	const	endTime = getTimeNow();
 		totalTime += (endTime - startTime);
 
 		setsCount++;
@@ -8188,12 +8258,11 @@ var	startTime = getTimeNow()
 	if (flags.asOneJoinedImage) {
 
 		function getBatchCanvasSize(rootContainer) {
-		var	x = 0
-		,	y = 0
-		,	w = 0
-		,	h = 0
-		,	element = rootContainer.firstElementChild
-			;
+		let	x = 0;
+		let	y = 0;
+		let	w = 0;
+		let	h = 0;
+		let	element = rootContainer.firstElementChild;
 
 			while (element) {
 				if (isImageElement(element)) {
@@ -8205,7 +8274,7 @@ var	startTime = getTimeNow()
 
 					x += element.width + joinedPadding;
 				} else {
-				var	size = getBatchCanvasSize(element);
+				const	size = getBatchCanvasSize(element);
 
 					element.batchOffsetX = x = 0;
 					element.batchOffsetY = y = (h > 0 ? h + joinedPadding : 0);
@@ -8226,9 +8295,8 @@ var	startTime = getTimeNow()
 		}
 
 		function getBatchOffsetXY(element) {
-		var	x = 0
-		,	y = 0
-			;
+		let	x = 0;
+		let	y = 0;
 
 			while (element) {
 				x += orz(element.batchOffsetX);
@@ -8248,33 +8316,32 @@ var	startTime = getTimeNow()
 			};
 		}
 
-	var	startTime = getTimeNow()
-	,	alignImages = getSelectedMenuValue(project, 'collage', 'align') || ''
-	,	joinedBorder = Math.max(0, orz(getSelectedMenuValue(project, 'collage', 'border', DEFAULT_COLLAGE_PADDING_OUTSIDE)))
-	,	joinedPadding = Math.max(0, orz(getSelectedMenuValue(project, 'collage', 'padding', DEFAULT_COLLAGE_PADDING_INSIDE)))
-	,	size = getBatchCanvasSize(batchContainer)
-	,	w = size.width
-	,	h = size.height
-		;
+	const	startTime = getTimeNow();
+	const	alignImages = getSelectedMenuValue(project, 'collage', 'align') || '';
+	const	joinedBorder = Math.max(0, orz(getSelectedMenuValue(project, 'collage', 'border', DEFAULT_COLLAGE_PADDING_OUTSIDE)));
+	const	joinedPadding = Math.max(0, orz(getSelectedMenuValue(project, 'collage', 'padding', DEFAULT_COLLAGE_PADDING_INSIDE)));
+	const	size = getBatchCanvasSize(batchContainer);
+
+	let	w = size.width;
+	let	h = size.height;
 
 		if (w > 0 && h > 0) {
 			w += joinedBorder * 2;
 			h += joinedBorder * 2;
 
-		var	canvas = cre('canvas')
-		,	ctx = canvas.getContext('2d')
-			;
+		const	canvas = cre('canvas');
+		const	ctx = canvas.getContext('2d');
 
 			canvas.width = w;
 			canvas.height = h;
 
 			if (
-				canvas.width != w
-			||	canvas.height != h
+				canvas.width !== w
+			||	canvas.height !== h
 			) {
 				alert(getLocalizedText('error_canvas_size', w + 'x' + h));
 			} else {
-			var	backgroundFill = getSelectedMenuValue(project, 'collage', 'background');
+			let	backgroundFill = getSelectedMenuValue(project, 'collage', 'background');
 
 				if (
 					backgroundFill
@@ -8287,14 +8354,14 @@ var	startTime = getTimeNow()
 				}
 
 				for (let img of renderedImages) {
-				var	pos = getBatchOffsetXY(img);
+				const	pos = getBatchOffsetXY(img);
 
 					ctx.drawImage(img, pos.x, pos.y);
 				}
 
-			var	img = await getImagePromiseFromCanvasToBlob(canvas, project).then(
+			const	img = await getImagePromiseFromCanvasToBlob(canvas, project).then(
 					(img) => {
-						endTime = getTimeNow();
+					const	endTime = getTimeNow();
 						totalTime = (endTime - startTime);
 
 						img.title = img.alt = (
@@ -8332,23 +8399,25 @@ function showJoin(project) {renderAll(project, {asOneJoinedImage: true});}
 function saveJoin(project) {renderAll(project, {saveToFile: true, asOneJoinedImage: true});}
 
 async function showImg(project, render, container) {
-	if (!render) var isSingleWIP = setProjectWIPstate(project, true);
+const	isSingleWIP = (render ? false : setProjectWIPstate(project, true));
+
+let	img = null;
 
 	try {
 
 //* cleanup before showing rendering steps:
 
+	let	imgContainer;
+
 		if (TESTING_RENDER) {
-		var	imgContainer = container || getEmptyRenderContainer(project)
-		,	img = await getOrCreateRenderedImg(project, render)
-			;
+			imgContainer = container || getEmptyRenderContainer(project);
+			img = await getOrCreateRenderedImg(project, render);
 		} else {
 
 //* prepare image before container cleanup to avoid flicker:
 
-		var	img = await getOrCreateRenderedImg(project, render)
-		,	imgContainer = container || getEmptyRenderContainer(project)
-			;
+			img = await getOrCreateRenderedImg(project, render);
+			imgContainer = container || getEmptyRenderContainer(project);
 		}
 
 		if (img) {
@@ -8372,11 +8441,13 @@ async function showImg(project, render, container) {
 }
 
 async function saveImg(project, render, fileName) {
-	if (!render) var isSingleWIP = setProjectWIPstate(project, true);
+const	isSingleWIP = (render ? false : setProjectWIPstate(project, true));
+
+let	img = null;
 
 	try {
 		render = await getOrCreateRender(project, render);
-	var	img = render.img;
+		img = render.img;
 
 		if (img) {
 			saveDL(img.src, fileName || render.fileName, 'png');
@@ -8393,10 +8464,12 @@ async function saveImg(project, render, fileName) {
 }
 
 async function getRenderedImg(project, render) {
-	if (!render) var isSingleWIP = setProjectWIPstate(project, true);
+const	isSingleWIP = (render ? false : setProjectWIPstate(project, true));
+
+let	img = null;
 
 	try {
-	var	img = await getOrCreateRenderedImg(project, render);
+		img = await getOrCreateRenderedImg(project, render);
 	} catch (error) {
 		logError(arguments, error);
 
@@ -8434,10 +8507,9 @@ async function updateMenuAndShowImg(project) {
 
 function updateCheckBox(checkBox, params) {
 	if (params || (params = checkBox.params)) {
-	var	switchType = checkBox.getAttribute('data-switch-type')
-	,	switchName = SWITCH_NAMES_BY_TYPE[switchType]
-	,	targetState = !!checkBox.checked
-		;
+	const	switchType = checkBox.getAttribute('data-switch-type');
+	const	switchName = SWITCH_NAMES_BY_TYPE[switchType];
+	const	targetState = !!checkBox.checked;
 
 		params[switchName[0]] = !targetState;
 		params[switchName[1]] = targetState;
@@ -8445,8 +8517,8 @@ function updateCheckBox(checkBox, params) {
 }
 
 function updateBatchCount(project) {
-var	precounts = getOrInitChild(project, 'renderBatchCounts')
-,	key = (
+const	precounts = getOrInitChild(project, 'renderBatchCounts');
+const	key = (
 		(
 			getAllByClass('batch-checkbox', project.container)
 			.map((checkBox) => (checkBox.checked ? 1 : 0))
@@ -8454,9 +8526,9 @@ var	precounts = getOrInitChild(project, 'renderBatchCounts')
 		)
 	+	'_'
 	+	getFileNameByValues(project)
-	)
-,	count = precounts[key]
-	;
+	);
+
+let	count = precounts[key];
 
 	if (!count) {
 		count = getAllValueSetsCount(project);
@@ -8476,23 +8548,21 @@ var	precounts = getOrInitChild(project, 'renderBatchCounts')
 		['show_all', 'save_all'].forEach(
 			(name) => getAllByName(name, project.container).forEach(
 				(button) => {
-				var	label = button.lastElementChild || cre('span', button);
+				const	label = button.lastElementChild || cre('span', button);
 					label.className = 'count-label';
 					label.textContent = count;
 				}
 			)
 		);
 	} else {
-	var	labelClass = 'count-line'
-	,	label = getAllByClass(labelClass, project.container)[0]
-		;
+	const	labelClass = 'count-line';
+	let	label = getAllByClass(labelClass, project.container)[0];
 
 		if (!label) {
-		var	container = getAllByName('show_all', project.container)[0] || project.container
-		,	container = getThisOrParentByTagName(container, 'section')
-		,	label = cre('div', container, container.lastElementChild)
-			;
+		let	container = getAllByName('show_all', project.container)[0] || project.container;
+			container = getThisOrParentByTagName(container, 'section');
 
+			label = cre('div', container, container.lastElementChild);
 			label.className = labelClass;
 		}
 
@@ -8504,7 +8574,7 @@ var	precounts = getOrInitChild(project, 'renderBatchCounts')
 }
 
 function setProjectWIPstate(project, isWIP) {
-var	state = !!isWIP;
+const	state = !!isWIP;
 
 	project.isStopRequested = false;
 	project.isBatchWIP = state;
@@ -8526,7 +8596,7 @@ var	state = !!isWIP;
 }
 
 function setGlobalWIPstate(isWIP) {
-var	state = !!isWIP;
+const	state = !!isWIP;
 
 	isStopRequested = false;
 	isBatchWIP = state;
@@ -8549,7 +8619,7 @@ var	state = !!isWIP;
 //* Page-specific functions: UI-side *-----------------------------------------
 
 function onBeforeUnload(evt) {
-var	evt = eventStop(evt, FLAG_EVENT_STOP_IMMEDIATE);
+	evt = eventStop(evt, FLAG_EVENT_STOP_IMMEDIATE);
 
 	if (
 		ASK_BEFORE_EXIT_IF_OPENED_FILES
@@ -8559,11 +8629,12 @@ var	evt = eventStop(evt, FLAG_EVENT_STOP_IMMEDIATE);
 //* Note: given message text won't be used in modern browsers.
 //* source: https://habr.com/ru/post/141793/
 
-	var	message = getLocalizedText('confirm_close_page');
+	const	message = getLocalizedText('confirm_close_page');
 
 		if (typeof evt === 'undefined') {
 			evt = window.event;
 		}
+
 		if (evt) {
 			evt.returnValue = message;
 		}
@@ -8588,7 +8659,7 @@ function updateDropdownMenuPositions(evt) {
 }
 
 function onPageKeyPress(evt) {
-var	evt = evt || window.event;
+	evt = evt || window.event;
 
 //* Esc:
 
@@ -8606,9 +8677,9 @@ var	evt = evt || window.event;
 }
 
 function onProjectButtonClick(evt) {
-var	evt = evt || window.event
-,	button = evt
-	;
+	evt = evt || window.event;
+
+let	button = evt;
 
 	if (
 		evt
@@ -8629,11 +8700,10 @@ var	evt = evt || window.event
 
 	eventStop(evt, FLAG_EVENT_STOP_IMMEDIATE);
 
-var	container = getProjectContainer(button)
-,	project = container.project
-,	action = button.name
-,	resetPrefix
-	;
+const	container = getProjectContainer(button);
+const	project = container.project;
+const	action = button.name;
+const	resetPrefix = 'reset_to_';
 
 	if (action === 'stop') {
 		project.isStopRequested = true;
@@ -8644,7 +8714,7 @@ var	container = getProjectContainer(button)
 	if (action === 'save_all') saveAll(project); else
 	if (action === 'show_join') showJoin(project); else
 	if (action === 'save_join') saveJoin(project); else
-	if (hasPrefix(action, resetPrefix = 'reset_to_')) {
+	if (hasPrefix(action, resetPrefix)) {
 		setAllValues(project, action.substr(resetPrefix.length));
 	} else
 	if (action === 'console_log') {
@@ -8665,9 +8735,9 @@ var	container = getProjectContainer(button)
 }
 
 function onProjectMenuUpdate(evt) {
-var	evt = evt || window.event
-,	element = evt
-	;
+	evt = evt || window.event;
+
+let	element = evt;
 
 	if (
 		evt
@@ -8695,7 +8765,7 @@ var	evt = evt || window.event
 		}
 	}
 
-var	isSelect = isSelectElement(element);
+const	isSelect = isSelectElement(element);
 
 	if (isSelect) {
 		updateSelectStyle(element);
@@ -8705,9 +8775,8 @@ var	isSelect = isSelectElement(element);
 		}
 	}
 
-var	container = getProjectContainer(element)
-,	project = container.project
-	;
+const	container = getProjectContainer(element);
+const	project = container.project;
 
 	updateBatchCount(project);
 
@@ -8717,11 +8786,11 @@ var	container = getProjectContainer(element)
 }
 
 function onPageDragOver(evt) {
-var	evt = eventStop(evt, FLAG_EVENT_NO_DEFAULT)
-,	batch = evt.dataTransfer
-,	files = batch.files
-,	items = batch.items
-	;
+	evt = eventStop(evt, FLAG_EVENT_NO_DEFAULT);
+
+const	batch = evt.dataTransfer;
+const	files = batch.files;
+const	items = batch.items;
 
 	batch.dropEffect = (
 		(files && files.length)
@@ -8732,10 +8801,11 @@ var	evt = eventStop(evt, FLAG_EVENT_NO_DEFAULT)
 }
 
 function onPageDrop(evt) {
-var	evt = eventStop(evt, FLAG_EVENT_NO_DEFAULT)
-,	filesToLoad = []
-,	files, name, ext
-	;
+	evt = eventStop(evt, FLAG_EVENT_NO_DEFAULT);
+
+const	filesToLoad = [];
+
+let	files, name, ext;
 
 //* get list of files to process:
 
@@ -8769,11 +8839,13 @@ var	evt = eventStop(evt, FLAG_EVENT_NO_DEFAULT)
 }
 
 async function loadFromFileList(files, evt) {
+let	loadedProjectsCount = 0;
+
 	if (
 		files
 	&&	files.length > 0
 	) {
-	var	logLabel = [
+	const	logLabel = [
 			'Load'
 		,	files.length
 		,	'project files:'
@@ -8781,17 +8853,13 @@ async function loadFromFileList(files, evt) {
 				files.map((file) => file.name)
 			,	', '
 			)
-		].join(' ')
-	,	loadedProjectsCount = 0
-		;
+		].join(' ');
 
 		console.time(logLabel);
 		console.group(logLabel);
 
-		for (let file of files) {
-			if (await addProjectView(file)) {
-				++loadedProjectsCount;
-			}
+		for (let file of files) if (await addProjectView(file)) {
+			++loadedProjectsCount;
 		}
 
 		console.groupEnd(logLabel);
@@ -8810,12 +8878,12 @@ async function loadFromURL(url) {
 		return;
 	}
 
-var	logLabel = 'Load project from url: ' + url;
+const	logLabel = 'Load project from url: ' + url;
 
 	console.time(logLabel);
 	console.group(logLabel);
 
-var	isProjectLoaded = await addProjectView({url: url});
+const	isProjectLoaded = await addProjectView({url: url});
 
 	console.groupEnd(logLabel);
 	console.timeEnd(logLabel);
@@ -8826,9 +8894,8 @@ var	isProjectLoaded = await addProjectView({url: url});
 async function loadFromButton(button, inBatch) {
 
 	function getButtonURL(button) {
-	var	url = button.getAttribute('data-url')
-	,	container, link
-		;
+	let	url = button.getAttribute('data-url');
+	let	container, link;
 
 		if (
 			!url
@@ -8849,16 +8916,19 @@ async function loadFromButton(button, inBatch) {
 		button.disabled = true;
 	}
 
-var	action, url;
+const	action = button.name || button.getAttribute('data-action');
+const	urls = [];
+let	url;
+let	isProjectLoaded = false;
 
-	if (action = button.name || button.getAttribute('data-action')) {
-	var	filesTable = getThisOrParentByClass(button, regClassExampleFiles);
+	if (action) {
+	const	filesTable = getThisOrParentByClass(button, regClassExampleFiles);
 
 		if (action === 'stop') {
 			isStopRequested = true;
 		} else
 		if (action === 'download_all') {
-		var	countWithoutPause = 0;
+		let	countWithoutPause = 0;
 
 			for (let link of getAllByTag('a', filesTable)) {
 				if (link.download) {
@@ -8879,9 +8949,7 @@ var	action, url;
 		if (action === 'load_all') {
 			setGlobalWIPstate(true);
 
-		var	isProjectLoaded = 0
-		,	urls = []
-			;
+		// let	countLoadedProjects = 0;
 
 			for (let otherButton of getAllByTag('button', filesTable)) {
 				if (url = getButtonURL(otherButton)) {
@@ -8889,7 +8957,9 @@ var	action, url;
 					addToListIfNotYet(urls, url);
 
 					if (await loadFromButton(otherButton, true)) {
-						++isProjectLoaded;
+						isProjectLoaded = true;
+
+						// ++countLoadedProjects;
 					}
 
 					if (isStopRequested) {
@@ -8909,9 +8979,8 @@ var	action, url;
 
 //* show loading status:
 
-	var	className = 'loading'
-	,	fileRow = getThisOrParentByClass(button, regClassExampleFile)
-		;
+	const	className = 'loading';
+	const	fileRow = getThisOrParentByClass(button, regClassExampleFile);
 
 		if (fileRow && fileRow.className) {
 			if (fileRow.classList.contains(className)) {
@@ -8923,7 +8992,7 @@ var	action, url;
 
 //* process the file:
 
-	var	isProjectLoaded = await loadFromURL(url);
+		isProjectLoaded = await loadFromURL(url);
 
 //* remove loading status:
 
@@ -8960,10 +9029,10 @@ var	action, url;
 
 function selectProject(buttonTab) {
 	if (buttonTab = getProjectButton(buttonTab)) {
-	var	otherButtonTab = buttonTab.parentNode.firstElementChild;
+	let	otherButtonTab = buttonTab.parentNode.firstElementChild;
 
 		while (otherButtonTab) {
-		var	selectedState = (otherButtonTab === buttonTab ? 1 : -1);
+		const	selectedState = (otherButtonTab === buttonTab ? 1 : -1);
 
 			getAllById(otherButtonTab.id).forEach(
 				(element) => toggleClass(element, 'show', selectedState)
@@ -8976,10 +9045,9 @@ function selectProject(buttonTab) {
 
 function closeProject(buttonTab) {
 	if (buttonTab = getProjectButton(buttonTab)) {
-	var	buttonClass = buttonTab.className || ''
-	,	fileId = buttonTab.id
-	,	project = buttonTab.project
-		;
+	const	buttonClass = buttonTab.className || '';
+	const	fileId = buttonTab.id;
+	const	project = buttonTab.project;
 
 		if (regClassShow.test(buttonClass)) {
 			selectProject(
@@ -9004,7 +9072,7 @@ function closeProject(buttonTab) {
 			removeProjectView(fileId);
 		}
 
-	var	revokedBlobsCount = revokeBlobsFromTrackList(project);
+	const	revokedBlobsCount = revokeBlobsFromTrackList(project);
 
 		if (revokedBlobsCount) {
 			if (TESTING) console.log(['closed project:', project, 'revoked blobs:', revokedBlobsCount]);
@@ -9015,11 +9083,11 @@ function closeProject(buttonTab) {
 //* Runtime: prepare UI *------------------------------------------------------
 
 async function init() {
-var	logLabelWrap = 'Init';
+const	logLabelWrap = 'Init';
 	console.time(logLabelWrap);
 	console.group(logLabelWrap);
 
-var	logLabel = `Init localization "${LANG}"`;
+let	logLabel = `Init localization "${LANG}"`;
 	console.time(logLabel);
 
 	toggleClass(document.body, 'loading', 1);
@@ -9030,8 +9098,8 @@ var	logLabel = `Init localization "${LANG}"`;
 
 //* remember config defaults:
 
-var	configVarDefaults = {}
-,	configVarNames = [
+const	configVarDefaults = {};
+const	configVarNames = [
 		'DEFAULT_ALPHA_MASK_PADDING',
 		'DEFAULT_ALPHA_MASK_THRESHOLD',
 		'DEFAULT_AUTOCROP',
@@ -9065,9 +9133,8 @@ var	configVarDefaults = {}
 
 	configVarNames.forEach(
 		(varName) => {
-		var	configuredValue = orz(window[varName])
-		,	invalidBottom = (varName.includes('FACTOR') ? 1 : 0)
-			;
+		const	configuredValue = orz(window[varName]);
+		const	invalidBottom = (varName.includes('FACTOR') ? 1 : 0);
 
 			window[varName] = (
 				configuredValue > invalidBottom
@@ -9101,14 +9168,14 @@ var	configVarDefaults = {}
 
 //* check loading local files:
 
+let	canLoadLocalFiles = true;
+
 	if (RUNNING_FROM_DISK) {
 		try {
-		var	canLoadLocalFiles = !!(await getFilePromiseFromURL(fetchTestFilePath));
+			canLoadLocalFiles = !!(await getFilePromiseFromURL(fetchTestFilePath));
 		} catch (error) {
 			canLoadLocalFiles = false;
 		}
-	} else {
-		canLoadLocalFiles = true;
 	}
 
 	if (!canLoadLocalFiles) {
@@ -9133,21 +9200,19 @@ var	configVarDefaults = {}
 	logLabel = 'Init menu: file types';
 	console.time(logLabel);
 
-var	todoText = getLocalizedText('todo')
-,	todoHTML = '<p>' + getLocalizedHTML('todo') + '</p>'
-,	fileTypesByKeys = {}
-,	inputFileAcceptTypes = []
-	;
+const	todoText = getLocalizedText('todo');
+const	todoHTML = '<p>' + getLocalizedHTML('todo') + '</p>';
+const	fileTypesByKeys = {};
+const	inputFileAcceptTypes = [];
 
 	fileTypeLoaders.forEach(
 		(loader) => {
-		var	exts = loader.dropFileExts || []
-		,	mimeTypes = loader.inputFileAcceptMimeTypes || []
-		,	lowerCaseExts = exts.map((ext) => ext.toLowerCase())
-		,	upperCaseExts = exts.map((ext) => ext.toUpperCase())
-		,	key = upperCaseExts.shift()
-		,	otherTypesByKey = getOrInitChild(fileTypesByKeys, key, Array)
-			;
+		const	exts = loader.dropFileExts || [];
+		const	mimeTypes = loader.inputFileAcceptMimeTypes || [];
+		const	lowerCaseExts = exts.map((ext) => ext.toLowerCase());
+		const	upperCaseExts = exts.map((ext) => ext.toUpperCase());
+		const	key = upperCaseExts.shift();
+		const	otherTypesByKey = getOrInitChild(fileTypesByKeys, key, Array);
 
 			upperCaseExts.forEach(
 				(ext) => addToListIfNotYet(otherTypesByKey, ext)
@@ -9163,14 +9228,13 @@ var	todoText = getLocalizedText('todo')
 		}
 	);
 
-var	supportedFileTypesText = (
+const	supportedFileTypesText = (
 		Object.keys(fileTypesByKeys)
 		.sort()
 		.map(
 			(key) => {
-			var	text = key
-			,	otherTypesByKey = fileTypesByKeys[key]
-				;
+			const	otherTypesByKey = fileTypesByKeys[key];
+			let	text = key;
 
 				if (otherTypesByKey.length > 0) {
 					text += ' (' + otherTypesByKey.sort().join(', ') + ')';
@@ -9231,8 +9295,8 @@ var	supportedFileTypesText = (
 
 		tabs = Object.entries(tabs);
 
-	var	padCount = orz(rowLength) - orz(tabs.length)
-	,	padHTML = (
+	const	padCount = orz(rowLength) - orz(tabs.length);
+	const	padHTML = (
 			padCount === 0
 			? '' :
 			'<td' + (
@@ -9240,8 +9304,9 @@ var	supportedFileTypesText = (
 				? '' :
 				' colspan="' + padCount + '"'
 			) + '></td>'
-		)
-	,	tabsHTML = (
+		);
+
+	const	tabsHTML = (
 			tabs.map(
 				([name, label]) => (
 					(
@@ -9268,33 +9333,36 @@ var	supportedFileTypesText = (
 		);
 	}
 
-var	tabsCountMax = 0
-,	totalFilesCount = 0
-,	examplesHTML = getNestedFilteredArrayJoinedText(
+let	tabsCountMax = 0;
+let	totalFilesCount = 0;
+
+const	examplesHTML = getNestedFilteredArrayJoinedText(
 		exampleProjectFiles.map(
 			(fileGroup) => {
-			var	subdir = fileGroup.subdir || ''
-			,	headerHTML = (
+			const	subdir = fileGroup.subdir || '';
+			const	headerHTML = (
 					!subdir
 					? '' :
 					'<header>'
 				+		getLocalizedHTML(subdir)
 				+		':'
 				+	'</header>'
-				)
-			,	tabsCount = 0
-			,	filesCount = fileGroup.files.length
-			,	fileListHTML = getNestedFilteredArrayJoinedText(
+				);
+
+			let	tabsCount = 0;
+			const	filesCount = fileGroup.files.length;
+			const	fileListHTML = getNestedFilteredArrayJoinedText(
 					fileGroup.files.map(
 						(file) => {
-						var	fileName = (
+						const	fileName = (
 								file.length
 							&&	file.length > 0
 							&&	file[0]
 								? file[0]
 								: file.name || file || '?'
-							)
-						,	fileInfo = (
+							);
+
+						const	fileInfo = (
 								file.length
 							&&	file.length > 1
 							&&	file[1]
@@ -9310,8 +9378,9 @@ var	tabsCountMax = 0
 									]
 								,	', '
 								)
-							)
-						,	thumbnail = (
+							);
+
+						const	thumbnail = (
 								'<div class="thumbnail-hover">'
 							+	(
 									!file.thumbnail
@@ -9328,12 +9397,14 @@ var	tabsCountMax = 0
 								+	'">'
 								)
 							+	'</div>'
-							)
-						,	filePath = getNestedFilteredArrayJoinedText([exampleRootDir, subdir, fileName], '/')
-						,	fileURL = filePath + '?version=' + file.modtime.replace(regNonWord, '_')
-						,	nameAttr = encodeTagAttr(fileName)
-						,	pathAttr = encodeTagAttr(fileURL)
-						,	downloadLink = (
+							);
+
+						const	filePath = getNestedFilteredArrayJoinedText([exampleRootDir, subdir, fileName], '/');
+						const	fileURL = filePath + '?version=' + file.modtime.replace(regNonWord, '_');
+						const	nameAttr = encodeTagAttr(fileName);
+						const	pathAttr = encodeTagAttr(fileURL);
+
+						const	downloadLink = (
 								'<a href="'
 							+		pathAttr
 							+	'" download="'
@@ -9341,23 +9412,26 @@ var	tabsCountMax = 0
 							+	'">'
 							+		getLocalizedHTML('download_file')
 							+	'</a>'
-							)
-						,	loadButton = (
+							);
+
+						const	loadButton = (
 								!canLoadLocalFiles
 								? '' :
 								'<button onclick="return loadFromButton(this)">'
 							+		getLocalizedHTML('open_example_file')
 							+	'</button>'
-							)
-						,	tabs = [
+							);
+
+						const	tabs = [
 								fileName
 							,	thumbnail
 							,	fileInfo
 							,	getFormattedTime(file.modtime)
 							,	downloadLink
 							,	loadButton
-							]
-						,	tabsHTML = getNestedFilteredArrayJoinedText(
+							];
+
+						const	tabsHTML = getNestedFilteredArrayJoinedText(
 								tabs.map(
 									(tabContent) => (
 										'<td>'
@@ -9379,7 +9453,7 @@ var	tabsCountMax = 0
 					)
 				);
 
-			var	batchButtonsHTML = (
+			const	batchButtonsHTML = (
 					filesCount > 1
 					? getExampleButtonsRow(EXAMPLE_CONTROLS, tabsCount)
 					: '<tr><td colspan="' + tabsCountMax + '"></td></tr>'
@@ -9396,8 +9470,9 @@ var	tabsCountMax = 0
 				);
 			}
 		)
-	)
-,	batchButtonsHTML = (
+	);
+
+const	batchButtonsHTML = (
 		totalFilesCount > 1
 		? (
 			'<tfoot>'
@@ -9425,13 +9500,15 @@ var	tabsCountMax = 0
 	console.time(logLabel);
 
 	function getHelpSectionLinkAwayHTML(linkName) {
-	var	url = getLocalizedOrEmptyText(linkName)
-	,	linkAttr = (
+	const	url = getLocalizedOrEmptyText(linkName);
+
+	const	linkAttr = (
 			url
 			? encodeTagAttr(url) + '" class="external-link'
 			: encodeTagAttr(`javascript:alert(getLocalizedText('unknown_link', '${linkName}'))`)
-		)
-	,	linkText = (
+		);
+
+	const	linkText = (
 			getLocalizedOrEmptyText(linkName + '_text')
 		||	linkName
 		);
@@ -9473,12 +9550,12 @@ var	tabsCountMax = 0
 		);
 	}
 
-var	wrap = {
+const	wrap = {
 		'code': {},
 		'span': {},
 	};
 
-	[
+const	wrapperClassNames = [
 		'comment',
 		'folder ignore',
 		'ignore',
@@ -9486,9 +9563,11 @@ var	wrap = {
 		'nested-layer ignore',
 		'param',
 		'path',
-	].forEach(
+	];
+
+	wrapperClassNames.forEach(
 		(className) => {
-		var	key = className.split(regNonAlphaNum)[0];
+		const	key = className.split(regNonAlphaNum)[0];
 
 			for (let tagName in wrap) {
 				wrap[tagName][key] = function(...values) {
@@ -9502,7 +9581,7 @@ var	wrap = {
 		}
 	);
 
-var	helpSections = {
+const	helpSections = {
 		'autocrop': [
 			{
 				'text_key': 'notes',
@@ -10314,6 +10393,8 @@ var	helpSections = {
 	};
 
 	function getHeaderWithToggleButtons(toggleName, sectionName) {
+	let	content;
+
 		if (
 			sectionName
 		&&	(content = getLocalizedText(sectionName))
@@ -10328,9 +10409,9 @@ var	helpSections = {
 			+	'</header>'
 			);
 		} else {
-		var	content = OPEN_CLOSE.map(
+			content = OPEN_CLOSE.map(
 				(actionName) => {
-				var	buttonName = actionName + '_' + toggleName;
+				const	buttonName = actionName + '_' + toggleName;
 
 					return (
 						'<button onclick="return toggleSection(this)" name="'
@@ -10352,31 +10433,31 @@ var	helpSections = {
 		}
 	}
 
-//* help sections order is defined here:
+const	menuHTMLpartsOrder = [
+		'param',
+		'parts',
+		'colors',
+		'opacity',
+		'padding',
+		'side',
+		'zoom',
+		'separate',
+		'autocrop',
+		'collage',
+		'batch',
+		'clone',
+		'virtual_path',
+		'path_logic',
+		'color_value',
+		'other',
+	];
 
 	menuHTMLparts.help = getNestedFilteredArrayJoinedText([
 		getHeaderWithToggleButtons('all_sections')
-	,	[
-			'param',
-			'parts',
-			'colors',
-			'opacity',
-			'padding',
-			'side',
-			'zoom',
-			'separate',
-			'autocrop',
-			'collage',
-			'batch',
-			'clone',
-			'virtual_path',
-			'path_logic',
-			'color_value',
-			'other',
-		].map(
+	,	menuHTMLpartsOrder.map(
 			(sectionName) => {
-			var	content = helpSections[sectionName]
-			,	sectionContentHTML = getNestedFilteredArrayJoinedText(
+			const	content = helpSections[sectionName];
+			const	sectionContentHTML = getNestedFilteredArrayJoinedText(
 					!isArray(content)
 					? (
 						content
@@ -10427,7 +10508,7 @@ var	helpSections = {
 	logLabel = 'Init menu: about';
 	console.time(logLabel);
 
-var	aboutLinks = [
+const	aboutLinks = [
 		{
 			'header': getLocalizedHTML('about_source')
 		,	'links': [
@@ -10493,7 +10574,7 @@ var	aboutLinks = [
 	logLabel = 'Init GUI content';
 	console.time(logLabel);
 
-var	menuHTML = getNestedFilteredArrayJoinedText(
+const	menuHTML = getNestedFilteredArrayJoinedText(
 		Object.entries(menuHTMLparts).map(
 			([menuName, menuHTMLpart]) => getDropdownMenuHTML(
 				getLocalizedOrEmptyText(menuName) || todoText
@@ -10503,7 +10584,7 @@ var	menuHTML = getNestedFilteredArrayJoinedText(
 		)
 	);
 
-var	toggleTextSizeHTML = (
+const	toggleTextSizeHTML = (
 		'<button'
 	+	getTagAttrIfNotEmpty('title', getLocalizedOrEmptyText('larger_text'))
 	+	` onclick="return toggleTextSize()">`
@@ -10534,14 +10615,16 @@ var	toggleTextSizeHTML = (
 		}
 	);
 
-	[
+const	linkTooltips = [
 		['section-link', 'help_section_link'],
 		['local-link', 'page_version_link'],
 		['external-link', 'external_link'],
-	].forEach(
+	];
+
+	linkTooltips.forEach(
 		([className, textKey]) => getAllByClass(className).forEach(
 			(element) => {
-			var	url = element.getAttribute('href');
+			const	url = element.getAttribute('href');
 
 				if (url) {
 					element.setAttribute('title', decodeURI(getLocalizedText(textKey, url)));
@@ -10559,19 +10642,21 @@ var	toggleTextSizeHTML = (
 //* add global on-page events:
 //* Note: drop event may not work without dragover.
 
-	[
+const	eventHandlers = [
 		['beforeunload',onBeforeUnload],
 		['dragover',	onPageDragOver],
 		['drop',	onPageDrop],
 		['keypress',	onPageKeyPress],
 		['resize',	onResize],
-	].forEach(
+	];
+
+	eventHandlers.forEach(
 		([eventName, handlerFunction]) => window.addEventListener(eventName, handlerFunction, false)
 	);
 
 //* open or restore state of UI parts:
 
-var	button, oldSetting;
+let	oldSetting;
 
 	if (
 		LS
