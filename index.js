@@ -1016,7 +1016,7 @@ const	wrapText = {
 		'suffix': '',
 	};
 
-	for (let key in wrapText) if (key in flags) {
+	for (const key in wrapText) if (key in flags) {
 		wrapText[key] = String(flags[key]);
 
 		delete flags[key];
@@ -1134,7 +1134,7 @@ let	text = getJoinedOrEmptyText(
 		text
 	&&	(replacements = text.match(regTemplateVarName))
 	) {
-		for (let placeholder of replacements) {
+		for (const placeholder of replacements) {
 			key = placeholder.replace(regTrimBrackets, '');
 
 			if (key in LOCALIZATION_TEXT) {
@@ -1194,7 +1194,7 @@ function eventStop(evt, flags) {
 		if (evt.cancelBubble !== null) evt.cancelBubble = true;
 		if (evt.stopPropagation) evt.stopPropagation();
 
-		for (let key in flags) if (
+		for (const key in flags) if (
 			flags[key]
 		&&	isFunction(evt[key])
 		) {
@@ -1253,7 +1253,11 @@ const	charsNum = text.length;
 
 const	rgba = [0,0,0,255];
 
-	for (let index = 0; index < rgba.length && text.length > 0; index++) {
+	for (
+	let	index = 0;
+		index < rgba.length && text.length > 0;
+		index++
+	) {
 	const	charsNum = Math.min(2, text.length);
 		rgba[index] = parseInt(text.substr(0, charsNum), 16);
 		text = text.substr(charsNum);
@@ -1487,7 +1491,7 @@ function getOrInitChild(obj, key, ...args) {
 }
 
 function getPropFromAnySource(key, ...sources) {
-	for (let obj of sources) if (
+	for (const obj of sources) if (
 		isNonNullObject(obj)
 	&&	key in obj
 	) {
@@ -1518,7 +1522,7 @@ function getPropByAnyOfNamesChain(obj, ...keys) {
 	deeper:
 	while (isNonNullObject(obj)) {
 
-		for (let key of keys) if (key in obj) {
+		for (const key of keys) if (key in obj) {
 			obj = obj[key];
 
 			continue deeper;
@@ -2221,12 +2225,12 @@ function getFormattedTime() {
 const	flags = {};
 let	arg, argDate, argNum, argText, date, YMD, HMS;
 
-	for (let index in arguments) if (arg = arguments[index]) {
+	for (const index in arguments) if (arg = arguments[index]) {
 		if (isDate(arg)) argDate = arg; else
 		if (isNumber(arg)) argNum = arg; else
 		if (isString(arg)) argText = arg; else
 		if (isNonNullObject(arg)) {
-			for (let key in arg) {
+			for (const key in arg) {
 				flags[key] = !!arg[key];
 			}
 		}
@@ -2539,7 +2543,7 @@ let	count = 0;
 	if (isNonNullObject(trackList)) {
 
 		if (isFunction(trackList.push)) {
-			for (let blob of trackList) if (blob) {
+			for (const blob of trackList) if (blob) {
 				URL.revokeObjectURL(blob.url || blob);
 
 				++count;
@@ -2550,7 +2554,7 @@ let	count = 0;
 			if (isFunction(trackList.push)) {
 				count += revokeBlobsFromTrackList(trackList);
 			} else {
-				for (let listName in trackList) {
+				for (const listName in trackList) {
 					count += revokeBlobsFromTrackList(trackList[listName]);
 				}
 			}
@@ -2774,7 +2778,7 @@ const	scripts = Array.from(lib.files || []);
 const	depends = lib.depends || null;
 
 	if (depends) {
-		for (let name of asArray(depends)) if (name) {
+		for (const name of asArray(depends)) if (name) {
 			if (!(await loadLibOnDemandPromise(name))) {
 				return false;
 			}
@@ -3577,7 +3581,7 @@ async function thisToPng(targetLayer) {
 			return imgNode;
 		}
 
-		for (let imgOrNode of [imgNode, node])
+		for (const imgOrNode of [imgNode, node])
 		if (
 			isNonRecursiveFunction(imgOrNode.toPng)
 		&&	(result = await imgOrNode.toPng())
@@ -3616,7 +3620,7 @@ async function thisToPng(targetLayer) {
 	async function thisToPngTryEach(...nodes) {
 	let	result;
 
-		for (let node of nodes) if (result = await thisToPngTryOne(node)) {
+		for (const node of nodes) if (result = await thisToPngTryOne(node)) {
 			break;
 		}
 
@@ -3858,10 +3862,10 @@ let	project = null;
 let	startTime;
 
 	try_loaders:
-	for (let loader of fileTypeLoaders) if (
+	for (const loader of fileTypeLoaders) if (
 		loader.dropFileExts.includes(ext)
 	||	loader.inputFileAcceptMimeTypes.includes(mimeType)
-	) for (let func of loader.handlerFuncs) {
+	) for (const func of loader.handlerFuncs) {
 
 	const	loaderStartTime = getTimeNow();
 
@@ -4040,8 +4044,8 @@ async function getProjectViewMenu(project) {
 			}
 
 			function checkSwitchParams(globalOptionParams) {
-				for (let switchType in SWITCH_NAMES_BY_TYPE)
-				for (let switchName of SWITCH_NAMES_BY_TYPE[switchType]) if (params[switchName]) {
+				for (const switchType in SWITCH_NAMES_BY_TYPE)
+				for (const switchName of SWITCH_NAMES_BY_TYPE[switchType]) if (params[switchName]) {
 				const	switchParams = getOrInitChild(project, 'switchParamNames');
 				const	switchParam  = getOrInitChild(switchParams, switchType);
 
@@ -4153,7 +4157,7 @@ async function getProjectViewMenu(project) {
 				}
 
 				if (!listName && sectionName === 'collage') {
-					for (let listName in param) {
+					for (const listName in param) {
 						addOptionsFromParam(sectionName, listName);
 					}
 
@@ -4170,7 +4174,7 @@ async function getProjectViewMenu(project) {
 					optionItems[sectionName] = sectionName;
 				} else
 				if (sectionName === 'side') {
-					for (let optionName of VIEW_SIDES) {
+					for (const optionName of VIEW_SIDES) {
 						optionItems[optionName] = getLocalizedText(sectionName + '_' + optionName);
 					}
 
@@ -4317,7 +4321,7 @@ async function getProjectViewMenu(project) {
 			if (layerCopyParams) {
 			const	aliasTypes = getOrInitChild(project, 'layersForCopyPaste');
 
-				for (let paramType in layerCopyParams) {
+				for (const paramType in layerCopyParams) {
 				const	aliases = getOrInitChild(aliasTypes, paramType);
 
 					layerCopyParams[paramType].forEach(
@@ -4428,7 +4432,7 @@ async function getProjectViewMenu(project) {
 //* Compare array cloning methods: https://jsben.ch/lO6C5
 //* Top results for Vivaldi (Chrome-based): 1. slice(), 2. [...spread], 3. Array.from()
 
-			for (let layer of layers.slice().reverse()) {
+			for (const layer of layers.slice().reverse()) {
 				if (layer.isClipped) {
 					layer.clippingLayer = clippingLayer;
 				} else {
@@ -4468,7 +4472,7 @@ async function getProjectViewMenu(project) {
 
 //* Use dummy layers to process default parameters without adding them to the tree:
 
-			for (let sectionName in PARAM_OPTIONS_ADD_BY_DEFAULT) if (!options[sectionName]) {
+			for (const sectionName in PARAM_OPTIONS_ADD_BY_DEFAULT) if (!options[sectionName]) {
 				getProcessedLayerInBranch(
 					getLayerWithParamsFromParamList(
 						PARAM_OPTIONS_ADD_BY_DEFAULT[sectionName]
@@ -4478,7 +4482,7 @@ async function getProjectViewMenu(project) {
 
 //* Set any undefined batch/layout settings to computed default:
 
-			for (let switchType in SWITCH_NAMES_BY_TYPE) {
+			for (const switchType in SWITCH_NAMES_BY_TYPE) {
 			const	switchParams = getOrInitChild(project, 'switchParamNames');
 			const	switchParam  = getOrInitChild(switchParams, switchType);
 
@@ -4680,7 +4684,7 @@ async function getProjectViewMenu(project) {
 
 //* list box = set of parts:
 
-			for (let listName in optionLists) if (optionList = section[listName]) {
+			for (const listName in optionLists) if (optionList = section[listName]) {
 			const	listLabel = getLocalizedText((isEntryList ? optionLists[listName] : entry) || listName);
 			const	items = optionList.items;
 			const	params = optionList.params;
@@ -4710,7 +4714,7 @@ async function getProjectViewMenu(project) {
 				selectBox.setAttribute('data-section', sectionName);
 
 				if (sectionName !== 'collage')
-				for (let switchType in SWITCH_NAMES_BY_TYPE) {
+				for (const switchType in SWITCH_NAMES_BY_TYPE) {
 				const	implicitName = getPropByNameChain(project, 'switchParamNames', switchType, 'implicit');
 				const	explicitName = getPropByNameChain(project, 'switchParamNames', switchType, 'explicit');
 				const	isImplied = (typeof params[explicitName] === 'undefined');
@@ -4729,7 +4733,7 @@ async function getProjectViewMenu(project) {
 					checkBox.checked = checkBox.initialValue = !params[SWITCH_NAMES_BY_TYPE[switchType][0]];
 					checkBox.params = params;
 
-					for (let index in switchNames) {
+					for (const index in switchNames) {
 					const	switchName = switchNames[index];
 					const	button = cre('div', label);
 
@@ -4744,7 +4748,7 @@ async function getProjectViewMenu(project) {
 
 //* list item = each part:
 
-				for (let optionName in items) {
+				for (const optionName in items) {
 					if (
 						optionName === ''
 					||	(
@@ -4896,7 +4900,7 @@ async function getProjectViewMenu(project) {
 			let	header = sections.header;
 				sections = sections.select;
 
-				for (let sectionName in sections) {
+				for (const sectionName in sections) {
 					if (options[sectionName]) {
 						if (header) {
 							addHeader(header);
@@ -4907,7 +4911,7 @@ async function getProjectViewMenu(project) {
 					}
 				}
 			} else {
-				for (let sectionName in sections) {
+				for (const sectionName in sections) {
 					if (options[sectionName]) {
 						addHeader(sections[sectionName]);
 						addOptions(sectionName);
@@ -5003,7 +5007,7 @@ const	infoButton = addButton(summaryFooter, getLocalizedText('console_log'));
 			addButton(container, getLocalizedText(label || name)).name = name || label;
 		}
 
-		for (let buttonName in group) {
+		for (const buttonName in group) {
 		const	entry = group[buttonName];
 
 			if (isString(entry)) {
@@ -5016,7 +5020,7 @@ const	infoButton = addButton(summaryFooter, getLocalizedText('console_log'));
 	}
 
 	if (project.options) {
-		for (let controlGroup of PROJECT_CONTROLS) {
+		for (const controlGroup of PROJECT_CONTROLS) {
 		const	buttons = controlGroup.buttons;
 		const	buttonsGroup = cre('section', header);
 		const	buttonsHeader = cre('header', buttonsGroup);
@@ -5182,11 +5186,11 @@ const	params = getOrInitChild(layer, 'params');
 	paramList = paramList.filter(arrayFilterUniqueValues);
 
 	param_list:
-	for (let param of paramList) {
+	for (const param of paramList) {
 	let	match;
 
 		param_types:
-		for (let paramType in regLayerNameParamType) if (match = param.match(regLayerNameParamType[paramType])) {
+		for (const paramType in regLayerNameParamType) if (match = param.match(regLayerNameParamType[paramType])) {
 
 			if (NAME_PARTS_FOLDERS.includes(paramType)) {
 				layer.type = paramType;
@@ -5773,7 +5777,7 @@ const	paramName = 'check_order';
 }
 
 async function addLayerGroupCommonWrapper(project, parentGroup, layers, callback) {
-	for (let layer of layers) {
+	for (const layer of layers) {
 
 		if (isStopRequestedAnywhere(project)) {
 			return false;
@@ -5794,8 +5798,8 @@ function setImageGeometryProperties(target, ...sources) {
 				return;
 			}
 
-			for (let source of sources) if (isNonNullObject(source))
-			for (let key of keys) if (source[key]) {
+			for (const source of sources) if (isNonNullObject(source))
+			for (const key of keys) if (source[key]) {
 				target[targetKey] = orz(source[key]);
 
 				return;
@@ -6150,7 +6154,7 @@ const	relevantLayers = getProjectOptionValue(project, sectionName, listName, opt
 			section[listName] = optionName;
 		}
 
-		for (let layer of relevantLayers) {
+		for (const layer of relevantLayers) {
 			if (getLayerPathVisibilityByValues(project, layer, values, listName)) {
 				result = true;
 
@@ -6169,11 +6173,11 @@ const	relevantLayers = getProjectOptionValue(project, sectionName, listName, opt
 }
 
 function isSetOfValuesOK(project, values) {
-	for (let sectionName in values) {
+	for (const sectionName in values) {
 	const	section = values[sectionName];
 
 		if (section) {
-			for (let listName in section) {
+			for (const listName in section) {
 			const	optionName = section[listName];
 
 				if (!isOptionRelevant(project, values, sectionName, listName, optionName)) {
@@ -6189,11 +6193,11 @@ function isSetOfValuesOK(project, values) {
 function getSetOfRelevantValues(project, values) {
 const	resultSet = {};
 
-	for (let sectionName in values) {
+	for (const sectionName in values) {
 	const	section = values[sectionName];
 
 		if (section) {
-			for (let listName in section) {
+			for (const listName in section) {
 			const	optionName = section[listName];
 			const	resultSection = getOrInitChild(resultSet, sectionName);
 
@@ -6221,7 +6225,7 @@ let	newValue = selectBox.value;
 	if (targetPosition === 'init') {
 		newValue = selectBox.initialValue;
 	} else {
-		for (let option of selectBox.options) if (
+		for (const option of selectBox.options) if (
 			'' === option.value
 		||	'' === trim(option.textContent)
 		) {
@@ -6345,7 +6349,7 @@ function getAllValueSets(project, flags) {
 				: null
 			);
 
-			for (let optionName of optionNames) {
+			for (const optionName of optionNames) {
 				if (
 					getOnlyNames
 				&&	stopAtMaxCount
@@ -6397,8 +6401,8 @@ const	optionLists = [];
 let	maxPossibleCount = 1;
 let	section, optionNames;
 
-	for (let sectionName in values) if (section = values[sectionName])
-	for (let listName in section) if (optionNames = section[listName]) {
+	for (const sectionName in values) if (section = values[sectionName])
+	for (const listName in section) if (optionNames = section[listName]) {
 		optionLists.push({
 			'sectionName': sectionName
 		,	'listName'   : listName
@@ -7145,7 +7149,7 @@ const	selectedColors = project.rendering.colors;
 		const	optionalColors = getSelectedOptionValue(project, values, 'colors', listName);
 
 			if (optionalColors) {
-				for (let layer of optionalColors) if (
+				for (const layer of optionalColors) if (
 					layer.isColor
 				&&	getLayerPathVisibilityByValues(project, layer, values, listName)
 				) {
@@ -7255,7 +7259,7 @@ function getLayerVisibilityByValues(project, layer, values, listName) {
 	let	maxOpacity = -1;
 	let	unselectable = false;
 
-		for (let listName of listNames) {
+		for (const listName of listNames) {
 		const	opacity = getSelectedOptionValue(project, values, 'opacities', listName);
 
 			if (opacity === null) {
@@ -8134,10 +8138,10 @@ function getNewLineOptionLists(project) {
 const	options = project.options;
 const	optionsForNewLines = {};
 
-	for (let sectionName in options) {
+	for (const sectionName in options) {
 	const	section = options[sectionName];
 
-		for (let listName in section) {
+		for (const listName in section) {
 		const	optionList = section[listName];
 
 			if (getPropByNameChain(optionList, 'params', 'newline')) {
@@ -8155,10 +8159,10 @@ function getNewLineSubcontainer(container, values, options) {
 		return container;
 	}
 
-	for (let sectionName in options) {
+	for (const sectionName in options) {
 	const	section = options[sectionName];
 
-		for (let listName of section) {
+		for (const listName of section) {
 		const	optionName = getPropByNameChain(values, sectionName, listName);
 
 			if (optionName !== null) {
@@ -8220,7 +8224,7 @@ let	batchContainer, subContainer;
 	+	' ms)'
 	);
 
-	for (let fileName in sets) {
+	for (const fileName in sets) {
 	const	startTime = getTimeNow();
 	const	values = sets[fileName];
 	const	render = await getOrCreateRender(
@@ -8406,7 +8410,7 @@ let	batchContainer, subContainer;
 					ctx.fillRect(0,0, w,h);
 				}
 
-				for (let img of renderedImages) {
+				for (const img of renderedImages) {
 				const	pos = getBatchOffsetXY(img);
 
 					ctx.drawImage(img, pos.x, pos.y);
@@ -8862,7 +8866,7 @@ let	files, name, ext;
 
 //* get list of files to process:
 
-	for (let batch of [
+	for (const batch of [
 		evt.dataTransfer
 	,	evt.target
 	,	evt.files
@@ -8873,7 +8877,7 @@ let	files, name, ext;
 	&&	(files = batch.files)
 	&&	files.length
 	) {
-		for (let file of files) if (
+		for (const file of files) if (
 			file
 		&&	(name = file.name).length > 0
 		&&	(ext = getFileExt(name)).length > 0
@@ -8912,7 +8916,7 @@ let	loadedProjectsCount = 0;
 		console.time(logLabel);
 		console.group(logLabel);
 
-		for (let file of files) if (await addProjectView(file)) {
+		for (const file of files) if (await addProjectView(file)) {
 			++loadedProjectsCount;
 		}
 
@@ -8984,7 +8988,7 @@ let	isProjectLoaded = false;
 		if (action === 'download_all') {
 		let	countWithoutPause = 0;
 
-			for (let link of getAllByTag('a', filesTable)) {
+			for (const link of getAllByTag('a', filesTable)) {
 				if (link.download) {
 
 					link.click();
@@ -9005,7 +9009,7 @@ let	isProjectLoaded = false;
 
 		// let	countLoadedProjects = 0;
 
-			for (let otherButton of getAllByTag('button', filesTable)) {
+			for (const otherButton of getAllByTag('button', filesTable)) {
 				if (url = getButtonURL(otherButton)) {
 
 					addToListIfNotYet(urls, url);
@@ -9623,7 +9627,7 @@ const	wrapperClassNames = [
 		(className) => {
 		const	key = className.split(regNonAlphaNum)[0];
 
-			for (let tagName in wrap) {
+			for (const tagName in wrap) {
 				wrap[tagName][key] = function(...values) {
 					return (
 						'<' + tagName + ' class="' + className + '">'
