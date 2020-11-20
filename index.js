@@ -1,11 +1,11 @@
 
 'use strict';
 
-//* TODO - source file data:
+//* TODO ---------------------- source file data: -----------------------------
 //* TODO: keep all layer-name parameters single-word if possible.
 //* TODO: whole config in JSON-format?
 
-//* TODO - menu:
+//* TODO ---------------------- menu: -----------------------------------------
 //* TODO: checkbox (on project selection bar?) to sync all option/export actions in selected project onto all opened projects where possible.
 //* TODO: zoom format in filenames: [x1, x1.00, x100%].
 //* TODO: progress/status panel + [stop operation] button.
@@ -15,7 +15,7 @@
 //* TODO: save opened project as restructured ORA/PSD. Try https://github.com/Agamnentzar/ag-psd
 //* TODO: save rendered image as WebP. https://bugs.chromium.org/p/chromium/issues/detail?id=170565#c77 - toDataURL/toBlob quality 1.0 = lossless.
 
-//* TODO - rendering:
+//* TODO ---------------------- rendering: ------------------------------------
 //* TODO: properly check copypaste visibility.
 //* TODO: stop images moving to hidden container when save collage button was clicked.
 //* TODO: fix hiding of clipping group with skipped/invisible/empty base layer.
@@ -31,7 +31,7 @@
 //* TODO: store list of render-changing changable options in each folder, cache merged folder images by changable options combo. Or conversely - only cache merged images of unchangeable folders directly inside changeable folders, possibly even removing cached layer tree substructure from memory (not possible because of planned option to export files later).
 //* TODO: lazy-load layer/mask images only when needed; source file object will not get garbage-collected until all usable images are loaded.
 
-//* TODO - other:
+//* TODO ---------------------- other: ----------------------------------------
 //* TODO: find zoom/scale of the screen/page before regenerating thumbnails.
 //* TODO: consistent UI colors (what blue, yellow, white, etc. means across the whole page).
 //* TODO: global job list for WIP cancelling instead of spaghetti-coded flag checks.
@@ -81,6 +81,7 @@ var	exampleRootDir = ''
 ,	FILE_NAME_ADD_PARAM_KEY		= true
 ,	LOCALIZED_CASE_BY_CROSS_COUNT	= false
 ,	OPEN_FIRST_MENU_TAB_AT_START	= true
+,	READ_FILE_CONTENT_TO_GET_TYPE	= false
 ,	TAB_THUMBNAIL_ZOOM		= true
 ,	TESTING				= false
 ,	TESTING_RENDER			= false
@@ -1179,7 +1180,7 @@ function pause(msec) {
 function eventStop(evt, flags) {
 	if (
 		(
-			evt
+			isNonNullObject(evt)
 		&&	typeof evt.eventPhase !== 'undefined'
 		&&	evt.eventPhase !== null
 		)
@@ -1204,14 +1205,14 @@ function eventStop(evt, flags) {
 	return evt;
 }
 
-function catchPromiseError() {
-	console.log('Promise error:', arguments);
+function catchPromiseError(error) {
+	console.log('Promise failed:', error);
 
 	return null;
 }
 
 function getErrorFromEvent(evt, message, callback) {
-const	error = new Error(message || 'Unknown error');
+const	error = new Error(message || 'Unknown error.');
 	error.event = evt;
 
 	if (isFunction(callback)) {
@@ -2374,6 +2375,13 @@ function getFilePromise(file) {
 //* Note: "file" may be a blob object.
 //* source: https://stackoverflow.com/a/15981017
 
+	if (
+		!file
+	||	!window.FileReader
+	) {
+		return null;
+	}
+
 	return new Promise(
 		(resolve, reject) => {
 		const	reader = new FileReader();
@@ -2405,6 +2413,13 @@ function getFilePromiseFromURL(url, responseType) {
 
 //* Note: "url" may be a "blob:" or "data:" url.
 //* source: https://www.mwguy.com/decoding-a-png-image-in-javascript/
+
+	if (
+		!url
+	||	!window.XMLHttpRequest
+	) {
+		return null;
+	}
 
 	return new Promise(
 		(resolve, reject) => {
@@ -2440,7 +2455,7 @@ function getFilePromiseFromURL(url, responseType) {
 				}
 			);
 
-			request.responseType = responseType || 'arraybuffer';
+			request.responseType = responseType || 'blob';
 			request.open('GET', url, true);
 			request.send();
 		}
@@ -3511,7 +3526,7 @@ async function getImageDataFromURL(url) {
 		return null;
 	}
 
-const	arrayBuffer = await getFilePromiseFromURL(url);
+const	arrayBuffer = await getFilePromiseFromURL(url, 'arraybuffer');
 
 	if (!arrayBuffer) {
 		return null;
@@ -3664,10 +3679,7 @@ const	countDeleted = getAllById(fileId).reduce(
 
 async function addProjectView(sourceFile) {
 
-	if (
-		!sourceFile
-	||	!window.FileReader
-	) {
+	if (!sourceFile) {
 		return false;
 	}
 
@@ -3746,9 +3758,9 @@ let	container = null;
 			project.container = container;
 			container.project = project;
 
-		let	result = null;
+		let	result = !isStopRequestedAnywhere(project, buttonTab);
 
-			if (!isStopRequestedAnywhere(project, buttonTab)) {
+			if (result) {
 				if (project.options) {
 					updateBatchCount(project);
 
@@ -3796,6 +3808,19 @@ let	container = null;
 	return false;
 }
 
+async function getFileFromLoadingData(data) {
+	if (isNonNullObject(data)) {
+		if (
+			!data.file
+		&&	data.url
+		) {
+			data.file = await getFilePromiseFromURL(data.url, 'blob');
+		}
+
+		return data.file;
+	}
+}
+
 async function getNormalizedProjectData(sourceFile, button) {
 
 	async function tryFileParserFunc(func, project) {
@@ -3812,20 +3837,40 @@ async function getNormalizedProjectData(sourceFile, button) {
 		return null;
 	}
 
+	if (READ_FILE_CONTENT_TO_GET_TYPE) {
+		if (!sourceFile.file) {
+			sourceFile.file = await getFileFromLoadingData(sourceFile);
+
+			if (!sourceFile.file) {
+				return null;
+			}
+		}
+	}
+
 const	fileName = sourceFile.name;
 const	baseName = sourceFile.baseName;
 const	ext      = sourceFile.ext;
+const	mimeType = getPropByNameChain(sourceFile, 'file', 'type');
 const	actionLabel = 'processing document structure';
 
+let	loadersTried = 0;
 let	project = null;
-
-	logTime('"' + fileName + '" started ' + actionLabel);
-
-const	startTime = getTimeNow();
+let	startTime;
 
 	try_loaders:
-	for (let loader of fileTypeLoaders) if (loader.dropFileExts.includes(ext))
-	for (let func of loader.handlerFuncs) {
+	for (let loader of fileTypeLoaders) if (
+		loader.dropFileExts.includes(ext)
+	||	loader.inputFileAcceptMimeTypes.includes(mimeType)
+	) for (let func of loader.handlerFuncs) {
+
+	const	loaderStartTime = getTimeNow();
+
+		if (!loadersTried++) {
+			startTime = loaderStartTime;
+
+			logTime('"' + fileName + '" started ' + actionLabel);
+		}
+
 		project = {
 			fileName: fileName
 		,	baseName: baseName
@@ -3834,7 +3879,7 @@ const	startTime = getTimeNow();
 		,	imagesCount: 0
 		,	imagesLoadedCount: 0
 		,	loading: {
-				startTime: getTimeNow()
+				startTime: loaderStartTime
 			,	data: sourceFile
 			,	images: []
 			}
@@ -3851,22 +3896,37 @@ const	startTime = getTimeNow();
 		}
 	}
 
-const	tookTime = getTimeNow() - startTime;
+	if (loadersTried > 0) {
+	const	tookTime = getTimeNow() - startTime;
 
-	logTime(
-		'"' + fileName + '"'
-	+	(
-			project
-			? ' finished ' + actionLabel + ', took '
-			: ' stopped by ' + (
-				isStopRequestedAnywhere(project, button)
-				? 'request'
-				: 'error'
-			) + ' while ' + actionLabel + ' after '
-		)
-	+	tookTime
-	+	' ms total'
-	);
+		logTime(
+			'"' + fileName + '"'
+		+	(
+				project
+				? ' finished ' + actionLabel + ', took '
+				: ' stopped by ' + (
+					isStopRequestedAnywhere(project, button)
+					? 'request'
+					: 'error'
+				) + ' while ' + actionLabel + ' after '
+			)
+		+	tookTime
+		+	' ms total'
+		);
+	} else {
+		console.log(
+			'Error: Unknown file type: '
+		+	[
+				ext
+			,	mimeType
+			,	fileName
+			]
+			.filter(arrayFilterNonEmptyValues)
+			.filter(arrayFilterUniqueValues)
+			.map((text) => '"' + text + '"')
+			.join(', ')
+		);
+	}
 
 	if (isStopRequestedAnywhere(project, button)) {
 		return null;
@@ -5761,17 +5821,10 @@ const	actionLabel = 'opening with ' + libName;
 	project.loading.startParsingTime = getTimeNow();
 
 	try {
-	const	loadingData = project.loading.data;
+	const	file = await getFileFromLoadingData(project.loading.data);
 
-		if (
-			!loadingData.file
-		&&	loadingData.url
-		) {
-			loadingData.file = await getFilePromiseFromURL(loadingData.url, 'blob');
-		}
-
-		if (loadingData.file) {
-			sourceData = await fileParserFunc(loadingData.file);
+		if (file) {
+			sourceData = await fileParserFunc(file);
 		}
 	} catch (error) {
 		logError(arguments, error);
@@ -5817,7 +5870,7 @@ async function loadORA(project) {
 	,	async function fileParserFunc(file) {
 			return await new Promise(
 				(resolve, reject) => {
-					ora.load(file, resolve);
+					ora.load(file, resolve, reject);
 				}
 			).catch(catchPromiseError);
 		}
@@ -8801,7 +8854,7 @@ const	items = batch.items;
 }
 
 function onPageDrop(evt) {
-	evt = eventStop(evt, FLAG_EVENT_NO_DEFAULT);
+	evt = eventStop(evt, FLAG_EVENT_NO_DEFAULT) || evt;
 
 const	filesToLoad = [];
 
@@ -8812,6 +8865,7 @@ let	files, name, ext;
 	for (let batch of [
 		evt.dataTransfer
 	,	evt.target
+	,	evt.files
 	,	evt.value
 	,	evt
 	]) if (
@@ -9254,7 +9308,7 @@ const	supportedFileTypesText = (
 	+		getLocalizedHTML('file_select_project')
 	+		':'
 	+	'</p>'
-	+	'<input type="file" onchange="onPageDrop(this)" accept="'
+	+	'<input type="file" onchange="onPageDrop(this)" multiple accept="'
 	+		encodeTagAttr(inputFileAcceptTypesText)
 	+	'">'
 	+	'<p>'
