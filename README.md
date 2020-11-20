@@ -40,6 +40,8 @@ This script can be used manually on the server side to quickly update the table 
 * Python modules for colored text in terminal output, both needed, or colors will not be used:
 	* **termcolor**
 	* **colorama**
+* **optipng**
+* **leanify**
 
 
 
