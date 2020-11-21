@@ -74,7 +74,7 @@ var	exampleRootDir = ''
 
 ,	ADD_COUNT_ON_BUTTON_LABEL	= false
 ,	ADD_PAUSE_BEFORE_EACH_FOLDER	= true	//* <- when loading file and rendering
-,	ADD_PAUSE_BEFORE_EACH_LAYER	= false
+,	ADD_PAUSE_BEFORE_EACH_LAYER	= true
 ,	ASK_BEFORE_EXIT_IF_OPENED_FILES	= true
 ,	CACHE_UNALTERABLE_FOLDERS_MERGED	= true
 ,	CACHE_UNALTERABLE_IMAGES_TRIMMED	= true
@@ -565,11 +565,12 @@ const	libRootDir = 'lib/'
 
 		'psd.js': {
 
-//* source: https://github.com/meltingice/psd.js
+//* source: https://github.com/meltingice/psd.js/issues/154#issuecomment-446279652
 //* based on https://github.com/layervault/psd.rb
 
 			'varName': 'PSD_JS'
-		,	'dir': libFormatsDir + 'psd/psd_js/'
+		,	'dir': libFormatsDir + 'psd/psd_js/psd.js_build_by_rtf-const_2018-12-11/'	//* <- working with bigger files?
+		// ,	'dir': libFormatsDir + 'psd/psd_js/psd.js_fork_by_fr33z00_2019-11-05/'		//* <- working here
 		,	'files': [
 				// 'psd.min.js',
 				'psd.js',
@@ -582,7 +583,7 @@ const	libRootDir = 'lib/'
 //* fork of https://github.com/meltingice/psd.js
 
 			'varName': 'PSD'
-		,	'dir': libFormatsDir + 'psd/psd_browser/'
+		,	'dir': libFormatsDir + 'psd/psd_js/psd.js_fork_by_imcuttle_2018-09-19/'		//* <- working here
 		,	'files': [
 				// 'psd.browser.min.js',
 				'psd.browser.js',
@@ -601,8 +602,8 @@ const	libRootDir = 'lib/'
 			'dropFileExts': ['psd']
 		,	'inputFileAcceptMimeTypes': ['image/x-photoshop', 'image/vnd.adobe.photoshop']
 		,	'handlerFuncs': [
-				// loadPSD,
-				loadPSDBrowser,
+				loadPSD,
+				// loadPSDBrowser,	//* <- second parser is only needed if it could success on different files
 			]
 		},
 	];
@@ -1611,7 +1612,7 @@ function getElementsArray(by, text, parent) {
 			: Array.prototype.slice.call(results)
 		);
 	} catch (error) {
-		logError(arguments, error);
+		logError(error, arguments);
 	}
 
 	return [];
@@ -2368,16 +2369,21 @@ let	logText = getLogTime();
 	console.log(logText);
 }
 
-function logError(args, error, context) {
+function logError(error, args, context) {
 	console.log(
 		[
-			'Error:', error
-		// ,	'In function:', args.callee.name	//* <- not available in strict mode
-		,	'With arguments:', args
+			'Error:', error,
 		].concat(
+			typeof args === 'undefined'
+			? [] : [
+				// 'In function:', args.callee.name,	//* <- not available in strict mode
+				'With arguments:', args,
+			]
+		).concat(
 			typeof context === 'undefined'
-			? []
-			: ['Context:', context]
+			? [] : [
+				'Context:', context
+			]
 		)
 	);
 }
@@ -2698,7 +2704,7 @@ const	a = cre('a', document.body);
 
 			logTime('saving "' + fileName + '"');
 		} catch (error) {
-			logError(arguments, error);
+			logError(error, arguments);
 		}
 	} else {
 		window.open(dataURI, '_blank');
@@ -2847,7 +2853,12 @@ const	depends = lib.depends || null;
 					ora.scriptsPath = dir;
 				}
 
-				if (varName === 'PSD_JS' && !window[varName] && evt) {
+				if (
+					varName === 'PSD_JS'
+				&&	!window[varName]
+				&&	evt
+				&&	typeof require !== 'undefined'
+				) {
 					window[varName] = require('psd');
 				}
 
@@ -3652,7 +3663,7 @@ const	node = target.sourceData || target;
 		if (targetLayer) {
 			logTime('cannot get layer image: ' + getLayerPathText(targetLayer));
 		} else {
-			logError(arguments, error, this);
+			logError(error, arguments, this);
 		}
 
 		return null;
@@ -3811,7 +3822,7 @@ let	container = null;
 //* cleanup on errors or cancel:
 
 	} catch (error) {
-		logError(arguments, error);
+		logError(error, arguments);
 	}
 
 	buttonTab.className = 'button loading failed';
@@ -3846,7 +3857,7 @@ async function getNormalizedProjectData(sourceFile, button) {
 		try {
 			return await func(project);
 		} catch (error) {
-			logError(arguments, error);
+			logError(error, arguments);
 		}
 
 		return null;
@@ -4029,7 +4040,7 @@ async function getProjectViewMenu(project) {
 				logTime('"' + fileName + '" has no options.');
 			}
 		} catch (error) {
-			logError(arguments, error);
+			logError(error, arguments);
 
 			if (project.options) {
 				project.options = null;
@@ -4535,7 +4546,7 @@ async function getProjectViewMenu(project) {
 
 							return (
 								layer.isUnalterable
-							&&	!layer.names.some((name) => project.alterableLayerNames.includes(name))
+							&&	!layer.names.some((name) => alterableLayerNames.includes(name))
 							&&	isResultUnalterable
 							);
 						}
@@ -4558,6 +4569,7 @@ async function getProjectViewMenu(project) {
 
 				project.alterableLayerNames = alterableLayerNames.sort();
 				project.isUnalterable = isContentUnalterable(project.layers);
+				project.mergedImages = [];
 			}
 		}
 
@@ -5879,7 +5891,7 @@ function setImageGeometryProperties(target, ...sources) {
 
 //* Page-specific functions: internal, loading from file *---------------------
 
-async function loadCommonWrapper(project, libName, fileParserFunc, treeConstructorFunc) {
+async function loadCommonWrapper(project, libName, getFileParserPromise, treeConstructorFunc) {
 	if (!(await loadLibOnDemandPromise(libName))) {
 		return;
 	}
@@ -5895,10 +5907,10 @@ const	actionLabel = 'processing document with ' + libName;
 	const	file = await getFileFromLoadingData(project.loading.data);
 
 		if (file) {
-			sourceData = await fileParserFunc(file);
+			sourceData = await getFileParserPromise(file).catch(catchPromiseError);
 		}
 	} catch (error) {
-		logError(arguments, error);
+		logError(error, arguments);
 	}
 
 	logTime(
@@ -5938,18 +5950,17 @@ async function loadORA(project) {
 	return await loadCommonWrapper(
 		project
 	,	'ora.js'
-	,	async function fileParserFunc(file) {
-			return await new Promise(
+	,	function getFileParserPromise(file) {
+			return new Promise(
 				(resolve, reject) => {
 					ora.load(file, resolve, reject);
 				}
-			).catch(catchPromiseError);
+			);
 		}
 	,	async function treeConstructorFunc(project, sourceData) {
 			if (
 				!sourceData.layers
 			||	!sourceData.layers.length
-			||	!sourceData.layersCount
 			) {
 				return;
 			}
@@ -5960,6 +5971,20 @@ async function loadORA(project) {
 
 			project.width	= sourceData.width;
 			project.height	= sourceData.height;
+
+//* fix for original ora.js:
+
+		let	rootLayers;
+
+			if (
+				project.nodesCount
+			&&	!project.layersCount
+			) {
+				project.layersCount = project.nodesCount;
+				rootLayers = sourceData.layers.slice().reverse();
+			} else {
+				rootLayers = sourceData.layers;
+			}
 
 //* gather layers into a tree object:
 
@@ -6049,7 +6074,7 @@ async function loadORA(project) {
 			return await addLayerGroupCommonWrapper(
 				project
 			,	project.layers = []
-			,	sourceData.layers
+			,	rootLayers
 			,	addLayerToTree
 			);
 		}
@@ -6063,8 +6088,8 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 	return await loadCommonWrapper(
 		project
 	,	libName
-	,	async function fileParserFunc(file) {
-			return await window[varName].fromDroppedFile(file);
+	,	function getFileParserPromise(file) {
+			return window[varName].fromDroppedFile(file);
 		}
 	,	async function treeConstructorFunc(project, sourceData) {
 			if (
@@ -6746,7 +6771,7 @@ const	canvas = ctx.canvas;
 					return true;
 
 				} catch (error) {
-					logError(arguments, error);
+					logError(error, arguments);
 				}
 			}
 
@@ -7094,7 +7119,7 @@ async function setMergedImage(project, img, layer) {
 		}
 
 		if (img = await getImagePromiseFromCanvasToBlob(img, project)) {
-			layer.mergedImage = img;
+			project.mergedImages.push(layer.mergedImage = img);
 
 			if (TESTING > 1) console.log(['Set merged branch image:', layer]);
 
@@ -8630,7 +8655,7 @@ let	img = null;
 			}
 		}
 	} catch (error) {
-		logError(arguments, error);
+		logError(error, arguments);
 
 		project.rendering = null;
 	}
@@ -8653,7 +8678,7 @@ let	img = null;
 			saveDL(img.src, fileName || render.fileName, 'png');
 		}
 	} catch (error) {
-		logError(arguments, error);
+		logError(error, arguments);
 
 		project.rendering = null;
 	}
@@ -8671,7 +8696,7 @@ let	img = null;
 	try {
 		img = await getOrCreateRenderedImg(project, render);
 	} catch (error) {
-		logError(arguments, error);
+		logError(error, arguments);
 
 		project.rendering = null;
 	}
