@@ -2481,62 +2481,69 @@ function getFilePromiseFromURL(url, responseType) {
 }
 
 function getImagePromiseFromCanvasToBlob(canvas, trackList, mimeType, quality, img) {
-	return new Promise(
-		(resolve, reject) => {
-			canvas.toBlob(
-				(blob) => {
-					if (!blob) {
-						reject(new Error('Canvas to blob: got empty or no blob.'));
 
-						return;
-					}
-
-				const	url = URL.createObjectURL(blob);
-
-					if (!url) {
-						reject(new Error('Canvas to blob: got empty or no URL.'));
-
-						return;
-					}
-
-					trackList = addURLToTrackList(url, trackList);
-
-					if (!img) {
-						img = cre('img');
-					}
-
-					img.onload = (evt) => {
-						// URL.revokeObjectURL(url);	//* <- let the outside code clean up after it's done
-
-						if (canvas.top)  img.top  = canvas.top;
-						if (canvas.left) img.left = canvas.left;
-
-						resolve(img);
-					};
-
-					img.onerror = (evt) => {
-						if (img.complete) {
-							resolve(img);
-
-							return;
-						}
-
-						if (TESTING) console.log(['Image loading failed:', url, img, evt]);
-
-						if (!trackList) {
-							URL.revokeObjectURL(url);
-						}
-
-						getErrorFromEvent(evt, 'Canvas to blob: image loading failed.', reject);
-					};
-
-					img.src = url;
-				}
-			,	mimeType || ''
-			,	quality || 1
-			);
+	function getImagePromiseFromBlob(blob) {
+		if (!blob) {
+			throw new Error('Canvas to blob: got empty or no blob.');
 		}
-	).catch(catchPromiseError);
+
+	const	url = URL.createObjectURL(blob);
+
+		if (!url) {
+			throw new Error('Canvas to blob: got empty or no URL.');
+		}
+
+		trackList = addURLToTrackList(url, trackList);
+
+		if (!img) {
+			img = cre('img');
+		}
+
+		return new Promise(
+			(resolve, reject) => {
+				img.onload = (evt) => {
+					// URL.revokeObjectURL(url);	//* <- let the outside code clean up after it's done
+
+					if (canvas.top)  img.top  = canvas.top;
+					if (canvas.left) img.left = canvas.left;
+
+					resolve(img);
+				};
+
+				img.onerror = (evt) => {
+					if (img.complete) {
+						resolve(img);
+
+						return;
+					}
+
+					if (TESTING) console.log(['Image loading failed:', url, img, evt]);
+
+					if (!trackList) {
+						URL.revokeObjectURL(url);
+					}
+
+					getErrorFromEvent(evt, 'Canvas to blob: image loading failed.', reject);
+				};
+
+				img.src = url;
+			}
+		);
+	}
+
+	return (
+		new Promise(
+			(resolve, reject) => {
+				try {
+					canvas.toBlob(resolve, mimeType || '', quality || 1);
+				} catch (error) {
+					reject(error);
+				}
+			}
+		)
+		.then(getImagePromiseFromBlob)
+		.catch(catchPromiseError)
+	);
 }
 
 //* Note: cannot save image by revoked url, so better keep it and revoke later.
@@ -3603,12 +3610,25 @@ async function thisToPng(targetLayer) {
 			return imgNode;
 		}
 
-		for (const imgOrNode of [imgNode, node])
-		if (
-			isNonRecursiveFunction(imgOrNode.toPng)
-		&&	(result = await imgOrNode.toPng())
-		) {
-			return getAndCountLoadedImage(result);
+		for (const imgOrNode of [imgNode, node]) {
+			if (
+				isNonRecursiveFunction(imgOrNode.toPromiseBlobPng)
+			&&	(result = await imgOrNode.toPromiseBlobPng())
+			) {
+				addURLToTrackList(result.src, project);
+
+				return getAndCountLoadedImage(result);
+			}
+
+			if (
+				isNonRecursiveFunction(imgOrNode.toPromiseBase64Png)
+				? (result = await imgOrNode.toPromiseBase64Png())
+				: isNonRecursiveFunction(imgOrNode.toPng)
+				? (result = await imgOrNode.toPng())
+				: false
+			) {
+				return getAndCountLoadedImage(result);
+			}
 		}
 
 		if (

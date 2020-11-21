@@ -111,7 +111,7 @@ python ./update_config.py -im7 -filter Sinc
 ## Included libraries
 
 ORA file parser - heavily modified version of [ora.js](https://github.com/zsgalusz/ora.js).
-Original version also works here, but with many limitations, e.g. no layer folders.
+Original version also works here, but with many limitations.
 
 PSD file parser - lightly modified [build](https://github.com/meltingice/psd.js/issues/154#issuecomment-446279652)
 and optional [fork](https://github.com/imcuttle/psd.js) of [psd.js](https://github.com/meltingice/psd.js).
