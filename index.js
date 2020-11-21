@@ -76,6 +76,8 @@ var	exampleRootDir = ''
 ,	ADD_PAUSE_BEFORE_EACH_FOLDER	= true	//* <- when loading file and rendering
 ,	ADD_PAUSE_BEFORE_EACH_LAYER	= false
 ,	ASK_BEFORE_EXIT_IF_OPENED_FILES	= true
+,	CACHE_UNALTERABLE_FOLDERS_MERGED	= true
+,	CACHE_UNALTERABLE_IMAGES_TRIMMED	= true
 ,	DOWNSCALE_BY_MAX_FACTOR_FIRST	= true
 ,	EXAMPLE_NOTICE			= false
 ,	FILE_NAME_ADD_PARAM_KEY		= true
@@ -253,6 +255,7 @@ const	LS = window.localStorage || localStorage
 ,	BLOB_PREFIX = 'blob:'
 ,	DATA_PREFIX = 'data:'
 ,	TYPE_TEXT = 'text/plain'
+,	TITLE_LINE_BREAK = ' \r\n'
 
 ,	TIME_PARTS_YMD = ['FullYear', 'Month', 'Date']
 ,	TIME_PARTS_HMS = ['Hours', 'Minutes', 'Seconds']
@@ -342,6 +345,7 @@ const	LS = window.localStorage || localStorage
 ,	PARAM_KEYWORDS_SHORTCUT_FOR_ALL = ['all', 'etc']
 ,	PARAM_OPTIONS_FOR_EACH_NAME = ['opacities', 'paddings']
 ,	PARAM_OPTIONS_GLOBAL = ['autocrop', 'collage', 'separate', 'side', 'zoom']
+,	PARAM_OPTIONS_LOCAL = ['parts', 'colors', 'paddings', 'opacities']
 ,	VIEW_SIDES = ['front', 'back']
 
 ,	NAME_PARTS_PERCENTAGES = ['zoom', 'opacities']
@@ -1639,6 +1643,10 @@ function del(element) {
 		return null;
 	}
 
+	if (element.target) {
+		element = element.target;
+	}
+
 	if (isFunction(element.map)) {
 		return element.map(del);
 	}
@@ -2235,7 +2243,7 @@ let	arg, argDate, argNum, argText, date, YMD, HMS;
 			}
 		}
 
-		// if (TESTING) console.log([index + ': ' + typeof arg, arg]);
+		if (TESTING > 2) console.log([index + ': ' + typeof arg, arg]);
 	}
 
 	if (!date && argText && isFunction(Date.parse)) {
@@ -2494,6 +2502,9 @@ function getImagePromiseFromCanvasToBlob(canvas, trackList, mimeType, quality, i
 					img.onload = (evt) => {
 						// URL.revokeObjectURL(url);	//* <- let the outside code clean up after it's done
 
+						if (canvas.top)  img.top  = canvas.top;
+						if (canvas.left) img.left = canvas.left;
+
 						resolve(img);
 					};
 
@@ -2504,7 +2515,7 @@ function getImagePromiseFromCanvasToBlob(canvas, trackList, mimeType, quality, i
 							return;
 						}
 
-						if (TESTING) console.log(['img.onerror:', url, img, evt]);
+						if (TESTING) console.log(['Image loading failed:', url, img, evt]);
 
 						if (!trackList) {
 							URL.revokeObjectURL(url);
@@ -4037,8 +4048,8 @@ async function getProjectViewMenu(project) {
 				sectionName = String(sectionName);
 				listName    = String(listName);
 
-			const	sections    = getOrInitChild(options, sectionName);
-			const	optionGroup = getOrInitChild(sections, listName, 'params', 'items');
+			const	section     = getOrInitChild(options, sectionName);
+			const	optionGroup = getOrInitChild(section, listName, 'params', 'items');
 
 				return optionGroup;
 			}
@@ -4493,6 +4504,57 @@ async function getProjectViewMenu(project) {
 					switchParam.explicit = getOtherSwitchParamName(switchType, switchName);
 				}
 			}
+
+			if (CACHE_UNALTERABLE_FOLDERS_MERGED) {
+
+				function isContentUnalterable(layers) {
+					return layers.reduce(
+						(isResultUnalterable, layer) => {
+						const	isContentAlterable = (
+								isArray(layer.layers)
+								? !isContentUnalterable(layer.layers)
+								: false
+							);
+
+							layer.isUnalterable = !(
+								isContentAlterable
+							||	(
+									layer.isPassThrough
+								// &&	!layer.names.some((name) => colorListNames.includes(name))
+								)
+							||	(
+									layer.params.side
+									? VIEW_SIDES.includes(layer.params.side)
+									: layer.isVisibilityOptional
+								)
+							);
+
+							return (
+								layer.isUnalterable
+							&&	!layer.names.some((name) => project.alterableLayerNames.includes(name))
+							&&	isResultUnalterable
+							);
+						}
+					,	true
+					);
+				}
+
+			let	section;
+			let	alterableLayerNames = [];
+			let	colorListNames = [];
+
+				for (const sectionName of PARAM_OPTIONS_LOCAL) if (section = options[sectionName])
+				for (const listName of Object.keys(options[sectionName])) {
+					addToListIfNotYet(alterableLayerNames, listName);
+
+					if (sectionName === 'colors') {
+						addToListIfNotYet(colorListNames, listName);
+					}
+				}
+
+				project.alterableLayerNames = alterableLayerNames.sort();
+				project.isUnalterable = isContentUnalterable(project.layers);
+			}
 		}
 
 		return options;
@@ -4519,7 +4581,7 @@ async function getProjectViewMenu(project) {
 				&&	!VERIFY_PARAM_COLOR_VS_LAYER_CONTENT
 				) {
 					if (TESTING > 1) console.log(
-						'got color code in param: '
+						'Got color code in param: '
 					+	getColorTextFromArray(colorCode)
 					+	', layer content not checked at: '
 					+	getLayerPathText(layer)
@@ -4548,7 +4610,7 @@ async function getProjectViewMenu(project) {
 
 										if (layerRGBAText !== colorCodeText) {
 											console.log(
-												'got color code in param: '
+												'Got color code in param: '
 											+	colorCodeText
 											+	', prefered instead of layer content: '
 											+	layerRGBAText
@@ -4576,7 +4638,7 @@ async function getProjectViewMenu(project) {
 									return;
 								}
 
-								if (TESTING) console.log(['img.onerror:', img, evt]);
+								if (TESTING) console.log(['Image loading failed:', img, evt]);
 
 								resolve(false);
 							}
@@ -4587,7 +4649,7 @@ async function getProjectViewMenu(project) {
 						} else
 						if (colorCode) {
 							if (TESTING) console.log(
-								'got color code in param: '
+								'Got color code in param: '
 							+	getColorTextFromArray(colorCode)
 							+	', layer content not found at: '
 							+	getLayerPathText(layer)
@@ -4740,7 +4802,8 @@ async function getProjectViewMenu(project) {
 						button.className = switchType + '-' + switchName + ' ' + SWITCH_CLASS_BY_INDEX[index];
 						button.title = (
 							getLocalizedText('switch_' + switchName)
-						+	': \r\n'
+						+	':'
+						+	TITLE_LINE_BREAK
 						+	getLocalizedText('hint_switch_' + switchName)
 						);
 					}
@@ -5580,7 +5643,7 @@ const	params = getOrInitChild(layer, 'params');
 				params[paramType] = param || paramType;
 			}
 
-			if (TESTING > 1) console.log('param type [' + paramType + '], value = [' + param + '] at: ' + getWIPLayerPathText());
+			if (TESTING > 2) console.log('Known param type [' + paramType + '], value = [' + param + '] at: ' + getWIPLayerPathText());
 
 			// break param_types;
 			continue param_list;
@@ -5594,7 +5657,7 @@ const	params = getOrInitChild(layer, 'params');
 			continue param_list;
 		}
 
-		if (TESTING) console.log('param type unknown, value = [' + param + '] at: ' + getWIPLayerPathText());
+		if (TESTING) console.log('Unknown param type unknown, value = [' + param + '] at: ' + getWIPLayerPathText());
 	}
 
 	return layer;
@@ -5818,7 +5881,7 @@ async function loadCommonWrapper(project, libName, fileParserFunc, treeConstruct
 	}
 
 let	sourceData = null;
-const	actionLabel = 'opening with ' + libName;
+const	actionLabel = 'processing document with ' + libName;
 
 	logTime('"' + project.fileName + '" started ' + actionLabel);
 
@@ -6986,7 +7049,7 @@ async function addDebugImage(project, canvas, comment, highLightColor) {
 			,	'layer nesting path: ' + getLayerPathText(layer)
 			,	'layer name: ' + (layer ? layer.nameOriginal : layer)
 			,	'comment: ' + comment
-			].join(' \r\n');
+			].join(TITLE_LINE_BREAK);
 		} else {
 			img.alt = img.title = comment;
 		}
@@ -6999,6 +7062,58 @@ async function addDebugImage(project, canvas, comment, highLightColor) {
 		if (!await getImagePromiseFromCanvasToBlob(canvas, project, 0, 0, img)) {
 			img.src = canvas.toDataURL();
 		}
+	}
+}
+
+async function setMergedImage(project, img, layer) {
+	if (CACHE_UNALTERABLE_FOLDERS_MERGED) {
+		if (CACHE_UNALTERABLE_IMAGES_TRIMMED) {
+		const	crop = getAutoCropArea(img);
+
+			if (TESTING > 1) console.log(['Crop area:', crop]);
+
+			if (
+				crop
+			&&	crop.width > 0
+			&&	crop.width < img.width
+			&&	crop.height > 0
+			&&	crop.height < img.height
+			) {
+			const	canvas = getNewCanvasForImg(project, crop);
+			const	ctx = canvas.getContext('2d');
+				ctx.drawImage(img, -crop.left, -crop.top);
+
+				img = canvas;
+
+				if (TESTING > 1) console.log(['Cropped merged branch image:', img]);
+			}
+		}
+
+		if (img = await getImagePromiseFromCanvasToBlob(img, project)) {
+			layer.mergedImage = img;
+
+			if (TESTING > 1) console.log(['Set merged branch image:', layer]);
+
+			if (TESTING > 1 || TESTING_RENDER) {
+				img.onclick = del;
+				img.title = [
+					getLayerPathText(layer)
+				,	'merged branch image: ' + img.width + 'x' + img.height + ', click to remove'
+				].join(TITLE_LINE_BREAK);
+
+				if (typeof img.top !== 'undefined') {
+					img.title = [
+						img.title
+					,	'x = ' + img.left
+					,	'y = ' + img.top
+					].join(TITLE_LINE_BREAK);
+				}
+
+				document.body.append(img);
+			}
+		}
+
+		return img;
 	}
 }
 
@@ -7018,10 +7133,10 @@ function getNewCanvasForImg(project, img) {
 
 const	canvas = cre('canvas');
 
+	canvas.top    = orz(img.top);
+	canvas.left   = orz(img.left);
 	canvas.width  = orz(img.width)  || project.width;
 	canvas.height = orz(img.height) || project.height;
-	canvas.left   = orz(img.left);
-	canvas.top    = orz(img.top);
 
 	return canvas;
 }
@@ -7352,7 +7467,14 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 	const	params = layer.params;
 	const	skipColoring = !!params.if_only;		//* <- check logical visibility, but skip recolor
 	const	ignoreColors = !!renderParams.ignoreColors;	//* <- only care about alpha channel, for mask generation
+	const	skipCopyPaste = !!renderParams.skipCopyPaste;
 	const	clippingGroupWIP = !!renderParams.clippingGroupWIP;
+
+	const	canSaveMergedImage = (
+			!!renderParams.canSaveMergedImage
+		&&	!skipCopyPaste
+		&&	layer.isUnalterable
+		);
 
 	let	clippingGroupLayers = null;
 	let	clippingGroupResult = false;
@@ -7454,7 +7576,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 		} else {
 
 		const	addCopyPaste = (
-				renderParams.skipCopyPaste
+				skipCopyPaste
 				? null
 				: getPropByNameChain(params, 'copypaste', 'paste')
 			);
@@ -7553,17 +7675,32 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 //* render folder contents, isolated or based on result before passthrough:
 
-					img = await getRenderByValues(
-						project
-					,	values
-					,	layers
-					,	{
-							ignoreColors: (ignoreColors || isToRecolor)
-						,	baseCanvas: canvasCopy
-						,	opacity: (addCopyPaste ? opacity : 0)	//* <- TODO: properly check copypaste visibility
-						,	skipCopyPaste: !!addCopyPaste
+					if (
+						canSaveMergedImage
+					&&	layer.mergedImage
+					) {
+						img = layer.mergedImage;
+					} else {
+						img = await getRenderByValues(
+							project
+						,	values
+						,	layers
+						,	{
+								ignoreColors: (ignoreColors || isToRecolor)
+							,	baseCanvas: canvasCopy
+							,	opacity: (addCopyPaste ? opacity : 0)	//* <- TODO: properly check copypaste visibility
+							,	skipCopyPaste: !!addCopyPaste
+							,	canSaveMergedImage: !layer.isUnalterable
+							}
+						);
+
+						if (
+							canSaveMergedImage
+						&&	img
+						) {
+							await setMergedImage(project, img, layer);
 						}
-					);
+					}
 
 					if (TESTING_RENDER) addDebugImage(project, img, 'folder content result: img = getRenderByValues');
 				}
@@ -7679,7 +7816,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 					'drawImageOrColor: ' + BLEND_MODE_TRANSIT
 				,	'opacity = ' + opacity
 				,	'mask = ' + mask
-				].join(' \r\n'), 'red');
+				].join(TITLE_LINE_BREAK), 'red');
 
 				clearCanvasBeforeGC(mask);
 				clearCanvasBeforeGC(canvasCopy);
@@ -7998,13 +8135,14 @@ async function getOrCreateRenderedImg(project, render) {
 
 				img.title = img.alt = (
 					fileName + '.png'
-				+	' \r\n('
-				+	img.width + 'x' + img.height
-				+	(
-						typeof msec === 'undefined'
-						? '' :
-						', ' + getLocalizedText('render_took_time', msec / 1000)
-					)
+				+	TITLE_LINE_BREAK
+				+	'('
+				+		img.width + 'x' + img.height
+				+		(
+							typeof msec === 'undefined'
+							? '' :
+							', ' + getLocalizedText('render_took_time', msec / 1000)
+						)
 				+	')'
 				);
 
@@ -8134,8 +8272,7 @@ let	autocrop, crop;
 	return img;
 }
 
-function getNewLineOptionLists(project) {
-const	options = project.options;
+function getNewLineOptionLists(options) {
 const	optionsForNewLines = {};
 
 	for (const sectionName in options) {
@@ -8207,7 +8344,7 @@ let	lastPauseTime = getTimeNow();
 
 const	renderedImages = [];
 const	needWaitBetweenDL = (flags.saveToFile && !flags.asOneJoinedImage);
-const	optionsForNewLines = getNewLineOptionLists(project);
+const	optionsForNewLines = getNewLineOptionLists(project.options);
 const	setsCountTotal = Object.keys(sets).length;
 let	setsCountWithoutPause = 0;
 let	setsCount = 0;
@@ -8423,13 +8560,15 @@ let	batchContainer, subContainer;
 
 						img.title = img.alt = (
 							project.fileName + '.png'
-						+	' \r\n('
-						+	w + 'x' + h + ', '
-						+	getLocalizedText(
-								'collage_took_time'
-							,	totalTime / 1000
-							,	renderedImages.length
-							) + ')'
+						+	TITLE_LINE_BREAK
+						+	'('
+						+		w + 'x' + h + ', '
+						+		getLocalizedText(
+									'collage_took_time'
+								,	totalTime / 1000
+								,	renderedImages.length
+								)
+						+	')'
 						);
 
 						return img;
@@ -9133,7 +9272,7 @@ function closeProject(buttonTab) {
 	const	revokedBlobsCount = revokeBlobsFromTrackList(project);
 
 		if (revokedBlobsCount) {
-			if (TESTING) console.log(['closed project:', project, 'revoked blobs:', revokedBlobsCount]);
+			if (TESTING) console.log(['Closed project:', project, 'revoked blobs:', revokedBlobsCount]);
 		}
 	}
 }
