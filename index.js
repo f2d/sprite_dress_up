@@ -3817,7 +3817,11 @@ let	container = null;
 	buttonTab.className = 'button loading failed';
 
 	setTimeout(function() {
-		del(buttonTab);
+		buttonTab.classList.add('fade-out');
+
+		setTimeout(function() {
+			del(buttonTab);
+		}, 700);
 	}, 2000);
 
 	return false;

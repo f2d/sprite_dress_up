@@ -618,3 +618,7 @@ header:not(.show) [name="close_section"],
 .hidden {
 	display: none;
 }
+.fade-out {
+	transition: opacity 0.7s ease-in;
+	opacity: 0;
+}
