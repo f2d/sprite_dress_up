@@ -74,7 +74,7 @@ var	exampleRootDir = ''
 
 ,	ADD_COUNT_ON_BUTTON_LABEL	= false
 ,	ADD_PAUSE_BEFORE_EACH_FOLDER	= true	//* <- when loading file and rendering
-,	ADD_PAUSE_BEFORE_EACH_LAYER	= true
+,	ADD_PAUSE_BEFORE_EACH_LAYER	= false
 ,	ASK_BEFORE_EXIT_IF_OPENED_FILES	= true
 ,	CACHE_UNALTERABLE_FOLDERS_MERGED	= true
 ,	CACHE_UNALTERABLE_IMAGES_TRIMMED	= true
@@ -475,9 +475,6 @@ const	LS = window.localStorage || localStorage
 
 const	RUNNING_FROM_DISK = isURLFromDisk('/')
 ,	CAN_USE_WORKERS = (typeof Worker === 'function' && !RUNNING_FROM_DISK)
-,	CAN_CAST_TO_ARRAY = (typeof Array.from === 'function')
-// ,	CAN_EXPORT_BLOB = (typeof HTMLCanvasElement.prototype.toBlob === 'function')
-// ,	CAN_EXPORT_WEBP = isImageTypeExportSupported('image/webp')
 
 //* Config: internal, included scripts and loaders of project files *----------
 
@@ -672,9 +669,10 @@ function getClassReg() {
 	);
 }
 
-//* Get array of all possible combinations of values from multiple arrays:
 //* source: https://cwestblog.com/2011/05/02/cartesian-product-of-multiple-arrays/
-//* usage:
+//* Description:
+//*	Get array of all possible combinations of values from multiple arrays.
+//* Usage example:
 //*	var combos = getCrossProductArray( array, array, ... );
 //*	var combo = combos[123];
 //*	var count = combos.length;
@@ -700,9 +698,10 @@ function getCrossProductArray() {
 const getCrossProductSub = (a, b) => [].concat(...a.map(d => b.map(e => [].concat(d, e))));
 const getCrossProductArr = (a, b, ...c) => (b ? getCrossProductArr(getCrossProductSub(a, b), ...c) : a);
 
-//* Construct lazy iterator for all possible combinations without saving them all beforehand:
 //* source: http://phrogz.net/lazy-cartesian-product
-//* usage:
+//* Description:
+//*	Construct lazy iterator for all possible combinations without saving them all beforehand.
+//* Usage example:
 //*	var combos = new CrossProductIterator( array, array, ... );
 //*	var combo = combos.item(123);
 //*	var count = combos.length;
@@ -738,29 +737,31 @@ let	totalCount = 1;
 	};
 }
 
-//* Iterate through all possible combinations without saving them all, combination array becomes arguments for callback:
 //* source: http://phrogz.net/lazy-cartesian-product
-//* usage:
+//* Description:
+//*	Iterate through all possible combinations without saving them all.
+//*	Combination array becomes arguments for callback.
+//* Usage example:
 //*	forEachSetInCrossProduct( [array, array, ...], console.log );
 function forEachSetInCrossProduct(arrays, callback, thisContext) {
 
-	function dive(arrayIndex) {
+	function goDeeper(arrayIndex) {
 	const	variants = arrays[arrayIndex];
 	const	count = counts[arrayIndex];
 
 		if (arrayIndex === lastArrayIndex) {
 			for (let i = 0; i < count; ++i) {
-				variantSet[arrayIndex] = variants[i];
-				callback.apply(thisContext, variantSet);
+				combo[arrayIndex] = variants[i];
+				callback.apply(thisContext, combo);
 			}
 		} else {
 			for (let i = 0; i < count; ++i) {
-				variantSet[arrayIndex] = variants[i];
-				dive(arrayIndex + 1);
+				combo[arrayIndex] = variants[i];
+				goDeeper(arrayIndex + 1);
 			}
 		}
 
-		variantSet.pop();
+		combo.pop();
 	}
 
 	if (!thisContext) {
@@ -768,14 +769,65 @@ function forEachSetInCrossProduct(arrays, callback, thisContext) {
 	}
 
 const	lastArrayIndex = arrays.length - 1;
-const	variantSet = [];
+const	combo = [];
 const	counts = [];
 
 	for (let i = arrays.length; i--; ) {
 		counts[i] = arrays[i].length;
 	}
 
-	dive(0);
+	goDeeper(0);
+}
+
+//* Description:
+//*	Iterate through all possible combinations without saving them all, until stopped.
+//*	Combination array becomes arguments for callback.
+//*	Stops on the first truthy result from callback.
+//*	Returns true if it was stopped.
+//* Usage example:
+//*	forEachSetInCrossProductUntilStopped( [array, array, ...], (combo) => combo.includes('stop') );
+function forEachSetInCrossProductUntilStopped(arrays, callback, thisContext) {
+
+	function goDeeper(arrayIndex) {
+	const	variants = arrays[arrayIndex];
+	const	count = counts[arrayIndex];
+
+		if (arrayIndex === lastArrayIndex) {
+			for (let i = 0; i < count; ++i) {
+				combo[arrayIndex] = variants[i];
+
+				if (callback.apply(thisContext, combo)) {
+					return true;
+				}
+			}
+		} else {
+			for (let i = 0; i < count; ++i) {
+				combo[arrayIndex] = variants[i];
+
+				if (goDeeper(arrayIndex + 1)) {
+					return true;
+				}
+			}
+		}
+
+		combo.pop();
+
+		return false;
+	}
+
+	if (!thisContext) {
+		thisContext = this;
+	}
+
+const	lastArrayIndex = arrays.length - 1;
+const	combo = [];
+const	counts = [];
+
+	for (let i = arrays.length; i--; ) {
+		counts[i] = arrays[i].length;
+	}
+
+	return goDeeper(0);
 }
 
 function asArray(value) {
@@ -1606,11 +1658,8 @@ function getElementsArray(by, text, parent) {
 			: parent.querySelectorAll(QUERY_SELECTOR[by].join(text))
 		) || [];
 
-		return (
-			CAN_CAST_TO_ARRAY
-			? Array.from(results)
-			: Array.prototype.slice.call(results)
-		);
+		return Array.prototype.slice.call(results);
+
 	} catch (error) {
 		logError(error, arguments);
 	}
@@ -3581,10 +3630,18 @@ async function thisToPng(targetLayer) {
 
 	async function thisToPngTryOne(node) {
 
-		function getAndCountLoadedImage(node) {
-			++project.imagesLoadedCount;
-
-			return node.image || node.img || node;
+		async function getAsyncResultIfMethodExists(node, methodName) {
+			return (
+				isNonRecursiveFunction(node[methodName])
+				? await (
+					hasPrefix(methodName, 'to')
+					? node[methodName]()
+					: new Promise(
+						(resolve, reject) => node[methodName](resolve, reject)
+					).catch(catchPromiseError)
+				)
+				: null
+			);
 		}
 
 		function isNonRecursiveFunction(func) {
@@ -3596,6 +3653,14 @@ async function thisToPng(targetLayer) {
 				||	node !== target
 				)
 			);
+		}
+
+		function getAndCountLoadedImage(node) {
+			if (target !== project) {
+				++project.imagesLoadedCount;
+			}
+
+			return node.image || node.img || node;
 		}
 
 	let	data, canvas, result;
@@ -3610,36 +3675,21 @@ async function thisToPng(targetLayer) {
 			return imgNode;
 		}
 
-		for (const imgOrNode of [imgNode, node]) {
-			if (
-				isNonRecursiveFunction(imgOrNode.toPromiseBlobPng)
-			&&	(result = await imgOrNode.toPromiseBlobPng())
-			) {
-				addURLToTrackList(result.src, project);
+		for (const imgOrNode of [imgNode, node])
+		for (const methodName of [
+			'loadImage',
+			'toImagePngBlobPromise',
+			'toImagePngBase64Promise',
+			'toPng',
+		]) {
+			if (result = await getAsyncResultIfMethodExists(imgOrNode, methodName)) {
+
+				if (hasPrefix(result.src, BLOB_PREFIX)) {
+					addURLToTrackList(result.src, project);
+				}
 
 				return getAndCountLoadedImage(result);
 			}
-
-			if (
-				isNonRecursiveFunction(imgOrNode.toPromiseBase64Png)
-				? (result = await imgOrNode.toPromiseBase64Png())
-				: isNonRecursiveFunction(imgOrNode.toPng)
-				? (result = await imgOrNode.toPng())
-				: false
-			) {
-				return getAndCountLoadedImage(result);
-			}
-		}
-
-		if (
-			isNonRecursiveFunction(node.loadImage)
-		&&	(
-				result = await new Promise(
-					(resolve, reject) => node.loadImage(resolve, reject)
-				).catch(catchPromiseError)
-			)
-		) {
-			return getAndCountLoadedImage(result);
 		}
 
 		if (
@@ -3681,7 +3731,7 @@ const	node = target.sourceData || target;
 		);
 	} catch (error) {
 		if (targetLayer) {
-			logTime('cannot get layer image: ' + getLayerPathText(targetLayer));
+			logTime(['cannot get layer image:', getLayerPathText(targetLayer), error]);
 		} else {
 			logError(error, arguments, this);
 		}
@@ -9321,7 +9371,7 @@ function closeProject(buttonTab) {
 	const	revokedBlobsCount = revokeBlobsFromTrackList(project);
 
 		if (revokedBlobsCount) {
-			if (TESTING) console.log(['Closed project:', project, 'revoked blobs:', revokedBlobsCount]);
+			if (TESTING > 1) console.log(['Closed project:', project, 'revoked blobs:', revokedBlobsCount]);
 		}
 	}
 }
