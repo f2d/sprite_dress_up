@@ -3628,7 +3628,7 @@ const	rgba = UPNG.toRGBA8(img)[0];	//* <- UPNG.toRGBA8 returns array of frames, 
 
 async function thisToPng(targetLayer) {
 
-	async function thisToPngTryOne(node) {
+	async function thisToPngTryOne(target, node) {
 
 		async function getAsyncResultIfMethodExists(node, methodName) {
 			return (
@@ -3655,80 +3655,97 @@ async function thisToPng(targetLayer) {
 			);
 		}
 
-		function getAndCountLoadedImage(node) {
+		function getAndCountLoadedImage(img) {
 			if (target !== project) {
 				++project.imagesLoadedCount;
 			}
 
-			return node.image || node.img || node;
+			if (hasPrefix(img.src, BLOB_PREFIX)) {
+				addURLToTrackList(img.src, project);
+			}
+
+			return img;
 		}
 
-	let	data, canvas, result;
-
-		if (!node) {
-			return null;
+		if (isImageElement(node)) {
+			return node;
 		}
 
-	const	imgNode = node.image || node.img || node;
+	let	data, canvas, img;
 
-		if (isImageElement(imgNode)) {
-			return imgNode;
-		}
+	//* try library-provided methods:
 
-		for (const imgOrNode of [imgNode, node])
-		for (const methodName of [
-			'loadImage',
-			'toImagePngBlobPromise',
-			'toImagePngBase64Promise',
-			'toPng',
-		]) {
-			if (result = await getAsyncResultIfMethodExists(imgOrNode, methodName)) {
-
-				if (hasPrefix(result.src, BLOB_PREFIX)) {
-					addURLToTrackList(result.src, project);
-				}
-
-				return getAndCountLoadedImage(result);
+		for (
+			const methodName
+			of [
+				'loadImage',
+				'toImagePngBlobPromise',
+				'toImagePngBase64Promise',
+				'toPng',
+			]
+		) {
+			if (img = await getAsyncResultIfMethodExists(node, methodName)) {
+				return getAndCountLoadedImage(img);
 			}
 		}
+
+	//* try converting raw pixel data:
 
 		if (
 			(data = node.imgData || node.maskData)
 		&&	(
 				canvas = getCanvasFromByteArray(
 					data.data || data
-				,	data.width || target.width || imgNode.width || node.width
-				,	data.height || target.height || imgNode.height || node.height
+				,	data.width || target.width || node.width
+				,	data.height || target.height || node.height
 				)
 			)
-		&&	(result = await getImagePromiseFromCanvasToBlob(canvas, project))
+		&&	(img = await getImagePromiseFromCanvasToBlob(canvas, project))
 		) {
-			return getAndCountLoadedImage(result);
+			return getAndCountLoadedImage(img);
 		}
 
 		return null;
 	}
 
-	async function thisToPngTryEach(...nodes) {
+	async function thisToPngTryEach(...targets) {
 	let	result;
 
-		for (const node of nodes) if (result = await thisToPngTryOne(node)) {
-			break;
+		for (const target of targets) if (isNonNullObject(target))
+		for (
+			const sourceOrTarget
+			of [
+				target.sourceData
+			,	target
+			]
+		) if (isNonNullObject(sourceOrTarget))
+		for (
+			const mergedOrNode
+			of [
+				sourceOrTarget.prerendered
+			,	sourceOrTarget.thumbnail
+			,	sourceOrTarget
+			]
+		) if (isNonNullObject(mergedOrNode))
+		for (
+			const imgOrNode
+			of [
+				mergedOrNode.image
+			,	mergedOrNode.img
+			,	mergedOrNode
+			]
+		) if (isNonNullObject(imgOrNode))
+		if (result = await thisToPngTryOne(target, imgOrNode)) {
+			return result;
 		}
 
-		return result;
+		return null;
 	}
 
 const	project = this;
-const	target = targetLayer || project;
-const	node = target.sourceData || target;
 
 	try {
-		return await thisToPngTryEach(
-			node.prerendered
-		,	node.thumbnail
-		,	node
-		);
+		return await thisToPngTryEach(targetLayer || project);
 	} catch (error) {
 		if (targetLayer) {
 			logTime(['cannot get layer image:', getLayerPathText(targetLayer), error]);
