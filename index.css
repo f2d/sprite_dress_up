@@ -208,7 +208,7 @@ label:hover {
 .example-files button {
 	width: 100%;
 }
-.close-button:not(:hover),
+.button-close:not(:hover),
 .button {
 	background-color: rgba(0,0,0, 0.1);
 }
@@ -231,17 +231,18 @@ label:hover {
 	background-color: #f88;
 }
 .button button {
-	padding: 0.5em;
+	padding: 0.25em 0.5em;
 	border: none;
 	background: transparent;
 }
-.button .thumbnail-button {
+.button .button-thumbnail {
 	padding-right: 0;
 }
-.button .close-button {
+.button .button-close {
 	padding: 0.5em 1em;
+	margin-left: auto;	/* <- align to right inside flexbox */
 }
-.close-button:hover {
+.button-close:hover {
 	color: white;
 	background-color: #f88;
 }
@@ -399,11 +400,17 @@ img.larger {
 	text-align: center;
 	display: inline-block;
 }
-#loaded-files-selection .button > * {
-	display: inline-flex;	/* <- modern way to vertically fill parent height */
+#loaded-files-selection .button div {
+	text-align: left;
+}
+#loaded-files-selection .name {
+	font-weight: bold;
+}
+#loaded-files-selection .status {
+	opacity: 0.35;
 }
 #loaded-files-selection .button {
-	display: inline-flex;
+	display: inline-flex;	/* <- modern way to vertically fill parent height */
 	margin: 0.5em;
 }
 body > button::-moz-focus-inner,

@@ -28,7 +28,6 @@
 //* TODO: use ImageBitmaps for speed?
 //* TODO: revoke collage blob urls when cleaning view container?
 //* TODO: revoke any image blob urls right after image element's loading, without ever tracking/listing them?
-//* TODO: store list of render-changing changable options in each folder, cache merged folder images by changable options combo. Or conversely - only cache merged images of unchangeable folders directly inside changeable folders, possibly even removing cached layer tree substructure from memory (not possible because of planned option to export files later).
 //* TODO: lazy-load layer/mask images only when needed; source file object will not get garbage-collected until all usable images are loaded.
 
 //* TODO ---------------------- other: ----------------------------------------
@@ -67,13 +66,16 @@ var	exampleRootDir = ''
 ,	DEFAULT_COLLAGE_PADDING_INSIDE = 2
 ,	DEFAULT_COLLAGE_PADDING_OUTSIDE = 1
 
+,	PAUSE_WORK_DURATION = 20
+,	PAUSE_WORK_INTERVAL = 200
 ,	PREVIEW_SIZE = 64
 ,	THUMBNAIL_SIZE = 16
 ,	THUMBNAIL_ZOOM_STEP_MAX_FACTOR = 4	//* <- one-step scaling result is too blocky, stepping by factor of 2 is too blurry, 4 looks okay
 ,	ZOOM_STEP_MAX_FACTOR = 2
 
 ,	ADD_COUNT_ON_BUTTON_LABEL	= false
-,	ADD_PAUSE_BEFORE_EACH_FOLDER	= true	//* <- when loading file and rendering
+,	ADD_PAUSE_AT_INTERVALS		= true	//* <- when loading files, rendering images, counting batch combinations, etc.
+,	ADD_PAUSE_BEFORE_EACH_FOLDER	= false
 ,	ADD_PAUSE_BEFORE_EACH_LAYER	= false	//* <- loading and rendering will take ~1.5-2x time, but UI response does not improve
 ,	ASK_BEFORE_EXIT_IF_OPENED_FILES	= true
 ,	CACHE_UNALTERABLE_FOLDERS_MERGED	= true
@@ -84,6 +86,8 @@ var	exampleRootDir = ''
 ,	LOCALIZED_CASE_BY_CROSS_COUNT	= false
 ,	OPEN_FIRST_MENU_TAB_AT_START	= true
 ,	READ_FILE_CONTENT_TO_GET_TYPE	= false
+,	TAB_GROW_WIDTH			= true
+,	TAB_STATUS_TEXT			= true
 ,	TAB_THUMBNAIL_ZOOM		= true
 ,	TESTING				= false
 ,	TESTING_RENDER			= false
@@ -108,10 +112,10 @@ var	exampleRootDir = ''
 	'HTMLImageElement',
 	'HTMLSelectElement',
 ].forEach(
-	function(typeName) {
+	function (typeName) {
 		window[
 			'is' + typeName.replace('HTML', '')
-		] = function(value) {
+		] = function (value) {
 			return (toString.call(value).slice(8, -1) === typeName);
 		};
 	}
@@ -231,7 +235,7 @@ const	LS = window.localStorage || localStorage
 ,	MIN_CHANNEL_VALUE = 0
 ,	MAX_CHANNEL_VALUE = 255
 ,	MAX_OPACITY = 255
-,	MAX_BATCH_PRECOUNT = 1000
+,	MAX_BATCH_PRECOUNT = 9999
 
 ,	FLAG_FLIP_HORIZONTAL = 1
 ,	FLAG_FLIP_VERTICAL = 2
@@ -1165,6 +1169,20 @@ function getLocalizedKeyByCount(key, ...args) {
 }
 
 function getLocalizedOrDefaultText(key, defaultText, ...replacements) {
+
+	function replaceOrAppendText(oldText, placeholder, replacement) {
+	let	newText = replaceAll(oldText, placeholder, replacement);
+
+		if (
+			foundKey === null
+		&&	newText === oldText
+		) {
+			newText += '\n' + replacement;
+		}
+
+		return newText;
+	}
+
 const	foundKey = getLocalizedKeyByCount(key, ...replacements);
 let	text = getJoinedOrEmptyText(
 		foundKey !== null
@@ -1182,7 +1200,7 @@ let	text = getJoinedOrEmptyText(
 	) {
 		replacements.forEach(
 			(value, index) => {
-				text = replaceAll(text, '{' + index + '}', getNestedJoinedText(value, '\n', ''));
+				text = replaceOrAppendText(text, '{' + index + '}', getNestedJoinedText(value, '\n', ''));
 			}
 		);
 	}
@@ -1195,10 +1213,10 @@ let	text = getJoinedOrEmptyText(
 			key = placeholder.replace(regTrimBrackets, '');
 
 			if (key in LOCALIZATION_TEXT) {
-				text = replaceAll(text, placeholder, getNestedJoinedText(LOCALIZATION_TEXT[key], '\n', ''));
+				text = replaceOrAppendText(text, placeholder, getNestedJoinedText(LOCALIZATION_TEXT[key], '\n', ''));
 			} else
 			if (key in window) {
-				text = replaceAll(text, placeholder, getNestedJoinedText(window[key], '\n', ''));
+				text = replaceOrAppendText(text, placeholder, getNestedJoinedText(window[key], '\n', ''));
 			}
 		}
 	}
@@ -1227,11 +1245,7 @@ function trim(text) {
 }
 
 function pause(msec) {
-	return new Promise(
-		(resolve, reject) => {
-			setTimeout(resolve, msec || 1000);
-		}
-	);
+	return new Promise(resolve => setTimeout(resolve, msec));
 }
 
 function eventStop(evt, flags) {
@@ -3790,7 +3804,7 @@ const	countDeleted = getAllById(fileId).reduce(
 	}
 }
 
-async function addProjectView(sourceFile) {
+async function addProjectViewTab(sourceFile) {
 
 	if (!sourceFile) {
 		return false;
@@ -3820,26 +3834,45 @@ const	buttonTab = cre('div', getOneById('loaded-files-selection'));
 	buttonTab.className = 'button loading';
 
 const	buttonThumb = cre('button', buttonTab);
-	buttonThumb.className = 'thumbnail-button';
+	buttonThumb.className = 'button-thumbnail';
 
 const	thumbImg = cre('img', buttonThumb);
 	thumbImg.className = 'thumbnail';
 
 const	buttonText = cre('button', buttonTab);
-	buttonText.textContent = sourceFile.name;
+	buttonText.className = 'button-text';
+
+const	buttonFileName = cre('div', buttonText);
+	buttonFileName.className = 'name';
+	buttonFileName.textContent = sourceFile.name;
+
+let	buttonStatus;
+
+	if (TAB_STATUS_TEXT) {
+		buttonStatus = cre('div', buttonText);
+		buttonStatus.className = 'status';
+	}
 
 const	buttonClose = cre('button', buttonTab);
-	buttonClose.className = 'close-button';
+	buttonClose.className = 'button-close';
 	buttonClose.textContent = 'X';
 
 	buttonClose.setAttribute('onclick', 'closeProject(this)');
 
 	setImageSrc(thumbImg);
 
+const	projectButtons = {
+		buttonTab,
+		buttonStatus,
+	};
+
+	updateProjectOperationProgress(projectButtons, 'project_status_loading');
+
 let	container = null;
+let	project = null;
 
 	try {
-	const	project = await getNormalizedProjectData(sourceFile, buttonTab);
+		project = await getNormalizedProjectData(sourceFile, buttonTab, buttonStatus);
 
 		if (project) {
 			buttonTab.project = project;
@@ -3875,13 +3908,17 @@ let	container = null;
 
 			if (result) {
 				if (project.options) {
-					updateBatchCount(project);
-
 					if (result = await updateMenuAndShowImg(project)) {
+						await updateBatchCount(project);
+
 						buttonTab.className = 'button loaded with-options';
+
+						updateProjectOperationProgress(projectButtons, 'project_status_ready');
 					}
 				} else {
 					buttonTab.className = 'button loaded without-options';
+
+					updateProjectOperationProgress(projectButtons, 'project_status_no_options');
 				}
 			}
 
@@ -3914,10 +3951,15 @@ let	container = null;
 
 	buttonTab.className = 'button loading failed';
 
-	setTimeout(function() {
+	updateProjectOperationProgress(
+		projectButtons
+	,	getPropByNameChain(project, 'statusError') || 'project_status_error'
+	);
+
+	setTimeout(function () {
 		buttonTab.classList.add('fade-out');
 
-		setTimeout(function() {
+		setTimeout(function () {
 			del(buttonTab);
 		}, 700);
 	}, 2000);
@@ -3938,7 +3980,7 @@ async function getFileFromLoadingData(data) {
 	}
 }
 
-async function getNormalizedProjectData(sourceFile, button) {
+async function getNormalizedProjectData(sourceFile, button, buttonStatus) {
 
 	async function tryFileParserFunc(func, project) {
 		try {
@@ -4001,6 +4043,14 @@ let	startTime;
 			,	images: []
 			}
 		};
+
+		if (button) {
+			project.buttonTab = button;
+		}
+
+		if (buttonStatus) {
+			project.buttonStatus = buttonStatus;
+		}
 
 		if (await tryFileParserFunc(func, project)) {
 			break try_loaders;
@@ -4076,13 +4126,30 @@ async function getProjectViewMenu(project) {
 
 			const	startTime = getTimeNow();
 
+			let	lastPauseTime = startTime;
+			let	timeNow;
+
 				while (
 					images.length > 0
 				&&	(layer = images.pop())
 				&&	(result = !isStopRequestedAnywhere(project))
 				&&	(result = await getLayerImgLoadPromise(layer, project))
 				&&	(result = await getLayerMaskLoadPromise(layer.mask, project))
-				);
+				) if (
+					ADD_PAUSE_AT_INTERVALS
+				&&	((timeNow = getTimeNow()) - lastPauseTime) > PAUSE_WORK_INTERVAL
+				) {
+					lastPauseTime = timeNow;
+
+					updateProjectOperationProgress(
+						project
+					,	'project_status_reading_images'
+					,	project.imagesLoadedCount
+					,	project.imagesCount
+					);
+
+					await pause(PAUSE_WORK_DURATION);
+				}
 
 			const	tookTime = getTimeNow() - startTime;
 			const	imagesLoaded = project.imagesLoadedCount;
@@ -5490,7 +5557,7 @@ const	params = getOrInitChild(layer, 'params');
 							const	directions = explicitDimensions[0];
 							const	addToBoundaryList = (
 									isRound
-									? function(interval) {
+									? function (interval) {
 										count += addToListIfNotYet(
 											boundaries
 										,	{
@@ -5498,7 +5565,7 @@ const	params = getOrInitChild(layer, 'params');
 											}
 										);
 									}
-									: function(interval) {
+									: function (interval) {
 										count += addToListIfNotYet(
 											boundaries
 										,	{
@@ -5512,7 +5579,7 @@ const	params = getOrInitChild(layer, 'params');
 								if (directions.length > 1) {
 									forEachSetInCrossProduct(
 										directions
-									,	function() {
+									,	function () {
 										const	interval = {
 												'in': Math.min(...arguments)
 											,	'out': Math.max(...arguments)
@@ -5955,6 +6022,32 @@ async function addLayerGroupCommonWrapper(project, parentGroup, layers, callback
 	return true;
 }
 
+function updateProjectOperationProgress(project, operation, done, total) {
+	if (TESTING > 2) console.log(arguments);
+
+let	element;
+
+	if (element = project.buttonStatus) {
+		if (TAB_STATUS_TEXT) {
+			element.textContent = getLocalizedText(operation, done, total);
+		}
+	}
+
+	if (element = project.buttonTab) {
+		if (!TAB_STATUS_TEXT) {
+			element.title = getLocalizedText(operation, done, total);
+		}
+
+		if (TAB_GROW_WIDTH) {
+		const	width = element.offsetWidth;
+
+			if (width > orz(element.style.minWidth)) {
+				element.style.minWidth = width + 'px';
+			}
+		}
+	}
+}
+
 function setImageGeometryProperties(target, ...sources) {
 	IMAGE_GEOMETRY_KEYS.forEach(
 		(keys) => {
@@ -6040,7 +6133,21 @@ async function loadORA(project) {
 	,	function getFileParserPromise(file) {
 			return new Promise(
 				(resolve, reject) => {
-					ora.load(file, resolve, reject);
+					try {
+						ora.load(
+							file
+						,	resolve
+						,	reject
+						,	(done, total) => updateProjectOperationProgress(
+								project
+							,	'project_status_reading_file'
+							,	done
+							,	total
+							)
+						);
+					} catch (error) {
+						reject(error);
+					}
 				}
 			);
 		}
@@ -6153,10 +6260,32 @@ async function loadORA(project) {
 				,	isLayerFolder
 				);
 
+				++nodesDoneCount;
+
+				if (
+					ADD_PAUSE_AT_INTERVALS
+				&&	((timeNow = getTimeNow()) - lastPauseTime) > PAUSE_WORK_INTERVAL
+				) {
+					updateProjectOperationProgress(
+						project
+					,	'project_status_reading_layers'
+					,	nodesDoneCount
+					,	project.nodesCount
+					);
+
+					await pause(PAUSE_WORK_DURATION);
+
+					lastPauseTime = timeNow;
+				}
+
 				if (isLayerFolder) {
 					await addLayerGroupCommonWrapper(project, parentGroup, layers, addLayerToTree);
 				}
 			}
+
+		let	nodesDoneCount = 0;
+		let	lastPauseTime = getTimeNow();
+		let	timeNow;
 
 			return await addLayerGroupCommonWrapper(
 				project
@@ -6294,6 +6423,24 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 				,	isLayerFolder
 				);
 
+				++nodesDoneCount;
+
+				if (
+					ADD_PAUSE_AT_INTERVALS
+				&&	((timeNow = getTimeNow()) - lastPauseTime) > PAUSE_WORK_INTERVAL
+				) {
+					updateProjectOperationProgress(
+						project
+					,	'project_status_reading_layers'
+					,	nodesDoneCount
+					,	project.nodesCount
+					);
+
+					await pause(PAUSE_WORK_DURATION);
+
+					lastPauseTime = timeNow;
+				}
+
 				if (isLayerFolder) {
 					++project.foldersCount;
 
@@ -6302,6 +6449,10 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 					++project.layersCount;
 				}
 			}
+
+		let	nodesDoneCount = 0;
+		let	lastPauseTime = getTimeNow();
+		let	timeNow;
 
 			return await addLayerGroupCommonWrapper(
 				project
@@ -6461,7 +6612,7 @@ const	optionItem = getAllByTag('option', selectBox).find(
 	return selectBox.value;
 }
 
-function setAllValues(project, targetPosition) {
+async function setAllValues(project, targetPosition) {
 	getAllByTag('select', project.container).forEach(
 		(selectBox) => selectValueByPos(selectBox, targetPosition)
 	);
@@ -6483,8 +6634,8 @@ function setAllValues(project, targetPosition) {
 		);
 	}
 
-	updateBatchCount(project);
-	showImg(project);
+	await updateBatchCount(project);
+	await showImg(project);
 }
 
 function getAllMenuValues(project, checkSelectedValue) {
@@ -6511,86 +6662,111 @@ const	values = {};
 	return values;
 }
 
-function getAllValueSets(project, flags) {
+async function getAllValueSets(project, flags, startTime) {
 
-	function goDeeper(optionLists, partialValueSet) {
-		if (
-			optionLists
-		&&	optionLists.length > 0
-		) {
-		const	optionList  = optionLists[0];
-		const	sectionName = optionList.sectionName;
-		const	listName    = optionList.listName;
-		const	optionNames = optionList.optionNames;
-		const	optionsLeft = (
-				optionLists.length > 1
-				? optionLists.slice(1)
-				: null
+	async function goDeeper(optionLists, partialValueSet) {
+
+	const	partialValueSetText = JSON.stringify(partialValueSet || {});
+	const	[sectionName, listName, optionNames] = optionLists[0];
+
+	const	optionsLeft = (
+			optionLists.length > 1
+			? optionLists.slice(1)
+			: null
+		);
+
+	let	isGoingDeeper = true;
+
+		for (const optionName of optionNames) {
+			aborted = (
+				isStopRequestedAnywhere(project)
+				|| (
+					startTime
+				&&	startTime !== project.batchCounterStartTime
+				)
 			);
 
-			for (const optionName of optionNames) {
-				if (
+			if (
+				aborted
+				|| (
 					getOnlyNames
 				&&	stopAtMaxCount
-				&&	valueSets.length > MAX_BATCH_PRECOUNT
-				) {
-					return;
+				&&	addedCount > MAX_BATCH_PRECOUNT
+				)
+			) {
+				return false;
+			}
+
+		let	values = JSON.parse(partialValueSetText);
+			getOrInitChild(values, sectionName)[listName] = optionName;
+
+			if (optionsLeft) {
+				isGoingDeeper = await goDeeper(optionsLeft, values);
+			} else
+			if (isSetOfValuesOK(project, values = getSetOfRelevantValues(project, values))) {
+			const	fileName = getFileNameByValuesToSave(
+					project
+				,	values
+				,	{
+						addAllListNames: true,
+					}
+				);
+
+				if (getOnlyNames) {
+					if (addToListIfNotYet(valueSets, fileName)) {
+						++addedCount;
+					}
+				} else
+				if (!(fileName in valueSets)) {
+					valueSets[fileName] = values;
+
+					++addedCount;
 				}
 
-			let	values = JSON.parse(JSON.stringify(partialValueSet || {}));
-			const	section = getOrInitChild(values, sectionName);
-
-				section[listName] = optionName;
-
-				if (optionsLeft) {
-					goDeeper(optionsLeft, values);
-				} else
-				if (isSetOfValuesOK(project, values = getSetOfRelevantValues(project, values))) {
-				const	fileName = getFileNameByValuesToSave(
+				if (
+					ADD_PAUSE_AT_INTERVALS
+				&&	((timeNow = getTimeNow()) - lastPauseTime) > PAUSE_WORK_INTERVAL
+				) {
+					updateProjectOperationProgress(
 						project
-					,	values
-					,	{
-							addAllListNames: true,
-						}
+					,	'project_status_counting_batch'
+					,	addedCount
+					,	maxPossibleCount
 					);
 
-					if (getOnlyNames) {
-						addToListIfNotYet(valueSets, fileName);
-					} else
-					if (!(fileName in valueSets)) {
-						valueSets[fileName] = values;
-					}
+					await pause(PAUSE_WORK_DURATION);
+
+					lastPauseTime = timeNow;
 				}
 			}
 		}
+
+		return isGoingDeeper;
 	}
 
-	if (!isNonNullObject(flags)) {
-		flags = {};
-	}
+const	{
+		getOnlyNames,
+		stopAtMaxCount,
+		checkSelectedValue,
+	} = (
+		isNonNullObject(flags) ? flags : {}
+	);
 
-const	getOnlyNames		= !!flags.getOnlyNames;
-const	stopAtMaxCount		= !!flags.stopAtMaxCount;
-const	checkSelectedValue	= !!flags.checkSelectedValue;
 const	values = getAllMenuValues(project, checkSelectedValue);
-
-const	valueSets = getOnlyNames ? [] : {};
 const	optionLists = [];
 
+let	valueSets = getOnlyNames ? [] : {};
+let	aborted = false;
+let	addedCount = 0;
 let	maxPossibleCount = 1;
-let	section, optionNames;
+let	section, optionNames, timeNow, lastPauseTime;
 
 	for (const sectionName in values) if (section = values[sectionName])
 	for (const listName in section) if (optionNames = section[listName]) {
-		optionLists.push({
-			'sectionName': sectionName
-		,	'listName'   : listName
-		,	'optionNames': optionNames
-		});
 
-		if (getOnlyNames) {
-			maxPossibleCount *= optionNames.length;
-		}
+		optionLists.push([sectionName, listName, optionNames]);
+
+		maxPossibleCount *= optionNames.length;
 	}
 
 	if (
@@ -6601,20 +6777,37 @@ let	section, optionNames;
 		return null;
 	}
 
-	goDeeper(optionLists);
+	if (optionLists.length > 0) {
+		if (ADD_PAUSE_AT_INTERVALS) {
+			lastPauseTime = startTime || getTimeNow();
+		}
+
+		if (!await goDeeper(optionLists)) {
+			valueSets = getOnlyNames ? null : {};
+		}
+	}
+
+	if (aborted) {
+		return;
+	}
 
 	return valueSets;
 }
 
-function getAllValueSetsCount(project) {
-const	valueSets = getAllValueSets(
+async function getAllValueSetsCount(project, startTime) {
+const	valueSets = await getAllValueSets(
 		project
 	,	{
 			getOnlyNames: true,
 			checkSelectedValue: true,
 			stopAtMaxCount: MAX_BATCH_PRECOUNT && MAX_BATCH_PRECOUNT > 0,
 		}
+	,	startTime
 	);
+
+	if (typeof valueSets === 'undefined') {
+		return;
+	}
 
 	return (
 		valueSets === null
@@ -7123,7 +7316,7 @@ const	referenceImageData = ctx.getImageData(0,0, w,h);
 }
 
 function makeCanvasOpaqueAndGetItsMask(project, ctx) {
-	project.rendering.layersBatchCount++;
+	++project.rendering.layersBatchCount;
 
 const	canvas = cre('canvas');
 const	w = canvas.width  = ctx.canvas.width;
@@ -7234,7 +7427,7 @@ async function setMergedImage(project, img, layer) {
 }
 
 function getNewCanvasForProject(project) {
-	project.rendering.layersBatchCount++;
+	++project.rendering.layersBatchCount;
 
 const	canvas = cre('canvas');
 
@@ -7245,7 +7438,7 @@ const	canvas = cre('canvas');
 }
 
 function getNewCanvasForImg(project, img) {
-	project.rendering.layersBatchCount++;
+	++project.rendering.layersBatchCount;
 
 const	canvas = cre('canvas');
 
@@ -7561,8 +7754,17 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 	async function renderOneLayer(layer) {
 
-		function onReturnCleanup() {
+		async function onOneLayerDone() {
 			PR.nestedLayers.pop();
+
+			if (
+				ADD_PAUSE_AT_INTERVALS
+			&&	((timeNow = getTimeNow()) - PR.lastPauseTime) > PAUSE_WORK_INTERVAL
+			) {
+				await pause(PAUSE_WORK_DURATION);
+
+				PR.lastPauseTime = timeNow;
+			}
 		}
 
 	const	PR = project.rendering;
@@ -7633,7 +7835,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 			!isLayerRendered(layer)
 		||	!(opacity = renderParams.opacity || getLayerVisibilityByValues(project, layer, values))
 		) {
-			return onReturnCleanup();
+			return await onOneLayerDone();
 		}
 
 //* skip unrelated to alpha composition when getting mask for padding:
@@ -7650,7 +7852,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 			&&	layer.clippingLayer
 			&&	blendMode === BLEND_MODE_NORMAL
 			) {
-				return onReturnCleanup();
+				return await onOneLayerDone();
 			}
 		} else {
 			if (
@@ -7785,7 +7987,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 							layersToRender = layersToRender.slice(0, indexToRender).concat(layers);
 							indexToRender = layersToRender.length;
 
-							return onReturnCleanup();
+							return await onOneLayerDone();
 						}
 					}
 
@@ -7942,7 +8144,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 				if (TESTING_RENDER) addDebugImage(project, canvas, 'drawImageOrColor: ' + blendMode);
 			}
 
-			++PR.layersApplyCount;
+			++project.rendering.layersApplyCount;
 
 //* store the mask of the clipping group:
 
@@ -7958,7 +8160,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 			clearCanvasBeforeGC(img);
 		}
 
-		return onReturnCleanup();
+		return await onOneLayerDone();
 	}
 
 	if (
@@ -7975,12 +8177,11 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 		return;
 	}
 
-let	layersToRenderOne = null;
-let	layer = null;
+let	timeNow, layer, layersToRenderOne;
 
 	if (project.rendering) {
 		if (nestedLayersBatch) {
-			project.rendering.layersBatchCount++;
+			++project.rendering.layersBatchCount;
 		} else {
 			logTime('getRenderByValues - skipped call without layers while rendering.');
 
@@ -8004,8 +8205,11 @@ let	layer = null;
 			}
 		}
 
+		timeNow = getTimeNow();
+
 		project.rendering = {
-			startTime: getTimeNow()
+			startTime: timeNow
+		,	lastPauseTime: timeNow
 		,	fileName: getFileNameByValues(project, values)
 		,	layersApplyCount: 0
 		,	layersBatchCount: 1
@@ -8027,11 +8231,7 @@ const	bottomLayer = layersToRender[indexToRender - 1];
 const	isBackSide = (getPropBySameNameChain(values, 'side') === 'back');
 const	colors = getPropByNameChain(values, 'colors') || {};
 
-let	mask = null;
-let	clippingMask = null;
-
-let	canvas = null;
-let	ctx = null;
+let	canvas, ctx, mask, clippingMask;
 
 	if (
 		!ADD_PAUSE_BEFORE_EACH_LAYER
@@ -8290,18 +8490,18 @@ const	fileName = render.fileName;
 
 	await pause(1);
 
+	if (isStopRequestedAnywhere(project)) {
+		return;
+	}
+
 const	values = render.values;
 const	refName = render.refName;
 
 	img = prerenders[refName];
 
-	if (!(img || isStopRequestedAnywhere(project))) {
+	if (!img) {
 		if (fileName === refName) {
 		const	canvas = await getRenderByValues(project, values);
-
-			if (isStopRequestedAnywhere(project)) {
-				return;
-			}
 
 			if (canvas) {
 				img = await getAndCacheRenderedImgElementPromise(canvas, refName);
@@ -8313,6 +8513,10 @@ const	refName = render.refName;
 			render = await getOrCreateRender(project, render);
 			img = render.img;
 		}
+	}
+
+	if (isStopRequestedAnywhere(project)) {
+		return;
 	}
 
 let	zoomPercentage;
@@ -8447,7 +8651,11 @@ async function renderAll(project, flags) {
 		flags = {};
 	}
 
-	if (!flags.saveToFile) flags.showOnPage = true;
+	if (!flags.saveToFile) {
+		flags.showOnPage = true;
+	}
+
+	project.batchCounterStartTime = null;
 
 const	logLabel = 'Render all: ' + project.fileName;
 
@@ -8455,16 +8663,32 @@ const	logLabel = 'Render all: ' + project.fileName;
 	console.group(logLabel);
 
 const	startTime = getTimeNow();
-const	sets = getAllValueSets(project, {checkSelectedValue: true});
+const	valueSets = await getAllValueSets(project, { checkSelectedValue: true });
+
+	if (
+		isNonNullObject(valueSets)
+	&&	!isStopRequestedAnywhere(project)
+	) {
+		await renderBatch(project, flags, startTime, valueSets);
+	}
+
+	console.groupEnd(logLabel);
+	console.timeEnd(logLabel);
+
+	setProjectWIPstate(project, false);
+}
+
+async function renderBatch(project, flags, startTime, valueSets) {
 let	lastPauseTime = getTimeNow();
 
 const	renderedImages = [];
 const	needWaitBetweenDL = (flags.saveToFile && !flags.asOneJoinedImage);
 const	optionsForNewLines = getNewLineOptionLists(project.options);
-const	setsCountTotal = Object.keys(sets).length;
+const	setsCountTotal = Object.keys(valueSets).length;
 let	setsCountWithoutPause = 0;
 let	setsCount = 0;
 let	totalTime = 0;
+let	pauseAtIntervals = (ADD_PAUSE_AT_INTERVALS ? PAUSE_WORK_DURATION : 0);
 let	batchContainer, subContainer;
 
 	if (flags.showOnPage) batchContainer = getEmptyRenderContainer(project); else
@@ -8477,9 +8701,10 @@ let	batchContainer, subContainer;
 	+	' ms)'
 	);
 
-	for (const fileName in sets) {
+	for (const fileName in valueSets) {
+
 	const	startTime = getTimeNow();
-	const	values = sets[fileName];
+	const	values = valueSets[fileName];
 	const	render = await getOrCreateRender(
 			project
 		,	{
@@ -8533,26 +8758,34 @@ let	batchContainer, subContainer;
 	const	endTime = getTimeNow();
 		totalTime += (endTime - startTime);
 
-		setsCount++;
-		setsCountWithoutPause++;
+		++setsCount;
+		++setsCountWithoutPause;
 
 //* Note: Chrome skips downloads if more than 10 in 1 second.
 //* source: https://stackoverflow.com/a/53841885
 
 		if (
-			needWaitBetweenDL
-			? (setsCountWithoutPause > 9)
-			: (endTime - lastPauseTime > 500)
+			(needWaitBetweenDL && setsCountWithoutPause > 9)
+		||	(ADD_PAUSE_AT_INTERVALS && (endTime - lastPauseTime > PAUSE_WORK_INTERVAL))
 		) {
-			await pause(needWaitBetweenDL ? (100 * setsCountWithoutPause) : 100);
+			updateProjectOperationProgress(
+				project
+			,	'project_status_rendering_batch'
+			,	setsCount
+			,	setsCountTotal
+			);
+
+			await pause(
+				needWaitBetweenDL
+				? Math.max(100 * setsCountWithoutPause, pauseAtIntervals)
+				: pauseAtIntervals
+			);
 
 			lastPauseTime = getTimeNow();
 			setsCountWithoutPause = 0;
 		}
 
 		if (isStopRequestedAnywhere(project)) {
-			project.isStopRequested = false;
-
 			break;
 		}
 	}
@@ -8565,7 +8798,10 @@ let	batchContainer, subContainer;
 	+	' ms total (excluding pauses)'
 	);
 
-	if (flags.asOneJoinedImage) {
+	if (
+		flags.asOneJoinedImage
+	&&	!isStopRequestedAnywhere(project)
+	) {
 
 		function getBatchCanvasSize(rootContainer) {
 		let	x = 0;
@@ -8625,6 +8861,8 @@ let	batchContainer, subContainer;
 			,	y: y + joinedBorder
 			};
 		}
+
+		updateProjectOperationProgress(project, 'project_status_rendering_collage');
 
 	const	startTime = getTimeNow();
 	const	alignImages = getSelectedMenuValue(project, 'collage', 'align') || '';
@@ -8698,11 +8936,6 @@ let	batchContainer, subContainer;
 			}
 		}
 	}
-
-	console.groupEnd(logLabel);
-	console.timeEnd(logLabel);
-
-	setProjectWIPstate(project, false);
 }
 
 function showAll(project) {renderAll(project);}
@@ -8828,7 +9061,8 @@ function updateCheckBox(checkBox, params) {
 	}
 }
 
-function updateBatchCount(project) {
+async function updateBatchCount(project) {
+const	startTime = project.batchCounterStartTime = getTimeNow();
 const	precounts = getOrInitChild(project, 'renderBatchCounts');
 const	key = (
 		(
@@ -8843,17 +9077,33 @@ const	key = (
 let	count = precounts[key];
 
 	if (!count) {
-		count = getAllValueSetsCount(project);
+		count = await getAllValueSetsCount(project, startTime);
 
-		if (
-			MAX_BATCH_PRECOUNT
-		&&	MAX_BATCH_PRECOUNT > 0
-		&&	count > MAX_BATCH_PRECOUNT
-		) {
-			count = MAX_BATCH_PRECOUNT + '+';
+		if (typeof count === 'undefined') {
+
+//* stop if another count was started, skip updating:
+
+			if (startTime !== project.batchCounterStartTime) {
+				return;
+			} else {
+
+//* stop if requested by user, but update text:
+
+				count = '?';
+
+			}
+		} else {
+			if (
+				MAX_BATCH_PRECOUNT
+			&&	MAX_BATCH_PRECOUNT > 0
+			&&	count > MAX_BATCH_PRECOUNT
+			) {
+				count = MAX_BATCH_PRECOUNT + '+';
+			}
+
+			precounts[key] = count;
 		}
 
-		precounts[key] = count;
 	}
 
 	if (ADD_COUNT_ON_BUTTON_LABEL) {
@@ -8883,6 +9133,8 @@ let	count = precounts[key];
 		||	count
 		);
 	}
+
+	updateProjectOperationProgress(project, 'project_status_ready');
 }
 
 function setProjectWIPstate(project, isWIP) {
@@ -8901,6 +9153,15 @@ const	state = !!isWIP;
 					: state
 				)
 			)
+		)
+	);
+
+	updateProjectOperationProgress(
+		project
+	,	(
+			state
+			? 'project_status_rendering'
+			: 'project_status_ready'
 		)
 	);
 
@@ -9046,7 +9307,7 @@ const	resetPrefix = 'reset_to_';
 	}
 }
 
-function onProjectMenuUpdate(evt) {
+async function onProjectMenuUpdate(evt) {
 	evt = evt || window.event;
 
 let	element = evt;
@@ -9090,10 +9351,10 @@ const	isSelect = isSelectElement(element);
 const	container = getProjectContainer(element);
 const	project = container.project;
 
-	updateBatchCount(project);
+	await updateBatchCount(project);
 
 	if (isSelect) {
-		updateMenuAndShowImg(project);
+		await updateMenuAndShowImg(project);
 	}
 }
 
@@ -9171,7 +9432,7 @@ let	loadedProjectsCount = 0;
 		console.time(logLabel);
 		console.group(logLabel);
 
-		for (const file of files) if (await addProjectView(file)) {
+		for (const file of files) if (await addProjectViewTab(file)) {
 			++loadedProjectsCount;
 		}
 
@@ -9196,7 +9457,7 @@ const	logLabel = 'Load project from url: ' + url;
 	console.time(logLabel);
 	console.group(logLabel);
 
-const	isProjectLoaded = await addProjectView({url: url});
+const	isProjectLoaded = await addProjectViewTab({url: url});
 
 	console.groupEnd(logLabel);
 	console.timeEnd(logLabel);
@@ -9421,6 +9682,8 @@ const	configVarNames = [
 		'DEFAULT_COLLAGE_PADDING',
 		'DEFAULT_COLLAGE_PADDING_INSIDE',
 		'DEFAULT_COLLAGE_PADDING_OUTSIDE',
+		'PAUSE_WORK_DURATION',
+		'PAUSE_WORK_INTERVAL',
 		'PREVIEW_SIZE',
 		'THUMBNAIL_SIZE',
 		'THUMBNAIL_ZOOM_STEP_MAX_FACTOR',
@@ -9883,7 +10146,7 @@ const	wrapperClassNames = [
 		const	key = className.split(regNonAlphaNum)[0];
 
 			for (const tagName in wrap) {
-				wrap[tagName][key] = function(...values) {
+				wrap[tagName][key] = function (...values) {
 					return (
 						'<' + tagName + ' class="' + className + '">'
 					+		values.join('')

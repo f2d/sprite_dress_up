@@ -110,14 +110,19 @@ python ./update_config.py -im7 -filter Sinc
 
 ## Included libraries
 
-ORA file parser - heavily modified version of [ora.js](https://github.com/zsgalusz/ora.js).
-Original version also works here, but with many limitations.
+ORA file parser:
+* Heavily modified version of [ora.js](https://github.com/zsgalusz/ora.js).
+* Original version also can work here, but with many limitations.
 
-PSD file parser - lightly modified [build](https://github.com/meltingice/psd.js/issues/154#issuecomment-446279652)
-and optional [fork](https://github.com/imcuttle/psd.js) of [psd.js](https://github.com/meltingice/psd.js).
-Original version does not work here.
+PSD file parser:
+* Lightly modified [build](https://github.com/meltingice/psd.js/issues/154#issuecomment-446279652), should be backward compatible.
+* Lightly modified [fork](https://github.com/imcuttle/psd.js) of [psd.js](https://github.com/meltingice/psd.js), globally usable without `require()`.
+* Original version does not work here, and many other forks.
 
-PNG file parser - unmodified [UPNG.js](https://github.com/photopea/UPNG.js) with [Pako.js](https://github.com/nodeca/pako).
-Not used yet.
+PNG file parser (not used here yet):
+* Unmodified [UPNG.js](https://github.com/photopea/UPNG.js).
+* Unmodified [Pako.js](https://github.com/nodeca/pako).
 
-ZIP file parser - unmodified [zip.js](https://github.com/gildas-lormeau/zip.js) with [zlib-asm](https://github.com/ukyo/zlib-asm).
+ZIP file parser:
+* Lightly modified [zip.js](https://github.com/gildas-lormeau/zip.js), should be backward compatible.
+* Unmodified [zlib-asm](https://github.com/ukyo/zlib-asm).
