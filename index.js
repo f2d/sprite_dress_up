@@ -74,7 +74,7 @@ var	exampleRootDir = ''
 
 ,	ADD_COUNT_ON_BUTTON_LABEL	= false
 ,	ADD_PAUSE_BEFORE_EACH_FOLDER	= true	//* <- when loading file and rendering
-,	ADD_PAUSE_BEFORE_EACH_LAYER	= false
+,	ADD_PAUSE_BEFORE_EACH_LAYER	= false	//* <- loading and rendering will take ~1.5-2x time, but UI response does not improve
 ,	ASK_BEFORE_EXIT_IF_OPENED_FILES	= true
 ,	CACHE_UNALTERABLE_FOLDERS_MERGED	= true
 ,	CACHE_UNALTERABLE_IMAGES_TRIMMED	= true
