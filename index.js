@@ -129,6 +129,7 @@ const	configFilePath = 'config.js'			//* <- declarations-only file to redefine a
 ,	fetchTestFilePath = 'index.png'			//* <- smallest local file to test loading from disk
 ,	localStorageNameSpace = 'spriteDressUp'
 ,	LSKeyBigText = localStorageNameSpace + 'BigText'
+,	pendingJobs = new Set()
 
 // ,	regLayerNameToSkip		= /^(skip)$/i
 ,	regLayerNameToSkip		= null
@@ -9358,6 +9359,13 @@ function onPageKeyPress(evt) {
 //* Esc:
 
 	if (evt.keyCode === 27) {
+
+		pendingJobs.forEach(
+			(job) => {
+				job.isStopRequested = true;
+			}
+		);
+
 		getAllByName('stop').forEach(
 			(button) => button.click()
 		);
@@ -9539,6 +9547,9 @@ let	files, name, ext;
 
 async function loadFromFileList(files, evt) {
 let	loadedProjectsCount = 0;
+const	thisJob = {startTime: getTimeNow(), files, evt};
+
+	pendingJobs.add(thisJob);
 
 	if (
 		files
@@ -9557,8 +9568,14 @@ let	loadedProjectsCount = 0;
 		console.time(logLabel);
 		console.group(logLabel);
 
-		for (const file of files) if (await addProjectViewTab(file)) {
-			++loadedProjectsCount;
+		for (const file of files) {
+			if (await addProjectViewTab(file)) {
+				++loadedProjectsCount;
+			}
+
+			if (isStopRequestedAnywhere(thisJob)) {
+				break;
+			}
 		}
 
 		console.groupEnd(logLabel);
@@ -9568,6 +9585,10 @@ let	loadedProjectsCount = 0;
 	} else if (TESTING) {
 		console.log(['Cannot load files:', files, 'From event:', evt]);
 	}
+
+	if (TESTING > 2) console.log(thisJob, pendingJobs);
+
+	pendingJobs.delete(thisJob);
 
 	return loadedProjectsCount;
 }
