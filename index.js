@@ -9352,13 +9352,25 @@ function updateDropdownMenuPositions(evt) {
 	);
 }
 
-function onPageKeyPress(evt) {
+function onPageKeyDown(evt) {
 	evt = evt || window.event;
+
+	if (TESTING > 5) console.log('onPageKeyDown:', evt);
 
 //* Esc:
 
-	if (evt.keyCode === 27) {
-
+	if (
+		!(
+			evt.altKey
+		||	evt.ctrlKey
+		||	evt.shiftKey
+		) && (
+			evt.which === 27
+		||	evt.keyCode === 27
+		||	evt.code === 'Escape'
+		||	evt.key === 'Escape'
+		)
+	) {
 		pendingJobs.forEach(
 			(job) => {
 				job.isStopRequested = true;
@@ -11369,7 +11381,7 @@ const	eventHandlers = [
 		['beforeunload',onBeforeUnload],
 		['dragover',	onPageDragOver],
 		['drop',	onPageDrop],
-		['keypress',	onPageKeyPress],
+		['keydown',	onPageKeyDown],	//* <- 'keypress' ignores Esc key in some modern browsers
 		['resize',	onResize],
 	];
 
