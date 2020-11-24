@@ -4,11 +4,11 @@
 //* TODO ---------------------- source file data: -----------------------------
 //* TODO: keep all layer-name parameters single-word if possible.
 //* TODO: whole config in JSON-format?
+//* TODO: keep PNGs from ORA as is, convert pixel data from PSD to PNG using UPNG encoder, create arrays for high-precision blending on demand, discard arrays when HQ mode is disabled, but always keep PNGs in memory.
 
 //* TODO ---------------------- menu: -----------------------------------------
 //* TODO: checkbox (on project selection bar?) to sync all option/export actions in selected project onto all opened projects where possible.
 //* TODO: zoom format in filenames: [x1, x1.00, x100%].
-//* TODO: progress/status panel + [stop operation] button.
 //* TODO: options menu: add/remove/copy/edit colors and outlines, or all list(s), maybe in textarea.
 //* TODO: remember already calculated batch counts and valid lists per project, in a dict with keys like joined list of all options and checkboxes.
 //* TODO: <select multiple> <optgroup> <option>?</option> </optgroup> </select>.
@@ -2309,7 +2309,7 @@ let	arg, argDate, argNum, argText, date, YMD, HMS;
 			}
 		}
 
-		if (TESTING > 9) console.log([index + ': ' + typeof arg, arg]);
+		if (TESTING > 9) console.log('getFormattedTime arg[' + index + ']:', [typeof arg, arg]);
 	}
 
 	if (!date && argText && isFunction(Date.parse)) {
@@ -2436,8 +2436,9 @@ let	logText = getLogTime();
 
 function logError(error, args, context) {
 	console.log(
-		[
-			'Error:', error,
+		'Error:'
+	,	[
+			error,
 		].concat(
 			typeof args === 'undefined'
 			? [] : [
@@ -2582,7 +2583,7 @@ function getImagePromiseFromCanvasToBlob(canvas, trackList, mimeType, quality, i
 						return;
 					}
 
-					if (TESTING) console.log(['Image loading failed:', url, img, evt]);
+					if (TESTING) console.log('Image loading failed:', [url, img, evt]);
 
 					if (!trackList) {
 						URL.revokeObjectURL(url);
@@ -3609,7 +3610,7 @@ function isLayerRendered(layer) {
 
 function isLayerSkipped(layer) {
 	if (TESTING && !layer.params) {
-		console.log(['No params:', layer, getLayerPathText(layer)]);
+		console.log('No params:', [layer, getLayerPathText(layer)]);
 	}
 
 	return !!(
@@ -4109,15 +4110,13 @@ let	project, projectError, startTime;
 	} else {
 		console.log(
 			'Error: Unknown file type: '
-		+	[
+		,	[
 				ext
 			,	mimeType
 			,	fileName
 			]
 			.filter(arrayFilterNonEmptyValues)
 			.filter(arrayFilterUniqueValues)
-			.map((text) => '"' + text + '"')
-			.join(', ')
 		);
 	}
 
@@ -4839,7 +4838,7 @@ async function getProjectViewMenu(project) {
 									return;
 								}
 
-								if (TESTING) console.log(['Image loading failed:', img, evt]);
+								if (TESTING) console.log('Image loading failed:', [img, evt]);
 
 								resolve(false);
 							}
@@ -5865,7 +5864,7 @@ const	params = getOrInitChild(layer, 'params');
 				params[paramType] = param || paramType;
 			}
 
-			if (TESTING > 9) console.log('Known param type [' + paramType + '], value = [' + param + '] at: ' + getWIPLayerPathText());
+			if (TESTING > 9) console.log('Known param type:', [paramType, param, getWIPLayerPathText()]);
 
 			// break param_types;
 			continue param_list;
@@ -5879,7 +5878,7 @@ const	params = getOrInitChild(layer, 'params');
 			continue param_list;
 		}
 
-		if (TESTING) console.log('Unknown param type unknown, value = [' + param + '] at: ' + getWIPLayerPathText());
+		if (TESTING) console.log('Unknown param type:', [param, getWIPLayerPathText()]);
 	}
 
 	return layer;
@@ -7064,7 +7063,7 @@ const	canvas = ctx.canvas;
 			let	logLabelWrap, logLabel, testPrefix;
 
 				if (TESTING_RENDER) {
-					console.log(['blendMode =', blendMode, 'opacity =', opacity, mask ? 'callback with mask' : 'callback']);
+					console.log('blendMode:', [blendMode, 'opacity:', opacity, mask ? 'callback with mask' : 'callback']);
 
 					logLabelWrap = blendMode + ': ' + project.rendering.nestedLayers.map((layer) => layer.name).join(' / ');
 					console.time(logLabelWrap);
@@ -7196,7 +7195,7 @@ const	canvas = ctx.canvas;
 			ctxBlendMode === blendMode
 		||	!tryBlendingEmulation(blendMode)
 		) {
-			if (TESTING && ctxBlendMode !== blendMode) console.log(['blendMode =', blendMode, 'fallback =', ctxBlendMode]);
+			if (TESTING && ctxBlendMode !== blendMode) console.log('blendMode:', [blendMode, 'fallback:', ctxBlendMode]);
 
 			ctx.globalAlpha = opacity;
 
@@ -7496,7 +7495,7 @@ async function addDebugImage(project, canvas, comment, highLightColor) {
 function getCroppedCanvasCopy(project, img) {
 const	crop = getAutoCropArea(img);
 
-	if (TESTING > 1) console.log(['Crop area:', crop]);
+	if (TESTING > 1) console.log('Crop area:', crop);
 
 	if (
 		isNonNullObject(crop)
@@ -7511,7 +7510,7 @@ const	crop = getAutoCropArea(img);
 	const	ctx = canvas.getContext('2d');
 		ctx.drawImage(img, -crop.left, -crop.top);
 
-		if (TESTING > 1) console.log(['Cropped image on canvas:', canvas]);
+		if (TESTING > 1) console.log('Cropped image on canvas:', canvas);
 
 		if (TESTING > 2 || TESTING_RENDER) {
 			canvas.onclick = del;
@@ -7541,7 +7540,7 @@ async function setMergedImage(project, img, layer) {
 		if (img = await getImagePromiseFromCanvasToBlob(img, project)) {
 			project.mergedImages.push(layer.mergedImage = img);
 
-			if (TESTING > 1) console.log(['Set merged branch image:', layer]);
+			if (TESTING > 1) console.log('Set merged branch image:', layer);
 
 			if (TESTING > 2 || TESTING_RENDER) {
 				img.onclick = del;
@@ -7772,7 +7771,7 @@ const	selectBox = getAllByTag('select', project.container).find(
 
 function getLayerPathVisibilityByValues(project, layer, values, listName) {
 	if (TESTING && !layer.params) {
-		console.log(['No params:', project, layer, values, listName]);
+		console.log('No params:', [project, layer, values, listName]);
 	}
 
 	if (layer.params.check_order === 'up') {
@@ -9428,13 +9427,15 @@ const	resetPrefix = 'reset_to_';
 
 		alert(getLocalizedText('see_console'));
 	} else {
-		console.log([
-			evt
-		,	button
-		,	container
-		,	project
-		,	'Unknown action: ' + action
-		]);
+		console.log(
+			'Unknown action: ' + action
+		,	[
+				evt
+			,	button
+			,	container
+			,	project
+			]
+		);
 
 		alert(getLocalizedText('unknown_button', action));
 	}
@@ -9583,10 +9584,10 @@ const	thisJob = {startTime: getTimeNow(), files, evt};
 
 		console.log('Loaded ' + loadedProjectsCount + ' of ' + files.length + ' project files.');
 	} else if (TESTING) {
-		console.log(['Cannot load files:', files, 'From event:', evt]);
+		console.log('Cannot load files:', [files, 'From event:', evt]);
 	}
 
-	if (TESTING > 2) console.log(thisJob, pendingJobs);
+	if (TESTING > 9) console.log(thisJob, pendingJobs);
 
 	pendingJobs.delete(thisJob);
 
@@ -9692,7 +9693,7 @@ let	isProjectLoaded = false;
 
 			setGlobalWIPstate(false);
 		} else {
-			console.log([button, filesTable, 'Unknown action: ' + action]);
+			console.log('Unknown action: ' + action, [button, filesTable]);
 		}
 	} else
 	if (url = getButtonURL(button)) {
@@ -9795,7 +9796,7 @@ function closeProject(buttonTab) {
 	const	revokedBlobsCount = revokeBlobsFromTrackList(project);
 
 		if (revokedBlobsCount) {
-			if (TESTING > 1) console.log(['Closed project:', project, 'revoked blobs:', revokedBlobsCount]);
+			if (TESTING > 1) console.log('Closed project:', [project, 'revoked blobs:', revokedBlobsCount]);
 		}
 	}
 }
