@@ -79,7 +79,7 @@ var	exampleRootDir = ''
 ,	ADD_PAUSE_BEFORE_EACH_LAYER	= false	//* <- loading and rendering will take ~1.5-2x time, but UI response does not improve
 ,	ASK_BEFORE_EXIT_IF_OPENED_FILES	= true
 ,	CACHE_UNALTERABLE_FOLDERS_MERGED	= true
-,	CACHE_UNALTERABLE_IMAGES_TRIMMED	= true
+,	CACHE_UNALTERABLE_IMAGES_TRIMMED	= false	//* <- images are compressed faster by canvas API, when stored as PNG
 ,	DOWNSCALE_BY_MAX_FACTOR_FIRST	= true
 ,	EXAMPLE_NOTICE			= false
 ,	FILE_NAME_ADD_PARAM_KEY		= true
@@ -88,7 +88,9 @@ var	exampleRootDir = ''
 ,	READ_FILE_CONTENT_TO_GET_TYPE	= false
 ,	TAB_GROW_WIDTH			= true
 ,	TAB_STATUS_TEXT			= true
+,	TAB_THUMBNAIL_TRIMMED		= false	//* <- a little more content may become visible, but will take more time and shift image alignment
 ,	TAB_THUMBNAIL_ZOOM		= true
+,	TAB_THUMBNAIL_ZOOM_TRIMMED	= false
 ,	TESTING				= false
 ,	TESTING_RENDER			= false
 ,	USE_ONE_FILE_ZIP_WORKER		= false
@@ -2306,6 +2308,7 @@ let	arg, argDate, argNum, argText, date, YMD, HMS;
 			}
 		}
 
+		if (TESTING > 9) console.log([index + ': ' + typeof arg, arg]);
 	}
 
 	if (!date && argText && isFunction(Date.parse)) {
@@ -3256,7 +3259,7 @@ function getFirstPixelRGBA(img) {
 }
 
 function getAutoCropArea(img, bgToCheck) {
-	if (!(img = getImageData(img))) {
+	if (!isNonNullObject(img = getImageData(img))) {
 		return;
 	}
 
@@ -5309,7 +5312,20 @@ function setProjectThumbnail(project, fullImage) {
 	&&	project
 	&&	project.thumbnail
 	) {
-	const	canvas = getResizedCanvasFromImg(fullImage, THUMBNAIL_SIZE);
+	const	meaningfulImagePart = (
+			TAB_THUMBNAIL_TRIMMED || TAB_THUMBNAIL_ZOOM_TRIMMED
+			? getCroppedCanvasCopy(project, fullImage)
+			: fullImage
+		) || fullImage;
+
+	let	canvas = getResizedCanvasFromImg(
+			(
+				TAB_THUMBNAIL_TRIMMED
+				? meaningfulImagePart
+				: fullImage
+			)
+		,	THUMBNAIL_SIZE
+		);
 
 		if (canvas) {
 			setImageSrc(project.thumbnail, canvas.toDataURL());
@@ -5326,7 +5342,14 @@ function setProjectThumbnail(project, fullImage) {
 				preview.className = 'thumbnail larger';
 			}
 
-		const	canvas = getResizedCanvasFromImg(fullImage, PREVIEW_SIZE);
+			canvas = getResizedCanvasFromImg(
+				(
+					TAB_THUMBNAIL_ZOOM_TRIMMED
+					? meaningfulImagePart
+					: fullImage
+				)
+			,	PREVIEW_SIZE
+			);
 
 			if (canvas) {
 				setImageSrc(preview, canvas.toDataURL());
@@ -7408,7 +7431,9 @@ const	referenceImageData = ctx.getImageData(0,0, w,h);
 }
 
 function makeCanvasOpaqueAndGetItsMask(project, ctx) {
-	++project.rendering.layersBatchCount;
+	if (project.rendering) {
+		++project.rendering.layersBatchCount;
+	}
 
 const	canvas = cre('canvas');
 const	w = canvas.width  = ctx.canvas.width;
@@ -7467,28 +7492,49 @@ async function addDebugImage(project, canvas, comment, highLightColor) {
 	}
 }
 
+function getCroppedCanvasCopy(project, img) {
+const	crop = getAutoCropArea(img);
+
+	if (TESTING > 1) console.log(['Crop area:', crop]);
+
+	if (
+		isNonNullObject(crop)
+	&&	crop.width > 0
+	&&	crop.height > 0
+	&&	(
+			crop.width < img.width
+		||	crop.height < img.height
+		)
+	) {
+	const	canvas = getNewCanvasForImg(project, crop);
+	const	ctx = canvas.getContext('2d');
+		ctx.drawImage(img, -crop.left, -crop.top);
+
+		if (TESTING > 1) console.log(['Cropped image on canvas:', canvas]);
+
+		if (TESTING > 2 || TESTING_RENDER) {
+			canvas.onclick = del;
+			canvas.title = 'cropped image: ' + canvas.width + 'x' + canvas.height + ', click to remove';
+
+			if (typeof canvas.top !== 'undefined') {
+				canvas.title = [
+					canvas.title
+				,	'x = ' + canvas.left
+				,	'y = ' + canvas.top
+				].join(TITLE_LINE_BREAK);
+			}
+
+			document.body.append(canvas);
+		}
+
+		return canvas;
+	}
+}
+
 async function setMergedImage(project, img, layer) {
 	if (CACHE_UNALTERABLE_FOLDERS_MERGED) {
 		if (CACHE_UNALTERABLE_IMAGES_TRIMMED) {
-		const	crop = getAutoCropArea(img);
-
-			if (TESTING > 1) console.log(['Crop area:', crop]);
-
-			if (
-				crop
-			&&	crop.width > 0
-			&&	crop.width < img.width
-			&&	crop.height > 0
-			&&	crop.height < img.height
-			) {
-			const	canvas = getNewCanvasForImg(project, crop);
-			const	ctx = canvas.getContext('2d');
-				ctx.drawImage(img, -crop.left, -crop.top);
-
-				img = canvas;
-
-				if (TESTING > 1) console.log(['Cropped merged branch image:', img]);
-			}
+			img = getCroppedCanvasCopy(project, img) || img;
 		}
 
 		if (img = await getImagePromiseFromCanvasToBlob(img, project)) {
@@ -7496,7 +7542,7 @@ async function setMergedImage(project, img, layer) {
 
 			if (TESTING > 1) console.log(['Set merged branch image:', layer]);
 
-			if (TESTING > 1 || TESTING_RENDER) {
+			if (TESTING > 2 || TESTING_RENDER) {
 				img.onclick = del;
 				img.title = [
 					getLayerPathText(layer)
@@ -7520,7 +7566,9 @@ async function setMergedImage(project, img, layer) {
 }
 
 function getNewCanvasForProject(project) {
-	++project.rendering.layersBatchCount;
+	if (project.rendering) {
+		++project.rendering.layersBatchCount;
+	}
 
 const	canvas = cre('canvas');
 
@@ -7531,7 +7579,9 @@ const	canvas = cre('canvas');
 }
 
 function getNewCanvasForImg(project, img) {
-	++project.rendering.layersBatchCount;
+	if (project.rendering) {
+		++project.rendering.layersBatchCount;
+	}
 
 const	canvas = cre('canvas');
 
@@ -8637,7 +8687,7 @@ let	autocrop, crop;
 	if (
 		img
 	&&	isNotEmptyString(autocrop = getPropBySameNameChain(values, 'autocrop'))
-	&&	(crop = getAutoCropArea(img, autocrop))
+	&&	isNonNullObject(crop = getAutoCropArea(img, autocrop))
 	) {
 		if (
 			crop.width > 0
