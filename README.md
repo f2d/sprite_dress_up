@@ -115,7 +115,7 @@ ORA file parser:
 * Original version also can work here, but with many limitations.
 
 PSD file parser:
-* Lightly modified [build](https://github.com/meltingice/psd.js/issues/154#issuecomment-446279652), should be backward compatible.
+* Lightly modified [build of psd.js](https://github.com/meltingice/psd.js/issues/154#issuecomment-446279652), should be backward compatible.
 * Lightly modified [fork](https://github.com/imcuttle/psd.js) of [psd.js](https://github.com/meltingice/psd.js), globally usable without `require()`.
 * Original version does not work here, and many other forks.
 

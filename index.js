@@ -1139,13 +1139,13 @@ function getLocalizedKeyByCount(key, ...args) {
 					? result
 					: (
 						(
-							result === null
+							isNaN(result)
 							? 1
 							: result
 						) * arg
 					)
 				)
-			,	null
+			,	undefined
 			)
 			: args.reduce(
 				(result, arg) => (
@@ -1153,7 +1153,7 @@ function getLocalizedKeyByCount(key, ...args) {
 					? result
 					: arg
 				)
-			,	0
+			,	undefined
 			)
 		);
 
@@ -2007,7 +2007,6 @@ function toggleDropdownMenu(element) {
 
 function toggleSection(element, action) {
 
-
 const	header = getThisOrParentByTagName(element, 'header');
 
 	if (header) {
@@ -2307,7 +2306,6 @@ let	arg, argDate, argNum, argText, date, YMD, HMS;
 			}
 		}
 
-		if (TESTING > 2) console.log([index + ': ' + typeof arg, arg]);
 	}
 
 	if (!date && argText && isFunction(Date.parse)) {
@@ -3779,7 +3777,13 @@ function isStopRequestedAnywhere(...sources) {
 	||	sources.some(
 			(obj) => (
 				isNonNullObject(obj)
-			&&	obj.isStopRequested
+			&&	(
+					obj.isStopRequested
+				||	(
+						obj.buttonTab
+					&&	obj.buttonTab.isStopRequested
+					)
+				)
 			)
 		)
 	);
@@ -3805,6 +3809,10 @@ const	countDeleted = getAllById(fileId).reduce(
 }
 
 async function addProjectViewTab(sourceFile) {
+
+	if (OPEN_FIRST_MENU_TAB_AT_START) {
+		closeAllDropdownMenuTabs(getAllByClass('menu-bar')[0]);
+	}
 
 	if (!sourceFile) {
 		return false;
@@ -3864,6 +3872,8 @@ const	buttonClose = cre('button', buttonTab);
 const	projectButtons = {
 		buttonTab,
 		buttonStatus,
+		errorParams: sourceFile.ext,
+		errorPossible: 'project_status_error_file_type',
 	};
 
 	updateProjectOperationProgress(projectButtons, 'project_status_loading');
@@ -3872,7 +3882,7 @@ let	container = null;
 let	project = null;
 
 	try {
-		project = await getNormalizedProjectData(sourceFile, buttonTab, buttonStatus);
+		project = await getNormalizedProjectData(sourceFile, projectButtons);
 
 		if (project) {
 			buttonTab.project = project;
@@ -3912,23 +3922,17 @@ let	project = null;
 						await updateBatchCount(project);
 
 						buttonTab.className = 'button loaded with-options';
-
-						updateProjectOperationProgress(projectButtons, 'project_status_ready');
 					}
 				} else {
 					buttonTab.className = 'button loaded without-options';
 
-					updateProjectOperationProgress(projectButtons, 'project_status_no_options');
+					updateProjectOperationProgress(projectButtons, 'project_status_ready_no_options');
 				}
 			}
 
 //* attach prepared DOM branch to visible document:
 
-			if (result) {
-				if (OPEN_FIRST_MENU_TAB_AT_START) {
-					closeAllDropdownMenuTabs(getAllByClass('menu-bar')[0]);
-				}
-
+			if (result && !isStopRequestedAnywhere(project, buttonTab)) {
 				removeProjectView(fileId);
 
 				container.id = buttonTab.id = fileId;
@@ -3951,9 +3955,23 @@ let	project = null;
 
 	buttonTab.className = 'button loading failed';
 
+	if (isStopRequestedAnywhere(project, buttonTab)) {
+		project = null;
+		projectButtons.errorPossible = 'project_status_aborted';
+	}
+
 	updateProjectOperationProgress(
 		projectButtons
-	,	getPropByNameChain(project, 'statusError') || 'project_status_error'
+	,	(
+			getPropByNameChain(project, 'loading', 'errorPossible')
+		||	getPropByNameChain(projectButtons, 'errorPossible')
+		||	'project_status_error'
+		)
+	,	...asArray(
+			getPropByNameChain(project, 'loading', 'errorParams')
+		||	getPropByNameChain(projectButtons, 'errorParams')
+		||	[]
+		)
 	);
 
 	setTimeout(function () {
@@ -3961,7 +3979,7 @@ let	project = null;
 
 		setTimeout(function () {
 			del(buttonTab);
-		}, 700);
+		}, 800);
 	}, 2000);
 
 	return false;
@@ -3980,7 +3998,7 @@ async function getFileFromLoadingData(data) {
 	}
 }
 
-async function getNormalizedProjectData(sourceFile, button, buttonStatus) {
+async function getNormalizedProjectData(sourceFile, projectButtons) {
 
 	async function tryFileParserFunc(func, project) {
 		try {
@@ -3998,6 +4016,8 @@ async function getNormalizedProjectData(sourceFile, button, buttonStatus) {
 
 	if (READ_FILE_CONTENT_TO_GET_TYPE) {
 		if (!sourceFile.file) {
+			projectButtons.errorPossible = 'project_status_error_loading_file';
+
 			sourceFile.file = await getFileFromLoadingData(sourceFile);
 
 			if (!sourceFile.file) {
@@ -4006,6 +4026,8 @@ async function getNormalizedProjectData(sourceFile, button, buttonStatus) {
 		}
 	}
 
+const	{buttonTab, buttonStatus} = projectButtons;
+
 const	fileName = sourceFile.name;
 const	baseName = sourceFile.baseName;
 const	ext      = sourceFile.ext;
@@ -4013,14 +4035,15 @@ const	mimeType = getPropByNameChain(sourceFile, 'file', 'type');
 const	actionLabel = 'processing document structure';
 
 let	loadersTried = 0;
-let	project = null;
-let	startTime;
+let	project, projectError, startTime;
 
 	try_loaders:
 	for (const loader of fileTypeLoaders) if (
 		loader.dropFileExts.includes(ext)
 	||	loader.inputFileAcceptMimeTypes.includes(mimeType)
 	) for (const func of loader.handlerFuncs) {
+
+		projectButtons.errorPossible = 'project_status_error_in_format';
 
 	const	loaderStartTime = getTimeNow();
 
@@ -4037,30 +4060,29 @@ let	startTime;
 		,	layersCount: 0
 		,	imagesCount: 0
 		,	imagesLoadedCount: 0
+		,	buttonTab
+		,	buttonStatus
 		,	loading: {
 				startTime: loaderStartTime
 			,	data: sourceFile
 			,	images: []
+			,	errorPossible: 'project_status_error_in_format'
 			}
 		};
 
-		if (button) {
-			project.buttonTab = button;
-		}
-
-		if (buttonStatus) {
-			project.buttonStatus = buttonStatus;
-		}
-
 		if (await tryFileParserFunc(func, project)) {
 			break try_loaders;
-		} else {
-			project = null;
+		} else
+		if (isStopRequestedAnywhere(project, buttonTab)) {
+			projectButtons.errorPossible = 'project_status_aborted';
 
-			if (isStopRequestedAnywhere(project, button)) {
-				break try_loaders;
-			}
+			break try_loaders;
+		} else
+		if (projectError = getPropByNameChain(project, 'loading', 'errorPossible')) {
+			projectButtons.errorPossible = projectError;
 		}
+
+		project = null;
 	}
 
 	if (loadersTried > 0) {
@@ -4072,7 +4094,7 @@ let	startTime;
 				project
 				? ' finished ' + actionLabel + ', took '
 				: ' stopped by ' + (
-					isStopRequestedAnywhere(project, button)
+					isStopRequestedAnywhere(project, buttonTab)
 					? 'request'
 					: 'error'
 				) + ' while ' + actionLabel + ' after '
@@ -4095,7 +4117,7 @@ let	startTime;
 		);
 	}
 
-	if (isStopRequestedAnywhere(project, button)) {
+	if (isStopRequestedAnywhere(project, buttonTab)) {
 		return null;
 	}
 
@@ -4109,10 +4131,14 @@ async function getProjectViewMenu(project) {
 //* render default set when everything is ready:
 
 		try {
+			project.loading.errorPossible = 'project_status_error_in_options';
+
 		const	options = getProjectOptions(project);
 		const	fileName = project.fileName;
 
 			if (options) {
+				project.loading.errorPossible = 'project_status_error_in_images';
+
 			const	images = project.loading.images;
 			const	imagesCount = project.loading.imagesCount = images.length;
 			const	actionLabel = 'preloading ' + imagesCount + ' images';
@@ -4127,12 +4153,12 @@ async function getProjectViewMenu(project) {
 			const	startTime = getTimeNow();
 
 			let	lastPauseTime = startTime;
-			let	timeNow;
+			let	timeNow, isStopRequested;
 
 				while (
-					images.length > 0
+					!(isStopRequested = isStopRequestedAnywhere(project))
+				&&	(images.length > 0)
 				&&	(layer = images.pop())
-				&&	(result = !isStopRequestedAnywhere(project))
 				&&	(result = await getLayerImgLoadPromise(layer, project))
 				&&	(result = await getLayerMaskLoadPromise(layer.mask, project))
 				) if (
@@ -4168,7 +4194,7 @@ async function getProjectViewMenu(project) {
 						result
 						? ' finished ' + actionLabel + actionSummary + ', took '
 						: ' stopped by ' + (
-							isStopRequestedAnywhere(project)
+							isStopRequested
 							? 'request'
 							: 'error'
 						) + ' while ' + actionLabel + actionSummary + ' after '
@@ -4177,11 +4203,12 @@ async function getProjectViewMenu(project) {
 				+	' ms'
 				);
 
-				if (isStopRequestedAnywhere(project)) {
+				if (isStopRequested) {
 					return;
 				}
 
 				if (result) {
+					project.loading.errorPossible = 'project_status_error_creating_menu';
 					project.options = options;
 					project.layersTopSeparated = getLayersTopSeparated(project.layers);
 
@@ -4734,7 +4761,7 @@ async function getProjectViewMenu(project) {
 		return new Promise(
 			(resolve, reject) => {
 				if (layer.layers) {
-					if (TESTING > 1) console.log(
+					if (TESTING > 9) console.log(
 						'No image loaded because it is folder at: '
 					+	getLayerPathText(layer)
 					);
@@ -5310,7 +5337,8 @@ function setProjectThumbnail(project, fullImage) {
 
 async function getProjectViewImage(project, img) {
 	if (
-		project
+		!isStopRequestedAnywhere(project)
+	&&	project
 	&&	project.toPng
 	&&	(img = await project.toPng())
 	) {
@@ -5813,7 +5841,7 @@ const	params = getOrInitChild(layer, 'params');
 				params[paramType] = param || paramType;
 			}
 
-			if (TESTING > 2) console.log('Known param type [' + paramType + '], value = [' + param + '] at: ' + getWIPLayerPathText());
+			if (TESTING > 9) console.log('Known param type [' + paramType + '], value = [' + param + '] at: ' + getWIPLayerPathText());
 
 			// break param_types;
 			continue param_list;
@@ -6022,20 +6050,63 @@ async function addLayerGroupCommonWrapper(project, parentGroup, layers, callback
 	return true;
 }
 
-function updateProjectOperationProgress(project, operation, done, total) {
-	if (TESTING > 2) console.log(arguments);
+function updateProjectOperationProgress(project, operation, ...args) {
+	if (TESTING > 9) console.log(arguments);
+
+	if (operation === 'project_status_ready_options') {
+	const	counted = args[0];
+	const	count = (
+			(typeof counted === 'undefined')
+			? (project.renderBatchCountSelected || '?')
+			: (counted === '?')
+			? (project.renderBatchCountSelected || counted)
+			: (project.renderBatchCountSelected = counted)
+		);
+
+		if (count) {
+			args[0] = count;
+
+			if (ADD_COUNT_ON_BUTTON_LABEL) {
+				['show_all', 'save_all'].forEach(
+					(name) => getAllByName(name, project.container).forEach(
+						(button) => {
+						const	label = button.lastElementChild || cre('span', button);
+							label.className = 'count-label';
+							label.textContent = count;
+						}
+					)
+				);
+			} else {
+			const	labelClass = 'count-line';
+			let	label = getAllByClass(labelClass, project.container)[0];
+
+				if (!label) {
+				let	container = getAllByName('show_all', project.container)[0] || project.container;
+					container = getThisOrParentByTagName(container, 'section');
+
+					label = cre('div', container, container.lastElementChild);
+					label.className = labelClass;
+				}
+
+				label.textContent = (
+					getLocalizedOrEmptyText(getLocalizedKeyByCount('batch_count', count), count)
+				||	count
+				);
+			}
+		}
+	}
 
 let	element;
 
 	if (element = project.buttonStatus) {
 		if (TAB_STATUS_TEXT) {
-			element.textContent = getLocalizedText(operation, done, total);
+			element.textContent = getLocalizedText(operation, ...args);
 		}
 	}
 
 	if (element = project.buttonTab) {
 		if (!TAB_STATUS_TEXT) {
-			element.title = getLocalizedText(operation, done, total);
+			element.title = getLocalizedText(operation, ...args);
 		}
 
 		if (TAB_GROW_WIDTH) {
@@ -6113,6 +6184,7 @@ const	actionLabel = 'processing document with ' + libName;
 	}
 
 	if (sourceData) {
+		project.loading.errorPossible = 'project_status_error_in_layers';
 		project.sourceData = sourceData;
 		project.toPng = thisToPng;
 
@@ -6278,6 +6350,12 @@ async function loadORA(project) {
 					lastPauseTime = timeNow;
 				}
 
+				if (isStopRequested = isStopRequestedAnywhere(project)) {
+					project.loading.errorPossible = 'project_status_aborted';
+
+					return;
+				}
+
 				if (isLayerFolder) {
 					await addLayerGroupCommonWrapper(project, parentGroup, layers, addLayerToTree);
 				}
@@ -6285,7 +6363,11 @@ async function loadORA(project) {
 
 		let	nodesDoneCount = 0;
 		let	lastPauseTime = getTimeNow();
-		let	timeNow;
+		let	timeNow, isStopRequested;
+
+			if (isStopRequested) {
+				return;
+			}
 
 			return await addLayerGroupCommonWrapper(
 				project
@@ -6441,6 +6523,12 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 					lastPauseTime = timeNow;
 				}
 
+				if (isStopRequested = isStopRequestedAnywhere(project)) {
+					project.loading.errorPossible = 'project_status_aborted';
+
+					return;
+				}
+
 				if (isLayerFolder) {
 					++project.foldersCount;
 
@@ -6452,7 +6540,11 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 
 		let	nodesDoneCount = 0;
 		let	lastPauseTime = getTimeNow();
-		let	timeNow;
+		let	timeNow, isStopRequested;
+
+			if (isStopRequested) {
+				return;
+			}
 
 			return await addLayerGroupCommonWrapper(
 				project
@@ -6682,7 +6774,7 @@ async function getAllValueSets(project, flags, startTime) {
 				isStopRequestedAnywhere(project)
 				|| (
 					startTime
-				&&	startTime !== project.batchCounterStartTime
+				&&	startTime !== project.renderBatchCounterStartTime
 				)
 			);
 
@@ -7348,11 +7440,12 @@ async function addDebugImage(project, canvas, comment, highLightColor) {
 	const	img = cre('img', project.renderContainer);
 
 		if (project) {
-		const	layers = project.rendering.nestedLayers;
+		const	PR = project.rendering || {};
+		const	layers = PR.nestedLayers;
 		const	layer = layers[layers.length - 1];
 
 			img.alt = img.title = [
-				'render name: ' + project.rendering.fileName
+				'render name: ' + PR.fileName
 			,	'render nesting level: ' + layers.length
 			,	'render nesting path: ' + layers.map((v) => v.name).join(' / ')
 			,	'layer nesting path: ' + getLayerPathText(layer)
@@ -8280,8 +8373,9 @@ let	canvas, ctx, mask, clippingMask;
 //* end of layer tree:
 
 	if (!nestedLayersBatch) {
-	const	renderingTime = getTimeNow() - project.rendering.startTime;
-	const	renderName = project.rendering.fileName;
+	const	PR = project.rendering;
+	const	renderingTime = getTimeNow() - PR.startTime;
+	const	renderName = PR.fileName;
 
 		if (isStopRequestedAnywhere(project)) {
 			canvas = ctx = null;
@@ -8293,9 +8387,9 @@ let	canvas, ctx, mask, clippingMask;
 
 			logTime(
 				'"' + project.fileName + '" rendered in '
-			+	[	project.rendering.layersBatchCount + ' canvas elements'
-				,	project.rendering.layersApplyCount + ' blending steps'
-				,	project.rendering.nestedLevelMax + ' max nesting levels'
+			+	[	PR.layersBatchCount + ' canvas elements'
+				,	PR.layersApplyCount + ' blending steps'
+				,	PR.nestedLevelMax + ' max nesting levels'
 				,	(renderingTime / 1000) + ' seconds'
 				,	'subtitle'
 				].join(', ')
@@ -8655,7 +8749,7 @@ async function renderAll(project, flags) {
 		flags.showOnPage = true;
 	}
 
-	project.batchCounterStartTime = null;
+	project.renderBatchCounterStartTime = null;
 
 const	logLabel = 'Render all: ' + project.fileName;
 
@@ -8685,6 +8779,9 @@ const	renderedImages = [];
 const	needWaitBetweenDL = (flags.saveToFile && !flags.asOneJoinedImage);
 const	optionsForNewLines = getNewLineOptionLists(project.options);
 const	setsCountTotal = Object.keys(valueSets).length;
+
+	await updateBatchCount(project, setsCountTotal);
+
 let	setsCountWithoutPause = 0;
 let	setsCount = 0;
 let	totalTime = 0;
@@ -9061,8 +9158,8 @@ function updateCheckBox(checkBox, params) {
 	}
 }
 
-async function updateBatchCount(project) {
-const	startTime = project.batchCounterStartTime = getTimeNow();
+async function updateBatchCount(project, precounted) {
+const	startTime = project.renderBatchCounterStartTime = getTimeNow();
 const	precounts = getOrInitChild(project, 'renderBatchCounts');
 const	key = (
 		(
@@ -9074,7 +9171,11 @@ const	key = (
 	+	getFileNameByValues(project)
 	);
 
-let	count = precounts[key];
+let	count = (
+		precounted
+		? (precounts[key] = precounted)
+		: precounts[key]
+	);
 
 	if (!count) {
 		count = await getAllValueSetsCount(project, startTime);
@@ -9083,14 +9184,13 @@ let	count = precounts[key];
 
 //* stop if another count was started, skip updating:
 
-			if (startTime !== project.batchCounterStartTime) {
+			if (startTime !== project.renderBatchCounterStartTime) {
 				return;
 			} else {
 
 //* stop if requested by user, but update text:
 
 				count = '?';
-
 			}
 		} else {
 			if (
@@ -9103,38 +9203,9 @@ let	count = precounts[key];
 
 			precounts[key] = count;
 		}
-
 	}
 
-	if (ADD_COUNT_ON_BUTTON_LABEL) {
-		['show_all', 'save_all'].forEach(
-			(name) => getAllByName(name, project.container).forEach(
-				(button) => {
-				const	label = button.lastElementChild || cre('span', button);
-					label.className = 'count-label';
-					label.textContent = count;
-				}
-			)
-		);
-	} else {
-	const	labelClass = 'count-line';
-	let	label = getAllByClass(labelClass, project.container)[0];
-
-		if (!label) {
-		let	container = getAllByName('show_all', project.container)[0] || project.container;
-			container = getThisOrParentByTagName(container, 'section');
-
-			label = cre('div', container, container.lastElementChild);
-			label.className = labelClass;
-		}
-
-		label.textContent = (
-			getLocalizedOrEmptyText(getLocalizedKeyByCount('batch_count', count), count)
-		||	count
-		);
-	}
-
-	updateProjectOperationProgress(project, 'project_status_ready');
+	updateProjectOperationProgress(project, 'project_status_ready_options', count);
 }
 
 function setProjectWIPstate(project, isWIP) {
@@ -9161,7 +9232,7 @@ const	state = !!isWIP;
 	,	(
 			state
 			? 'project_status_rendering'
-			: 'project_status_ready'
+			: 'project_status_ready_options'
 		)
 	);
 
@@ -9243,7 +9314,11 @@ function onPageKeyPress(evt) {
 
 		getAllByClass('loading', getOneById('loaded-files-selection')).forEach(
 			(button) => {
-				(button.project || button).isStopRequested = true;
+				button.isStopRequested = true;
+
+				if (button.project) {
+					button.project.isStopRequested = true;
+				}
 			}
 		);
 	}
