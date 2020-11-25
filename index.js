@@ -31,6 +31,7 @@
 //* TODO: lazy-load layer/mask images only when needed; source file object will not get garbage-collected until all usable images are loaded.
 
 //* TODO ---------------------- other: ----------------------------------------
+//* TODO: store (in)validated combination in a Map by filename as key, and combinations to render (each wrapped in object as pointer to Map element and the filename) in a Set.
 //* TODO: find zoom/scale of the screen/page before regenerating thumbnails.
 //* TODO: consistent UI colors (what blue, yellow, white, etc. means across the whole page).
 //* TODO: global job list for WIP cancelling instead of spaghetti-coded flag checks.
@@ -6089,33 +6090,7 @@ function updateProjectOperationProgress(project, operation, ...args) {
 		if (count) {
 			args[0] = count;
 
-			if (ADD_COUNT_ON_BUTTON_LABEL) {
-				['show_all', 'save_all'].forEach(
-					(name) => getAllByName(name, project.container).forEach(
-						(button) => {
-						const	label = button.lastElementChild || cre('span', button);
-							label.className = 'count-label';
-							label.textContent = count;
-						}
-					)
-				);
-			} else {
-			const	labelClass = 'count-line';
-			let	label = getAllByClass(labelClass, project.container)[0];
-
-				if (!label) {
-				let	container = getAllByName('show_all', project.container)[0] || project.container;
-					container = getThisOrParentByTagName(container, 'section');
-
-					label = cre('div', container, container.lastElementChild);
-					label.className = labelClass;
-				}
-
-				label.textContent = (
-					getLocalizedOrEmptyText(getLocalizedKeyByCount('batch_count', count), count)
-				||	count
-				);
-			}
+			updateMenuBatchCount(project, count);
 		}
 	}
 
@@ -6845,6 +6820,12 @@ async function getAllValueSets(project, flags, startTime) {
 					updateProjectOperationProgress(
 						project
 					,	'project_status_counting_batch'
+					,	addedCount
+					,	maxPossibleCount
+					);
+
+					updateMenuBatchCount(
+						project
 					,	addedCount
 					,	maxPossibleCount
 					);
@@ -9205,6 +9186,45 @@ function updateCheckBox(checkBox, params) {
 
 		params[switchName[0]] = !targetState;
 		params[switchName[1]] = targetState;
+	}
+}
+
+function updateMenuBatchCount(project, ...args) {
+	if (ADD_COUNT_ON_BUTTON_LABEL) {
+		['show_all', 'save_all'].forEach(
+			(name) => getAllByName(name, project.container).forEach(
+				(button) => {
+				const	label = button.lastElementChild || cre('span', button);
+					label.className = 'count-label';
+					label.textContent = args.join(' / ');
+				}
+			)
+		);
+	} else {
+	let	label = project.renderBatchCountMenuLabel;
+
+		if (!label) {
+		const	labelClass = 'count-line';
+			label = getAllByClass(labelClass, project.container)[0];
+
+			if (!label) {
+			let	container = getAllByName('show_all', project.container)[0] || project.container;
+				container = getThisOrParentByTagName(container, 'section');
+
+				label = project.renderBatchCountMenuLabel = cre('div', container, container.lastElementChild);
+				label.className = labelClass;
+			}
+		}
+
+		label.textContent = (
+			getLocalizedOrEmptyText(
+				args.length > 1
+				? 'batch_counting'
+				: 'batch_count'
+			,	...args
+			)
+		||	args.join(' / ')
+		);
 	}
 }
 
