@@ -4156,7 +4156,7 @@ async function getProjectViewMenu(project) {
 			const	startTime = getTimeNow();
 
 			let	lastPauseTime = startTime;
-			let	timeNow, isStopRequested;
+			let	isStopRequested;
 
 				while (
 					!(isStopRequested = isStopRequestedAnywhere(project))
@@ -4166,10 +4166,8 @@ async function getProjectViewMenu(project) {
 				&&	(result = await getLayerMaskLoadPromise(layer.mask, project))
 				) if (
 					ADD_PAUSE_AT_INTERVALS
-				&&	((timeNow = getTimeNow()) - lastPauseTime) > PAUSE_WORK_INTERVAL
+				&&	(getTimeNow() - lastPauseTime) > PAUSE_WORK_INTERVAL
 				) {
-					lastPauseTime = timeNow;
-
 					updateProjectOperationProgress(
 						project
 					,	'project_status_reading_images'
@@ -4178,6 +4176,8 @@ async function getProjectViewMenu(project) {
 					);
 
 					await pause(PAUSE_WORK_DURATION);
+
+					lastPauseTime = getTimeNow();
 				}
 
 			const	tookTime = getTimeNow() - startTime;
@@ -6359,7 +6359,7 @@ async function loadORA(project) {
 
 				if (
 					ADD_PAUSE_AT_INTERVALS
-				&&	((timeNow = getTimeNow()) - lastPauseTime) > PAUSE_WORK_INTERVAL
+				&&	(getTimeNow() - lastPauseTime) > PAUSE_WORK_INTERVAL
 				) {
 					updateProjectOperationProgress(
 						project
@@ -6370,7 +6370,7 @@ async function loadORA(project) {
 
 					await pause(PAUSE_WORK_DURATION);
 
-					lastPauseTime = timeNow;
+					lastPauseTime = getTimeNow();
 				}
 
 				if (isStopRequested = isStopRequestedAnywhere(project)) {
@@ -6386,7 +6386,7 @@ async function loadORA(project) {
 
 		let	nodesDoneCount = 0;
 		let	lastPauseTime = getTimeNow();
-		let	timeNow, isStopRequested;
+		let	isStopRequested;
 
 			if (isStopRequested) {
 				return;
@@ -6532,7 +6532,7 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 
 				if (
 					ADD_PAUSE_AT_INTERVALS
-				&&	((timeNow = getTimeNow()) - lastPauseTime) > PAUSE_WORK_INTERVAL
+				&&	(getTimeNow() - lastPauseTime) > PAUSE_WORK_INTERVAL
 				) {
 					updateProjectOperationProgress(
 						project
@@ -6543,7 +6543,7 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 
 					await pause(PAUSE_WORK_DURATION);
 
-					lastPauseTime = timeNow;
+					lastPauseTime = getTimeNow();
 				}
 
 				if (isStopRequested = isStopRequestedAnywhere(project)) {
@@ -6563,7 +6563,7 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 
 		let	nodesDoneCount = 0;
 		let	lastPauseTime = getTimeNow();
-		let	timeNow, isStopRequested;
+		let	isStopRequested;
 
 			if (isStopRequested) {
 				return;
@@ -6840,7 +6840,7 @@ async function getAllValueSets(project, flags, startTime) {
 
 				if (
 					ADD_PAUSE_AT_INTERVALS
-				&&	((timeNow = getTimeNow()) - lastPauseTime) > PAUSE_WORK_INTERVAL
+				&&	(getTimeNow() - lastPauseTime) > PAUSE_WORK_INTERVAL
 				) {
 					updateProjectOperationProgress(
 						project
@@ -6851,7 +6851,7 @@ async function getAllValueSets(project, flags, startTime) {
 
 					await pause(PAUSE_WORK_DURATION);
 
-					lastPauseTime = timeNow;
+					lastPauseTime = getTimeNow();
 				}
 			}
 		}
@@ -6874,7 +6874,7 @@ let	valueSets = getOnlyNames ? [] : {};
 let	aborted = false;
 let	addedCount = 0;
 let	maxPossibleCount = 1;
-let	section, optionNames, timeNow, lastPauseTime;
+let	section, optionNames, lastPauseTime;
 
 	for (const sectionName in values) if (section = values[sectionName])
 	for (const listName in section) if (optionNames = section[listName]) {
@@ -7902,11 +7902,11 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 			if (
 				ADD_PAUSE_AT_INTERVALS
-			&&	((timeNow = getTimeNow()) - PR.lastPauseTime) > PAUSE_WORK_INTERVAL
+			&&	(getTimeNow() - PR.lastPauseTime) > PAUSE_WORK_INTERVAL
 			) {
 				await pause(PAUSE_WORK_DURATION);
 
-				PR.lastPauseTime = timeNow;
+				PR.lastPauseTime = getTimeNow();
 			}
 		}
 
@@ -8320,7 +8320,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 		return;
 	}
 
-let	timeNow, layer, layersToRenderOne;
+let	layer, layersToRenderOne;
 
 	if (project.rendering) {
 		if (nestedLayersBatch) {
@@ -8348,11 +8348,11 @@ let	timeNow, layer, layersToRenderOne;
 			}
 		}
 
-		timeNow = getTimeNow();
+	const	startTime = getTimeNow();
 
 		project.rendering = {
-			startTime: timeNow
-		,	lastPauseTime: timeNow
+			startTime
+		,	lastPauseTime: startTime
 		,	fileName: getFileNameByValues(project, values)
 		,	layersApplyCount: 0
 		,	layersBatchCount: 1
