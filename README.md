@@ -126,3 +126,5 @@ PNG file parser (not used here yet):
 ZIP file parser:
 * Lightly modified [zip.js](https://github.com/gildas-lormeau/zip.js), should be backward compatible.
 * Unmodified [zlib-asm](https://github.com/ukyo/zlib-asm).
+
+Each library folder contains its respective license file.
