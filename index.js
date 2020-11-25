@@ -1174,17 +1174,8 @@ function getLocalizedKeyByCount(key, ...args) {
 
 function getLocalizedOrDefaultText(key, defaultText, ...replacements) {
 
-	function replaceOrAppendText(oldText, placeholder, replacement) {
-	let	newText = replaceAll(oldText, placeholder, replacement);
-
-		if (
-			foundKey === null
-		&&	newText === oldText
-		) {
-			newText += '\n' + replacement;
-		}
-
-		return newText;
+	function replaceKeyword(placeholder, replacement) {
+		text = replaceAll(text, placeholder, getNestedJoinedText(replacement, '\n', ''));
 	}
 
 const	foundKey = getLocalizedKeyByCount(key, ...replacements);
@@ -1203,9 +1194,7 @@ let	text = getJoinedOrEmptyText(
 	&&	isArray(replacements)
 	) {
 		replacements.forEach(
-			(value, index) => {
-				text = replaceOrAppendText(text, '{' + index + '}', getNestedJoinedText(value, '\n', ''));
-			}
+			(value, index) => replaceKeyword('{' + index + '}', value)
 		);
 	}
 
@@ -1214,13 +1203,15 @@ let	text = getJoinedOrEmptyText(
 	&&	(replacements = text.match(regTemplateVarName))
 	) {
 		for (const placeholder of replacements) {
-			key = placeholder.replace(regTrimBrackets, '');
+		const	keyword = placeholder.replace(regTrimBrackets, '');
 
-			if (key in LOCALIZATION_TEXT) {
-				text = replaceOrAppendText(text, placeholder, getNestedJoinedText(LOCALIZATION_TEXT[key], '\n', ''));
-			} else
-			if (key in window) {
-				text = replaceOrAppendText(text, placeholder, getNestedJoinedText(window[key], '\n', ''));
+			if (keyword.length > 0) {
+				if (keyword in LOCALIZATION_TEXT) {
+					replaceKeyword(placeholder, LOCALIZATION_TEXT[keyword]);
+				} else
+				if (keyword in window) {
+					replaceKeyword(placeholder, window[keyword]);
+				}
 			}
 		}
 	}
@@ -3913,7 +3904,15 @@ let	project = null;
 		const	fileId = 'loaded-file: ' + sourceFile.name;
 		const	childKeys = ['layers'];
 
-			cleanupObjectTree(project, childKeys, TESTING ? CLEANUP_KEYS_TESTING : CLEANUP_KEYS);
+			cleanupObjectTree(
+				project
+			,	childKeys
+			,	(
+					TESTING > 1
+					? CLEANUP_KEYS_TESTING
+					: CLEANUP_KEYS
+				)
+			);
 
 			container.className = 'loaded-file';
 
@@ -4110,7 +4109,7 @@ let	project, projectError, startTime;
 		);
 	} else {
 		console.log(
-			'Error: Unknown file type: '
+			'Error: Unknown file type:'
 		,	[
 				ext
 			,	mimeType
@@ -9559,6 +9558,8 @@ let	files, name, ext;
 	&&	(files = batch.files)
 	&&	files.length
 	) {
+		if (TESTING > 1) console.log(batch);
+
 		for (const file of files) if (
 			file
 		&&	(name = file.name).length > 0

@@ -9,6 +9,7 @@
 2. Easy batch export of all versions into image files (PNG), separated or joined.
 
 Completely on the client side, using a web browser with modern JavaScript support.
+Firefox 56 is supported as a bottom line.
 
 
 
