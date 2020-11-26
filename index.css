@@ -369,7 +369,7 @@ img.larger {
 #top-menu-help code,
 #top-menu-help code > *,
 #top-menu-help pre > * {
-	display: inline-flex;	/* <- does not fill parent table-cell height, but a little better than inline-block */
+	display: inline-flex;	/* <- (TODO) does not fill parent table-cell height, but a little better than inline-block */
 }
 #top-menu-help code[class],
 #top-menu-help code > *,
@@ -410,7 +410,7 @@ img.larger {
 	opacity: 0.35;
 }
 #loaded-files-selection .button {
-	display: inline-flex;	/* <- modern way to vertically fill parent height */
+	display: inline-flex;	/* <- content will vertically fill the height of this container */
 	margin: 0.5em;
 }
 body > button::-moz-focus-inner,
@@ -454,6 +454,9 @@ body > button,
 .project-options td,
 .loaded-file td section {
 	white-space: nowrap;
+}
+.project-header {
+	display: flex;	/* <- content will vertically fill the height of this container */
 }
 .loaded-file td,
 .project-header div,

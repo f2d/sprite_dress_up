@@ -9357,6 +9357,13 @@ function onBeforeUnload(evt) {
 }
 
 function onResize(evt) {
+
+//* Workaround for ff56, reset style to recalculate:
+
+const	style = document.documentElement.style;
+	style.marginRight = 0;
+	style.marginRight = '';
+
 	updateDropdownMenuPositions(evt);
 
 //* TODO: find zoom/scale of the screen/page before regenerating thumbnails.
