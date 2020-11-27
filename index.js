@@ -89,6 +89,7 @@ var	exampleRootDir = ''
 ,	READ_FILE_CONTENT_TO_GET_TYPE	= false
 ,	TAB_GROW_WIDTH			= true
 ,	TAB_STATUS_TEXT			= true
+,	TAB_THUMBNAIL_PRELOAD		= true
 ,	TAB_THUMBNAIL_TRIMMED		= false	//* <- a little more content may become visible, but will take more time and shift image alignment
 ,	TAB_THUMBNAIL_ZOOM		= true
 ,	TAB_THUMBNAIL_ZOOM_TRIMMED	= false
@@ -105,6 +106,8 @@ var	exampleRootDir = ''
 //* Create type-checking functions, e.g. "isString()" or "isImageElement()":
 //* source: https://stackoverflow.com/a/17772086
 [
+	// 'AsyncFunction',	//* <- maybe better cut 'Function' from end to match this
+	'Promise',
 	'Array',
 	'Date',
 	'Function',
@@ -119,7 +122,7 @@ var	exampleRootDir = ''
 		window[
 			'is' + typeName.replace('HTML', '')
 		] = function (value) {
-			return (toString.call(value).slice(8, -1) === typeName);
+			return (toString.call(value).slice(-1 - typeName.length, -1) === typeName);
 		};
 	}
 );
@@ -1429,15 +1432,15 @@ function getRGBAFromColorCodeOrArray(color, maxCount) {
 }
 
 function isColorDark(color) {
-const	[r, g, b] = getRGBAFromColorCodeOrArray(color, 3);
+const	[ r2, g2, b2 ] = getRGBAFromColorCodeOrArray(color, 3).map((v) => (v * v));
 
 //* sources:
 //* https://awik.io/determine-color-bright-dark-using-javascript/
 //* http://alienryderflex.com/hsp.html
 	return Math.sqrt(
-		0.299 * (r * r)
-	+	0.587 * (g * g)
-	+	0.114 * (b * b)
+		0.299 * r2
+	+	0.587 * g2
+	+	0.114 * b2
 	) < 150;
 }
 
@@ -2114,7 +2117,7 @@ let	y = 0;
 		element = element.offsetParent;
 	}
 
-	return {x:x, y:y};
+	return { x, y };
 }
 
 function putInView(element, x,y, changeOnlyX, changeOnlyY) {
@@ -2446,14 +2449,34 @@ function logError(error, args, context) {
 	);
 }
 
-function getFilePromise(file) {
+async function resolvePromiseOnImgLoad(img, resolve, reject) {
+	img = await img;
+
+	if (isImageElement(img)) {
+		if (img.complete) {
+			resolve(img);
+		} else {
+			img.onerror = reject;
+			img.onload = () => resolve(img);
+		}
+	} else
+	if (isPromise(img)) {
+		img
+		.then(resolve)
+		.catch(reject);
+	} else {
+		reject(img);
+	}
+}
+
+function getFilePromise(file, projectOrTab) {
 
 //* Note: "file" may be a blob object.
 //* source: https://stackoverflow.com/a/15981017
 
 	if (
 		!file
-	||	!window.FileReader
+	||	typeof FileReader !== 'function'
 	) {
 		return null;
 	}
@@ -2462,37 +2485,43 @@ function getFilePromise(file) {
 		(resolve, reject) => {
 		const	reader = new FileReader();
 
-			reader.addEventListener(
-				'error'
-			,	(evt) => getErrorFromEvent(evt, 'FileReader failed.', reject)
-			);
+			if (projectOrTab) {
+				reader.onloadstart =
+				reader.onloadend =
+				reader.onprogress = (evt) => updateProjectOperationProgress(
+					projectOrTab
+				,	'project_status_loading_file'
+				,	evt.loaded || evt.position || '?'
+				,	getLocalizedOrDefaultText('file_bytes', evt.total || evt.totalSize || '?')
+				);
+			}
 
-			reader.addEventListener(
-				'load'
-			,	(evt) => {
-				const	result = evt.target.result;
+			reader.onabort =
+			reader.onerror = (evt) => getErrorFromEvent(evt, 'FileReader failed.', reject);
 
-					if (result) {
-						resolve(result);
-					} else {
-						getErrorFromEvent(evt, 'FileReader completed, got empty or no result.', reject);
-					}
+			reader.onload = (evt) => {
+			const	result = evt.target.result;
+
+				if (result) {
+					resolve(result);
+				} else {
+					getErrorFromEvent(evt, 'FileReader completed, got empty or no result.', reject);
 				}
-			);
+			};
 
 			reader.readAsArrayBuffer(file);
 		}
 	).catch(catchPromiseError);
 }
 
-function getFilePromiseFromURL(url, responseType) {
+function getFilePromiseFromURL(url, responseType, projectOrTab) {
 
 //* Note: "url" may be a "blob:" or "data:" url.
 //* source: https://www.mwguy.com/decoding-a-png-image-in-javascript/
 
 	if (
 		!url
-	||	!window.XMLHttpRequest
+	||	typeof XMLHttpRequest !== 'function'
 	) {
 		return null;
 	}
@@ -2501,37 +2530,44 @@ function getFilePromiseFromURL(url, responseType) {
 		(resolve, reject) => {
 		const	request = new XMLHttpRequest();
 
-			request.addEventListener(
-				'error'
-			,	(evt) => getErrorFromEvent(evt, 'Request failed.', reject)
-			);
+			if (projectOrTab) {
+				request.onloadstart =
+				request.onloadend =
+				request.onprogress = (evt) => updateProjectOperationProgress(
+					projectOrTab
+				,	'project_status_loading_file'
+				,	evt.loaded || evt.position || '?'
+				,	getLocalizedOrDefaultText('file_bytes', evt.total || evt.totalSize || '?')
+				);
+			}
 
-			request.addEventListener(
-				'load'
-			,	(evt) => {
-				const	response = evt.target.response;
+			request.ontimeout =
+			request.onabort =
+			request.onerror = (evt) => getErrorFromEvent(evt, 'Request failed.', reject);
 
-					if (response) {
-						if (isFunction(request.getAllResponseHeaders)) {
-							response.headers = request.getAllResponseHeaders();
-						}
+			request.onload = (evt) => {
+			const	response = evt.target.response;
 
-						if (isFunction(request.getResponseHeader)) {
-						const	lastModText = request.getResponseHeader('Last-Modified');
-
-							if (lastModText) {
-								response.lastModified = +new Date(lastModText);
-							}
-						}
-
-						resolve(response);
-					} else {
-						getErrorFromEvent(evt, 'Request completed, got empty or no response.', reject);
+				if (response) {
+					if (isFunction(request.getAllResponseHeaders)) {
+						response.headers = request.getAllResponseHeaders();
 					}
-				}
-			);
 
-			request.responseType = responseType || 'blob';
+					if (isFunction(request.getResponseHeader)) {
+					const	lastModText = request.getResponseHeader('Last-Modified');
+
+						if (lastModText) {
+							response.lastModified = +new Date(lastModText);
+						}
+					}
+
+					resolve(response);
+				} else {
+					getErrorFromEvent(evt, 'Request completed, got empty or no response.', reject);
+				}
+			};
+
+			request.responseType = responseType || 'arraybuffer';
 			request.open('GET', url, true);
 			request.send();
 		}
@@ -2569,17 +2605,11 @@ function getImagePromiseFromCanvasToBlob(canvas, trackList, mimeType, quality, i
 				};
 
 				img.onerror = (evt) => {
-					if (img.complete) {
-						resolve(img);
-
-						return;
-					}
-
-					if (TESTING) console.log('Image loading failed:', [url, img, evt]);
-
 					if (!trackList) {
 						URL.revokeObjectURL(url);
 					}
+
+					if (TESTING) console.log('Image loading failed:', [url, img, evt]);
 
 					getErrorFromEvent(evt, 'Canvas to blob: image loading failed.', reject);
 				};
@@ -2635,10 +2665,9 @@ let	count = 0;
 
 			if (isFunction(trackList.push)) {
 				count += revokeBlobsFromTrackList(trackList);
-			} else {
-				for (const listName in trackList) {
-					count += revokeBlobsFromTrackList(trackList[listName]);
-				}
+			} else
+			for (const listName in trackList) {
+				count += revokeBlobsFromTrackList(trackList[listName]);
 			}
 		}
 	}
@@ -2670,16 +2699,12 @@ function dataToBlob(data, trackList) {
 
 	const	bytes = Uint8Array.from(data, (v) => v.charCodeAt(0));
 	const	size = bytes.length;
-	const	url = URL.createObjectURL(new Blob(bytes, {'type': type}));
+	const	url = URL.createObjectURL(new Blob(bytes, { type }));
 
 		if (url) {
 			addURLToTrackList(url, trackList);
 
-			return {
-				size: size
-			,	type: type
-			,	url: url
-			};
+			return { size, type, url };
 		}
 	}
 }
@@ -3074,13 +3099,26 @@ function getImageSrcPlaceholder() {
 	return thumbnailPlaceholder;
 }
 
-function setImageSrc(img, data) {
+function setImageSrc(img, data, onLoad, onError) {
 	if (isImageElement(img)) {
 		if (data || !img.src) {
 			img.src = data || getImageSrcPlaceholder();
+
+			if (onLoad || onError) {
+				return new Promise(
+					(resolve, reject) => resolvePromiseOnImgLoad(
+						img
+					,	(onLoad  ? ((img)   => { resolve(img),  onLoad(img)    }) : resolve)
+					,	(onError ? ((error) => { reject(error), onError(error) }) : reject)
+					)
+				).catch(catchPromiseError);
+			}
 		}
 	} else
-	if (img.style) {
+	if (
+		isNonNullObject(img)
+	&&	img.style
+	) {
 		if (data || !img.style.backgroundImage) {
 			data = data || getImageSrcPlaceholder();
 			img.style.backgroundImage = 'url("' + data + '")';
@@ -3639,16 +3677,16 @@ async function thisToPng(targetLayer) {
 
 	async function thisToPngTryOne(target, node) {
 
-		async function getAsyncResultIfMethodExists(node, methodName) {
+		function getResultPromiseIfMethodExists(methodName) {
 			return (
 				isNonRecursiveFunction(node[methodName])
-				? await (
-					hasPrefix(methodName, 'to')
-					? node[methodName]()
-					: new Promise(
-						(resolve, reject) => node[methodName](resolve, reject)
-					).catch(catchPromiseError)
-				)
+				? new Promise(
+					(resolve, reject) => (
+						hasPrefix(methodName, 'to')
+						? resolvePromiseOnImgLoad(node[methodName](), resolve, reject)
+						: node[methodName](resolve, reject)
+					)
+				).catch(catchPromiseError)
 				: null
 			);
 		}
@@ -3693,7 +3731,7 @@ async function thisToPng(targetLayer) {
 				'toPng',
 			]
 		) {
-			if (img = await getAsyncResultIfMethodExists(node, methodName)) {
+			if (img = await getResultPromiseIfMethodExists(methodName)) {
 				return getAndCountLoadedImage(img);
 			}
 		}
@@ -3731,7 +3769,8 @@ async function thisToPng(targetLayer) {
 		for (
 			const mergedOrNode
 			of [
-				sourceOrTarget.prerendered
+				sourceOrTarget.mergedImage
+			,	sourceOrTarget.prerendered
 			,	sourceOrTarget.thumbnail
 			,	sourceOrTarget
 			]
@@ -3869,33 +3908,27 @@ const	buttonClose = cre('button', buttonTab);
 const	projectButtons = {
 		buttonTab,
 		buttonStatus,
+		thumbImg,
 		errorParams: sourceFile.ext,
 		errorPossible: 'project_status_error_file_type',
 	};
 
 	updateProjectOperationProgress(projectButtons, 'project_status_loading');
 
-let	container = null;
-let	project = null;
+let	project, container;
 
 	try {
 		project = await getNormalizedProjectData(sourceFile, projectButtons);
 
-		if (project) {
+		if (project && !isStopRequestedAnywhere(project, projectButtons)) {
 			buttonTab.project = project;
 
-			if (isStopRequestedAnywhere(project, buttonTab)) {
-				project.isStopRequested = true;
-			} else {
-				project.thumbnail = thumbImg;
+			container = (
+				await getProjectViewMenu(project)
+			||	await getProjectViewImage(project)
+			);
 
-				container = (
-					await getProjectViewMenu(project)
-				||	await getProjectViewImage(project)
-				);
-			}
-
-			if (isStopRequestedAnywhere(project, buttonTab)) {
+			if (isStopRequestedAnywhere(project, projectButtons)) {
 				container = null;
 			}
 		}
@@ -3915,29 +3948,27 @@ let	project = null;
 			);
 
 			container.className = 'loaded-file';
-
-			project.container = container;
 			container.project = project;
+			project.container = container;
 
-		let	result = !isStopRequestedAnywhere(project, buttonTab);
+		let	result = !isStopRequestedAnywhere(project, projectButtons);
 
 			if (result) {
-				if (project.options) {
-					if (result = await updateMenuAndShowImg(project)) {
-						await updateBatchCount(project);
-
-						buttonTab.className = 'button loaded with-options';
-					}
-				} else {
+				if (!project.options) {
 					buttonTab.className = 'button loaded without-options';
 
 					updateProjectOperationProgress(projectButtons, 'project_status_ready_no_options');
+				} else
+				if (result = await updateMenuAndShowImg(project)) {
+					await updateBatchCount(project);
+
+					buttonTab.className = 'button loaded with-options';
 				}
 			}
 
 //* attach prepared DOM branch to visible document:
 
-			if (result && !isStopRequestedAnywhere(project, buttonTab)) {
+			if (result && !isStopRequestedAnywhere(project, projectButtons)) {
 				removeProjectView(fileId);
 
 				container.id = buttonTab.id = fileId;
@@ -3960,7 +3991,7 @@ let	project = null;
 
 	buttonTab.className = 'button loading failed';
 
-	if (isStopRequestedAnywhere(project, buttonTab)) {
+	if (isStopRequestedAnywhere(project, projectButtons)) {
 		project = null;
 		projectButtons.errorPossible = 'project_status_aborted';
 	}
@@ -3990,13 +4021,13 @@ let	project = null;
 	return false;
 }
 
-async function getFileFromLoadingData(data) {
+async function getFileFromLoadingData(data, projectButtons) {
 	if (isNonNullObject(data)) {
 		if (
 			!data.file
 		&&	data.url
 		) {
-			data.file = await getFilePromiseFromURL(data.url, 'blob');
+			data.file = await getFilePromiseFromURL(data.url, 'blob', projectButtons);
 		}
 
 		return data.file;
@@ -4023,15 +4054,13 @@ async function getNormalizedProjectData(sourceFile, projectButtons) {
 		if (!sourceFile.file) {
 			projectButtons.errorPossible = 'project_status_error_loading_file';
 
-			sourceFile.file = await getFileFromLoadingData(sourceFile);
-
-			if (!sourceFile.file) {
+			if (!await getFileFromLoadingData(sourceFile, projectButtons)) {
 				return null;
 			}
 		}
 	}
 
-const	{buttonTab, buttonStatus} = projectButtons;
+const	{ buttonTab, buttonStatus, thumbImg } = projectButtons;
 
 const	fileName = sourceFile.name;
 const	baseName = sourceFile.baseName;
@@ -4040,7 +4069,7 @@ const	mimeType = getPropByNameChain(sourceFile, 'file', 'type');
 const	actionLabel = 'processing document structure';
 
 let	loadersTried = 0;
-let	project, projectError, startTime;
+let	project, totalStartTime;
 
 	try_loaders:
 	for (const loader of fileTypeLoaders) if (
@@ -4050,25 +4079,26 @@ let	project, projectError, startTime;
 
 		projectButtons.errorPossible = 'project_status_error_in_format';
 
-	const	loaderStartTime = getTimeNow();
+	const	startTime = getTimeNow();
 
 		if (!loadersTried++) {
-			startTime = loaderStartTime;
+			totalStartTime = startTime;
 
 			logTime('"' + fileName + '" started ' + actionLabel);
 		}
 
 		project = {
-			fileName: fileName
-		,	baseName: baseName
+			fileName
+		,	baseName
+		,	buttonTab
+		,	buttonStatus
+		,	thumbnail: thumbImg
 		,	foldersCount: 0
 		,	layersCount: 0
 		,	imagesCount: 0
 		,	imagesLoadedCount: 0
-		,	buttonTab
-		,	buttonStatus
 		,	loading: {
-				startTime: loaderStartTime
+				startTime
 			,	data: sourceFile
 			,	images: []
 			,	errorPossible: 'project_status_error_in_format'
@@ -4078,20 +4108,28 @@ let	project, projectError, startTime;
 		if (await tryFileParserFunc(func, project)) {
 			break try_loaders;
 		} else
-		if (isStopRequestedAnywhere(project, buttonTab)) {
+		if (isStopRequestedAnywhere(project, projectButtons)) {
 			projectButtons.errorPossible = 'project_status_aborted';
 
 			break try_loaders;
-		} else
-		if (projectError = getPropByNameChain(project, 'loading', 'errorPossible')) {
-			projectButtons.errorPossible = projectError;
+		} else {
+		const	loadingError = getPropByNameChain(project, 'loading', 'errorPossible');
+		const	loadingContext = getPropByNameChain(project, 'loading', 'errorParams');
+
+			if (loadingError) {
+				projectButtons.errorPossible = loadingError;
+
+				if (loadingContext) {
+					projectButtons.errorParams = loadingContext;
+				}
+			}
 		}
 
 		project = null;
 	}
 
 	if (loadersTried > 0) {
-	const	tookTime = getTimeNow() - startTime;
+	const	tookTime = getTimeNow() - totalStartTime;
 
 		logTime(
 			'"' + fileName + '"'
@@ -4099,7 +4137,7 @@ let	project, projectError, startTime;
 				project
 				? ' finished ' + actionLabel + ', took '
 				: ' stopped by ' + (
-					isStopRequestedAnywhere(project, buttonTab)
+					isStopRequestedAnywhere(project, projectButtons)
 					? 'request'
 					: 'error'
 				) + ' while ' + actionLabel + ' after '
@@ -4120,7 +4158,7 @@ let	project, projectError, startTime;
 		);
 	}
 
-	if (isStopRequestedAnywhere(project, buttonTab)) {
+	if (isStopRequestedAnywhere(project, projectButtons)) {
 		return null;
 	}
 
@@ -4156,10 +4194,9 @@ async function getProjectViewMenu(project) {
 			const	startTime = getTimeNow();
 
 			let	lastPauseTime = startTime;
-			let	isStopRequested;
 
 				while (
-					!(isStopRequested = isStopRequestedAnywhere(project))
+					!isStopRequestedAnywhere(project)
 				&&	(images.length > 0)
 				&&	(layer = images.pop())
 				&&	(result = await getLayerImgLoadPromise(layer, project))
@@ -4183,6 +4220,7 @@ async function getProjectViewMenu(project) {
 			const	tookTime = getTimeNow() - startTime;
 			const	imagesLoaded = project.imagesLoadedCount;
 			const	imagesSkipped = imagesCount - imagesLoaded;
+			const	isStopRequested = isStopRequestedAnywhere(project);
 			const	actionSummary = (
 					!imagesSkipped
 					? '' : (
@@ -4417,9 +4455,9 @@ async function getProjectViewMenu(project) {
 									padding = JSON.parse(padding);
 								}
 
-							const	{method, threshold, dimensions} = padding;
+							const	{ method, threshold, dimensions } = padding;
 							const	isBox = ('x' in dimensions);
-							const	[openBracket, closeBracket] = (isBox ? '[]' : '()');
+							const	[ openBracket, closeBracket ] = (isBox ? '[]' : '()');
 							const	optionNameParts = [
 									(
 										isBox
@@ -5306,71 +5344,127 @@ const	infoButton = addButton(summaryFooter, getLocalizedText('console_log'));
 	return container;
 }
 
-function setProjectThumbnail(project, fullImage) {
-	if (
-		fullImage
-	&&	project
-	&&	project.thumbnail
-	) {
-	const	meaningfulImagePart = (
-			TAB_THUMBNAIL_TRIMMED || TAB_THUMBNAIL_ZOOM_TRIMMED
-			? getCroppedCanvasCopy(project, fullImage)
-			: fullImage
-		) || fullImage;
+function setProjectThumbnail(project, img, onLoad, onError) {
+	try {
+		if (
+			img
+		&&	project
+		&&	project.thumbnail
+		) {
+		const	imgOrPart = (
+				TAB_THUMBNAIL_TRIMMED || TAB_THUMBNAIL_ZOOM_TRIMMED
+				? getCroppedCanvasCopy(project, img)
+				: img
+			) || img;
 
-	let	canvas = getResizedCanvasFromImg(
-			(
-				TAB_THUMBNAIL_TRIMMED
-				? meaningfulImagePart
-				: fullImage
-			)
-		,	THUMBNAIL_SIZE
-		);
-
-		if (canvas) {
-			setImageSrc(project.thumbnail, canvas.toDataURL());
-		}
-
-		if (TAB_THUMBNAIL_ZOOM) {
-		let	preview = project.thumbnail.nextElementSibling;
-
-			if (!preview) {
-			const	container = project.thumbnail.parentNode;
-				toggleClass(container, 'thumbnail-hover', 1);
-
-				preview = cre('img', container);
-				preview.className = 'thumbnail larger';
-			}
-
-			canvas = getResizedCanvasFromImg(
+		let	canvas = getResizedCanvasFromImg(
 				(
-					TAB_THUMBNAIL_ZOOM_TRIMMED
-					? meaningfulImagePart
-					: fullImage
+					TAB_THUMBNAIL_TRIMMED
+					? imgOrPart
+					: img
 				)
-			,	PREVIEW_SIZE
+			,	THUMBNAIL_SIZE
 			);
 
 			if (canvas) {
-				setImageSrc(preview, canvas.toDataURL());
+				setImageSrc(project.thumbnail, canvas.toDataURL(), onLoad, onError);
+			} else
+			if (onError) {
+				onError(canvas);
 			}
+
+			if (TAB_THUMBNAIL_ZOOM) {
+			let	preview = project.thumbnail.nextElementSibling;
+
+				if (!preview) {
+				const	container = project.thumbnail.parentNode;
+					toggleClass(container, 'thumbnail-hover', 1);
+
+					preview = cre('img', container);
+					preview.className = 'thumbnail larger';
+				}
+
+				canvas = getResizedCanvasFromImg(
+					(
+						TAB_THUMBNAIL_ZOOM_TRIMMED
+						? imgOrPart
+						: img
+					)
+				,	PREVIEW_SIZE
+				);
+
+				if (canvas) {
+					setImageSrc(preview, canvas.toDataURL());
+				}
+			}
+		} else
+		if (onError) {
+			onError(img);
+		}
+	} catch (error) {
+		logError(error, arguments);
+
+		if (onError) {
+			onError(error);
 		}
 	}
 }
 
-async function getProjectViewImage(project, img) {
-	if (
-		!isStopRequestedAnywhere(project)
-	&&	project
-	&&	project.toPng
-	&&	(img = await project.toPng())
-	) {
-		img.onload = () => setProjectThumbnail(project, img);
+function getProjectMergedImagePromise(project, flags) {
+	if (isStopRequestedAnywhere(project)) {
+		return;
+	}
 
-		if (img.complete) {
-			img.onload();
+	if (isNonNullObject(project)) {
+		if (!isNonNullObject(flags)) {
+			flags = {};
 		}
 
+	const	{ alsoSetThumbnail, waitForThumbnail } = flags;
+	let	img = project.mergedImage;
+
+		if (
+			!img
+		&&	isFunction(project.toPng)
+		) {
+			img = project.toPng();
+		}
+
+		return new Promise(
+			(resolve, reject) => resolvePromiseOnImgLoad(
+				img
+			,	(img) => {
+					project.mergedImage = img;
+
+					if (
+						alsoSetThumbnail
+					&&	waitForThumbnail
+					) {
+						setProjectThumbnail(project, img, resolve, reject);
+					} else {
+						resolve(img);
+
+						if (alsoSetThumbnail) {
+							setProjectThumbnail(project, img);
+						}
+					}
+				}
+			,	reject
+			)
+		).catch(catchPromiseError);
+	}
+}
+
+async function getProjectViewImage(project) {
+const	img = await getProjectMergedImagePromise(project, {
+		alsoSetThumbnail: true,
+	});
+
+	if (isStopRequestedAnywhere(project)) {
+		return;
+	}
+
+	if (img) {
 	const	container = createProjectView(project);
 	const	header = getAllByTag('header', container)[0];
 	const	footer = getAllByTag('footer', container)[0];
@@ -5381,7 +5475,7 @@ async function getProjectViewImage(project, img) {
 			: header || cre('header', container)
 		);
 
-		comment.innerHTML = getLocalizedHTML('error_options');
+		comment.innerHTML = getLocalizedHTML('no_options');
 
 	const	preview = cre('div', container)
 		preview.className = 'preview';
@@ -5492,10 +5586,7 @@ const	params = getOrInitChild(layer, 'params');
 
 					collection.format = format;
 				} else {
-					params[paramType] = {
-						'values': values
-					,	'format': format
-					};
+					params[paramType] = { values, format };
 				}
 			} else
 			if (paramType === 'radius') {
@@ -5748,9 +5839,7 @@ const	params = getOrInitChild(layer, 'params');
 					,	(method, threshold, dimensions) => {
 							addToListIfNotYet(
 								collection
-							,	orderedJSONstringify(
-									{method, threshold, dimensions}
-								)
+							,	orderedJSONstringify({ method, threshold, dimensions })
 							);
 						}
 					);
@@ -5955,7 +6044,7 @@ let	isSubLayerFolder = false;
 		};
 
 		VIRTUAL_FOLDER_TAKEOVER_PROPERTIES.forEach(
-			([key, defaultValue]) => {
+			([ key, defaultValue ]) => {
 				if (subLayer[key] !== defaultValue) {
 					layer[key] = subLayer[key];
 					subLayer[key] = defaultValue;
@@ -6185,6 +6274,12 @@ const	actionLabel = 'processing document with ' + libName;
 		project.sourceData = sourceData;
 		project.toPng = thisToPng;
 
+		if (TAB_THUMBNAIL_PRELOAD) {
+			getProjectMergedImagePromise(project, {
+				alsoSetThumbnail: true,
+			});
+		}
+
 		if (await treeConstructorFunc(project, sourceData)) {
 			return (
 				project.loading.then
@@ -6303,11 +6398,11 @@ async function loadORA(project) {
 				);
 
 			const	layerWIP = {
-					blendMode: blendMode
+					blendMode
 				,	blendModeOriginal: mode
-				,	isClipped: isClipped
-				,	isPassThrough: isPassThrough
-				,	isVisible: isVisible
+				,	isClipped
+				,	isPassThrough
+				,	isVisible
 				,	opacity: orzFloat(layer.opacity)
 				};
 
@@ -6448,9 +6543,9 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 			const	isLayerFolder = (layers && typeof layers.length !== 'undefined');
 
 			const	layerWIP = {
-					blendMode: blendMode
+					blendMode
 				,	blendModeOriginal: blending
-				,	isPassThrough: isPassThrough
+				,	isPassThrough
 				,	isClipped: getTruthyValue(clipping)
 				,	isVisible: getTruthyValue(layer.visible)
 
@@ -6751,13 +6846,12 @@ const	values = {};
 	return values;
 }
 
-async function getAllValueSets(project, flags, startTime) {
+async function getAllValueSets(project, values, startTime, flags) {
 
 	async function goDeeper(optionLists, partialValueSet) {
 
+	const	[ sectionName, listName, optionNames ] = optionLists[0];
 	const	partialValueSetText = JSON.stringify(partialValueSet || {});
-	const	[sectionName, listName, optionNames] = optionLists[0];
-
 	const	optionsLeft = (
 			optionLists.length > 1
 			? optionLists.slice(1)
@@ -6793,13 +6887,7 @@ async function getAllValueSets(project, flags, startTime) {
 				isGoingDeeper = await goDeeper(optionsLeft, values);
 			} else
 			if (isSetOfValuesOK(project, values = getSetOfRelevantValues(project, values))) {
-			const	fileName = getFileNameByValuesToSave(
-					project
-				,	values
-				,	{
-						addAllListNames: true,
-					}
-				);
+			const	fileName = getKeyForValueSet(project, values);
 
 				if (getOnlyNames) {
 					if (addToListIfNotYet(valueSets, fileName)) {
@@ -6847,7 +6935,10 @@ const	{
 		isNonNullObject(flags) ? flags : {}
 	);
 
-const	values = getAllMenuValues(project, checkSelectedValue);
+	if (!isNonNullObject(values)) {
+		values = getAllMenuValues(project, checkSelectedValue);
+	}
+
 const	optionLists = [];
 
 let	valueSets = getOnlyNames ? [] : {};
@@ -6859,7 +6950,7 @@ let	section, optionNames, lastPauseTime;
 	for (const sectionName in values) if (section = values[sectionName])
 	for (const listName in section) if (optionNames = section[listName]) {
 
-		optionLists.push([sectionName, listName, optionNames]);
+		optionLists.push([ sectionName, listName, optionNames ]);
 
 		maxPossibleCount *= optionNames.length;
 	}
@@ -6889,15 +6980,16 @@ let	section, optionNames, lastPauseTime;
 	return valueSets;
 }
 
-async function getAllValueSetsCount(project, startTime) {
+async function getAllValueSetsCount(project, values, startTime) {
 const	valueSets = await getAllValueSets(
 		project
+	,	values
+	,	startTime
 	,	{
 			getOnlyNames: true,
 			checkSelectedValue: true,
 			stopAtMaxCount: MAX_BATCH_PRECOUNT && MAX_BATCH_PRECOUNT > 0,
 		}
-	,	startTime
 	);
 
 	if (typeof valueSets === 'undefined') {
@@ -7320,7 +7412,7 @@ function getPaddedImageData(referenceImageData, method, threshold, dimensions) {
 const	w = referenceImageData.width;
 const	h = referenceImageData.height;
 const	isMethodMin = (method === 'min');
-const	[paddingX, paddingY] = dimensions;
+const	[ paddingX, paddingY ] = dimensions;
 
 	if (dimensions.length > 1) {
 		if ((paddingX < 0) !== (paddingY < 0)) {
@@ -7383,7 +7475,7 @@ function padCanvas(ctx, padding) {
 		return;
 	}
 
-const	{method, dimensions} = padding;
+const	{ method, dimensions } = padding;
 
 	if (
 		!method
@@ -8008,7 +8100,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 			,	values
 			,	clippingGroupLayers
 			,	{
-					ignoreColors: ignoreColors
+					ignoreColors
 				,	clippingGroupWIP: true
 				}
 			);
@@ -8539,6 +8631,14 @@ function getFileNameByValuesToSave(project, values, flags) {
 	);
 }
 
+function getKeyForValueSet(project, values) {
+	return getFileNameByValuesToSave(
+		project
+	,	values
+	,	{ addAllListNames: true }
+	);
+}
+
 async function getOrCreateRender(project, render) {
 	if (!isNonNullObject(render)) {
 		render = {};
@@ -8787,13 +8887,14 @@ const	logLabel = 'Render all: ' + project.fileName;
 	console.group(logLabel);
 
 const	startTime = getTimeNow();
-const	valueSets = await getAllValueSets(project, { checkSelectedValue: true });
+const	values = getAllMenuValues(project, true);
+const	valueSets = await getAllValueSets(project, values);
 
 	if (
 		isNonNullObject(valueSets)
 	&&	!isStopRequestedAnywhere(project)
 	) {
-		await renderBatch(project, flags, startTime, valueSets);
+		await renderBatch(project, flags, startTime, values, valueSets);
 	}
 
 	console.groupEnd(logLabel);
@@ -8802,7 +8903,7 @@ const	valueSets = await getAllValueSets(project, { checkSelectedValue: true });
 	setProjectWIPstate(project, false);
 }
 
-async function renderBatch(project, flags, startTime, valueSets) {
+async function renderBatch(project, flags, startTime, values, valueSets) {
 let	lastPauseTime = getTimeNow();
 
 const	renderedImages = [];
@@ -8810,7 +8911,7 @@ const	needWaitBetweenDL = (flags.saveToFile && !flags.asOneJoinedImage);
 const	optionsForNewLines = getNewLineOptionLists(project.options);
 const	setsCountTotal = Object.keys(valueSets).length;
 
-	await updateBatchCount(project, setsCountTotal);
+	await updateBatchCount(project, values, setsCountTotal);
 
 let	setsCountWithoutPause = 0;
 let	setsCount = 0;
@@ -8834,10 +8935,7 @@ let	batchContainer, subContainer;
 	const	values = valueSets[fileName];
 	const	render = await getOrCreateRender(
 			project
-		,	{
-				'values': values
-			,	'fileName': fileName
-			}
+		,	{ values, fileName }
 		);
 
 	let	img = null;
@@ -8968,8 +9066,8 @@ let	batchContainer, subContainer;
 		}
 
 		function getBatchOffsetXY(element) {
-		let	x = 0;
-		let	y = 0;
+		let	x = joinedBorder;
+		let	y = joinedBorder;
 
 			while (element) {
 				x += orz(element.batchOffsetX);
@@ -8983,10 +9081,7 @@ let	batchContainer, subContainer;
 				}
 			}
 
-			return {
-				x: x + joinedBorder
-			,	y: y + joinedBorder
-			};
+			return { x, y };
 		}
 
 		updateProjectOperationProgress(project, 'project_status_rendering_collage');
@@ -9227,7 +9322,7 @@ function updateMenuBatchCount(project, ...args) {
 	}
 }
 
-async function updateBatchCount(project, precounted) {
+async function updateBatchCount(project, values, precounted) {
 const	startTime = project.renderBatchCounterStartTime = getTimeNow();
 const	precounts = getOrInitChild(project, 'renderBatchCounts');
 const	key = (
@@ -9237,7 +9332,7 @@ const	key = (
 			.join('')
 		)
 	+	'_'
-	+	getFileNameByValues(project)
+	+	getFileNameByValues(project, values)
 	);
 
 let	count = (
@@ -9247,7 +9342,7 @@ let	count = (
 	);
 
 	if (!count) {
-		count = await getAllValueSetsCount(project, startTime);
+		count = await getAllValueSetsCount(project, values, startTime);
 
 		if (typeof count === 'undefined') {
 
@@ -9572,12 +9667,7 @@ let	files, name, ext;
 		&&	(name = file.name).length > 0
 		&&	(ext = getFileExt(name)).length > 0
 		) {
-			filesToLoad.push({
-				evt: evt
-			,	file: file
-			,	name: name
-			,	ext: ext
-			});
+			filesToLoad.push({ evt, file, name, ext });
 		}
 	}
 
@@ -9644,7 +9734,7 @@ const	logLabel = 'Load project from url: ' + url;
 	console.time(logLabel);
 	console.group(logLabel);
 
-const	isProjectLoaded = await addProjectViewTab({url: url});
+const	isProjectLoaded = await addProjectViewTab({ url });
 
 	console.groupEnd(logLabel);
 	console.timeEnd(logLabel);
@@ -10071,7 +10161,7 @@ const	supportedFileTypesText = (
 
 	const	tabsHTML = (
 			tabs.map(
-				([name, label]) => (
+				([ name, label ]) => (
 					(
 						!canLoadLocalFiles
 					&&	!name.includes('download')
@@ -11311,7 +11401,7 @@ const	aboutLinks = [
 			+	(!entry.lines ? '' : entry.lines.join('<br>'))
 			+	getNestedFilteredArrayJoinedText(
 					!entry.links ? '' : entry.links.map(
-						([url, text]) => (
+						([ url, text ]) => (
 							'<a href="'
 						+		encodeTagAttr(url)
 						+	(
@@ -11339,7 +11429,7 @@ const	aboutLinks = [
 
 const	menuHTML = getNestedFilteredArrayJoinedText(
 		Object.entries(menuHTMLparts).map(
-			([menuName, menuHTMLpart]) => getDropdownMenuHTML(
+			([ menuName, menuHTMLpart ]) => getDropdownMenuHTML(
 				getLocalizedOrEmptyText(menuName) || todoText
 			,	menuHTMLpart || todoHTML
 			,	'top-menu-' + menuName
@@ -11385,7 +11475,7 @@ const	linkTooltips = [
 	];
 
 	linkTooltips.forEach(
-		([className, textKey]) => getAllByClass(className).forEach(
+		([ className, textKey ]) => getAllByClass(className).forEach(
 			(element) => {
 			const	url = element.getAttribute('href');
 
@@ -11414,7 +11504,7 @@ const	eventHandlers = [
 	];
 
 	eventHandlers.forEach(
-		([eventName, handlerFunction]) => window.addEventListener(eventName, handlerFunction, false)
+		([ eventName, handlerFunction ]) => window.addEventListener(eventName, handlerFunction, false)
 	);
 
 //* open or restore state of UI parts:
