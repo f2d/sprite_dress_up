@@ -629,6 +629,7 @@ var	ora, zip, PSD, UPNG	//* <- external variable names, do not change
 ,	canLoadFromDisk
 ,	isStopRequested
 ,	isBatchWIP
+,	lastTimeProjectTabSelectedByUser = 0
 	;
 
 //* Common utility functions *-------------------------------------------------
@@ -3844,7 +3845,7 @@ const	countDeleted = getAllById(fileId).reduce(
 	}
 }
 
-async function addProjectViewTab(sourceFile) {
+async function addProjectViewTab(sourceFile, startTime) {
 
 	if (OPEN_FIRST_MENU_TAB_AT_START) {
 		closeAllDropdownMenuTabs(getAllByClass('menu-bar')[0]);
@@ -3877,38 +3878,41 @@ async function addProjectViewTab(sourceFile) {
 const	buttonTab = cre('div', getOneById('loaded-files-selection'));
 	buttonTab.className = 'button loading';
 
-const	buttonThumb = cre('button', buttonTab);
+const	buttonSelect = cre('div', buttonTab);	//* <- not 'button' tag, because it breaks :hover in CSS in Firefox 56
+	buttonSelect.className = 'button-select';
+
+const	buttonThumb = cre('div', buttonSelect);
 	buttonThumb.className = 'button-thumbnail';
 
-const	thumbImg = cre('img', buttonThumb);
-	thumbImg.className = 'thumbnail';
+const	imgThumb = cre('img', buttonThumb);
+	imgThumb.className = 'thumbnail';
 
-const	buttonText = cre('button', buttonTab);
+const	buttonText = cre('div', buttonSelect);
 	buttonText.className = 'button-text';
 
 const	buttonFileName = cre('div', buttonText);
-	buttonFileName.className = 'name';
+	buttonFileName.className = 'button-name';
 	buttonFileName.textContent = sourceFile.name;
 
 let	buttonStatus;
 
 	if (TAB_STATUS_TEXT) {
 		buttonStatus = cre('div', buttonText);
-		buttonStatus.className = 'status';
+		buttonStatus.className = 'button-status';
 	}
 
-const	buttonClose = cre('button', buttonTab);
+const	buttonClose = cre('div', buttonTab);
 	buttonClose.className = 'button-close';
-	buttonClose.textContent = 'X';
 
 	buttonClose.setAttribute('onclick', 'closeProject(this)');
 
-	setImageSrc(thumbImg);
+	setImageSrc(imgThumb);
 
 const	projectButtons = {
 		buttonTab,
+		buttonText,
 		buttonStatus,
-		thumbImg,
+		imgThumb,
 		errorParams: sourceFile.ext,
 		errorPossible: 'project_status_error_file_type',
 	};
@@ -3972,12 +3976,18 @@ let	project, container;
 				removeProjectView(fileId);
 
 				container.id = buttonTab.id = fileId;
-				getOneById('loaded-files-view').appendChild(container);
 
-				buttonText.setAttribute('onclick', 'selectProject(this)');
-				buttonThumb.setAttribute('onclick', 'selectProject(this)');
+			const	parent = getOneById('loaded-files-view')
+				parent.appendChild(container);
 
-				buttonText.click();
+				buttonSelect.setAttribute('onclick', 'selectProject(this)');
+
+				if (
+					(lastTimeProjectTabSelectedByUser < startTime)
+				||	(getAllByClass('show', parent).length === 0)
+				) {
+					selectProject(buttonSelect, true);
+				}
 
 				return true;
 			}
@@ -4060,7 +4070,7 @@ async function getNormalizedProjectData(sourceFile, projectButtons) {
 		}
 	}
 
-const	{ buttonTab, buttonStatus, thumbImg } = projectButtons;
+const	{ buttonTab, buttonText, buttonStatus, imgThumb } = projectButtons;
 
 const	fileName = sourceFile.name;
 const	baseName = sourceFile.baseName;
@@ -4091,8 +4101,9 @@ let	project, totalStartTime;
 			fileName
 		,	baseName
 		,	buttonTab
+		,	buttonText
 		,	buttonStatus
-		,	thumbnail: thumbImg
+		,	thumbnail: imgThumb
 		,	foldersCount: 0
 		,	layersCount: 0
 		,	imagesCount: 0
@@ -5233,19 +5244,19 @@ async function getProjectViewMenu(project) {
 
 function createProjectView(project) {
 const	container = cre('div');
-const	header = cre('header', container);
 
-	header.className = 'project-header';
+const	headerTitle = cre('header', container);
+	headerTitle.className = 'project-header filename';
+	headerTitle.textContent = project.fileName;
+
+const	headerInfo = cre('header', container);
+	headerInfo.className = 'project-header project-info';
 
 //* show overall project info:
 
-const	summary       = cre('section', header);
-const	summaryHeader = cre('header', summary);
+const	summary       = cre('section', headerInfo);
 const	summaryBody   = cre('div',    summary);
 const	summaryFooter = cre('footer', summary);
-
-	summaryHeader.className = 'filename';
-	summaryHeader.textContent = project.fileName;
 
 const	bitDepthText = (
 		project.channels && project.bitDepth
@@ -5323,7 +5334,7 @@ const	infoButton = addButton(summaryFooter, getLocalizedText('console_log'));
 	if (project.options) {
 		for (const controlGroup of PROJECT_CONTROLS) {
 		const	buttons = controlGroup.buttons;
-		const	buttonsGroup = cre('section', header);
+		const	buttonsGroup = cre('section', headerInfo);
 		const	buttonsHeader = cre('header', buttonsGroup);
 		const	buttonsFooter = cre('footer', buttonsGroup);
 
@@ -6184,18 +6195,18 @@ function updateProjectOperationProgress(project, operation, ...args) {
 
 let	element;
 
-	if (element = project.buttonStatus) {
-		if (TAB_STATUS_TEXT) {
+	if (TAB_STATUS_TEXT) {
+		if (element = project.buttonStatus) {
 			element.textContent = getLocalizedText(operation, ...args);
+		}
+	} else {
+		if (element = project.buttonTab) {
+			element.title = getLocalizedText(operation, ...args);
 		}
 	}
 
-	if (element = project.buttonTab) {
-		if (!TAB_STATUS_TEXT) {
-			element.title = getLocalizedText(operation, ...args);
-		}
-
-		if (TAB_GROW_WIDTH) {
+	if (TAB_GROW_WIDTH) {
+		if (element = project.buttonText || project.buttonTab) {
 		const	width = element.offsetWidth;
 
 			if (width > orz(element.style.minWidth)) {
@@ -9453,7 +9464,7 @@ function onBeforeUnload(evt) {
 
 function onResize(evt) {
 
-//* Workaround for ff56, reset style to recalculate:
+//* Workaround for Firefox 56, reset style to recalculate:
 
 const	style = document.documentElement.style;
 	style.marginRight = 0;
@@ -9678,7 +9689,8 @@ let	files, name, ext;
 
 async function loadFromFileList(files, evt) {
 let	loadedProjectsCount = 0;
-const	thisJob = {startTime: getTimeNow(), files, evt};
+const	startTime = getTimeNow();
+const	thisJob = {startTime, files, evt};
 
 	pendingJobs.add(thisJob);
 
@@ -9700,7 +9712,7 @@ const	thisJob = {startTime: getTimeNow(), files, evt};
 		console.group(logLabel);
 
 		for (const file of files) {
-			if (await addProjectViewTab(file)) {
+			if (await addProjectViewTab(file, startTime)) {
 				++loadedProjectsCount;
 			}
 
@@ -9724,7 +9736,7 @@ const	thisJob = {startTime: getTimeNow(), files, evt};
 	return loadedProjectsCount;
 }
 
-async function loadFromURL(url) {
+async function loadFromURL(url, startTime) {
 	if (!url) {
 		return;
 	}
@@ -9734,7 +9746,7 @@ const	logLabel = 'Load project from url: ' + url;
 	console.time(logLabel);
 	console.group(logLabel);
 
-const	isProjectLoaded = await addProjectViewTab({ url });
+const	isProjectLoaded = await addProjectViewTab({ url }, startTime);
 
 	console.groupEnd(logLabel);
 	console.timeEnd(logLabel);
@@ -9742,7 +9754,7 @@ const	isProjectLoaded = await addProjectViewTab({ url });
 	return isProjectLoaded;
 }
 
-async function loadFromButton(button, inBatch) {
+async function loadFromButton(button, startTime, inBatch) {
 
 	function getButtonURL(button) {
 	let	url = button.getAttribute('data-url');
@@ -9765,6 +9777,10 @@ async function loadFromButton(button, inBatch) {
 		}
 
 		button.disabled = true;
+	}
+
+	if (!startTime) {
+		startTime = getTimeNow();
 	}
 
 const	action = button.name || button.getAttribute('data-action');
@@ -9800,17 +9816,13 @@ let	isProjectLoaded = false;
 		if (action === 'load_all') {
 			setGlobalWIPstate(true);
 
-		// let	countLoadedProjects = 0;
-
 			for (const otherButton of getAllByTag('button', filesTable)) {
 				if (url = getButtonURL(otherButton)) {
 
 					addToListIfNotYet(urls, url);
 
-					if (await loadFromButton(otherButton, true)) {
+					if (await loadFromButton(otherButton, startTime, true)) {
 						isProjectLoaded = true;
-
-						// ++countLoadedProjects;
 					}
 
 					if (isStopRequested) {
@@ -9843,7 +9855,7 @@ let	isProjectLoaded = false;
 
 //* process the file:
 
-		isProjectLoaded = await loadFromURL(url);
+		isProjectLoaded = await loadFromURL(url, startTime);
 
 //* remove loading status:
 
@@ -9857,28 +9869,10 @@ let	isProjectLoaded = false;
 		button.disabled = false;
 	}
 
-//* report error to user:
-
-	if (
-		!TESTING
-	&&	!inBatch
-	&&	!isProjectLoaded
-	&&	(urls || url)
-	&&	(
-			isArray(urls) && urls.length > 0
-			? urls.some((url) => isURLFromDisk(url))
-			: isURLFromDisk(url)
-		)
-	) {
-		await pause(100);
-
-		alert(getLocalizedText('error_file_protocol', '{file}'));
-	}
-
 	return isProjectLoaded;
 }
 
-function selectProject(buttonTab) {
+function selectProject(buttonTab, autoSelected) {
 	if (buttonTab = getProjectButton(buttonTab)) {
 	let	otherButtonTab = buttonTab.parentNode.firstElementChild;
 
@@ -9890,6 +9884,10 @@ function selectProject(buttonTab) {
 			);
 
 			otherButtonTab = otherButtonTab.nextElementSibling;
+		}
+
+		if (!autoSelected) {
+			lastTimeProjectTabSelectedByUser = getTimeNow();
 		}
 	}
 }

@@ -42,7 +42,7 @@ a:hover {
 }
 .button,
 button {
-	/* box-shadow: 0.1875em 0.1875em rgba(0,0,0, 0.1); */	/* <- buggy in ff56 */
+	/* box-shadow: 0.1875em 0.1875em rgba(0,0,0, 0.1); */	/* <- buggy in Firefox 56 */
 }
 .button button {
 	/* box-shadow: none; */
@@ -208,8 +208,8 @@ label:hover {
 .example-files button {
 	width: 100%;
 }
-.button-close:not(:hover),
-.button {
+.button,
+.button .button-close:not(:hover) {
 	background-color: rgba(0,0,0, 0.1);
 }
 .button.without-options:not(:hover) {
@@ -230,35 +230,44 @@ label:hover {
 .button.failed {
 	background-color: #f88;
 }
-.button button {
-	padding: 0.25em 0.5em;
+.button .button-select {
 	border: none;
+	padding: 0.25em 0.5em;
 	background: transparent;
 }
-.button .button-thumbnail {
-	padding-right: 0;
-}
 .button .button-close {
-	padding: 0.5em 1em;
-	margin-left: auto;	/* <- align to right inside flexbox */
+	border: none;
+	padding: 0 0.8em;
 }
-.button-close:hover {
+.button .button-close::after {
+	content: "⨉";
+	display: flex;
+	align-self: center;
+}
+.button .button-close:hover {
 	color: white;
 	background-color: #f88;
 }
-img.thumbnail {
-	vertical-align: top;	/* <- hacky way to center the image */
+.button .button-thumbnail {
+	margin-right: 0.5em;
+	align-self: center;	/* <- fix for flexbox (with absolute-positioned block inside) jumping aroung on hover in Firefox 83 */
 }
-img.larger {
-	background-color: rgba(0,0,0, 0.4);
-	border: 0.0625em solid white;
-}
-.thumbnail,
+.button .button-thumbnail,
 .thumbnail-hover {
-	text-align: center;
-}
-.thumbnail-hover {
+	display: flex;
 	position: relative;
+}
+.thumbnail {
+	align-self: center;
+	background-color: transparent;
+	border: 0.0625em solid transparent;
+}
+.thumbnail-hover:hover .thumbnail,
+.thumbnail.larger {
+	background-color: rgba(0,0,0, 0.4);
+	border-color: white;
+}
+.thumbnail-hover {
 	cursor: zoom-in;
 }
 .thumbnail-hover .larger {
@@ -269,6 +278,10 @@ img.larger {
 }
 .thumbnail-hover:not(:hover) .larger {
 	display: none;
+}
+.thumbnail:not(img) {
+	background-position: center;
+	background-repeat: no-repeat;
 }
 .menu-list > header {
 	margin: 1em 0;
@@ -400,17 +413,23 @@ img.larger {
 	text-align: center;
 	display: inline-block;
 }
-#loaded-files-selection .button div {
+#loaded-files-selection .button-text {
 	text-align: left;
 }
-#loaded-files-selection .name {
+#loaded-files-selection .button-name {
+	font-size: 80%;
 	font-weight: bold;
 }
-#loaded-files-selection .status {
+#loaded-files-selection .button-status {
+	font-size: 70%;
 	opacity: 0.35;
 }
+#loaded-files-selection .button-select,
+#loaded-files-selection .button-close,
 #loaded-files-selection .button {
 	display: inline-flex;	/* <- content will vertically fill the height of this container */
+}
+#loaded-files-selection .button {
 	margin: 0.5em;
 }
 body > button::-moz-focus-inner,
@@ -433,6 +452,8 @@ body > button,
 }
 #loaded-files-selection {
 	padding: 0.5em 1em;
+	display: flex;
+	flex-wrap: wrap;
 }
 #loaded-files-selection:empty,
 #loaded-files-view:empty,
@@ -457,6 +478,7 @@ body > button,
 }
 .project-header {
 	display: flex;	/* <- content will vertically fill the height of this container */
+	flex-wrap: wrap;
 }
 .loaded-file td,
 .project-header div,
@@ -474,6 +496,7 @@ body > button,
 .project-header footer {
 	text-align: center;
 }
+.project-header.filename,
 .project-header section,
 .project-header header,
 .project-header footer,
