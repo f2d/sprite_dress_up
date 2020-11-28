@@ -63,7 +63,7 @@ var	exampleRootDir = ''
 	,	'LightYellow'
 	,	'Magenta'
 	]
-,	DEFAULT_COLLAGE_PADDING = 0
+,	DEFAULT_COLLAGE_PADDING = 0		//* <- add variant to both inside and outside
 ,	DEFAULT_COLLAGE_PADDING_INSIDE = 2
 ,	DEFAULT_COLLAGE_PADDING_OUTSIDE = 1
 
@@ -71,31 +71,31 @@ var	exampleRootDir = ''
 ,	PAUSE_WORK_INTERVAL = 200
 ,	PREVIEW_SIZE = 64
 ,	THUMBNAIL_SIZE = 16
-,	THUMBNAIL_ZOOM_STEP_MAX_FACTOR = 4	//* <- one-step scaling result is too blocky, stepping by factor of 2 is too blurry, 4 looks okay
+,	THUMBNAIL_ZOOM_STEP_MAX_FACTOR = 4	//* <- one-step scaling result is too blocky, stepping by factor of 2 is too blurry, 4 looks okay.
 ,	ZOOM_STEP_MAX_FACTOR = 2
 
-,	ADD_COUNT_ON_BUTTON_LABEL	= false
-,	ADD_PAUSE_AT_INTERVALS		= true	//* <- when loading files, rendering images, counting batch combinations, etc.
-,	ADD_PAUSE_BEFORE_EACH_FOLDER	= false
-,	ADD_PAUSE_BEFORE_EACH_LAYER	= false	//* <- loading and rendering will take ~1.5-2x time, but UI response does not improve
-,	ASK_BEFORE_EXIT_IF_OPENED_FILES	= true
-,	CACHE_UNALTERABLE_FOLDERS_MERGED	= true
-,	CACHE_UNALTERABLE_IMAGES_TRIMMED	= false	//* <- images are compressed faster by canvas API, when stored as PNG
-,	DOWNSCALE_BY_MAX_FACTOR_FIRST	= true
-,	EXAMPLE_NOTICE			= false
+,	ADD_COUNT_ON_BUTTON_LABEL	= false	//* <- if not, add separate text element.
+,	ADD_PAUSE_AT_INTERVALS		= true	//* <- let UI update when loading files, rendering images, counting batch combinations, etc.
+,	ADD_PAUSE_BEFORE_EACH_FOLDER	= false	//* <- can take ~1-5x longer than pause at intervals, but UI response is not very good.
+,	ADD_PAUSE_BEFORE_EACH_LAYER	= false	//* <- can take ~1.5-2x longer than pause at folders, but UI response does not improve much.
+,	ASK_BEFORE_EXIT_IF_OPENED_FILES	= true	//* <- this is annoying and would not be needed if big files could load fast.
+,	CACHE_UNALTERABLE_FOLDERS_MERGED	= true	//* <- not much opportunity if almost everything is recolored or passthrough.
+,	CACHE_UNALTERABLE_IMAGES_TRIMMED	= false	//* <- images are compressed faster by canvas API, when stored as PNG.
+,	DOWNSCALE_BY_MAX_FACTOR_FIRST	= true	//* <- other way (starting with partial factor) is not better, probably worse.
+,	EXAMPLE_NOTICE			= false	//* <- show the warning near the list of files.
 ,	FILE_NAME_ADD_PARAM_KEY		= true
-,	LOCALIZED_CASE_BY_CROSS_COUNT	= false
+,	LOCALIZED_CASE_BY_CROSS_COUNT	= false	//* <- determine word case by product of all numbers in args; if not, then by the last number.
 ,	OPEN_FIRST_MENU_TAB_AT_START	= true
-,	READ_FILE_CONTENT_TO_GET_TYPE	= false
-,	TAB_GROW_WIDTH			= true
+,	READ_FILE_CONTENT_TO_GET_TYPE	= false	//* <- this relies on the browser or the OS to magically determine file type.
 ,	TAB_STATUS_TEXT			= true
-,	TAB_THUMBNAIL_PRELOAD		= true
-,	TAB_THUMBNAIL_TRIMMED		= false	//* <- a little more content may become visible, but will take more time and shift image alignment
+,	TAB_THUMBNAIL_PRELOAD		= true	//* <- get merged prerendered image from the file before looking at layer tree.
+,	TAB_THUMBNAIL_TRIMMED		= false	//* <- more content may become visible, but will take more time and shift image alignment.
 ,	TAB_THUMBNAIL_ZOOM		= true
 ,	TAB_THUMBNAIL_ZOOM_TRIMMED	= false
-,	TESTING				= false
-,	TESTING_RENDER			= false
-,	USE_ONE_FILE_ZIP_WORKER		= false
+,	TAB_WIDTH_ONLY_GROW		= true	//* <- prevent tabs from shrinking and jumping between rows.
+,	TESTING				= false	//* <- dump more info into the console; several levels are possible.
+,	TESTING_RENDER			= false	//* <- dump a PNG onto the page after each rendering operation.
+,	USE_ONE_FILE_ZIP_WORKER		= false	//* <- concatenated bundle.
 ,	USE_WORKERS			= true
 ,	USE_ZLIB_ASM			= true
 ,	VERIFY_PARAM_COLOR_VS_LAYER_CONTENT	= false
@@ -2887,7 +2887,7 @@ const	depends = lib.depends || null;
 
 	if (depends) {
 		for (const name of asArray(depends)) if (name) {
-			if (!(await loadLibOnDemandPromise(name))) {
+			if (! await loadLibOnDemandPromise(name)) {
 				return false;
 			}
 		}
@@ -3797,7 +3797,7 @@ const	project = this;
 		return await thisToPngTryEach(targetLayer || project);
 	} catch (error) {
 		if (targetLayer) {
-			logTime(['cannot get layer image:', getLayerPathText(targetLayer), error]);
+			logTime('cannot get layer image:', [getLayerPathText(targetLayer), error]);
 		} else {
 			logError(error, arguments, this);
 		}
@@ -4020,15 +4020,15 @@ let	project, container;
 		)
 	);
 
-	setTimeout(function () {
-		buttonTab.classList.add('fade-out');
-
-		setTimeout(function () {
-			del(buttonTab);
-		}, 800);
-	}, 2000);
+	setTimeout(() => removeFailedTab(buttonTab), 2000);
 
 	return false;
+}
+
+function removeFailedTab(buttonTab) {
+	buttonTab.classList.add('fade-out');
+
+	setTimeout(() => del(buttonTab), 800);
 }
 
 async function getFileFromLoadingData(data, projectButtons) {
@@ -4064,7 +4064,7 @@ async function getNormalizedProjectData(sourceFile, projectButtons) {
 		if (!sourceFile.file) {
 			projectButtons.errorPossible = 'project_status_error_loading_file';
 
-			if (!await getFileFromLoadingData(sourceFile, projectButtons)) {
+			if (! await getFileFromLoadingData(sourceFile, projectButtons)) {
 				return null;
 			}
 		}
@@ -4157,7 +4157,7 @@ let	project, totalStartTime;
 		+	' ms total'
 		);
 	} else {
-		console.log(
+		if (TESTING) console.log(
 			'Error: Unknown file type:'
 		,	[
 				ext
@@ -5710,7 +5710,7 @@ const	params = getOrInitChild(layer, 'params');
 							const	directions = explicitDimensions[0];
 							const	addToBoundaryList = (
 									isRound
-									? function (interval) {
+									? (interval) => {
 										count += addToListIfNotYet(
 											boundaries
 										,	{
@@ -5718,7 +5718,7 @@ const	params = getOrInitChild(layer, 'params');
 											}
 										);
 									}
-									: function (interval) {
+									: (interval) => {
 										count += addToListIfNotYet(
 											boundaries
 										,	{
@@ -5732,7 +5732,7 @@ const	params = getOrInitChild(layer, 'params');
 								if (directions.length > 1) {
 									forEachSetInCrossProduct(
 										directions
-									,	function () {
+									,	() => {
 										const	interval = {
 												'in': Math.min(...arguments)
 											,	'out': Math.max(...arguments)
@@ -6205,7 +6205,7 @@ let	element;
 		}
 	}
 
-	if (TAB_GROW_WIDTH) {
+	if (TAB_WIDTH_ONLY_GROW) {
 		if (element = project.buttonText || project.buttonTab) {
 		const	width = element.offsetWidth;
 
@@ -6240,7 +6240,7 @@ function setImageGeometryProperties(target, ...sources) {
 //* Page-specific functions: internal, loading from file *---------------------
 
 async function loadCommonWrapper(project, libName, getFileParserPromise, treeConstructorFunc) {
-	if (!(await loadLibOnDemandPromise(libName))) {
+	if (! await loadLibOnDemandPromise(libName)) {
 		return;
 	}
 
@@ -6374,7 +6374,7 @@ async function loadORA(project) {
 				//* deferred loading, only when needed:
 
 					if (imageHolder.loadImage) {
-						newHolder.loadImage = function (onDone, onError) {
+						newHolder.loadImage = (onDone, onError) => {
 							imageHolder.loadImage(onDone, onError);
 						};
 
@@ -6979,7 +6979,7 @@ let	section, optionNames, lastPauseTime;
 			lastPauseTime = startTime || getTimeNow();
 		}
 
-		if (!await goDeeper(optionLists)) {
+		if (! await goDeeper(optionLists)) {
 			valueSets = getOnlyNames ? null : {};
 		}
 	}
@@ -7569,7 +7569,7 @@ async function addDebugImage(project, canvas, comment, highLightColor) {
 			img.style.boxShadow = '3px 3px ' + highLightColor;
 		}
 
-		if (!await getImagePromiseFromCanvasToBlob(canvas, project, 0, 0, img)) {
+		if (! await getImagePromiseFromCanvasToBlob(canvas, project, 0, 0, img)) {
 			img.src = canvas.toDataURL();
 		}
 	}
@@ -9268,14 +9268,14 @@ function getEmptyRenderContainer(project) {
 
 async function updateMenuAndShowImg(project) {
 	if (
-		!project
-	||	project.isBatchWIP
-	||	project.rendering
+		!isNonNullObject(project)
 	||	project.loading
+	||	project.rendering
+	||	project.isBatchWIP
 	) {
-		if (project.isBatchWIP) logTime('updateMenuAndRender - skipped while batch work is in progress.');
-		if (project.rendering) logTime('updateMenuAndRender - skipped while already rendering.');
 		if (project.loading) logTime('updateMenuAndRender - skipped while loading project.');
+		if (project.rendering) logTime('updateMenuAndRender - skipped while already rendering.');
+		if (project.isBatchWIP) logTime('updateMenuAndRender - skipped while batch work is in progress.');
 
 		return;
 	}
@@ -10023,7 +10023,7 @@ let	canLoadLocalFiles = true;
 
 	if (RUNNING_FROM_DISK) {
 		try {
-			canLoadLocalFiles = !!(await getFilePromiseFromURL(fetchTestFilePath));
+			canLoadLocalFiles = !! await getFilePromiseFromURL(fetchTestFilePath);
 		} catch (error) {
 			canLoadLocalFiles = false;
 		}
@@ -10421,13 +10421,11 @@ const	wrapperClassNames = [
 		const	key = className.split(regNonAlphaNum)[0];
 
 			for (const tagName in wrap) {
-				wrap[tagName][key] = function (...values) {
-					return (
-						'<' + tagName + ' class="' + className + '">'
-					+		values.join('')
-					+	'</' + tagName + '>'
-					);
-				};
+				wrap[tagName][key] = (...values) => (
+					'<' + tagName + ' class="' + className + '">'
+				+		values.join('')
+				+	'</' + tagName + '>'
+				);
 			}
 		}
 	);

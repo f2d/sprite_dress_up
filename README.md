@@ -113,12 +113,12 @@ python ./update_config.py -im7 -filter Sinc
 
 ORA file parser:
 * Heavily modified version of [ora.js](https://github.com/zsgalusz/ora.js).
-* Original version also can work here, but with many limitations.
+* Original version can work here, but with many limitations.
 
 PSD file parser:
 * Lightly modified [build of psd.js](https://github.com/meltingice/psd.js/issues/154#issuecomment-446279652), should be backward compatible.
 * Lightly modified [fork](https://github.com/imcuttle/psd.js) of [psd.js](https://github.com/meltingice/psd.js), globally usable without `require()`.
-* Original version does not work here, and many other forks.
+* Original version and many other forks do not work here.
 
 PNG file parser (not used here yet):
 * Unmodified [UPNG.js](https://github.com/photopea/UPNG.js).
