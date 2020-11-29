@@ -2280,16 +2280,28 @@ function getFileName(path) {return path.split(/\//g).pop();}
 function getFilePathFromUrl(url) {return url.split(/\#/g).shift().split(/\?/g).shift();}
 function getFormattedFileNamePart(name) {return (name ? '[' + name + ']' : '');}
 
-function getFormattedFileSize(shortened, bytes, bytesNumber) {
+function getFormattedFileSize(bytes, shortened) {
+let	bytesText;
+
 	if (bytes) {
-		bytes = getLocalizedText('file_bytes', bytes, bytesNumber);
+	const	bytesNumber = orz(
+			isNumber(bytes)
+			? bytes
+			: String(bytes).replace(regNaN, '')
+		);
+
+		bytesText = getLocalizedText(
+			'file_bytes'
+		,	bytesNumber.toLocaleString(LANG)	//* <- formatted for display
+		,	bytesNumber				//* <- for text case selection, not displayed
+		);
 	}
 
-	if (shortened && bytes) {
-		shortened += ' (' + bytes + ')';
-	}
-
-	return shortened || bytes;
+	return (
+		(shortened && bytesText)
+		? (shortened + ' (' + bytesText + ')')
+		: (shortened || bytesText || bytes)
+	);
 }
 
 function leftPadNum(numValue, padToLength, paddingText) {
@@ -5406,7 +5418,7 @@ const	bitDepthText = (
 	);
 
 const	colorModeText = project.colorMode || '';
-const	canvasSizeText = (getLocalizedText('project_pixels', project.width, project.height));
+const	canvasSizeText = getLocalizedText('project_pixels', project.width, project.height);
 const	resolutionText = getNestedFilteredArrayJoinedText([canvasSizeText, bitDepthText, colorModeText], ', ');
 
 const	foldersCount = project.foldersCount;
@@ -5440,7 +5452,7 @@ const	sourceFileTime = sourceFile.lastModified || sourceFile.lastModifiedDate;
 		);
 	}
 
-	if (sourceFile.size) summaryTextParts.push(getLocalizedText('file_bytes', sourceFile.size));
+	if (sourceFile.size) summaryTextParts.push(getFormattedFileSize(sourceFile.size));
 	if (sourceFileTime)  summaryTextParts.push(getLocalizedText('file_date', getFormattedTime(sourceFileTime)));
 
 	summaryBody.innerHTML = getNestedFilteredArrayJoinedText(summaryTextParts, '<br>');
@@ -10377,9 +10389,8 @@ const	examplesHTML = getNestedFilteredArrayJoinedText(
 									[
 										file.pixels
 									,	getFormattedFileSize(
-											file.filesize
-										,	file.bytes
-										,	orz(file.bytes.replace(regNaN, ''))
+											file.bytes
+										,	file.filesize
 										)
 									]
 								,	', '
