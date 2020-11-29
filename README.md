@@ -122,6 +122,7 @@ PSD file parser:
 
 PNG file parser (not used here yet):
 * Lightly modified [UPNG.js](https://github.com/photopea/UPNG.js), should be backward compatible.
+* Unmodified [UZIP.js](https://github.com/photopea/UZIP.js).
 * Unmodified [Pako.js](https://github.com/nodeca/pako).
 
 ZIP file parser:
