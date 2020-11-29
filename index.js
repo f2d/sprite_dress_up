@@ -37,6 +37,7 @@
 //* TODO: global job list for WIP cancelling instead of spaghetti-coded flag checks.
 //* TODO: split JS files in a way that lets older browsers to use parts they can parse and execute (only show menu, or only load ORA, etc.).
 //* TODO: split functionality into modules to reuse with drawpad, etc.
+//* TODO: use console.error(), console.trace(), etc.
 
 //* ---------------------------------------------------------------------------
 //* Config: defaults, do not change here, redefine in external config file *---
@@ -503,24 +504,24 @@ const	libRootDir = 'lib/'
 ,	libLangDir = libRootDir + 'localization/'
 ,	libUtilDir = libRootDir + 'util/'
 
+,	zipFormatDir = libFormatsDir + 'zip/zip_js/'
 ,	zlibPakoDir = libFormatsDir + 'zlib/pako/'
 ,	zlibAsmDir = libFormatsDir + 'zlib/zlib-asm/v0.2.2/'	//* <- last version supported by zip.js, ~ x2 faster than default
-// ,	zlibAsmDir = libFormatsDir + 'zlib/zlib-asm/v1.0.7/'	//* <- not supported by zip.js, works in some cases (with same speed as v0.2.2)
 
-,	zipAllInOneFileName = 'z-worker-copy-all-in-one-file.js'
-,	zipAllInOneFileNameAsm = 'z-worker-copy-all-in-one-file-asm.js'
-
-,	libCodecPNG = (USE_UPNG ? ['UPNG.js'] : [])
+,	libCodecPNG = [USE_UPNG ? 'UPNG.js' : null]
 ,	zlibCodecPNG = [USE_UZIP ? 'UZIP.js' : 'pako']
-,	zlibCodecZIP = (
-		USE_ZLIB_CODECS
-	&&	!USE_ONE_FILE_ZIP_WORKER
-	&&	!(USE_WORKERS && CAN_USE_WORKERS)
-		? [
-			USE_ZLIB_ASM
-			? 'zlib-asm'
-			: 'pako'
-		] : []
+,	zlibCodecZIP = [USE_ZLIB_ASM ? 'zlib-asm' : 'pako']
+
+,	zipAllInOneFileName = (
+		USE_ZLIB_ASM
+		? 'z-worker-copy-all-in-one-file-asm.js'
+		: 'z-worker-copy-all-in-one-file.js'
+	)
+
+,	zipZlibCodecWrapper = (
+		USE_ZLIB_ASM
+		? 'zlib-asm/codecs.js'
+		: 'pako/codecs.js'
 	)
 
 ,	fileTypeLibs = {
@@ -530,9 +531,7 @@ const	libRootDir = 'lib/'
 
 			'varName': 'zlib'
 		,	'dir': zlibAsmDir
-		,	'files': [
-				'zlib.js',
-			]
+		,	'files': ['zlib.js']
 		},
 
 		'pako': {
@@ -541,9 +540,7 @@ const	libRootDir = 'lib/'
 
 			'varName': 'pako'
 		,	'dir': zlibPakoDir
-		,	'files': [
-				'pako.js',
-			]
+		,	'files': ['pako.js']
 		},
 
 		'UZIP.js': {
@@ -552,9 +549,7 @@ const	libRootDir = 'lib/'
 
 			'varName': 'UZIP'
 		,	'dir': libFormatsDir + 'zlib/UZIP/'
-		,	'files': [
-				'UZIP.js',
-			]
+		,	'files': ['UZIP.js']
 		,	'depends': ['pako']
 		},
 
@@ -564,9 +559,7 @@ const	libRootDir = 'lib/'
 
 			'varName': 'UPNG'
 		,	'dir': libFormatsDir + 'png/UPNG/'
-		,	'files': [
-				'UPNG.js',
-			]
+		,	'files': ['UPNG.js']
 		,	'depends': zlibCodecPNG
 		},
 
@@ -575,7 +568,7 @@ const	libRootDir = 'lib/'
 //* source: https://github.com/gildas-lormeau/zip.js
 
 			'varName': 'zip'
-		,	'dir': libFormatsDir + 'zip/zip_js/'
+		,	'dir': zipFormatDir
 		,	'files': [
 				'zip.js',
 				'zip-fs.js',
@@ -588,24 +581,22 @@ const	libRootDir = 'lib/'
 //* https://github.com/gildas-lormeau/zip.js/issues/169#issuecomment-312110395
 
 				USE_ONE_FILE_ZIP_WORKER
-				? (
-					USE_ZLIB_ASM
-					? [zipAllInOneFileNameAsm]
-					: [zipAllInOneFileName]
-				)
+				? [zipAllInOneFileName]
 				:
 				USE_ZLIB_CODECS
-				? [
-					USE_ZLIB_ASM
-					? 'zlib-asm/codecs.js'
-					: 'pako/codecs.js'
-				]
+				? [zipZlibCodecWrapper]
 				: [
 					'deflate.js',
 					'inflate.js',
 				]
 			)
-		,	'depends': zlibCodecZIP
+		,	'depends': (
+				USE_ZLIB_CODECS
+			&&	!USE_ONE_FILE_ZIP_WORKER
+			&&	!(USE_WORKERS && CAN_USE_WORKERS)
+				? zlibCodecZIP
+				: []
+			)
 		},
 
 		'ora.js': {
@@ -620,13 +611,8 @@ const	libRootDir = 'lib/'
 
 			'varName': 'ora'
 		,	'dir': libFormatsDir + 'ora/ora_js/'
-		,	'files': [
-				'ora.js',
-				// 'ora-blending.js',
-			]
-		,	'depends': [
-				'zip.js',
-			]
+		,	'files': ['ora.js']
+		,	'depends': ['zip.js']
 		},
 
 		'psd.js': {
@@ -636,11 +622,7 @@ const	libRootDir = 'lib/'
 
 			'varName': 'PSD_JS'
 		,	'dir': libFormatsDir + 'psd/psd_js/psd.js_build_by_rtf-const_2018-12-11/'	//* <- working with bigger files?
-		// ,	'dir': libFormatsDir + 'psd/psd_js/psd.js_fork_by_fr33z00_2019-11-05/'		//* <- working here
-		,	'files': [
-				// 'psd.min.js',
-				'psd.js',
-			]
+		,	'files': ['psd.js']
 		,	'depends': libCodecPNG
 		},
 
@@ -651,13 +633,30 @@ const	libRootDir = 'lib/'
 
 			'varName': 'PSD'
 		,	'dir': libFormatsDir + 'psd/psd_js/psd.js_fork_by_imcuttle_2018-09-19/'		//* <- working here
-		,	'files': [
-				// 'psd.browser.min.js',
-				'psd.browser.js',
-			]
+		,	'files': ['psd.browser.js']
 		,	'depends': libCodecPNG
 		},
 	}
+
+,	zipWorkerScripts = (
+		USE_ONE_FILE_ZIP_WORKER
+		? [
+			zipFormatDir + zipAllInOneFileName
+		]
+		: USE_ZLIB_CODECS
+		? [
+			zipFormatDir + 'z-worker.js',
+			zipFormatDir + zipZlibCodecWrapper,
+		].concat(
+			zlibCodecZIP.map(
+				(libName) => fileTypeLibs[libName].files.map(
+					(fileName) => fileTypeLibs[libName].dir + fileName
+				)
+			)
+		)
+		: null
+	)
+
 ,	fileTypeLoaders = [
 		{
 			'dropFileExts': ['ora', 'zip']
@@ -3044,33 +3043,6 @@ const	depends = lib.depends || null;
 //*	Either zip.workerScripts or zip.workerScriptsPath may be set, not both.
 //*	Scripts in the array are executed in order, and the first one should be z-worker.js, which is used to start the worker.
 //* source: http://gildas-lormeau.github.io/zip.js/core-api.html#alternative-codecs
-
-					let	zipWorkerScripts = null;
-
-						if (USE_ONE_FILE_ZIP_WORKER) {
-							zipWorkerScripts = [
-								dir + (
-									USE_ZLIB_ASM
-									? [zipAllInOneFileNameAsm]
-									: [zipAllInOneFileName]
-								)
-							];
-						} else
-						if (USE_ZLIB_CODECS) {
-							if (USE_ZLIB_ASM) {
-								zipWorkerScripts = [
-									dir + 'z-worker.js',
-									zlibAsmDir + 'zlib.js',
-									dir + 'zlib-asm/codecs.js',
-								];
-							} else {
-								zipWorkerScripts = [
-									dir + 'z-worker.js',
-									zlibPakoDir + 'pako.js',
-									dir + 'pako/codecs.js',
-								];
-							}
-						}
 
 						if (zipWorkerScripts) {
 							zip.workerScripts = {
