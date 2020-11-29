@@ -121,7 +121,7 @@ PSD file parser:
 * Original version and many other forks do not work here.
 
 PNG file parser (not used here yet):
-* Unmodified [UPNG.js](https://github.com/photopea/UPNG.js).
+* Lightly modified [UPNG.js](https://github.com/photopea/UPNG.js), should be backward compatible.
 * Unmodified [Pako.js](https://github.com/nodeca/pako).
 
 ZIP file parser:
