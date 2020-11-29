@@ -8893,6 +8893,9 @@ const	refName = render.refName;
 
 			if (canvas) {
 				img = await getAndCacheRenderedImageElementPromise(canvas, refName);
+			} else
+			if (isStopRequestedAnywhere(project)) {
+				return;
 			} else {
 				prerenders[fileName] = null;
 			}
