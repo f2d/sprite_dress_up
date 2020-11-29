@@ -84,6 +84,7 @@ var	exampleRootDir = ''
 ,	DOWNSCALE_BY_MAX_FACTOR_FIRST	= true	//* <- other way (starting with partial factor) is not better, probably worse.
 ,	EXAMPLE_NOTICE			= false	//* <- show the warning near the list of files.
 ,	FILE_NAME_ADD_PARAM_KEY		= true
+,	GET_LAYER_IMAGE_FROM_BITMAP	= true
 ,	LOCALIZED_CASE_BY_CROSS_COUNT	= false	//* <- determine word case by product of all numbers in args; if not, then by the last number.
 ,	OPEN_FIRST_MENU_TAB_AT_START	= true
 ,	READ_FILE_CONTENT_TO_GET_TYPE	= false	//* <- this relies on the browser or the OS to magically determine file type.
@@ -94,8 +95,11 @@ var	exampleRootDir = ''
 ,	TAB_THUMBNAIL_ZOOM_TRIMMED	= false
 ,	TAB_WIDTH_ONLY_GROW		= true	//* <- prevent tabs from shrinking and jumping between rows.
 ,	TESTING				= false	//* <- dump more info into the console; several levels are possible.
+,	TESTING_PNG			= false	//* <- dump a PNG onto the page after each rendering operation.
 ,	TESTING_RENDER			= false	//* <- dump a PNG onto the page after each rendering operation.
+,	USE_CONSOLE_LOG_GROUPING	= false	//* <- becomes a mess with concurrent operations
 ,	USE_ONE_FILE_ZIP_WORKER		= false	//* <- concatenated bundle.
+,	USE_PNG_FILE_CODER		= true
 ,	USE_WORKERS			= true
 ,	USE_ZLIB_ASM			= true
 ,	VERIFY_PARAM_COLOR_VS_LAYER_CONTENT	= false
@@ -106,11 +110,13 @@ var	exampleRootDir = ''
 //* Create type-checking functions, e.g. "isString()" or "isImageElement()":
 //* source: https://stackoverflow.com/a/17772086
 [
-	// 'AsyncFunction',	//* <- maybe better cut 'Function' from end to match this
+	// 'AsyncFunction',	//* <- it maybe better to cut 'Function' from end to match this
 	'Promise',
+	'ArrayBuffer',
 	'Array',
 	'Date',
 	'Function',
+	'ImageData',
 	'Number',
 	'RegExp',
 	'String',
@@ -480,6 +486,7 @@ const	LS = window.localStorage || localStorage
 		'blendModeOriginal'
 	,	'nameOriginal'
 	,	'sourceData'
+	,	'pixelData'
 	,	'maskData'
 	,	'imgData'
 	])
@@ -501,6 +508,7 @@ const	libRootDir = 'lib/'
 
 ,	zipAllInOneFileName = 'z-worker-copy-all-in-one-file.js'
 ,	zipAllInOneFileNameAsm = 'z-worker-copy-all-in-one-file-asm.js'
+,	libEncoderToPNG = (USE_PNG_FILE_CODER ? ['UPNG.js'] : [])
 
 ,	fileTypeLibs = {
 		'UPNG.js': {
@@ -583,6 +591,7 @@ const	libRootDir = 'lib/'
 				// 'psd.min.js',
 				'psd.js',
 			]
+		,	'depends': libEncoderToPNG
 		},
 
 		'psd.browser.js': {
@@ -596,6 +605,7 @@ const	libRootDir = 'lib/'
 				// 'psd.browser.min.js',
 				'psd.browser.js',
 			]
+		,	'depends': libEncoderToPNG
 		},
 	}
 ,	fileTypeLoaders = [
@@ -638,6 +648,16 @@ function isNonNullObject(value) {
 	return (
 		value !== null
 	&&	typeof value === 'object'
+	);
+}
+
+function isNonNullImageData(imageData) {
+	return (
+		isNonNullObject(imageData)
+	&&	imageData.data
+	&&	imageData.data.length > 0
+	&&	imageData.width > 0
+	&&	imageData.height > 0
 	);
 }
 
@@ -2450,9 +2470,7 @@ function logError(error, args, context) {
 	);
 }
 
-async function resolvePromiseOnImgLoad(img, resolve, reject) {
-	img = await img;
-
+function callbackOnImgLoad(img, resolve, reject) {
 	if (isImageElement(img)) {
 		if (img.complete) {
 			resolve(img);
@@ -2460,13 +2478,20 @@ async function resolvePromiseOnImgLoad(img, resolve, reject) {
 			img.onerror = reject;
 			img.onload = () => resolve(img);
 		}
-	} else
-	if (isPromise(img)) {
-		img
-		.then(resolve)
-		.catch(reject);
 	} else {
 		reject(img);
+	}
+}
+
+async function resolvePromiseOnImgLoad(img, resolve, reject) {
+	img = await img;
+
+	if (isPromise(img)) {
+		img
+		.then((img) => callbackOnImgLoad(img, resolve, reject))
+		.catch(reject);
+	} else {
+		callbackOnImgLoad(img, resolve, reject);
 	}
 }
 
@@ -2579,14 +2604,10 @@ function getImagePromiseFromCanvasToBlob(canvas, trackList, mimeType, quality, i
 
 	function getImagePromiseFromBlob(blob) {
 		if (!blob) {
-			throw new Error('Canvas to blob: got empty or no blob.');
+			throw 'Canvas to blob: got empty or no blob.';
 		}
 
 	const	url = URL.createObjectURL(blob);
-
-		if (!url) {
-			throw new Error('Canvas to blob: got empty or no URL.');
-		}
 
 		trackList = addURLToTrackList(url, trackList);
 
@@ -2622,13 +2643,7 @@ function getImagePromiseFromCanvasToBlob(canvas, trackList, mimeType, quality, i
 
 	return (
 		new Promise(
-			(resolve, reject) => {
-				try {
-					canvas.toBlob(resolve, mimeType || '', quality || 1);
-				} catch (error) {
-					reject(error);
-				}
-			}
+			(resolve, reject) => canvas.toBlob(resolve, mimeType || '', quality || 1)
 		)
 		.then(getImagePromiseFromBlob)
 		.catch(catchPromiseError)
@@ -2676,7 +2691,69 @@ let	count = 0;
 	return count;
 }
 
+function getImageElementFromData(imageData) {
+	if (isNonNullImageData(imageData)) {
+	const	arrayBuffer = UPNG.encode(
+			[imageData.data.buffer]	//* <- array of frames. A frame is an ArrayBuffer (RGBA, 8 bits per channel).
+		,	imageData.width
+		,	imageData.height
+		,	0			//* <- number of colors in the result; 0: all colors (lossless PNG).
+		);
+
+	const	url = getBlobURLFromByteArray(arrayBuffer, 'image/png');
+	const	img = cre('img', (TESTING_PNG ? document.body : null));
+		img.src = url;
+
+		if (TESTING_PNG) console.log('getImageElementFromData:', [imageData, arrayBuffer, url, img]);
+
+		return new Promise(
+			(resolve, reject) => resolvePromiseOnImgLoad(img, resolve, reject)
+		).catch(catchPromiseError);
+	}
+}
+
+//* Not used yet: *------------------------------------------------------------
+
+function getImageDataFromArrayBuffer(arrayBuffer) {
+const	img = UPNG.decode(arrayBuffer);
+const	rgbaArray = UPNG.toRGBA8(img)[0];	//* <- UPNG.toRGBA8 returns array of frames, size = width * height * 4 bytes.
+const	imageData = new ImageData(img.width, img.height);
+	imageData.data.set(rgbaArray);
+
+	return imageData;
+}
+
+function getImageDataPromiseFromBlob(blob) {
+	return (
+		blob
+		.arrayBuffer()
+		.then((arrayBuffer) => getImageDataFromArrayBuffer(arrayBuffer))
+		.catch(catchPromiseError)
+	);
+}
+
+async function getImageDataFromURL(url) {
+	if (
+		isString(url)
+	&&	url.length > 0
+	) {
+	const	arrayBuffer = await getFilePromiseFromURL(url, 'arraybuffer');
+
+		if (arrayBuffer) {
+			return getImageDataFromArrayBuffer(arrayBuffer);
+		}
+	}
+}
+
 //* legacy copypasted code to get things working, don't bother with readability, redo later:
+
+function getBlobURLFromByteArray(data, type) {
+	if (isArray(data)) {
+		data = Uint8Array.from(data, (v) => v.charCodeAt(0)).buffer;
+	}
+
+	return URL.createObjectURL(new Blob( [data], { type } ));
+}
 
 function dataToBlob(data, trackList) {
 	if (URL && URL.createObjectURL) {
@@ -2698,9 +2775,8 @@ function dataToBlob(data, trackList) {
 			}
 		}
 
-	const	bytes = Uint8Array.from(data, (v) => v.charCodeAt(0));
-	const	size = bytes.length;
-	const	url = URL.createObjectURL(new Blob(bytes, { type }));
+	const	size = data.length;
+	const	url = getBlobURLFromByteArray(data, type);
 
 		if (url) {
 			addURLToTrackList(url, trackList);
@@ -3212,19 +3288,27 @@ const	heightRatio = heightFrom/heightTo;
 	}
 }
 
-function getCanvasFromByteArray(rgbaArray, w,h) {
-const	canvas = cre('canvas');
-const	ctx = canvas.getContext('2d');
+function getCanvasFromImageData(imageData) {
+	if (isNonNullImageData(imageData)) {
+	const	canvas = cre('canvas');
+	const	ctx = canvas.getContext('2d');
+	const	{data, width, height} = imageData;
 
-	canvas.width = w;
-	canvas.height = h;
+		canvas.width = width;
+		canvas.height = height;
 
-const	imageData = ctx.createImageData(w,h);
-	imageData.data.set(rgbaArray);
+		if (!isImageData(imageData)) {
+			imageData = new ImageData(width, height);
+			imageData.data.set(data);
+		}
 
-	ctx.putImageData(imageData, 0,0);
 
-	return canvas;
+		ctx.putImageData(imageData, 0,0);
+
+		return canvas;
+	}
+
+	if (TESTING > 2) console.log('getCanvasFromImageData failed:', arguments);
 }
 
 function getImageData(img, x,y, w,h) {
@@ -3292,7 +3376,7 @@ function getFirstPixelRGBA(img) {
 }
 
 function getAutoCropArea(img, bgToCheck) {
-	if (!isNonNullObject(img = getImageData(img))) {
+	if (!isNonNullImageData(img = getImageData(img))) {
 		return;
 	}
 
@@ -3651,27 +3735,6 @@ function isLayerSkipped(layer) {
 	);
 }
 
-async function getImageDataFromURL(url) {
-	if (!url) {
-		return null;
-	}
-
-const	arrayBuffer = await getFilePromiseFromURL(url, 'arraybuffer');
-
-	if (!arrayBuffer) {
-		return null;
-	}
-
-const	img  = UPNG.decode(arrayBuffer);
-const	rgba = UPNG.toRGBA8(img)[0];	//* <- UPNG.toRGBA8 returns array of frames, size = width * height * 4 bytes.
-
-	return {
-		width: img.width
-	,	height: img.height
-	,	data: rgba
-	};
-}
-
 //* pile of hacks and glue to get things working, don't bother with readability, redo later:
 
 async function thisToPng(targetLayer) {
@@ -3719,9 +3782,36 @@ async function thisToPng(targetLayer) {
 			return node;
 		}
 
-	let	data, canvas, img;
+	let	pixelData, img;
 
-	//* try library-provided methods:
+	//* try converting raw pixel data:
+
+		if (pixelData = getPropByAnyOfNamesChain(node, 'imgData', 'maskData', 'pixelData')) {
+		const	imgData = {
+				// data: pixelData.data || pixelData
+				data: getPropByAnyOfNamesChain(pixelData, 'data')
+			,	width: getPropFromAnySource('width', pixelData, target, node)
+			,	height: getPropFromAnySource('height', pixelData, target, node)
+			};
+
+			if (
+				USE_PNG_FILE_CODER
+			&&	(img = await getImageElementFromData(imgData))
+			) {
+				return getAndCountLoadedImage(img);
+			}
+
+		const	canvas = getCanvasFromImageData(imgData);
+
+			if (
+				canvas
+			&&	(img = await getImagePromiseFromCanvasToBlob(canvas, project))
+			) {
+				return getAndCountLoadedImage(img);
+			}
+		}
+
+	//* try library-provided methods, which internally may use canvas API and possibly premultiply alpha, trading precision for speed:
 
 		for (
 			const methodName
@@ -3735,22 +3825,6 @@ async function thisToPng(targetLayer) {
 			if (img = await getResultPromiseIfMethodExists(methodName)) {
 				return getAndCountLoadedImage(img);
 			}
-		}
-
-	//* try converting raw pixel data:
-
-		if (
-			(data = node.imgData || node.maskData)
-		&&	(
-				canvas = getCanvasFromByteArray(
-					data.data || data
-				,	data.width || target.width || node.width
-				,	data.height || target.height || node.height
-				)
-			)
-		&&	(img = await getImagePromiseFromCanvasToBlob(canvas, project))
-		) {
-			return getAndCountLoadedImage(img);
 		}
 
 		return null;
@@ -4654,12 +4728,14 @@ async function getProjectViewMenu(project) {
 			&&	(
 					params.color_code
 				||	layer.imgData
+				||	layer.pixelData
 				||	layer.loadImage
 				||	(
 						layer.mask
 					&&	(
 							layer.mask.imgData
 						||	layer.mask.maskData
+						||	layer.mask.pixelData
 						||	layer.mask.loadImage
 						)
 					)
@@ -6579,6 +6655,17 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 				setImageGeometryProperties(layerWIP, layer, img);
 
 				if (img) {
+					if (GET_LAYER_IMAGE_FROM_BITMAP) {
+						img.imgData = getPropFromAnySource('pixelData', layer, node, img);
+
+						if (TESTING > 9) console.log('pixelData:', [
+							'layer.pixelData =', layer.pixelData,
+							'node.pixelData =', node.pixelData,
+							'img.pixelData =', img.pixelData,
+							'mask.pixelData =', mask.pixelData,
+						]);
+					}
+
 					if (!isLayerFolder) {
 						++project.imagesCount;
 					}
@@ -6591,7 +6678,7 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 					) {
 						layerWIP.mask = {
 							defaultColor: orz(mask.defaultColor)
-						,	maskData: img.maskData		//* <- RGBA byte array
+						,	imgData: img.maskData		//* <- RGBA byte array
 						};
 
 						setImageGeometryProperties(layerWIP.mask, mask, img);
@@ -7150,7 +7237,7 @@ const	canvas = ctx.canvas;
 
 					logLabelWrap = blendMode + ': ' + project.rendering.nestedLayers.map((layer) => layer.name).join(' / ');
 					console.time(logLabelWrap);
-					console.group(logLabelWrap);
+					if (USE_CONSOLE_LOG_GROUPING) console.group(logLabelWrap);
 
 					logLabel = blendMode + ': loading image data';
 					console.time(logLabel);
@@ -7205,6 +7292,7 @@ const	canvas = ctx.canvas;
 
 				if (TESTING_RENDER) {
 					console.timeEnd(logLabel);
+
 					logLabel = blendMode + ': running calculation';
 					console.time(logLabel);
 				}
@@ -7213,6 +7301,7 @@ const	canvas = ctx.canvas;
 
 				if (TESTING_RENDER) {
 					console.timeEnd(logLabel);
+
 					logLabel = blendMode + ': saving result to canvas';
 					console.time(logLabel);
 				}
@@ -7221,7 +7310,8 @@ const	canvas = ctx.canvas;
 
 				if (TESTING_RENDER) {
 					console.timeEnd(logLabel);
-					console.groupEnd(logLabelWrap);
+
+					if (USE_CONSOLE_LOG_GROUPING) console.groupEnd(logLabelWrap);
 					console.timeEnd(logLabelWrap);
 				}
 
@@ -8675,7 +8765,7 @@ const	img       = render.img       || (render.img       = await getOrCreateRende
 
 async function getOrCreateRenderedImg(project, render) {
 
-	function getAndCacheRenderedImgElementPromise(canvas, fileName) {
+	function getAndCacheRenderedImageElementPromise(canvas, fileName) {
 		return getImagePromiseFromCanvasToBlob(canvas, project).then(
 			(img) => {
 				if (!isNonNullObject(img)) {
@@ -8739,7 +8829,7 @@ const	refName = render.refName;
 		const	canvas = await getRenderByValues(project, values);
 
 			if (canvas) {
-				img = await getAndCacheRenderedImgElementPromise(canvas, refName);
+				img = await getAndCacheRenderedImageElementPromise(canvas, refName);
 			} else {
 				prerenders[fileName] = null;
 			}
@@ -8770,7 +8860,7 @@ let	zoomPercentage;
 
 		ctx.drawImage(img, 0,0, w,h);
 
-		img = await getAndCacheRenderedImgElementPromise(canvas, fileName);
+		img = await getAndCacheRenderedImageElementPromise(canvas, fileName);
 	}
 
 let	autocrop, crop;
@@ -8812,7 +8902,7 @@ let	autocrop, crop;
 
 				ctx.drawImage(img, -crop.left, -crop.top);
 
-				img = prerenders[cropName] = await getAndCacheRenderedImgElementPromise(canvas, fileName);
+				img = prerenders[cropName] = await getAndCacheRenderedImageElementPromise(canvas, fileName);
 			} else
 			if (cropRefName in prerenders) {
 				img = prerenders[fileName] = prerenders[cropName] = prerenders[cropRefName];
@@ -8893,9 +8983,8 @@ async function renderAll(project, flags) {
 	project.renderBatchCounterStartTime = null;
 
 const	logLabel = 'Render all: ' + project.fileName;
-
 	console.time(logLabel);
-	console.group(logLabel);
+	if (USE_CONSOLE_LOG_GROUPING) console.group(logLabel);
 
 const	startTime = getTimeNow();
 const	values = getAllMenuValues(project, true);
@@ -8908,7 +8997,7 @@ const	valueSets = await getAllValueSets(project, values);
 		await renderBatch(project, flags, startTime, values, valueSets);
 	}
 
-	console.groupEnd(logLabel);
+	if (USE_CONSOLE_LOG_GROUPING) console.groupEnd(logLabel);
 	console.timeEnd(logLabel);
 
 	setProjectWIPstate(project, false);
@@ -9709,7 +9798,7 @@ const	thisJob = {startTime, files, evt};
 		].join(' ');
 
 		console.time(logLabel);
-		console.group(logLabel);
+		if (USE_CONSOLE_LOG_GROUPING) console.group(logLabel);
 
 		for (const file of files) {
 			if (await addProjectViewTab(file, startTime)) {
@@ -9721,7 +9810,7 @@ const	thisJob = {startTime, files, evt};
 			}
 		}
 
-		console.groupEnd(logLabel);
+		if (USE_CONSOLE_LOG_GROUPING) console.groupEnd(logLabel);
 		console.timeEnd(logLabel);
 
 		console.log('Loaded ' + loadedProjectsCount + ' of ' + files.length + ' project files.');
@@ -9744,11 +9833,11 @@ async function loadFromURL(url, startTime) {
 const	logLabel = 'Load project from url: ' + url;
 
 	console.time(logLabel);
-	console.group(logLabel);
+	if (USE_CONSOLE_LOG_GROUPING) console.group(logLabel);
 
 const	isProjectLoaded = await addProjectViewTab({ url }, startTime);
 
-	console.groupEnd(logLabel);
+	if (USE_CONSOLE_LOG_GROUPING) console.groupEnd(logLabel);
 	console.timeEnd(logLabel);
 
 	return isProjectLoaded;
@@ -9934,7 +10023,7 @@ function closeProject(buttonTab) {
 async function init() {
 const	logLabelWrap = 'Init';
 	console.time(logLabelWrap);
-	console.group(logLabelWrap);
+	if (USE_CONSOLE_LOG_GROUPING) console.group(logLabelWrap);
 
 let	logLabel = `Init localization "${LANG}"`;
 	console.time(logLabel);
@@ -11526,7 +11615,7 @@ let	oldSetting;
 	toggleClass(document.body, 'loading', -1);
 	toggleClass(document.body, 'ready', 1);
 
-	console.groupEnd(logLabelWrap);
+	if (USE_CONSOLE_LOG_GROUPING) console.groupEnd(logLabelWrap);
 	console.timeEnd(logLabelWrap);
 
 	logTime('Init: ready to work.');
