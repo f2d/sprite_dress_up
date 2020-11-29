@@ -99,9 +99,11 @@ var	exampleRootDir = ''
 ,	TESTING_RENDER			= false	//* <- dump a PNG onto the page after each rendering operation.
 ,	USE_CONSOLE_LOG_GROUPING	= false	//* <- becomes a mess with concurrent operations
 ,	USE_ONE_FILE_ZIP_WORKER		= false	//* <- concatenated bundle.
-,	USE_PNG_FILE_CODER		= true
+,	USE_UPNG			= true
+,	USE_UZIP			= true
 ,	USE_WORKERS			= true
 ,	USE_ZLIB_ASM			= true
+,	USE_ZLIB_CODECS			= true
 ,	VERIFY_PARAM_COLOR_VS_LAYER_CONTENT	= false
 ,	ZERO_PERCENT_EQUALS_EMPTY		= false
 	;
@@ -501,26 +503,71 @@ const	libRootDir = 'lib/'
 ,	libLangDir = libRootDir + 'localization/'
 ,	libUtilDir = libRootDir + 'util/'
 
-//* source: https://github.com/ukyo/zlib-asm
-
-,	zlibAsmSubDir = 'zlib-asm/v0.2.2/'	//* <- last version supported by zip.js, ~ x2 faster than default
-// ,	zlibAsmSubDir = 'zlib-asm/v1.0.7/'	//* <- not supported by zip.js, works in some cases (with same speed as v0.2.2)
+,	zlibPakoDir = libFormatsDir + 'zlib/pako/'
+,	zlibAsmDir = libFormatsDir + 'zlib/zlib-asm/v0.2.2/'	//* <- last version supported by zip.js, ~ x2 faster than default
+// ,	zlibAsmDir = libFormatsDir + 'zlib/zlib-asm/v1.0.7/'	//* <- not supported by zip.js, works in some cases (with same speed as v0.2.2)
 
 ,	zipAllInOneFileName = 'z-worker-copy-all-in-one-file.js'
 ,	zipAllInOneFileNameAsm = 'z-worker-copy-all-in-one-file-asm.js'
-,	libEncoderToPNG = (USE_PNG_FILE_CODER ? ['UPNG.js'] : [])
+
+,	libCodecPNG = (USE_UPNG ? ['UPNG.js'] : [])
+,	zlibCodecPNG = [USE_UZIP ? 'UZIP.js' : 'pako']
+,	zlibCodecZIP = (
+		USE_ZLIB_CODECS
+	&&	!USE_ONE_FILE_ZIP_WORKER
+	&&	!(USE_WORKERS && CAN_USE_WORKERS)
+		? [
+			USE_ZLIB_ASM
+			? 'zlib-asm'
+			: 'pako'
+		] : []
+	)
 
 ,	fileTypeLibs = {
+		'zlib-asm': {
+
+//* source: https://github.com/ukyo/zlib-asm
+
+			'varName': 'zlib'
+		,	'dir': zlibAsmDir
+		,	'files': [
+				'zlib.js',
+			]
+		},
+
+		'pako': {
+
+//* source: https://github.com/nodeca/pako
+
+			'varName': 'pako'
+		,	'dir': zlibPakoDir
+		,	'files': [
+				'pako.js',
+			]
+		},
+
+		'UZIP.js': {
+
+//* source: https://github.com/photopea/UZIP.js
+
+			'varName': 'UZIP'
+		,	'dir': libFormatsDir + 'zlib/UZIP/'
+		,	'files': [
+				'UZIP.js',
+			]
+		,	'depends': ['pako']
+		},
+
 		'UPNG.js': {
 
 //* source: https://github.com/photopea/UPNG.js
 
 			'varName': 'UPNG'
-		,	'dir': libFormatsDir + 'png/'
+		,	'dir': libFormatsDir + 'png/UPNG/'
 		,	'files': [
-				'pako/pako.js',
-				'UPNG/UPNG.js',
+				'UPNG.js',
 			]
+		,	'depends': zlibCodecPNG
 		},
 
 		'zip.js': {
@@ -532,13 +579,14 @@ const	libRootDir = 'lib/'
 		,	'files': [
 				'zip.js',
 				'zip-fs.js',
-
-//* CORS workaround: https://github.com/gildas-lormeau/zip.js/issues/169#issuecomment-312110395
-
 			].concat(
 				USE_WORKERS && CAN_USE_WORKERS
 				? []
 				:
+
+//* CORS workaround: when not using Workers, include scripts here.
+//* https://github.com/gildas-lormeau/zip.js/issues/169#issuecomment-312110395
+
 				USE_ONE_FILE_ZIP_WORKER
 				? (
 					USE_ZLIB_ASM
@@ -546,16 +594,18 @@ const	libRootDir = 'lib/'
 					: [zipAllInOneFileName]
 				)
 				:
-				USE_ZLIB_ASM
+				USE_ZLIB_CODECS
 				? [
-					zlibAsmSubDir + 'zlib.js',
-					'zlib-asm/codecs.js',
+					USE_ZLIB_ASM
+					? 'zlib-asm/codecs.js'
+					: 'pako/codecs.js'
 				]
 				: [
 					'deflate.js',
 					'inflate.js',
 				]
 			)
+		,	'depends': zlibCodecZIP
 		},
 
 		'ora.js': {
@@ -591,7 +641,7 @@ const	libRootDir = 'lib/'
 				// 'psd.min.js',
 				'psd.js',
 			]
-		,	'depends': libEncoderToPNG
+		,	'depends': libCodecPNG
 		},
 
 		'psd.browser.js': {
@@ -605,7 +655,7 @@ const	libRootDir = 'lib/'
 				// 'psd.browser.min.js',
 				'psd.browser.js',
 			]
-		,	'depends': libEncoderToPNG
+		,	'depends': libCodecPNG
 		},
 	}
 ,	fileTypeLoaders = [
@@ -2697,7 +2747,6 @@ function getImageElementFromData(imageData) {
 			[imageData.data.buffer]	//* <- array of frames. A frame is an ArrayBuffer (RGBA, 8 bits per channel).
 		,	imageData.width
 		,	imageData.height
-		,	0			//* <- number of colors in the result; 0: all colors (lossless PNG).
 		);
 
 	const	url = getBlobURLFromByteArray(arrayBuffer, 'image/png');
@@ -2995,12 +3044,20 @@ const	depends = lib.depends || null;
 								)
 							];
 						} else
-						if (USE_ZLIB_ASM) {
-							zipWorkerScripts = [
-								dir + 'z-worker.js',
-								dir + zlibAsmSubDir + 'zlib.js',
-								dir + 'zlib-asm/codecs.js',
-							];
+						if (USE_ZLIB_CODECS) {
+							if (USE_ZLIB_ASM) {
+								zipWorkerScripts = [
+									dir + 'z-worker.js',
+									zlibAsmDir + 'zlib.js',
+									dir + 'zlib-asm/codecs.js',
+								];
+							} else {
+								zipWorkerScripts = [
+									dir + 'z-worker.js',
+									zlibPakoDir + 'pako.js',
+									dir + 'pako/codecs.js',
+								];
+							}
 						}
 
 						if (zipWorkerScripts) {
@@ -3029,19 +3086,25 @@ const	depends = lib.depends || null;
 					window[varName] = require('psd');
 				}
 
-//* add scripts one by one:
+//* add scripts one by one, skip empty values:
 
-				if (scripts.length > 0) {
+			let	scriptSrc = null;
+
+				while (scripts.length > 0) if (scriptSrc = scripts.shift()) {
+					break;
+				}
+
+				if (scriptSrc) {
 				const	script = cre('script', document.head);
 					script.setAttribute('data-lib-name', libName);
 					script.onload = addNextScript;
 					script.onerror = (evt) => getErrorFromEvent(evt, 'Script loading failed.', reject);
-					script.src = dir + scripts.shift();
+					script.src = dir + scriptSrc;
 				} else
 
 //* then check whether the required object is present:
 
-				if (window[varName]) {
+				if (!varName || window[varName]) {
 					logTime('"' + libName + '" library finished loading');
 
 					resolve(true);
@@ -3795,7 +3858,7 @@ async function thisToPng(targetLayer) {
 			};
 
 			if (
-				USE_PNG_FILE_CODER
+				USE_UPNG
 			&&	(img = await getImageElementFromData(imgData))
 			) {
 				return getAndCountLoadedImage(img);
