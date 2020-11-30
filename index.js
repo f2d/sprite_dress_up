@@ -98,13 +98,14 @@ var	exampleRootDir = ''
 ,	TESTING				= false	//* <- dump more info into the console; several levels are possible.
 ,	TESTING_PNG			= false	//* <- dump a PNG onto the page after each rendering operation.
 ,	TESTING_RENDER			= false	//* <- dump a PNG onto the page after each rendering operation.
-,	USE_CONSOLE_LOG_GROUPING	= false	//* <- becomes a mess with concurrent operations
-,	USE_ONE_FILE_ZIP_WORKER		= false	//* <- concatenated bundle.
+,	USE_CONSOLE_LOG_GROUPING	= false	//* <- becomes a mess with concurrent operations.
+,	USE_MINIFIED_JS			= true	//* <- currently only pako.
+,	USE_ONE_FILE_ZIP_WORKER		= true	//* <- concatenated bundle.
 ,	USE_UPNG			= true
-,	USE_UZIP			= true
+,	USE_UZIP			= false
 ,	USE_WORKERS			= true
-,	USE_ZLIB_ASM			= true
-,	USE_ZLIB_CODECS			= true
+,	USE_ZLIB_ASM			= false
+,	USE_ZLIB_CODECS			= true	//* <- asm or pako instead of zip.js own.
 ,	VERIFY_PARAM_COLOR_VS_LAYER_CONTENT	= false
 ,	ZERO_PERCENT_EQUALS_EMPTY		= false
 	;
@@ -513,9 +514,11 @@ const	libRootDir = 'lib/'
 ,	zlibCodecZIP = [USE_ZLIB_ASM ? 'zlib-asm' : 'pako']
 
 ,	zipAllInOneFileName = (
-		USE_ZLIB_ASM
+		!USE_ZLIB_CODECS
+		? 'z-worker-copy-all-in-one-file.js'
+		: USE_ZLIB_ASM
 		? 'z-worker-copy-all-in-one-file-asm.js'
-		: 'z-worker-copy-all-in-one-file.js'
+		: 'z-worker-copy-all-in-one-file-pako.js'
 	)
 
 ,	zipZlibCodecWrapper = (
@@ -540,7 +543,11 @@ const	libRootDir = 'lib/'
 
 			'varName': 'pako'
 		,	'dir': zlibPakoDir
-		,	'files': ['pako.js']
+		,	'files': [
+				USE_MINIFIED_JS
+				? 'pako.min.js'
+				: 'pako.js'
+			]
 		},
 
 		'UZIP.js': {
@@ -2797,7 +2804,7 @@ async function getImageDataFromURL(url) {
 		isString(url)
 	&&	url.length > 0
 	) {
-	const	arrayBuffer = await getFilePromiseFromURL(url, 'arraybuffer');
+	const	arrayBuffer = await getFilePromiseFromURL(url, 'arraybuffer').catch(catchPromiseError);
 
 		if (arrayBuffer) {
 			return getImageDataFromArrayBuffer(arrayBuffer);
@@ -4158,7 +4165,7 @@ async function getFileFromLoadingData(data, projectButtons) {
 			!data.file
 		&&	data.url
 		) {
-			data.file = await getFilePromiseFromURL(data.url, 'blob', projectButtons);
+			data.file = await getFilePromiseFromURL(data.url, 'blob', projectButtons).catch(catchPromiseError);
 		}
 
 		return data.file;
@@ -10161,11 +10168,9 @@ const	configVarNames = [
 let	canLoadLocalFiles = true;
 
 	if (RUNNING_FROM_DISK) {
-		try {
-			canLoadLocalFiles = !! await getFilePromiseFromURL(fetchTestFilePath);
-		} catch (error) {
-			canLoadLocalFiles = false;
-		}
+		logTime('Init: try loading local file.');
+
+		canLoadLocalFiles = !! await getFilePromiseFromURL(fetchTestFilePath).catch(catchPromiseError);
 	}
 
 	if (!canLoadLocalFiles) {
