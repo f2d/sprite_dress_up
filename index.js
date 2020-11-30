@@ -505,7 +505,7 @@ const	libRootDir = 'lib/'
 ,	libUtilDir = libRootDir + 'util/'
 
 ,	zipFormatDir = libFormatsDir + 'zip/zip_js/'
-,	zlibPakoDir = libFormatsDir + 'zlib/pako/'
+,	zlibPakoDir = libFormatsDir + 'zlib/pako/v2.0.2/'
 ,	zlibAsmDir = libFormatsDir + 'zlib/zlib-asm/v0.2.2/'	//* <- last version supported by zip.js, ~ x2 faster than default
 
 ,	libCodecPNG = [USE_UPNG ? 'UPNG.js' : null]
