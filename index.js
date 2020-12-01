@@ -69,10 +69,16 @@ var	exampleRootDir = ''
 
 ,	PAUSE_WORK_DURATION = 20
 ,	PAUSE_WORK_INTERVAL = 200
-,	PREVIEW_SIZE = 64
-,	THUMBNAIL_SIZE = 16
-,	THUMBNAIL_ZOOM_STEP_MAX_FACTOR = 4	//* <- one-step scaling result is too blocky, stepping by factor of 2 is too blurry, 4 looks okay.
+
+,	PREVIEW_SIZE = 80
+,	THUMBNAIL_SIZE = 20
 ,	ZOOM_STEP_MAX_FACTOR = 2
+
+//* if set to 0, use common setting from above:
+
+,	TAB_PREVIEW_SIZE = 0
+,	TAB_THUMBNAIL_SIZE = 0
+,	TAB_ZOOM_STEP_MAX_FACTOR = 0	//* <- scaling in one step is blocky, stepping by factor of 2 is blurry, 4 may be okay for 20px and less.
 
 ,	ADD_COUNT_ON_BUTTON_LABEL	= false	//* <- if not, add separate text element.
 ,	ADD_PAUSE_AT_INTERVALS		= true	//* <- let UI update when loading files, rendering images, counting batch combinations, etc.
@@ -3199,9 +3205,10 @@ function getImageSrcPlaceholder() {
 	if (!thumbnailPlaceholder) {
 	const	canvas = cre('canvas');
 	const	ctx = canvas.getContext('2d');
-	const	w = canvas.width  = THUMBNAIL_SIZE;
-	const	h = canvas.height = THUMBNAIL_SIZE;
-	const	textHeight = THUMBNAIL_SIZE - 2;
+	const	imageSize = TAB_THUMBNAIL_SIZE || THUMBNAIL_SIZE;
+	const	w = canvas.width  = imageSize;
+	const	h = canvas.height = imageSize;
+	const	textHeight = imageSize - 2;
 
 		ctx.fillStyle = 'lightgray';
 		ctx.fillRect(0,0, w,h);
@@ -3269,17 +3276,18 @@ let	heightTo = h || w || heightFrom || 1;
 
 const	widthRatio  = widthFrom/widthTo;
 const	heightRatio = heightFrom/heightTo;
+const	zoomFactor = TAB_ZOOM_STEP_MAX_FACTOR || ZOOM_STEP_MAX_FACTOR;
 
 	if (
-		widthRatio  > THUMBNAIL_ZOOM_STEP_MAX_FACTOR
-	||	heightRatio > THUMBNAIL_ZOOM_STEP_MAX_FACTOR
+		widthRatio  > zoomFactor
+	||	heightRatio > zoomFactor
 	) {
 
 //* caclulate nearest scale factor top down:
 
 		if (DOWNSCALE_BY_MAX_FACTOR_FIRST) {
-			canvas.width  = widthTo  = Math.round(widthFrom  / THUMBNAIL_ZOOM_STEP_MAX_FACTOR);
-			canvas.height = heightTo = Math.round(heightFrom / THUMBNAIL_ZOOM_STEP_MAX_FACTOR);
+			canvas.width  = widthTo  = Math.round(widthFrom  / zoomFactor);
+			canvas.height = heightTo = Math.round(heightFrom / zoomFactor);
 		} else {
 
 //* caclulate nearest scale factor bottom up - more complex, but result is not better:
@@ -3298,8 +3306,8 @@ const	heightRatio = heightFrom/heightTo;
 				widthTo  < widthFrom
 			&&	heightTo < heightFrom
 			) {
-				widthToUp  *= THUMBNAIL_ZOOM_STEP_MAX_FACTOR;
-				heightToUp *= THUMBNAIL_ZOOM_STEP_MAX_FACTOR;
+				widthToUp  *= zoomFactor;
+				heightToUp *= zoomFactor;
 
 				if (
 					widthToUp  < widthFrom
@@ -4011,7 +4019,10 @@ const	buttonSelect = cre('div', buttonTab);	//* <- not 'button' tag, because it 
 const	buttonThumb = cre('div', buttonSelect);
 	buttonThumb.className = 'button-thumbnail';
 
-const	imgThumb = cre('img', buttonThumb);
+const	imgHover = cre('div', buttonThumb);
+	imgHover.className = 'thumbnail-hover';
+
+const	imgThumb = cre('img', imgHover);
 	imgThumb.className = 'thumbnail';
 
 const	buttonText = cre('div', buttonSelect);
@@ -5505,7 +5516,7 @@ function setProjectThumbnail(project, img, onLoad, onError) {
 					? imgOrPart
 					: img
 				)
-			,	THUMBNAIL_SIZE
+			,	TAB_THUMBNAIL_SIZE || THUMBNAIL_SIZE
 			);
 
 			if (canvas) {
@@ -5532,7 +5543,7 @@ function setProjectThumbnail(project, img, onLoad, onError) {
 						? imgOrPart
 						: img
 					)
-				,	PREVIEW_SIZE
+				,	TAB_PREVIEW_SIZE || PREVIEW_SIZE
 				);
 
 				if (canvas) {
@@ -6337,7 +6348,7 @@ let	element;
 	}
 
 	if (TAB_WIDTH_ONLY_GROW) {
-		if (element = project.buttonText || project.buttonTab) {
+		if (element = project.buttonStatus || project.buttonText || project.buttonTab) {
 		const	width = element.offsetWidth;
 
 			if (width > orz(element.style.minWidth)) {
@@ -9624,9 +9635,6 @@ const	style = document.documentElement.style;
 	style.marginRight = '';
 
 	updateDropdownMenuPositions(evt);
-
-//* TODO: find zoom/scale of the screen/page before regenerating thumbnails.
-	// thumbnailPlaceholder = null;
 }
 
 function updateDropdownMenuPositions(evt) {
@@ -10113,8 +10121,10 @@ const	configVarNames = [
 		'PAUSE_WORK_DURATION',
 		'PAUSE_WORK_INTERVAL',
 		'PREVIEW_SIZE',
+		'TAB_PREVIEW_SIZE',
+		'TAB_THUMBNAIL_SIZE',
+		'TAB_ZOOM_STEP_MAX_FACTOR',
 		'THUMBNAIL_SIZE',
-		'THUMBNAIL_ZOOM_STEP_MAX_FACTOR',
 		'ZOOM_STEP_MAX_FACTOR',
 	];
 

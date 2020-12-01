@@ -42,7 +42,7 @@ a:hover {
 }
 .button,
 button {
-	/* box-shadow: 0.1875em 0.1875em rgba(0,0,0, 0.1); */	/* <- buggy in Firefox 56 */
+	/* box-shadow: 0.1875em 0.1875em rgba(0,0,0, 0.1);	/* <- buggy in Firefox 56 */
 }
 .button button {
 	/* box-shadow: none; */
@@ -232,30 +232,28 @@ label:hover {
 }
 .button .button-select {
 	border: none;
-	padding: 0.25em 0.5em;
 	background: transparent;
+}
+.button .button-close,
+.button .button-thumbnail {
+	display: flex;
+	min-width: 2.5em;
+	min-height: 2.5em;
 }
 .button .button-close {
 	border: none;
-	padding: 0 0.8em;
 }
 .button .button-close::after {
 	content: "⨉";
-	display: flex;
-	align-self: center;
+}
+.button .button-close::after,
+.button .thumbnail-hover {
+	margin: auto;	/* <- centered content */
+	line-height: 0;	/* <- prevent text baseline from messing with alignment */
 }
 .button .button-close:hover {
 	color: white;
 	background-color: #f88;
-}
-.button .button-thumbnail {
-	margin-right: 0.5em;
-	align-self: center;	/* <- fix for flexbox (with absolute-positioned block inside) jumping aroung on hover in Firefox 83 */
-}
-.button .button-thumbnail,
-.thumbnail-hover {
-	display: flex;
-	position: relative;
 }
 .thumbnail {
 	align-self: center;
@@ -268,6 +266,8 @@ label:hover {
 	border-color: white;
 }
 .thumbnail-hover {
+	position: relative;
+	display: flex;
 	cursor: zoom-in;
 }
 .thumbnail-hover .larger {
@@ -415,6 +415,7 @@ label:hover {
 }
 #loaded-files-selection .button-text {
 	text-align: left;
+	padding: 0.25em 0.5em;
 }
 #loaded-files-selection .button-name {
 	font-size: 80%;
