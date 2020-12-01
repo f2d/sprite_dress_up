@@ -648,8 +648,8 @@ if arg_dest_file_path:
 print_with_colored_title('Reading old file:', dest_file_path)
 
 t = timestamp()
-mark_before = '//* generated file list start, saved at ' + t
-mark_after = '//* generated file list end, saved at ' + t
+mark_before = '// * generated file list start, saved at ' + t
+mark_after = '// * generated file list end, saved at ' + t
 
 content_before = content_after = ''
 
@@ -670,6 +670,11 @@ if old_content:
 
 	pat_var_value = re.compile(
 		r'''
+			(?P<Comment>
+				(?P<CommentLine>(^|[\r\n])\s*//[^\r\n]*)
+			|	(?P<CommentBlock>/[*].*?[*]/)
+			)
+		|	(?P<Declaration>\b(var|let|const|,)\s+)
 			(?P<VarName>[^\s'"`~!@#$%^&*{}()\[\].,;+=-]+)
 			(?P<Operator>\s*=\s*)
 			(?P<VarValue>
@@ -717,6 +722,9 @@ if old_content:
 		print_with_colored_title('Parsing optional old variables:')
 
 		for match in re.finditer(pat_var_value, old_vars_text):
+			if match.group('Comment'):
+				continue
+
 			var_value = (
 				match.group('Numeric')
 			or	match.group('Quoted1')
@@ -899,17 +907,21 @@ if old_content:
 	def replace_var(match):
 		global replacements
 
+		if match.group('Comment'):
+			return match.group(0)
+
 		var_name = match.group('VarName')
 
 		for replacement in replacements:
 			if var_name == replacement['var_name']:
 				replacement['encounters'] += 1
 
-				return (
-					var_name
-				+	match.group('Operator')
-				+	replacement['new_value']
-				)
+				return ''.join([
+					match.group('Declaration')
+				,	var_name
+				,	match.group('Operator')
+				,	replacement['new_value']
+				])
 
 		return match.group(0)
 
@@ -918,18 +930,22 @@ if old_content:
 
 	for replacement in replacements:
 		if not replacement['encounters']:
-			content_after += '\n\nvar {} = {};'.format(replacement['var_name'], replacement['new_value'])
+			content_before = '\nvar {} = {};\n{}'.format(
+				replacement['var_name']
+			,	replacement['new_value']
+			,	content_before
+			)
 
 else:
 	content_before = '\n\n'.join([
 		'\n'.join([
 			''
-		,	'//* Remove slashes before the variables to override default values.'
-		,	'//* See more available settings in the main script file (index.js).'
-		,	'//* Add any overrides only here, to this file.'
-		,	'//* Notes to avoid generation trouble:'
-		,	'//*	Keep paths as simple one-line strings.'
-		,	'//*	Keep JSON as strictly simple and valid.'
+		,	'// * Remove slashes before the variables to override default values.'
+		,	'// * See more available settings in the main script file (index.js).'
+		,	'// * Add any overrides only here, to this file.'
+		,	'// * Notes to avoid generation trouble:'
+		,	'// *	Keep paths as simple one-line strings.'
+		,	'// *	Keep JSON as strictly simple and valid.'
 		])
 	,	'// var TESTING = true;'
 	,	'// var EXAMPLE_NOTICE = false;'
