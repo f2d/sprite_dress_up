@@ -99,7 +99,7 @@ var	exampleRootDir = ''
 ,	TESTING_RENDER			= false	//* <- dump a PNG onto the page after each rendering operation.
 ,	USE_CONSOLE_LOG_GROUPING	= false	//* <- becomes a mess with concurrent operations.
 ,	USE_MINIFIED_JS			= true	//* <- currently only pako.
-,	USE_ONE_FILE_ZIP_WORKER		= true	//* <- concatenated bundle.
+,	USE_ONE_FILE_ZIP_WORKER		= false	//* <- concatenated bundle, which is not included in distribution by default.
 ,	USE_UPNG			= true
 ,	USE_UZIP			= false
 ,	USE_WORKERS			= true
@@ -505,7 +505,7 @@ const	libRootDir = 'lib/'
 ,	libUtilDir = libRootDir + 'util/'
 
 ,	zipFormatDir = libFormatsDir + 'zip/zip_js/'
-,	zlibPakoDir = libFormatsDir + 'zlib/pako/v2.0.2/'
+,	zlibPakoDir = libFormatsDir + 'zlib/pako/v2.0.2/'	//* <- good enough for everything
 ,	zlibAsmDir = libFormatsDir + 'zlib/zlib-asm/v0.2.2/'	//* <- last version supported by zip.js, ~ x2 faster than default
 
 ,	libCodecPNG = [USE_UPNG ? 'UPNG.js' : null]
@@ -522,8 +522,8 @@ const	libRootDir = 'lib/'
 
 ,	zipZlibCodecWrapper = (
 		USE_ZLIB_ASM
-		? 'zlib-asm/codecs.js'
-		: 'pako/codecs.js'
+		? 'codecs-zlib-asm.js'
+		: 'codecs-pako.js'
 	)
 
 ,	fileTypeLibs = {

@@ -117,6 +117,12 @@ python ./update_config.py -im7 -filter Sinc
 
 
 
+## Included examples
+
+Although the live page on my server has notice that examples there are provided only for testing and reference, all files in this repository are covered by MIT license, unless noted otherwise with separate license file. Also there is [another deliberately complicated file](https://yadi.sk/d/cOk8HSdC6r-t7Q), that I created explicitly for testing and released into Public Domain, not included here to avoid unnecessary bloat.
+
+
+
 ## Included libraries
 
 ORA file parser:
@@ -131,7 +137,7 @@ PSD file parser:
 PNG file parser (not used here yet):
 * Lightly modified [UPNG.js](https://github.com/photopea/UPNG.js), should be backward compatible.
 * Unmodified [UZIP.js](https://github.com/photopea/UZIP.js).
-* Unmodified [Pako.js](https://github.com/nodeca/pako).
+* Unmodified [pako](https://github.com/nodeca/pako).
 
 ZIP file parser:
 * Lightly modified [zip.js](https://github.com/gildas-lormeau/zip.js), should be backward compatible.
