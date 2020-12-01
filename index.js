@@ -37,7 +37,6 @@
 //* TODO: global job list for WIP cancelling instead of spaghetti-coded flag checks.
 //* TODO: split JS files in a way that lets older browsers to use parts they can parse and execute (only show menu, or only load ORA, etc.).
 //* TODO: split functionality into modules to reuse with drawpad, etc.
-//* TODO: use console.error(), console.trace(), etc.
 
 //* ---------------------------------------------------------------------------
 //* Config: defaults, do not change here, redefine in external config file *---
@@ -1352,7 +1351,7 @@ function eventStop(evt, flags) {
 }
 
 function catchPromiseError(error) {
-	console.log('Promise failed:', error);
+	console.error('Promise failed:', error);
 
 	return null;
 }
@@ -2519,7 +2518,7 @@ let	logText = getLogTime();
 }
 
 function logError(error, args, context) {
-	console.log(
+	console.error(
 		'Error:'
 	,	[
 			error,
@@ -2699,7 +2698,7 @@ function getImagePromiseFromCanvasToBlob(canvas, trackList, mimeType, quality, i
 						URL.revokeObjectURL(url);
 					}
 
-					if (TESTING) console.log('Image loading failed:', [url, img, evt]);
+					if (TESTING) console.error('Image loading failed:', [url, img, evt]);
 
 					getErrorFromEvent(evt, 'Canvas to blob: image loading failed.', reject);
 				};
@@ -3362,7 +3361,7 @@ function getCanvasFromImageData(imageData) {
 		return canvas;
 	}
 
-	if (TESTING > 2) console.log('getCanvasFromImageData failed:', arguments);
+	if (TESTING > 2) console.error('getCanvasFromImageData failed:', arguments);
 }
 
 function getImageData(img, x,y, w,h) {
@@ -3779,7 +3778,7 @@ function isLayerRendered(layer) {
 
 function isLayerSkipped(layer) {
 	if (TESTING && !layer.params) {
-		console.log('No params:', [layer, getLayerPathText(layer)]);
+		console.error('No params:', [layer, getLayerPathText(layer)]);
 	}
 
 	return !!(
@@ -4285,7 +4284,7 @@ let	project, totalStartTime;
 		+	' ms total'
 		);
 	} else {
-		if (TESTING) console.log(
+		if (TESTING) console.error(
 			'Error: Unknown file type:'
 		,	[
 				ext
@@ -4988,7 +4987,7 @@ async function getProjectViewMenu(project) {
 									const	layerRGBAText = getColorTextFromArray(layer.img);
 
 										if (layerRGBAText !== colorCodeText) {
-											console.log(
+											console.error(
 												'Got color code in param: '
 											+	colorCodeText
 											+	', prefered instead of layer content: '
@@ -5017,7 +5016,7 @@ async function getProjectViewMenu(project) {
 									return;
 								}
 
-								if (TESTING) console.log('Image loading failed:', [img, evt]);
+								if (TESTING) console.error('Image loading failed:', [img, evt]);
 
 								resolve(false);
 							}
@@ -5043,7 +5042,7 @@ async function getProjectViewMenu(project) {
 					}
 				).catch(
 					(error) => {
-						console.log(error);
+						console.error(error);
 
 						resolve(false);
 					}
@@ -5072,7 +5071,7 @@ async function getProjectViewMenu(project) {
 						}
 					).catch(
 						(error) => {
-							console.log(error);
+							console.error(error);
 
 							resolve(false);
 						}
@@ -6108,7 +6107,7 @@ const	params = getOrInitChild(layer, 'params');
 			continue param_list;
 		}
 
-		if (TESTING) console.log('Unknown param type:', [param, getWIPLayerPathText()]);
+		if (TESTING) console.error('Unknown param type:', [param, getWIPLayerPathText()]);
 	}
 
 	return layer;
@@ -7422,7 +7421,7 @@ const	canvas = ctx.canvas;
 			ctxBlendMode === blendMode
 		||	!tryBlendingEmulation(blendMode)
 		) {
-			if (TESTING && ctxBlendMode !== blendMode) console.log('blendMode:', [blendMode, 'fallback:', ctxBlendMode]);
+			if (TESTING && ctxBlendMode !== blendMode) console.error('blendMode:', [blendMode, 'fallback:', ctxBlendMode]);
 
 			ctx.globalAlpha = opacity;
 
@@ -7998,7 +7997,7 @@ const	selectBox = getAllByTag('select', project.container).find(
 
 function getLayerPathVisibilityByValues(project, layer, values, listName) {
 	if (TESTING && !layer.params) {
-		console.log('No params:', [project, layer, values, listName]);
+		console.error('No params:', [project, layer, values, listName]);
 	}
 
 	if (layer.params.check_order === 'up') {
@@ -9717,7 +9716,7 @@ const	resetPrefix = 'reset_to_';
 
 		alert(getLocalizedText('see_console'));
 	} else {
-		console.log(
+		console.error(
 			'Unknown action: ' + action
 		,	[
 				evt
@@ -9872,7 +9871,7 @@ const	thisJob = {startTime, files, evt};
 
 		console.log('Loaded ' + loadedProjectsCount + ' of ' + files.length + ' project files.');
 	} else if (TESTING) {
-		console.log('Cannot load files:', [files, 'From event:', evt]);
+		console.error('Cannot load files:', [files, 'From event:', evt]);
 	}
 
 	if (TESTING > 9) console.log(thisJob, pendingJobs);
@@ -9981,7 +9980,7 @@ let	isProjectLoaded = false;
 
 			setGlobalWIPstate(false);
 		} else {
-			console.log('Unknown action: ' + action, [button, filesTable]);
+			console.error('Unknown action: ' + action, [button, filesTable]);
 		}
 	} else
 	if (url = getButtonURL(button)) {
