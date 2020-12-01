@@ -17,9 +17,17 @@ Firefox 56 is supported as a bottom line.
 
 Open one of `index.<lang>.htm` files in a web-browser, drop files on the page or use menu at the top.
 
+The application page never sends any files or other data to the internet.
+All work and settings live inside the browser memory.
+
 Using project files saved in a maximum compatibility mode is recommended.
 
 Recomposition functionality is already usable to some extent, but lacks support of a lot of advanced project file features (e.g. smart objects, text, vectors, procedural effects), and rendering quality is more of a proof-of-concept than production-ready.
+
+The application page does not preload all its program libraries at start, but adds them on demand, e.g. PSD file parser is loaded when a PSD file is first opened.
+So a network disconnect may prevent it from working when the page is opened from server.
+On the other hand, the page works fine from disk.
+So you may take a copy of this repository and use it locally, even without the internet.
 
 
 

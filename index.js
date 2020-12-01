@@ -4159,6 +4159,10 @@ function removeFailedTab(buttonTab) {
 }
 
 async function getFileFromLoadingData(data, projectButtons) {
+
+	projectButtons.errorPossible = 'project_status_error_loading_file';
+	projectButtons.errorParams = data.name;
+
 	if (isNonNullObject(data)) {
 		if (
 			!data.file
@@ -4189,8 +4193,6 @@ async function getNormalizedProjectData(sourceFile, projectButtons) {
 
 	if (READ_FILE_CONTENT_TO_GET_TYPE) {
 		if (!sourceFile.file) {
-			projectButtons.errorPossible = 'project_status_error_loading_file';
-
 			if (! await getFileFromLoadingData(sourceFile, projectButtons)) {
 				return null;
 			}
@@ -6369,6 +6371,10 @@ function setImageGeometryProperties(target, ...sources) {
 //* Page-specific functions: internal, loading from file *---------------------
 
 async function loadCommonWrapper(project, libName, getFileParserPromise, treeConstructorFunc) {
+
+	project.loading.errorPossible = 'project_status_error_loading_library';
+	project.loading.errorParams = libName;
+
 	if (! await loadLibOnDemandPromise(libName)) {
 		return;
 	}
@@ -6378,10 +6384,12 @@ const	actionLabel = 'processing document with ' + libName;
 
 	logTime('"' + project.fileName + '" started ' + actionLabel);
 
+	project.loading.errorPossible = 'project_status_error_loading_file';
+	project.loading.errorParams = project.fileName;
 	project.loading.startParsingTime = getTimeNow();
 
 	try {
-	const	file = await getFileFromLoadingData(project.loading.data);
+	const	file = await getFileFromLoadingData(project.loading.data, project.loading);
 
 		if (file) {
 			sourceData = await getFileParserPromise(file).catch(catchPromiseError);
@@ -11501,7 +11509,11 @@ const	menuHTMLpartsOrder = [
 
 const	aboutLinks = [
 		{
-			'header': getLocalizedHTML('about_source')
+			'content': getLocalizedHTML('about_notes')
+		}
+	,	{
+			'pretext': '<hr>'
+		,	'header': getLocalizedHTML('about_source')
 		,	'links': [
 				['https://github.com/f2d/sprite_dress_up', 'GitHub']
 			]
@@ -11523,10 +11535,6 @@ const	aboutLinks = [
 					]
 				)
 			)
-		}
-	,	{
-			'pretext': '<hr>'
-		,	'content': getLocalizedHTML('about_notes')
 		}
 	];
 
