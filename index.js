@@ -119,7 +119,7 @@ var	exampleRootDir = ''
 //* Create type-checking functions, e.g. "isString()" or "isImageElement()":
 //* source: https://stackoverflow.com/a/17772086
 [
-	// 'AsyncFunction',	//* <- it maybe better to cut 'Function' from end to match this
+	// 'AsyncFunction',	//* <- it maybe better to get just 'Function' from end to match this
 	'Promise',
 	'ArrayBuffer',
 	'Array',
@@ -483,6 +483,13 @@ const	LS = window.localStorage || localStorage
 		['blendMode', BLEND_MODE_NORMAL],
 		['isBlendModeTS', false],
 		['isClipped', false],
+	]
+
+,	IMAGE_DATA_KEYS_TO_LOAD = [
+		'loadImage'
+	,	'pixelData'
+	,	'maskData'
+	,	'imgData'
 	]
 
 ,	CLEANUP_KEYS_TESTING = [
@@ -3849,7 +3856,6 @@ async function thisToPng(targetLayer) {
 
 		if (pixelData = getPropByAnyOfNamesChain(node, 'imgData', 'maskData', 'pixelData')) {
 		const	imgData = {
-				// data: pixelData.data || pixelData
 				data: getPropByAnyOfNamesChain(pixelData, 'data')
 			,	width: getPropFromAnySource('width', pixelData, target, node)
 			,	height: getPropFromAnySource('height', pixelData, target, node)
@@ -4793,17 +4799,10 @@ async function getProjectViewMenu(project) {
 				layer.opacity > 0
 			&&	(
 					params.color_code
-				||	layer.imgData
-				||	layer.pixelData
-				||	layer.loadImage
+				||	IMAGE_DATA_KEYS_TO_LOAD.some((key) => key in layer)
 				||	(
 						layer.mask
-					&&	(
-							layer.mask.imgData
-						||	layer.mask.maskData
-						||	layer.mask.pixelData
-						||	layer.mask.loadImage
-						)
+					&&	IMAGE_DATA_KEYS_TO_LOAD.some((key) => key in layer.mask)
 					)
 				||	(
 						!layersInside

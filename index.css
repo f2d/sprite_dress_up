@@ -40,13 +40,6 @@ a {
 a:hover {
 	color: black;
 }
-.button,
-button {
-	/* box-shadow: 0.1875em 0.1875em rgba(0,0,0, 0.1);	/* <- buggy in Firefox 56 */
-}
-.button button {
-	/* box-shadow: none; */
-}
 [onclick],
 button,
 select,
@@ -101,15 +94,14 @@ label:hover {
 .menu-head {
 	display: inline-block;
 	position: relative;
-	/* margin: 1em; */
 }
-.menu-head > :first-child {
-	background-color: #f5f5f5;
+.menu-head > .button {
+	display: flex;
+	align-items: center;
 	padding: 0.5em 1em;
-	text-align: left;
+	background-color: #f5f5f5;
 }
-.menu-head > :first-child::before {
-	line-height: 0.5;
+.menu-head > .button::before {
 	content: "\25BE\A0";
 }
 .menu-drop {
@@ -151,9 +143,6 @@ label:hover {
 }
 .example-files {
 	border-collapse: collapse;
-}
-.example-files th {
-	/* font-weight: normal; */
 }
 .example-files td {
 	padding: 0.125em 0.25em;
@@ -462,30 +451,41 @@ body > button,
 .loaded-file:empty {
 	display: none;
 }
+.loaded-file table,
+.loaded-file tr,
+.loaded-file th {
+	margin: 0;
+	padding: 0;
+	border-collapse: collapse;
+}
+.loaded-file .project-options,
+.loaded-file .project-render {
+	padding: 0.5em;
+}
 .loaded-file div[data-option-id] > img,
 .loaded-file td > img,
 .loaded-file td > section {
 	padding: 0.5em;
 	margin: 0.5em;
 }
-.project-options th *,
-.loaded-file td section {
+.loaded-file td section,
+.project-options th * {
 	background-color: rgba(0,0,0, 0.1);
 }
-.project-options th,
+.loaded-file td section,
 .project-options td,
-.loaded-file td section {
+.project-options th {
 	white-space: nowrap;
-}
-.project-header {
-	display: flex;	/* <- content will vertically fill the height of this container */
-	flex-wrap: wrap;
 }
 .loaded-file td,
 .project-header div,
 .project-header section {
 	text-align: left;
 	vertical-align: top;
+}
+.project-header {
+	display: flex;	/* <- content will vertically fill the height of this container */
+	flex-wrap: wrap;
 }
 .project-header section {
 	display: inline-block;
@@ -503,6 +503,9 @@ body > button,
 .project-header footer,
 .project-header div {
 	margin: 0.5em;
+}
+.project-header.filename {
+	margin-top: 0;
 }
 .project-header footer > div {
 	display: inline-block;
@@ -584,9 +587,17 @@ body > button,
 .project-options header {
 	padding: 0.5em 1em;
 }
+.project-options td {
+	padding: 0.125em;
+	vertical-align: middle;
+}
+.project-options td:last-child {
+	padding-right: 0;
+}
 .project-options td:first-child {
 	text-align: right;
-	padding: 0 0.5em 0 1em;
+	padding-left: 1em;
+	padding-right: 0.5em;
 	min-width: 9em;
 	max-width: 9em;
 	overflow: hidden;

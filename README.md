@@ -7,9 +7,7 @@
 
 1. Parse artwork project files (ORA, PSD) into menu of parts to preview preset versions.
 2. Easy batch export of all versions into image files (PNG), separated or joined.
-
-Completely on the client side, using a web browser with modern JavaScript support.
-Firefox 56 is supported as a bottom line.
+3. Work completely on the client side, using a web browser with modern JavaScript support.
 
 
 
@@ -28,6 +26,8 @@ The application page does not preload all its program libraries at start, but ad
 So a network disconnect may prevent it from working when the page is opened from server.
 On the other hand, the page works fine from disk.
 So you may take a copy of this repository and use it locally, even without the internet.
+
+Firefox 56 is supported as a bottom line.
 
 
 
