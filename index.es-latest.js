@@ -142,6 +142,43 @@ var	exampleRootDir = ''
 	}
 );
 
+//* ---------------------------------------------------------------------------
+//* Create common utility functions before using them in config:
+
+const getFlatArray = (
+	typeof Array.prototype.flat === 'function'
+
+//* modern way:
+
+	? (array, maxDepth) => Array.prototype.flat.call(array, isNaN(maxDepth) ? Infinity : maxDepth)
+
+//* legacy way:
+
+	: (array, maxDepth) => {
+		if (isNaN(maxDepth)) {
+			maxDepth = Infinity;
+		}
+
+	const	flatArray = [];
+
+		Array.from(array).forEach(
+			(value) => {
+				if (isArray(value)) {
+					if (maxDepth > 0) {
+						flatArray.concat(getFlatArray(value, maxDepth - 1))
+					} else {
+						flatArray.concat(value)
+					}
+				} else {
+					flatArray.push(value)
+				}
+			}
+		);
+
+		return flatArray;
+	}
+);
+
 //* Config: internal, do not change *------------------------------------------
 
 const	configFilePath = 'config.js'			//* <- declarations-only file to redefine any of the above variables
@@ -518,26 +555,34 @@ const	libRootDir = 'lib/'
 ,	libUtilDir = libRootDir + 'util/'
 
 ,	zipFormatDir = libFormatsDir + 'zip/zip_js/'
-,	zlibPakoDir = libFormatsDir + 'zlib/pako/v2.0.2/'	//* <- good enough for everything
 ,	zlibAsmDir = libFormatsDir + 'zlib/zlib-asm/v0.2.2/'	//* <- last version supported by zip.js, ~ x2 faster than default
-
-,	libCodecPNG = [USE_UPNG ? 'UPNG.js' : null]
-,	zlibCodecPNG = [USE_UZIP ? 'UZIP.js' : 'pako']
-,	zlibCodecZIP = [USE_ZLIB_ASM ? 'zlib-asm' : 'pako']
-
-,	zipAllInOneFileName = (
-		!USE_ZLIB_CODECS
-		? 'z-worker-copy-all-in-one-file.js'
-		: USE_ZLIB_ASM
-		? 'z-worker-copy-all-in-one-file-asm.js'
-		: 'z-worker-copy-all-in-one-file-pako.js'
+,	zlibPakoDir = libFormatsDir + 'zlib/pako/v2.0.2/'	//* <- good and fast enough for everything
+,	zlibPakoFileName = (
+		'pako'
+	+	(USE_ES5_JS ? '.es5' : '')
+	+	(USE_MINIFIED_JS ? '.min' : '')
+	+	'.js'
 	)
+
+,	zipAllInOneFileName = 'z-worker-copy-all-in-one-file' + (
+		!USE_ZLIB_CODECS
+		? ''
+		: USE_ZLIB_ASM
+		? '-zlib-asm'
+		: USE_ES5_JS
+		? '-pako.es5'
+		: '-pako'
+	) + '.js'
 
 ,	zipZlibCodecWrapper = (
 		USE_ZLIB_ASM
 		? 'codecs-zlib-asm.js'
 		: 'codecs-pako.js'
 	)
+
+,	libCodecPNG = [USE_UPNG ? 'UPNG.js' : null]
+,	zlibCodecPNG = [USE_UZIP ? 'UZIP.js' : 'pako']
+,	zlibCodecZIP = [USE_ZLIB_ASM ? 'zlib-asm' : 'pako']
 
 ,	fileTypeLibs = {
 		'zlib-asm': {
@@ -555,11 +600,7 @@ const	libRootDir = 'lib/'
 
 			'varName': 'pako'
 		,	'dir': zlibPakoDir
-		,	'files': [
-				USE_MINIFIED_JS
-				? 'pako.min.js'
-				: 'pako.js'
-			]
+		,	'files': [zlibPakoFileName]
 		},
 
 		'UZIP.js': {
@@ -702,6 +743,7 @@ var	ora, zip, PSD, UPNG	//* <- external variable names, do not change
 ,	CompositionModule
 ,	CompositionFuncList
 
+,	USE_ES5_JS
 ,	DEFAULT_COLLAGE
 ,	thumbnailPlaceholder
 ,	canLoadFromDisk
@@ -711,6 +753,52 @@ var	ora, zip, PSD, UPNG	//* <- external variable names, do not change
 	;
 
 //* Common utility functions *-------------------------------------------------
+
+const asArray = (value) => ( isArray(value) ? value : [value] );
+
+const toggleClass = (
+	typeof document.documentElement.classList === 'undefined'
+
+//* legacy way:
+
+	? (element, className, keep) => {
+	const	oldText = element.className || element.getAttribute('className') || '';
+	const	classNames = oldText.split(regSpace).filter(arrayFilterNonEmptyValues);
+	const	index = classNames.indexOf(className);
+
+		if (index < 0) {
+			if (keep >= 0) classNames.push(className);
+		} else {
+			if (keep <= 0) classNames.splice(index, 1);
+		}
+
+		if (classNames.length > 0) {
+		const	newText = classNames.join(' ');
+			if (oldText !== newText) element.className = newText;
+		} else
+		if (oldText) {
+			element.className = '';
+			element.removeAttribute('className');
+		}
+
+		return classNames.includes(className);
+	}
+
+//* modern way:
+
+	: (element, className, keep) => {
+		if (keep > 0) {
+			element.classList.add(className);
+		} else
+		if (keep < 0) {
+			element.classList.remove(className);
+		} else {
+			element.classList.toggle(className);
+		}
+
+		return element.classList.contains(className);
+	}
+);
 
 function isNonNullObject(value) {
 	return (
@@ -769,6 +857,7 @@ function getClassReg() {
 	);
 }
 
+/*
 //* source: https://cwestblog.com/2011/05/02/cartesian-product-of-multiple-arrays/
 //* Description:
 //*	Get array of all possible combinations of values from multiple arrays.
@@ -839,47 +928,6 @@ let	totalCount = 1;
 
 //* source: http://phrogz.net/lazy-cartesian-product
 //* Description:
-//*	Iterate through all possible combinations without saving them all.
-//*	Combination array becomes arguments for callback.
-//* Usage example:
-//*	forEachSetInCrossProduct( [array, array, ...], console.log );
-function forEachSetInCrossProduct(arrays, callback, thisContext) {
-
-	function goDeeper(arrayIndex) {
-	const	variants = arrays[arrayIndex];
-	const	count = counts[arrayIndex];
-
-		if (arrayIndex === lastArrayIndex) {
-			for (let i = 0; i < count; ++i) {
-				combo[arrayIndex] = variants[i];
-				callback.apply(thisContext, combo);
-			}
-		} else {
-			for (let i = 0; i < count; ++i) {
-				combo[arrayIndex] = variants[i];
-				goDeeper(arrayIndex + 1);
-			}
-		}
-
-		combo.pop();
-	}
-
-	if (!thisContext) {
-		thisContext = this;
-	}
-
-const	lastArrayIndex = arrays.length - 1;
-const	combo = [];
-const	counts = [];
-
-	for (let i = arrays.length; i--; ) {
-		counts[i] = arrays[i].length;
-	}
-
-	goDeeper(0);
-}
-
-//* Description:
 //*	Iterate through all possible combinations without saving them all, until stopped.
 //*	Combination array becomes arguments for callback.
 //*	Stops on the first truthy result from callback.
@@ -929,37 +977,48 @@ const	counts = [];
 
 	return goDeeper(0);
 }
+*/
 
-function asArray(value) {
-	if (isArray(value)) {
-		return value;
-	}
+//* source: http://phrogz.net/lazy-cartesian-product
+//* Description:
+//*	Iterate through all possible combinations without saving them all.
+//*	Combination array becomes arguments for callback.
+//* Usage example:
+//*	forEachSetInCrossProduct( [array, array, ...], console.log );
+function forEachSetInCrossProduct(arrays, callback, thisContext) {
 
-	return [value];
-}
+	function goDeeper(arrayIndex) {
+	const	variants = arrays[arrayIndex];
+	const	count = counts[arrayIndex];
 
-function getFlatArray(array, maxDepth) {
-	if (isNaN(maxDepth)) {
-		maxDepth = Infinity;
-	}
-
-const	flatArray = [];
-
-	Array.from(array).forEach(
-		(value) => {
-			if (isArray(value)) {
-				if (maxDepth > 0) {
-					flatArray.concat(getFlatArray(value, maxDepth - 1))
-				} else {
-					flatArray.concat(value)
-				}
-			} else {
-				flatArray.push(value)
+		if (arrayIndex === lastArrayIndex) {
+			for (let i = 0; i < count; ++i) {
+				combo[arrayIndex] = variants[i];
+				callback.apply(thisContext, combo);
+			}
+		} else {
+			for (let i = 0; i < count; ++i) {
+				combo[arrayIndex] = variants[i];
+				goDeeper(arrayIndex + 1);
 			}
 		}
-	);
 
-	return flatArray;
+		combo.pop();
+	}
+
+	if (!thisContext) {
+		thisContext = this;
+	}
+
+const	lastArrayIndex = arrays.length - 1;
+const	combo = [];
+const	counts = [];
+
+	for (let i = arrays.length; i--; ) {
+		counts[i] = arrays[i].length;
+	}
+
+	goDeeper(0);
 }
 
 function arrayFilterNonEmptyValues(value) {
@@ -981,8 +1040,7 @@ function orzFloat(value) {return parseFloat(value||.0)||.0;}
 function orzTrim(value) {return orz(String(value).replace(regTrimNaN, ''));}
 
 function getDistance(x,y) {return Math.sqrt(x*x + y*y);}
-function getAlphaDataIndex(x,y, width) {return (((y*width + x) << 2) | 3);}
-// function getAlphaDataIndex(x,y, width) {return (((y*width + x) * 4) + 3);}
+function getAlphaDataIndex(x,y, width) {return (((y*width + x) << 2) | 3);} // {return (((y*width + x) * 4) + 3);}
 function repeatText(text, numberOfTimes) {return (new Array(numberOfTimes + 1)).join(text);}
 
 function replaceAll(text, replaceWhat, replaceWith) {
@@ -1865,55 +1923,6 @@ let	helperObject;
 	return null;
 }
 
-function toggleClass(element, className, keep) {
-	if (!className || !element) {
-		return;
-	}
-
-	keep = orz(keep);
-
-//* modern way:
-
-const	classNames = element.classList;
-
-	if (classNames) {
-		if (keep > 0) {
-			classNames.add(className);
-		} else
-		if (keep < 0) {
-			classNames.remove(className);
-		} else {
-			classNames.toggle(className);
-		}
-
-		return classNames.contains(className);
-	} else {
-
-//* legacy way:
-
-	const	oldText = element.className || element.getAttribute('className') || '';
-	const	classNames = oldText.split(regSpace).filter(arrayFilterNonEmptyValues);
-	const	index = classNames.indexOf(className);
-
-		if (index < 0) {
-			if (keep >= 0) classNames.push(className);
-		} else {
-			if (keep <= 0) classNames.splice(index, 1);
-		}
-
-		if (classNames.length > 0) {
-		const	newText = classNames.join(' ');
-			if (oldText !== newText) element.className = newText;
-		} else
-		if (oldText) {
-			element.className = '';
-			element.removeAttribute('className');
-		}
-
-		return classNames.includes(className);
-	}
-}
-
 function getChildByAttr(element, attrName, attrValue) {
 	if (element) {
 		element = element.firstElementChild;
@@ -2094,63 +2103,64 @@ function toggleDropdownMenu(element) {
 
 function toggleSection(element, action) {
 
+	function toggleSectionClass(header, element) {
+	const	wasOpen = regClassShow.test(header.className);
+
+		toggleClass(header,  'show',   isActionOpen ?  1 : isActionClose ? -1 : 0);
+		toggleClass(element, 'hidden', isActionOpen ? -1 : isActionClose ?  1 : 0);
+
+	const	justOpened = !wasOpen && regClassShow.test(header.className);
+
+		if (
+			isActionAll
+			? justOpened
+			: (isActionOpen || justOpened)
+		) {
+			toggleClass(element, 'open-up', 1);
+
+			setTimeout(() => toggleClass(element, 'open-up', -1), 300);
+		}
+	}
+
+	function toggleAllSections(element) {
+	let	header = null;
+
+		while (element) {
+			if (header) {
+				toggleSectionClass(header, element);
+
+				++toggledCount;
+			}
+
+			header = (element.tagName === tagName ? element : null);
+			element = element.nextElementSibling;
+		}
+	}
+
 const	header = getThisOrParentByTagName(element, 'header');
 
-	if (header) {
+	if (!header) {
+		return;
+	}
 
-		function toggleSectionClass(header, element) {
-		const	wasOpen = regClassShow.test(header.className);
+const	actionWords = (action || element.name || '').split('_');
+const	isActionAll = actionWords.includes('all');
+const	isActionOpen = actionWords.includes('open');
+const	isActionClose = actionWords.includes('close');
+const	tagName = header.tagName;
 
-			toggleClass(header,  'show',   isActionOpen ?  1 : isActionClose ? -1 : 0);
-			toggleClass(element, 'hidden', isActionOpen ? -1 : isActionClose ?  1 : 0);
+let	toggledCount = 0;
 
-		const	justOpened = !wasOpen && regClassShow.test(header.className);
+	if (isActionAll) {
+		getAllByTag('section', header.parentNode).forEach(
+			(section) => toggleAllSections(getAllByTag('header', section)[0])
+		);
 
-			if (
-				isActionAll
-				? justOpened
-				: (isActionOpen || justOpened)
-			) {
-				toggleClass(element, 'open-up', 1);
-
-				setTimeout(() => toggleClass(element, 'open-up', -1), 300);
-			}
+		if (!toggledCount) {
+			toggleAllSections(header);
 		}
-
-		function toggleAllSections(element) {
-		let	header = null;
-
-			while (element) {
-				if (header) {
-					toggleSectionClass(header, element);
-
-					++toggledCount;
-				}
-
-				header = (element.tagName === tagName ? element : null);
-				element = element.nextElementSibling;
-			}
-		}
-
-	const	actionWords = (action || element.name || '').split('_');
-	const	isActionAll = actionWords.includes('all');
-	const	isActionOpen = actionWords.includes('open');
-	const	isActionClose = actionWords.includes('close');
-	const	tagName = header.tagName;
-
-	let	toggledCount = 0;
-
-		if (isActionAll) {
-			getAllByTag('section', header.parentNode).forEach(
-				(section) => toggleAllSections(getAllByTag('header', section)[0])
-			);
-
-			if (!toggledCount) {
-				toggleAllSections(header);
-			}
-		} else {
-			toggleSectionClass(header, header.nextElementSibling);
-		}
+	} else {
+		toggleSectionClass(header, header.nextElementSibling);
 	}
 
 	updateDropdownMenuPositions();
@@ -10091,7 +10101,7 @@ function closeProject(buttonTab) {
 
 //* Runtime: prepare UI *------------------------------------------------------
 
-async function init() {
+async function initUI() {
 const	logLabelWrap = 'Init';
 	console.time(logLabelWrap);
 	if (USE_CONSOLE_LOG_GROUPING) console.group(logLabelWrap);
@@ -11693,4 +11703,6 @@ let	oldSetting;
 
 //* Runtime *------------------------------------------------------------------
 
-document.addEventListener('DOMContentLoaded', init, false);
+if (typeof loadScriptOrFallback !== 'function') {
+	document.addEventListener('DOMContentLoaded', initUI, false);
+}
