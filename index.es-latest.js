@@ -71,7 +71,7 @@ var	exampleRootDir = ''
 ,	THUMBNAIL_SIZE = 20
 ,	ZOOM_STEP_MAX_FACTOR = 2
 
-//* if set to 0, use common setting from above:
+//* If set to 0, use common setting from above:
 
 ,	TAB_PREVIEW_SIZE = 0
 ,	TAB_THUMBNAIL_SIZE = 0
@@ -100,7 +100,7 @@ var	exampleRootDir = ''
 ,	TAB_THUMBNAIL_ZOOM_TRIMMED	= false
 ,	TAB_WIDTH_ONLY_GROW		= true	//* <- prevent tabs from shrinking and jumping between rows.
 ,	TESTING				= false	//* <- dump more info into the console; several levels are possible.
-,	TESTING_PNG			= false	//* <- dump a PNG onto the page after each rendering operation.
+,	TESTING_PNG			= false	//* <- dump a PNG onto the page after converting from pixel data.
 ,	TESTING_RENDER			= false	//* <- dump a PNG onto the page after each rendering operation.
 ,	USE_CONSOLE_LOG_GROUPING	= false	//* <- becomes a mess with concurrent operations.
 ,	USE_MINIFIED_JS			= true	//* <- currently only pako.
@@ -522,25 +522,25 @@ const	LS = window.localStorage || localStorage
 	]
 
 ,	IMAGE_DATA_KEYS_TO_LOAD = [
-		'loadImage'
-	,	'pixelData'
-	,	'maskData'
-	,	'imgData'
+		'loadImage',
+		'pixelData',
+		'maskData',
+		'imgData',
 	]
 
 ,	CLEANUP_KEYS_TESTING = [
-		'loading'
-	// ,	'loadImage'
-	,	'toPng'
+		'loading',
+		// 'loadImage',	//* <- keep for lazy-loading
+		'toPng',
 	]
 
 ,	CLEANUP_KEYS = CLEANUP_KEYS_TESTING.concat([
-		'blendModeOriginal'
-	,	'nameOriginal'
-	,	'sourceData'
-	,	'pixelData'
-	,	'maskData'
-	// ,	'imgData'
+		'blendModeOriginal',
+		'nameOriginal',
+		'sourceData',
+		'pixelData',
+		'maskData',
+		// 'imgData',	//* <- keep for lazy-loading
 	])
 
 const	RUNNING_FROM_DISK = isURLFromDisk('/')
@@ -556,14 +556,40 @@ const	libRootDir = 'lib/'
 ,	zipFormatDir = libFormatsDir + 'zip/zip_js/'
 ,	zlibAsmDir = libFormatsDir + 'zlib/zlib-asm/v0.2.2/'	//* <- last version supported by zip.js, ~ x2 faster than default
 ,	zlibPakoDir = libFormatsDir + 'zlib/pako/v2.0.2/'	//* <- good and fast enough for everything
-,	zlibPakoFileName = (
-		'pako'
-	+	(USE_ES5_JS ? '.es5' : '')
-	+	(USE_MINIFIED_JS ? '.min' : '')
-	+	'.js'
-	)
+	;
 
-,	zipAllInOneFileName = 'z-worker-copy-all-in-one-file' + (
+//* To be figured on the go *--------------------------------------------------
+
+var	ora, zip, zlib, pako, PSD, UPNG, UZIP	//* <- external variable names, do not change
+
+,	PSD_JS
+,	CompositionModule
+,	CompositionFuncList
+,	fileTypeLibs
+,	fileTypeLoaders
+,	zipWorkerScripts
+
+,	DEFAULT_COLLAGE
+,	PRELOAD_LAYER_IMAGES
+,	USE_ES5_JS
+,	USE_WORKERS_IF_CAN
+
+,	thumbnailPlaceholder
+,	isStopRequested
+,	isBatchWIP
+,	lastTimeProjectTabSelectedByUser = 0
+	;
+
+//* Config: internal, wrapped to be called after reading external config *-----
+
+function initLibParams() {
+	USE_WORKERS_IF_CAN = (USE_WORKERS && CAN_USE_WORKERS);
+
+const	libCodecPNG = [USE_UPNG ? 'UPNG.js' : null];
+const	zlibCodecPNG = [USE_UZIP ? 'UZIP.js' : 'pako'];
+const	zlibCodecZIP = [USE_ZLIB_ASM ? 'zlib-asm' : 'pako'];
+
+const	zipAllInOneFileName = 'z-worker-copy-all-in-one-file' + (
 		!USE_ZLIB_CODECS
 		? ''
 		: USE_ZLIB_ASM
@@ -571,19 +597,22 @@ const	libRootDir = 'lib/'
 		: USE_ES5_JS
 		? '-pako.es5'
 		: '-pako'
-	) + '.js'
+	) + '.js';
 
-,	zipZlibCodecWrapper = (
+const	zipZlibCodecWrapper = (
 		USE_ZLIB_ASM
 		? 'codecs-zlib-asm.js'
 		: 'codecs-pako.js'
-	)
+	);
 
-,	libCodecPNG = [USE_UPNG ? 'UPNG.js' : null]
-,	zlibCodecPNG = [USE_UZIP ? 'UZIP.js' : 'pako']
-,	zlibCodecZIP = [USE_ZLIB_ASM ? 'zlib-asm' : 'pako']
+const	zlibPakoFileName = (
+		'pako'
+	+	(USE_ES5_JS ? '.es5' : '')
+	+	(USE_MINIFIED_JS ? '.min' : '')
+	+	'.js'
+	);
 
-,	fileTypeLibs = {
+	fileTypeLibs = {
 		'zlib-asm': {
 
 //* source: https://github.com/ukyo/zlib-asm
@@ -632,7 +661,7 @@ const	libRootDir = 'lib/'
 				'zip.js',
 				'zip-fs.js',
 			].concat(
-				USE_WORKERS && CAN_USE_WORKERS
+				USE_WORKERS_IF_CAN
 				? []
 				:
 
@@ -650,11 +679,11 @@ const	libRootDir = 'lib/'
 				]
 			)
 		,	'depends': (
-				USE_ZLIB_CODECS
-			&&	!USE_ONE_FILE_ZIP_WORKER
-			&&	!(USE_WORKERS && CAN_USE_WORKERS)
-				? zlibCodecZIP
-				: []
+				USE_WORKERS_IF_CAN
+			||	USE_ONE_FILE_ZIP_WORKER
+			||	!USE_ZLIB_CODECS
+				? []
+				: [zlibCodecZIP]
 			)
 		},
 
@@ -695,9 +724,9 @@ const	libRootDir = 'lib/'
 		,	'files': ['psd.browser.js']
 		,	'depends': libCodecPNG
 		},
-	}
+	};
 
-,	zipWorkerScripts = (
+	zipWorkerScripts = (
 		USE_ONE_FILE_ZIP_WORKER
 		? [
 			zipFormatDir + zipAllInOneFileName
@@ -714,9 +743,9 @@ const	libRootDir = 'lib/'
 			)
 		)
 		: null
-	)
+	);
 
-,	fileTypeLoaders = [
+	fileTypeLoaders = [
 		{
 			'dropFileExts': ['ora', 'zip']
 		,	'inputFileAcceptMimeTypes': ['image/openraster', 'application/zip']
@@ -733,24 +762,7 @@ const	libRootDir = 'lib/'
 			]
 		},
 	];
-
-//* To be figured on the go *--------------------------------------------------
-
-var	ora, zip, PSD, UPNG	//* <- external variable names, do not change
-
-,	PSD_JS
-,	CompositionModule
-,	CompositionFuncList
-
-,	USE_ES5_JS
-,	DEFAULT_COLLAGE
-,	PRELOAD_LAYER_IMAGES
-,	thumbnailPlaceholder
-,	canLoadFromDisk
-,	isStopRequested
-,	isBatchWIP
-,	lastTimeProjectTabSelectedByUser = 0
-	;
+}
 
 //* Common utility functions *-------------------------------------------------
 
@@ -3066,29 +3078,31 @@ const	depends = lib.depends || null;
 
 //* some var init, no better place for this:
 
-				if (varName === 'zip' && window[varName]) {
-					if (zip.useWebWorkers = USE_WORKERS && CAN_USE_WORKERS) {
+				if (varName && window[varName]) {
+					if (varName === 'zip') {
+						if (zip.useWebWorkers = USE_WORKERS_IF_CAN) {
 
 //* Notes:
 //*	Either zip.workerScripts or zip.workerScriptsPath may be set, not both.
 //*	Scripts in the array are executed in order, and the first one should be z-worker.js, which is used to start the worker.
 //* source: http://gildas-lormeau.github.io/zip.js/core-api.html#alternative-codecs
 
-						if (zipWorkerScripts) {
-							zip.workerScripts = {
-								deflater: zipWorkerScripts,
-								inflater: zipWorkerScripts,
-							};
-						} else {
-							zip.workerScriptsPath = dir;
+							if (zipWorkerScripts) {
+								zip.workerScripts = {
+									deflater: zipWorkerScripts,
+									inflater: zipWorkerScripts,
+								};
+							} else {
+								zip.workerScriptsPath = dir;
+							}
 						}
 					}
-				}
 
-				if (varName === 'ora' && window[varName]) {
-					ora.preloadImages = false;
-					ora.enableWorkers = USE_WORKERS && CAN_USE_WORKERS;
-					ora.scriptsPath = dir;
+					if (varName === 'ora') {
+						ora.preloadImages = false;
+						ora.enableWorkers = USE_WORKERS_IF_CAN;
+						ora.scriptsPath = dir;
+					}
 				}
 
 				if (
@@ -10164,6 +10178,8 @@ const	configVarNames = [
 	);
 
 //* finalize config values format:
+
+	initLibParams();
 
 	DEFAULT_COLLAGE_ALIGN = getNestedFilteredArrayJoinedText(DEFAULT_COLLAGE_ALIGN, '/');
 	DEFAULT_COLLAGE_COLORS = getNestedFilteredArrayJoinedText(DEFAULT_COLLAGE_COLORS, '/');
