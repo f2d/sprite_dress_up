@@ -2525,15 +2525,12 @@ const	textParts = [];
 function getTimeNow() {return +new Date();}
 function getLogTime() {return getFormattedTime({logFormat: true});}
 
-function logTime(argName, argValue) {
+function logTime() {
 let	logText = getLogTime();
+let	arg;
 
-	if (typeof argName !== 'undefined') {
-		logText += ' - ' + argName;
-	}
-
-	if (typeof argValue !== 'undefined') {
-	const	textValue = getJoinedOrEmptyText(argValue, '\n');
+	for (const index in arguments) if (typeof (arg = arguments[index]) !== 'undefined') {
+	const	textValue = getJoinedOrEmptyText(arg, '\n');
 
 		if (textValue.includes('\n')) {
 			if (
@@ -2545,8 +2542,11 @@ let	logText = getLogTime();
 			} else {
 				logText += ':\n[\n' + textValue + '\n]';
 			}
-		} else {
+		} else
+		if (index > 0) {
 			logText += ' = "' + textValue + '"';
+		} else {
+			logText += ' - ' + textValue;
 		}
 	}
 
@@ -3970,9 +3970,9 @@ async function getOrLoadImage(project, layer) {
 		return await thisToPngTryEach(layer || project);
 	} catch (error) {
 		if (layer) {
-			logTime('cannot get layer or mask image:', [getLayerPathText(layer), error]);
+			console.error('Failed to get layer or mask image:', [getLayerPathText(layer), error]);
 		} else {
-			logError(error, arguments, this);
+			console.error('Failed to get project image:', error);
 		}
 	}
 }
