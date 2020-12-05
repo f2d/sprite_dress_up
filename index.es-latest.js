@@ -6111,7 +6111,7 @@ async function getNextParentAfterAddingLayerToTree(layer, sourceData, name, pare
 const	paramList = [];
 const	params = {};
 
-	// if (typeof layer.sourceData   === 'undefined') layer.sourceData   = sourceData;
+	if (typeof layer.sourceData   === 'undefined') layer.sourceData   = sourceData;
 	if (typeof layer.nameOriginal === 'undefined') layer.nameOriginal = name;
 
 	name = name.replace(regTrimCommaSpace, '');
@@ -10186,6 +10186,11 @@ const	configVarNames = [
 			DEFAULT_COLLAGE_PADDING,
 		]
 	,	'/'
+	);
+
+	PRELOAD_LAYER_IMAGES = (
+		PRELOAD_ALL_LAYER_IMAGES
+	||	PRELOAD_USED_LAYER_IMAGES
 	);
 
 //* check loading local files:
