@@ -4,7 +4,7 @@
 //* TODO ---------------------- source file data: -----------------------------
 //* TODO: keep all layer-name parameters single-word if possible.
 //* TODO: whole config in JSON-format?
-//* TODO: keep PNGs from ORA as is, convert pixel data from PSD to PNG using UPNG encoder, create arrays for high-precision blending on demand, discard arrays when HQ mode is disabled, but always keep PNGs in memory.
+//* TODO: keep layer images as PNGs, create arrays for high-precision blending on demand, discard arrays when HQ mode is disabled.
 
 //* TODO ---------------------- menu: -----------------------------------------
 //* TODO: checkbox (on project selection bar?) to sync all option/export actions in selected project onto all opened projects where possible.
@@ -20,15 +20,12 @@
 //* TODO: stop images moving to hidden container when save collage button was clicked.
 //* TODO: fix hiding of clipping group with skipped/invisible/empty base layer.
 //* TODO: keep track of current root of (possibly nested) copy-pasted layer (in array property with push-pop?) while rendering.
-//* TODO: decode layer data (PSD/PNG/etc) without using canvas, to avoid precision drop by premultiplied-alpha (PMA - in Firefox, not in Chrome).
 //* TODO: arithmetic emulation of all blending operations, not native to JS.
 //* TODO: arithmetic emulation of all operations in 16/32-bit until final result; to be optionally available as checkbox/selectbox.
 //* TODO: set RGB of zero-alpha pixels to average of all non-zero-alpha neighbour RGB values ignoring alpha.
 //* TODO: for files without merged image data - render ignoring options, but respecting layer visibility properties. Or buttons to show embedded and/or rendered image regardless of options. Or add this as top-most option for any project, with or without options.
-//* TODO: use ImageBitmaps for speed?
 //* TODO: revoke collage blob urls when cleaning view container?
 //* TODO: revoke any image blob urls right after image element's loading, without ever tracking/listing them?
-//* TODO: lazy-load layer/mask images only when needed; source file object will not get garbage-collected until all usable images are loaded.
 
 //* TODO ---------------------- other: ----------------------------------------
 //* TODO: store (in)validated combination in a Map by filename as key, and combinations to render (each wrapped in object as pointer to Map element and the filename) in a Set.
