@@ -93,6 +93,8 @@ var	exampleRootDir = ''
 ,	GET_LAYER_IMAGE_FROM_BITMAP	= true
 ,	LOCALIZED_CASE_BY_CROSS_COUNT	= false	//* <- determine word case by product of all numbers in args; if not, then by the last number.
 ,	OPEN_FIRST_MENU_TAB_AT_START	= true
+,	PRELOAD_ALL_LAYER_IMAGES	= false
+,	PRELOAD_USED_LAYER_IMAGES	= false
 ,	READ_FILE_CONTENT_TO_GET_TYPE	= false	//* <- this relies on the browser or the OS to magically determine file type.
 ,	TAB_STATUS_TEXT			= true
 ,	TAB_THUMBNAIL_PRELOAD		= true	//* <- get merged prerendered image from the file before looking at layer tree.
@@ -531,7 +533,7 @@ const	LS = window.localStorage || localStorage
 
 ,	CLEANUP_KEYS_TESTING = [
 		'loading'
-	,	'loadImage'
+	// ,	'loadImage'
 	,	'toPng'
 	]
 
@@ -541,7 +543,7 @@ const	LS = window.localStorage || localStorage
 	,	'sourceData'
 	,	'pixelData'
 	,	'maskData'
-	,	'imgData'
+	// ,	'imgData'
 	])
 
 const	RUNNING_FROM_DISK = isURLFromDisk('/')
@@ -745,6 +747,7 @@ var	ora, zip, PSD, UPNG	//* <- external variable names, do not change
 
 ,	USE_ES5_JS
 ,	DEFAULT_COLLAGE
+,	PRELOAD_LAYER_IMAGES
 ,	thumbnailPlaceholder
 ,	canLoadFromDisk
 ,	isStopRequested
@@ -1579,15 +1582,16 @@ function getRGBAFromColorCodeOrArray(color, maxCount) {
 }
 
 function isColorDark(color) {
-const	[ r2, g2, b2 ] = getRGBAFromColorCodeOrArray(color, 3).map((v) => (v * v));
+const	[ r,g,b ] = getRGBAFromColorCodeOrArray(color, 3);
 
 //* sources:
 //* https://awik.io/determine-color-bright-dark-using-javascript/
 //* http://alienryderflex.com/hsp.html
+
 	return Math.sqrt(
-		0.299 * r2
-	+	0.587 * g2
-	+	0.114 * b2
+		0.299 * r * r
+	+	0.587 * g * g
+	+	0.114 * b * b
 	) < 150;
 }
 
@@ -3813,9 +3817,9 @@ function isLayerSkipped(layer) {
 	);
 }
 
-//* pile of hacks and glue to get things working, don't bother with readability, redo later:
+//* pile of hacks and glue to get things working:
 
-async function thisToPng(targetLayer) {
+async function getOrLoadImage(project, layer) {
 
 	async function thisToPngTryOne(target, node) {
 
@@ -3838,22 +3842,10 @@ async function thisToPng(targetLayer) {
 				func
 			&&	isFunction(func)
 			&&	(
-					func !== thisToPng
+					func !== getOrLoadImage
 				||	node !== target
 				)
 			);
-		}
-
-		function getAndCountLoadedImage(img) {
-			if (target !== project) {
-				++project.imagesLoadedCount;
-			}
-
-			if (hasPrefix(img.src, BLOB_PREFIX)) {
-				addURLToTrackList(img.src, project);
-			}
-
-			return img;
 		}
 
 		if (isImageElement(node)) {
@@ -3875,7 +3867,7 @@ async function thisToPng(targetLayer) {
 				USE_UPNG
 			&&	(img = await getImageElementFromData(imgData))
 			) {
-				return getAndCountLoadedImage(img);
+				return img;
 			}
 
 		const	canvas = getCanvasFromImageData(imgData);
@@ -3884,7 +3876,7 @@ async function thisToPng(targetLayer) {
 				canvas
 			&&	(img = await getImagePromiseFromCanvasToBlob(canvas, project))
 			) {
-				return getAndCountLoadedImage(img);
+				return img;
 			}
 		}
 
@@ -3900,7 +3892,7 @@ async function thisToPng(targetLayer) {
 			]
 		) {
 			if (img = await getResultPromiseIfMethodExists(methodName)) {
-				return getAndCountLoadedImage(img);
+				return img;
 			}
 		}
 
@@ -3908,7 +3900,7 @@ async function thisToPng(targetLayer) {
 	}
 
 	async function thisToPngTryEach(...targets) {
-	let	result;
+	let	img;
 
 		for (const target of targets) if (isNonNullObject(target))
 		for (
@@ -3935,25 +3927,42 @@ async function thisToPng(targetLayer) {
 			,	mergedOrNode
 			]
 		) if (isNonNullObject(imgOrNode))
-		if (result = await thisToPngTryOne(target, imgOrNode)) {
-			return result;
+		if (img = await thisToPngTryOne(target, imgOrNode)) {
+
+			if (layer) {
+				if (layer.top)  img.top  = layer.top;
+				if (layer.left) img.left = layer.left;
+
+				layer.img = img;
+			}
+
+			if (project) {
+				if (
+					layer
+				&&	!project.imagesLoaded.includes(img)
+				) {
+					project.imagesLoaded.push(img);
+				}
+
+				if (hasPrefix(img.src, BLOB_PREFIX)) {
+					addURLToTrackList(img.src, project);
+				}
+			}
+
+			return img;
 		}
 
 		return null;
 	}
 
-const	project = this;
-
 	try {
-		return await thisToPngTryEach(targetLayer || project);
+		return await thisToPngTryEach(layer || project);
 	} catch (error) {
-		if (targetLayer) {
-			logTime('cannot get layer image:', [getLayerPathText(targetLayer), error]);
+		if (layer) {
+			logTime('cannot get layer or mask image:', [getLayerPathText(layer), error]);
 		} else {
 			logError(error, arguments, this);
 		}
-
-		return null;
 	}
 }
 
@@ -4264,6 +4273,7 @@ let	project, totalStartTime;
 		,	layersCount: 0
 		,	imagesCount: 0
 		,	imagesLoadedCount: 0
+		,	imagesLoaded: []
 		,	loading: {
 				startTime
 			,	data: sourceFile
@@ -4334,99 +4344,103 @@ let	project, totalStartTime;
 
 async function getProjectViewMenu(project) {
 
-	async function getProjectOptionsContainer(project) {
+	async function preloadProjectImages(project) {
 
-//* render default set when everything is ready:
+		project.loading.errorPossible = 'project_status_error_in_images';
+
+	const	fileName = project.fileName;
+	const	images = project.loading.images.filter(arrayFilterUniqueValues);
+	const	imagesCount = project.loading.imagesCount = images.length;
+	const	actionLabel = (
+			PRELOAD_LAYER_IMAGES
+			? 'preloading ' + imagesCount + ' images or colors'
+			: 'checking colors of ' + imagesCount + ' layers'
+		);
+
+		logTime('"' + fileName + '" started ' + actionLabel);
+
+//* try loading one by one to avoid flood of errors:
+
+	const	startTime = getTimeNow();
+
+	let	lastPauseTime = startTime;
+	let	result, layer;
+
+		while (
+			!isStopRequestedAnywhere(project)
+		&&	(images.length > 0)
+		&&	(layer = images.pop())
+		&&	(result = await getLayerImgLoadPromise(layer, project))
+		&&	(result = await getLayerMaskLoadPromise(layer.mask, project))
+		) if (
+			ADD_PAUSE_AT_INTERVALS
+		&&	(getTimeNow() - lastPauseTime) > PAUSE_WORK_INTERVAL
+		) {
+			updateProjectLoadedImagesCount(project)
+			updateProjectOperationProgress(
+				project
+			,	'project_status_reading_images'
+			,	project.imagesLoadedCount
+			,	project.imagesCount
+			);
+
+			await pause(PAUSE_WORK_DURATION);
+
+			lastPauseTime = getTimeNow();
+		}
+
+	const	tookTime = getTimeNow() - startTime;
+	const	loadedCount = project.imagesLoadedCount;
+	const	skippedCount = imagesCount - loadedCount;
+	const	isStopRequested = isStopRequestedAnywhere(project);
+	const	actionSummary = (
+			!skippedCount
+			? '' : (
+				', skipped ' + skippedCount
+			+	', loaded ' + loadedCount
+			)
+		);
+
+		logTime(
+			'"' + fileName + '"'
+		+	(
+				result
+				? ' finished ' + actionLabel + actionSummary + ', took '
+				: ' stopped by ' + (
+					isStopRequested
+					? 'request'
+					: 'error'
+				) + ' while ' + actionLabel + actionSummary + ' after '
+			)
+		+	tookTime
+		+	' ms'
+		);
+
+		return isStopRequested ? false : result;
+	}
+
+	async function getProjectOptionsContainer(project) {
 
 		try {
 			project.loading.errorPossible = 'project_status_error_in_options';
 
 		const	options = getProjectOptions(project);
-		const	fileName = project.fileName;
 
-			if (options) {
-				project.loading.errorPossible = 'project_status_error_in_images';
+			if (!options) {
+				logTime('"' + project.fileName + '" has no options.');
+			} else
+			if (await preloadProjectImages(project)) {
 
-			const	images = project.loading.images;
-			const	imagesCount = project.loading.imagesCount = images.length;
-			const	actionLabel = 'preloading ' + imagesCount + ' images';
+				project.loading.errorPossible = 'project_status_error_creating_menu';
+				project.options = options;
+				project.layersTopSeparated = getLayersTopSeparated(project.layers);
 
-				logTime('"' + fileName + '" started ' + actionLabel);
+//* render default set when everything is ready:
 
-//* try loading one by one to avoid flood of errors:
+			const	container = createProjectView(project);
+				createOptionsMenu(project, getAllByClass('project-options', container)[0]);
 
-			let	result = null;
-			let	layer = null;
-
-			const	startTime = getTimeNow();
-
-			let	lastPauseTime = startTime;
-
-				while (
-					!isStopRequestedAnywhere(project)
-				&&	(images.length > 0)
-				&&	(layer = images.pop())
-				&&	(result = await getLayerImgLoadPromise(layer, project))
-				&&	(result = await getLayerMaskLoadPromise(layer.mask, project))
-				) if (
-					ADD_PAUSE_AT_INTERVALS
-				&&	(getTimeNow() - lastPauseTime) > PAUSE_WORK_INTERVAL
-				) {
-					updateProjectOperationProgress(
-						project
-					,	'project_status_reading_images'
-					,	project.imagesLoadedCount
-					,	project.imagesCount
-					);
-
-					await pause(PAUSE_WORK_DURATION);
-
-					lastPauseTime = getTimeNow();
-				}
-
-			const	tookTime = getTimeNow() - startTime;
-			const	imagesLoaded = project.imagesLoadedCount;
-			const	imagesSkipped = imagesCount - imagesLoaded;
-			const	isStopRequested = isStopRequestedAnywhere(project);
-			const	actionSummary = (
-					!imagesSkipped
-					? '' : (
-						', skipped ' + imagesSkipped
-					+	', loaded ' + imagesLoaded
-					)
-				);
-
-				logTime(
-					'"' + fileName + '"'
-				+	(
-						result
-						? ' finished ' + actionLabel + actionSummary + ', took '
-						: ' stopped by ' + (
-							isStopRequested
-							? 'request'
-							: 'error'
-						) + ' while ' + actionLabel + actionSummary + ' after '
-					)
-				+	tookTime
-				+	' ms'
-				);
-
-				if (isStopRequested) {
-					return;
-				}
-
-				if (result) {
-					project.loading.errorPossible = 'project_status_error_creating_menu';
-					project.options = options;
-					project.layersTopSeparated = getLayersTopSeparated(project.layers);
-
-				const	container = createProjectView(project);
-					createOptionsMenu(project, getAllByClass('project-options', container)[0]);
-
-					return container;
-				}
-			} else {
-				logTime('"' + fileName + '" has no options.');
+				return container;
 			}
 		} catch (error) {
 			logError(error, arguments);
@@ -4806,7 +4820,8 @@ async function getProjectViewMenu(project) {
 			}
 
 			if (
-				layer.opacity > 0
+				!PRELOAD_ALL_LAYER_IMAGES
+			&&	layer.opacity > 0
 			&&	(
 					params.color_code
 				||	IMAGE_DATA_KEYS_TO_LOAD.some((key) => key in layer)
@@ -4853,6 +4868,10 @@ async function getProjectViewMenu(project) {
 						: layer
 					);
 				}
+			}
+
+			if (PRELOAD_ALL_LAYER_IMAGES) {
+				project.loading.images.push(...layers);
 			}
 
 			return (
@@ -4961,145 +4980,108 @@ async function getProjectViewMenu(project) {
 	}
 
 	function getLayerImgLoadPromise(layer, project) {
-		return new Promise(
-			(resolve, reject) => {
-				if (layer.layers) {
-					if (TESTING > 9) console.log(
-						'No image loaded because it is folder at: '
-					+	getLayerPathText(layer)
-					);
+		if (layer.layers) {
+			if (TESTING > 9) console.log(
+				'No image loaded because it is folder at: '
+			+	getLayerPathText(layer)
+			);
 
-					resolve(true);
+			return true;
+		}
 
-					return;
-				}
+	const	colorCode = getPropByNameChain(layer, 'params', 'color_code');
 
-			const	colorCode = getPropByNameChain(layer, 'params', 'color_code');
+		if (colorCode) {
+			layer.img = colorCode;
 
-				if (
-					colorCode
-				&&	!VERIFY_PARAM_COLOR_VS_LAYER_CONTENT
-				) {
-					if (TESTING > 1) console.log(
+			if (!VERIFY_PARAM_COLOR_VS_LAYER_CONTENT) {
+				if (TESTING > 1) console.log(
+					'Got color code in param: '
+				+	getColorTextFromArray(colorCode)
+				+	', layer content not checked at: '
+				+	getLayerPathText(layer)
+				);
+
+				return true;
+			}
+		}
+
+		if (
+			!layer.isColor
+		&&	!PRELOAD_LAYER_IMAGES
+		) {
+			return true;
+		}
+
+		return getOrLoadImage(project, layer).then(
+			(img) => {
+				if (isImageElement(img)) {
+					if (layer.isColor) {
+						layer.img = getFirstPixelRGBA(img);
+
+						if (colorCode) {
+						const	colorCodeText = getColorTextFromArray(colorCode);
+						const	layerRGBAText = getColorTextFromArray(layer.img);
+
+							if (layerRGBAText !== colorCodeText) {
+								console.error(
+									'Got color code in param: '
+								+	colorCodeText
+								+	', prefered instead of layer content: '
+								+	layerRGBAText
+								+	', at:'
+								+	getLayerPathText(layer)
+								);
+							}
+
+							layer.img = colorCode;
+						}
+					}
+
+					return true;
+				} else
+				if (colorCode) {
+					if (TESTING) console.log(
 						'Got color code in param: '
 					+	getColorTextFromArray(colorCode)
-					+	', layer content not checked at: '
+					+	', layer content not found at: '
 					+	getLayerPathText(layer)
 					);
 
 					layer.img = colorCode;
 
-					resolve(true);
+					return true;
+				} else
+				if (img === null) {
+					return true;
+				} else {
+					if (TESTING) console.error('Image loading failed:', [img, layer]);
 
-					return;
+					return false;
 				}
-
-				getLayerMaskLoadPromise(layer, project).then(
-					(img) => {
-						if (
-							img
-						&&	isImageElement(img)
-						) {
-							img.onload = (evt) => {
-								if (layer.isColor) {
-									layer.img = getFirstPixelRGBA(img);
-
-									if (colorCode) {
-									const	colorCodeText = getColorTextFromArray(colorCode);
-									const	layerRGBAText = getColorTextFromArray(layer.img);
-
-										if (layerRGBAText !== colorCodeText) {
-											console.error(
-												'Got color code in param: '
-											+	colorCodeText
-											+	', prefered instead of layer content: '
-											+	layerRGBAText
-											+	', at:'
-											+	getLayerPathText(layer)
-											);
-										}
-
-										layer.img = colorCode;
-									}
-								} else {
-									img.top  = layer.top;
-									img.left = layer.left;
-
-									layer.img = img;
-								}
-
-								resolve(true);
-							};
-
-							img.onerror = (evt) => {
-								if (img.complete) {
-									resolve(true);
-
-									return;
-								}
-
-								if (TESTING) console.error('Image loading failed:', [img, evt]);
-
-								resolve(false);
-							}
-
-							if (img.complete) {
-								img.onload();
-							}
-						} else
-						if (colorCode) {
-							if (TESTING) console.log(
-								'Got color code in param: '
-							+	getColorTextFromArray(colorCode)
-							+	', layer content not found at: '
-							+	getLayerPathText(layer)
-							);
-
-							layer.img = colorCode;
-
-							resolve(true);
-						} else {
-							resolve(false);
-						}
-					}
-				).catch(
-					(error) => {
-						console.error(error);
-
-						resolve(false);
-					}
-				);
 			}
 		).catch(catchPromiseError);
 	}
 
 	function getLayerMaskLoadPromise(mask, project) {
-		return new Promise(
-			(resolve, reject) => {
-			const	imagePromise = (
-					mask
-					? project.toPng(mask)
-					: null
-				);
+		if (
+			!mask
+		||	!PRELOAD_LAYER_IMAGES
+		) {
+			return true;
+		}
 
-				if (imagePromise) {
-					imagePromise.then(
-						(img) => {
-							if (img) {
-								resolve(mask.img = img);
-							} else {
-								resolve(false);
-							}
-						}
-					).catch(
-						(error) => {
-							console.error(error);
-
-							resolve(false);
-						}
-					);
+		return getOrLoadImage(project, mask).then(
+			(img) => {
+				if (
+					img === null
+				||	isImageElement(img)
+				) {
+					return true;
 				} else {
-					resolve(true);
+					if (TESTING) console.error('Image loading failed:', [img, layer]);
+
+					return false;
 				}
 			}
 		).catch(catchPromiseError);
@@ -5423,8 +5405,7 @@ const	resolutionText = getNestedFilteredArrayJoinedText([canvasSizeText, bitDept
 
 const	foldersCount = project.foldersCount;
 const	layersCount  = project.layersCount;
-const	imagesCount  = project.imagesCount || project.loading.imagesCount;
-const	imagesLoadedCount = project.imagesLoadedCount;
+const	imagesCount  = project.imagesCount || (project.imagesCount = project.loading.imagesCount);
 const	layersTextParts = [];
 
 	if (layersCount)  layersTextParts.push(getLocalizedText('project_layers', layersCount));
@@ -5436,26 +5417,13 @@ const	summaryTextParts = [resolutionText, layersText];
 const	sourceFile = project.loading.data.file || {};
 const	sourceFileTime = sourceFile.lastModified || sourceFile.lastModifiedDate;
 
-	if (imagesCount) {
-		summaryTextParts.push(
-			imagesLoadedCount
-		&&	imagesLoadedCount !== imagesCount
-			? getLocalizedText('project_images_loaded', imagesLoadedCount, imagesCount)
-			: getLocalizedText(
-				(
-					imagesLoadedCount
-					? 'project_images_loaded_all'
-					: 'project_images'
-				)
-			,	imagesCount
-			)
-		);
-	}
-
+	if (imagesCount)     summaryTextParts.push('<span class="project-images-loaded"></span>');
 	if (sourceFile.size) summaryTextParts.push(getFormattedFileSize(sourceFile.size));
 	if (sourceFileTime)  summaryTextParts.push(getLocalizedText('file_date', getFormattedTime(sourceFileTime)));
 
 	summaryBody.innerHTML = getNestedFilteredArrayJoinedText(summaryTextParts, '<br>');
+	project.imagesLoadedCountText = getAllByClass('project-images-loaded', summaryBody)[0];
+	updateProjectLoadedImagesCount(project);
 
 const	infoButton = addButton(summaryFooter, getLocalizedText('console_log'));
 	infoButton.name = 'console_log';
@@ -5572,7 +5540,7 @@ function setProjectThumbnail(project, img, onLoad, onError) {
 	}
 }
 
-function getProjectMergedImagePromise(project, flags) {
+async function getProjectMergedImagePromise(project, flags) {
 	if (isStopRequestedAnywhere(project)) {
 		return;
 	}
@@ -5583,14 +5551,7 @@ function getProjectMergedImagePromise(project, flags) {
 		}
 
 	const	{ alsoSetThumbnail, waitForThumbnail } = flags;
-	let	img = project.mergedImage;
-
-		if (
-			!img
-		&&	isFunction(project.toPng)
-		) {
-			img = project.toPng();
-		}
+	const	img = project.mergedImage || await getOrLoadImage(project);
 
 		return new Promise(
 			(resolve, reject) => resolvePromiseOnImgLoad(
@@ -6150,7 +6111,7 @@ async function getNextParentAfterAddingLayerToTree(layer, sourceData, name, pare
 const	paramList = [];
 const	params = {};
 
-	if (typeof layer.sourceData   === 'undefined') layer.sourceData   = sourceData;
+	// if (typeof layer.sourceData   === 'undefined') layer.sourceData   = sourceData;
 	if (typeof layer.nameOriginal === 'undefined') layer.nameOriginal = name;
 
 	name = name.replace(regTrimCommaSpace, '');
@@ -6324,6 +6285,37 @@ async function addLayerGroupCommonWrapper(project, parentGroup, layers, callback
 	return true;
 }
 
+function updateProjectLoadedImagesCount(project) {
+
+const	element = project.imagesLoadedCountText;
+const	imagesCount = project.imagesCount;
+const	loadedCount = project.imagesLoaded.length;
+
+	if (project.imagesLoadedCount === loadedCount) {
+		return;
+	}
+
+	project.imagesLoadedCount = loadedCount;
+
+	if (!element) {
+		return;
+	}
+
+	element.textContent = (
+		loadedCount
+	&&	loadedCount !== imagesCount
+		? getLocalizedText('project_images_loaded', loadedCount, imagesCount)
+		: getLocalizedText(
+			(
+				loadedCount
+				? 'project_images_loaded_all'
+				: 'project_images'
+			)
+		,	imagesCount
+		)
+	);
+}
+
 function updateProjectOperationProgress(project, operation, ...args) {
 	if (TESTING > 9) console.log(arguments);
 
@@ -6440,7 +6432,6 @@ const	actionLabel = 'processing document with ' + libName;
 	if (sourceData) {
 		project.loading.errorPossible = 'project_status_error_in_layers';
 		project.sourceData = sourceData;
-		project.toPng = thisToPng;
 
 		if (TAB_THUMBNAIL_PRELOAD) {
 			getProjectMergedImagePromise(project, {
@@ -6524,8 +6515,9 @@ async function loadORA(project) {
 					if (img && img !== imageHolder) {
 						newHolder.img = img;
 
+						project.imagesLoaded.push(img);
+
 						++project.imagesCount;
-						++project.imagesLoadedCount;
 					} else
 
 				//* deferred loading, only when needed:
@@ -6733,22 +6725,21 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 					)
 				};
 
-				setImageGeometryProperties(layerWIP, layer, img);
-
 				if (img) {
-					if (GET_LAYER_IMAGE_FROM_BITMAP) {
-						img.imgData = getPropFromAnySource('pixelData', layer, node, img);
-
-						if (TESTING > 9) console.log('pixelData:', [
-							'layer.pixelData =', layer.pixelData,
-							'node.pixelData =', node.pixelData,
-							'img.pixelData =', img.pixelData,
-							'mask.pixelData =', mask.pixelData,
-						]);
-					}
-
 					if (!isLayerFolder) {
-						++project.imagesCount;
+					const	data = getPropFromAnySource('pixelData', layer, node, img);
+
+						if (data && data.length > 0) {
+							if (GET_LAYER_IMAGE_FROM_BITMAP) {
+								layerWIP.imgData = data;
+							} else {
+								layerWIP.loadImage = () => layer.toPng();
+							}
+
+							setImageGeometryProperties(layerWIP, layer, img);
+
+							++project.imagesCount;
+						}
 					}
 
 					if (
@@ -7907,22 +7898,27 @@ const	ctx = canvas.getContext('2d');
 	return canvas;
 }
 
-function getCanvasFilledOutsideOfImage(project, img, fillColor) {
-	if (!isNonNullObject(img)) {
+function getCanvasFilledOutsideOfImage(project, imgOrLayer, fillColor) {
+	if (!isNonNullObject(imgOrLayer)) {
 		return null;
 	}
 
-const	imgElement = img.img || img;
+const	imgElement = getPropByAnyOfNamesChain(imgOrLayer, 'img');
 
 	if (
-		!(
-			fillColor
-		||	img.left
-		||	img.top
-		)
+		!isImageElement(imgElement)
+	&&	!isCanvasElement(imgElement)
+	) {
+		return null;
+	}
+
+	if (
+		!fillColor
 	||	(
-			img.width  === project.width
-		&&	img.height === project.height
+			!imgOrLayer.left
+		&&	!imgOrLayer.top
+		&&	(!imgOrLayer.width  || imgOrLayer.width  === project.width)
+		&&	(!imgOrLayer.height || imgOrLayer.height === project.height)
 		)
 	) {
 		return imgElement;
@@ -7937,10 +7933,10 @@ const	flatColorData = ctx.createImageData(canvas.width, canvas.height);
 	flatColorData.data.fill(fillColor);
 	ctx.putImageData(flatColorData, 0,0);
 
-const	w = orz(img.width)  || project.width;
-const	h = orz(img.height) || project.height;
-const	x = orz(img.left);
-const	y = orz(img.top);
+const	w = orz(getPropFromAnySource('width',  imgOrLayer, imgElement, project));
+const	h = orz(getPropFromAnySource('height', imgOrLayer, imgElement, project));
+const	x = orz(getPropFromAnySource('left',   imgOrLayer, imgElement));
+const	y = orz(getPropFromAnySource('top',    imgOrLayer, imgElement));
 
 	ctx.clearRect(x,y, w,h);
 	ctx.drawImage(imgElement, x,y);
@@ -8158,6 +8154,8 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 				ADD_PAUSE_AT_INTERVALS
 			&&	(getTimeNow() - PR.lastPauseTime) > PAUSE_WORK_INTERVAL
 			) {
+				updateProjectLoadedImagesCount(project);
+
 				await pause(PAUSE_WORK_DURATION);
 
 				PR.lastPauseTime = getTimeNow();
@@ -8423,7 +8421,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 //* not a folder, not a stack of copypaste:
 
-				img = layer.img;
+				img = layer.img || await getOrLoadImage(project, layer);
 			}
 		}
 
@@ -8470,8 +8468,8 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 				if (mask = layer.mask) {
 				const	fillColor = orz(mask.defaultColor);
-
-					mask = getCanvasFilledOutsideOfImage(project, mask, fillColor);
+				const	maskImage = mask.img || await getOrLoadImage(project, mask);
+					mask = getCanvasFilledOutsideOfImage(project, maskImage, fillColor);
 
 					if (TESTING_RENDER) addDebugImage(project, mask, 'mask = getCanvasFilledOutsideOfImage: ' + fillColor);
 				}
@@ -8703,6 +8701,7 @@ let	canvas, ctx, mask, clippingMask;
 			logTime('getRenderByValues - visible layers not found.', renderName);
 		}
 
+		updateProjectLoadedImagesCount(project);
 		project.rendering = null;
 	}
 
