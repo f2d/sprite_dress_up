@@ -630,7 +630,7 @@ def get_resized_image_as_base64(src_file_path, new_size_arg=None):
 			+	base64.b64encode(raw_content).decode()
 			)
 
-			print_with_colored_title('Got resized image content:', base64_content)
+			print_with_colored_title('Got resized image content:', '{} bytes'.format(len(base64_content)))
 
 			return base64_content
 
@@ -694,12 +694,17 @@ if old_content:
 		old_vars_text = remove_comments(content_before + content_after)
 		old_files_text = remove_comments(match.group('OldFileList'))
 
-		print_with_colored_title('Parsing old file list:')
-		print('{} bytes'.format(len(old_files_text)))
+		print_with_colored_title('Parsing old file list:', '{} bytes'.format(len(old_files_text)))
 
-		old_files = json.loads(old_files_text)	# <- 'encoding' is ignored and deprecated.
+		try:
+			old_files = json.loads(old_files_text)	# <- 'encoding' is ignored and deprecated.
 
-		print_with_colored_title('Done parsing old file list:')
+			print_with_colored_title('Done parsing old file list:')
+
+		except Exception as exception:
+			old_files = []
+
+			print_with_colored_title('Error parsing old file list JSON:', exception)
 
 		for group in old_files:
 			files = group.get('files')
