@@ -12,27 +12,50 @@ https://aykevl.nl/2014/09/fix-jumping-scrollbar
 	background-color: #ddd;
 	font-family: sans-serif;
 }
+body {
+	margin: 1em auto;
+	text-align: center;
+}
 small {
 	font-size: smaller;
 }
 big,
-body > button b,
-body.larger-text > :not(button) button,
-body.larger-text > :not(button) option,
-body.larger-text > :not(button) select,
-body.larger-text > :not(button) input,
-body.larger-text > :not(button) {
+.larger-text-button b,
+.larger-text button,
+.larger-text option,
+.larger-text select,
+.larger-text input,
+.larger-text {
 	font-size: large;
 }
-body.larger-text > :not(button) pre,
-body.larger-text > :not(button) code {
+.larger-text .larger-text-button small {
+	font-size: small;
+}
+.larger-text pre,
+.larger-text code {
 	font-weight: bold;
 }
-body.larger-text > button {
+.fixed-tab-width .fixed-tab-width-button,
+.larger-text .larger-text-button {
 	background-color: #ace;
 }
-body > button {
+.menu-bar {
+	z-index: 1;
+	position: relative;
+}
+.top-buttons {
+	z-index: 2;
+	position: fixed;
+	display: flex;
+	top: 0;
+	right: 0;
+}
+.top-buttons button {
 	border: 0.0625em solid gray;
+	width: 3em;
+	height: 3em;
+	margin: 1em 1em 0 0;
+	white-space: nowrap;
 }
 a {
 	color: gray;
@@ -63,17 +86,6 @@ input[type="file"]:disabled {
 .size-fit {
 	max-width: 100%;
 	height: auto;	/* <- keep image from growing too wide and keep proportions */
-}
-body {
-	margin: 1em auto;
-	text-align: center;
-}
-body > button {
-	position: absolute;
-	top: 1em;
-	right: 1em;
-	width: 3em;
-	height: 3em;
 }
 .menu-bar > button {
 	margin: 0 0.5em;
@@ -413,9 +425,18 @@ label:hover {
 	text-align: center;
 	display: inline-block;
 }
+.fixed-tab-width #loaded-files-selection .button-text {
+	width: 8em;			/* <- "em" is bad with different font-sizes on different lines, so set only here */
+}
+.fixed-tab-width #loaded-files-selection .button-text,
+.fixed-tab-width #loaded-files-selection .button-text * {
+	overflow: hidden;
+	text-overflow: ellipsis;	/* <- requires max-width */
+	white-space: nowrap;
+}
 #loaded-files-selection .button-text {
 	text-align: left;
-	padding: 0.25em 0.5em;
+	margin: 0.25em 0.5em;
 }
 #loaded-files-selection .button-name {
 	font-size: 80%;
@@ -433,12 +454,12 @@ label:hover {
 #loaded-files-selection .button {
 	margin: 0.5em;
 }
-body > button::-moz-focus-inner,
+.top-buttons button::-moz-focus-inner,
 #loaded-files-selection .button::-moz-focus-inner,
 #loaded-files-selection .button > *::-moz-focus-inner {
 	border: none;	/* <- https://stackoverflow.com/a/199319 */
 }
-body > button,
+.top-buttons button,
 #loaded-files-selection .button,
 #loaded-files-selection .button > * {
 	outline: none;	/* <- https://stackoverflow.com/a/47002717 */

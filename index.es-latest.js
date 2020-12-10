@@ -89,10 +89,12 @@ var	exampleRootDir = ''
 ,	FILE_NAME_ADD_PARAM_KEY		= true
 ,	GET_LAYER_IMAGE_FROM_BITMAP	= true
 ,	LOCALIZED_CASE_BY_CROSS_COUNT	= false	//* <- determine word case by product of all numbers in args; if not, then by the last number.
-,	OPEN_FIRST_MENU_TAB_AT_START	= true
 ,	PRELOAD_ALL_LAYER_IMAGES	= false
 ,	PRELOAD_USED_LAYER_IMAGES	= false
 ,	READ_FILE_CONTENT_TO_GET_TYPE	= false	//* <- this relies on the browser or the OS to magically determine file type.
+,	START_WITH_BIG_TEXT		= false
+,	START_WITH_FIXED_TAB_WIDTH	= true
+,	START_WITH_OPEN_FIRST_MENU_TAB	= true
 ,	TAB_STATUS_TEXT			= true
 ,	TAB_THUMBNAIL_PRELOAD		= true	//* <- get merged prerendered image from the file before looking at layer tree.
 ,	TAB_THUMBNAIL_TRIMMED		= false	//* <- more content may become visible, but will take more time and shift image alignment.
@@ -184,6 +186,7 @@ const	CONFIG_FILE_PATH = 'config.js'			//* <- declarations-only file to redefine
 ,	FETCH_TEST_FILE_PATH = 'index.png'		//* <- smallest local file to test loading from disk
 ,	LS_NAMESPACE = 'spriteDressUp'
 ,	LS_KEY_BIG_TEXT = LS_NAMESPACE + 'BigText'
+,	LS_KEY_FIXED_TAB_WIDTH = LS_NAMESPACE + 'FixedTabWidth'
 
 ,	LS = window.localStorage || localStorage
 ,	URL = window.URL || window.webkitURL || URL
@@ -2112,7 +2115,7 @@ function closeAllDropdownMenuTabs(element) {
 		}
 	);
 
-	OPEN_FIRST_MENU_TAB_AT_START = false;
+	START_WITH_OPEN_FIRST_MENU_TAB = false;
 }
 
 function toggleDropdownMenu(element) {
@@ -2212,6 +2215,14 @@ const	header = getOneById('top-menu-' + sectionName);
 		} else {
 			header.scrollIntoView();
 		}
+	}
+}
+
+function toggleFixedTabWidth() {
+const	isFixedTabWidthEnabled = toggleClass(document.body, 'fixed-tab-width');
+
+	if (LS) {
+		LS[LS_KEY_FIXED_TAB_WIDTH] = isFixedTabWidthEnabled;
 	}
 }
 
@@ -4078,7 +4089,7 @@ const	countDeleted = getAllById(fileId).reduce(
 
 async function addProjectViewTab(sourceFile, startTime) {
 
-	if (OPEN_FIRST_MENU_TAB_AT_START) {
+	if (START_WITH_OPEN_FIRST_MENU_TAB) {
 		closeAllDropdownMenuTabs(getAllByClass('menu-bar')[0]);
 	}
 
@@ -4126,7 +4137,7 @@ const	buttonText = cre('div', buttonSelect);
 
 const	buttonFileName = cre('div', buttonText);
 	buttonFileName.className = 'button-name';
-	buttonFileName.textContent = sourceFile.name;
+	buttonFileName.textContent = buttonFileName.title = sourceFile.name;
 
 let	buttonStatus;
 
@@ -4137,6 +4148,7 @@ let	buttonStatus;
 
 const	buttonClose = cre('div', buttonTab);
 	buttonClose.className = 'button-close';
+	buttonClose.title = getLocalizedText('hint_close_tab');
 
 	buttonClose.setAttribute('onclick', 'closeProject(this)');
 
@@ -6406,7 +6418,7 @@ let	element;
 
 	if (TAB_STATUS_TEXT) {
 		if (element = project.buttonStatus) {
-			element.textContent = getLocalizedText(operation, ...args);
+			element.title = element.textContent = getLocalizedText(operation, ...args);
 		}
 	} else {
 		if (element = project.buttonTab) {
@@ -11697,10 +11709,18 @@ const	menuHTML = getNestedFilteredArrayJoinedText(
 		)
 	);
 
+const	toggleFixedTabWidthHTML = (
+		'<button class="fixed-tab-width-button" onclick="return toggleFixedTabWidth()"'
+	+		getTagAttrIfNotEmpty('title', getLocalizedOrEmptyText('fixed_tab_width'))
+	+	'>'
+	+		'[...]'
+	+	'</button>'
+	);
+
 const	toggleTextSizeHTML = (
-		'<button'
-	+	getTagAttrIfNotEmpty('title', getLocalizedOrEmptyText('larger_text'))
-	+	` onclick="return toggleTextSize()">`
+		'<button class="larger-text-button" onclick="return toggleTextSize()"'
+	+		getTagAttrIfNotEmpty('title', getLocalizedOrEmptyText('larger_text'))
+	+	'>'
 	+		'<big>'
 	+			getLocalizedText('text_size_sample')
 	+		'</big>'
@@ -11717,7 +11737,10 @@ const	toggleTextSizeHTML = (
 	+	'</div>'
 	+	'<div id="loaded-files-selection"></div>'
 	+	'<div id="loaded-files-view"></div>'
-	+	toggleTextSizeHTML
+	+	'<div class="top-buttons">'
+	+		toggleFixedTabWidthHTML
+	+		toggleTextSizeHTML
+	+	'</div>'
 	);
 
 	getAllByClass('thumbnail').forEach(
@@ -11772,14 +11795,22 @@ const	eventHandlers = [
 let	oldSetting;
 
 	if (
-		LS
-	&&	(oldSetting = LS[LS_KEY_BIG_TEXT])
-	&&	!FALSY_STRINGS.includes(oldSetting)
+		(LS && (oldSetting = LS[LS_KEY_BIG_TEXT]))
+		? !FALSY_STRINGS.includes(oldSetting)
+		: START_WITH_BIG_TEXT
 	) {
 		toggleTextSize();
 	}
 
-	if (OPEN_FIRST_MENU_TAB_AT_START) {
+	if (
+		(LS && (oldSetting = LS[LS_KEY_FIXED_TAB_WIDTH]))
+		? !FALSY_STRINGS.includes(oldSetting)
+		: START_WITH_FIXED_TAB_WIDTH
+	) {
+		toggleFixedTabWidth();
+	}
+
+	if (START_WITH_OPEN_FIRST_MENU_TAB) {
 		toggleClass(getAllByTag('header')[0], 'show');
 
 		updateDropdownMenuPositions();
