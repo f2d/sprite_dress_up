@@ -4193,8 +4193,9 @@ let	project, container;
 //* attach prepared DOM branch to visible document:
 
 			if (result && !isStopRequestedAnywhere(project, projectButtons)) {
-				removeProjectView(fileId);
+				project.isLoaded = true;
 
+				removeProjectView(fileId);
 				container.id = buttonTab.id = fileId;
 
 			const	parent = getOneById('loaded-files-view')
@@ -4437,13 +4438,7 @@ async function getProjectViewMenu(project) {
 			ADD_PAUSE_AT_INTERVALS
 		&&	(getTimeNow() - lastPauseTime) > PAUSE_WORK_INTERVAL
 		) {
-			updateProjectLoadedImagesCount(project)
-			updateProjectOperationProgress(
-				project
-			,	'project_status_reading_images'
-			,	project.imagesLoadedCount
-			,	project.imagesCount
-			);
+			updateProjectLoadedImagesCount(project);
 
 			await pause(PAUSE_WORK_DURATION);
 
@@ -6329,6 +6324,15 @@ const	loadedCount = project.imagesLoaded.length;
 	}
 
 	project.imagesLoadedCount = loadedCount;
+
+	if (!project.isLoaded) {
+		updateProjectOperationProgress(
+			project
+		,	'project_status_reading_images'
+		,	loadedCount
+		,	imagesCount
+		);
+	}
 
 	if (!element) {
 		return;
