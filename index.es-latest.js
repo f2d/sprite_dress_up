@@ -6392,7 +6392,11 @@ function updateProjectOperationProgress(project, operation, ...args) {
 		const	precounts = getOrInitChild(project, 'renderBatchCounts');
 		const	key = project.renderBatchCountSelectedKey;
 
-			count = precounts[key] || '{too_many}';
+			if (count = precounts[key]) {
+				args[0] = count;
+			} else {
+				count = '{too_many}';
+			}
 		}
 
 		updateMenuBatchCount(project, count);
@@ -7091,7 +7095,7 @@ async function getAllValueSets(project, values, startTime, flags) {
 				isStopRequestedAnywhere(thisJob, project)
 				|| (
 					startTime
-				&&	startTime !== project.renderBatchCounterStartTime
+				&&	startTime !== project.renderBatchCountStartTime
 				)
 			);
 
@@ -9130,15 +9134,15 @@ async function renderAll(project, flags) {
 		flags.showOnPage = true;
 	}
 
-	project.renderBatchCounterStartTime = null;
+	project.renderBatchCountStartTime = null;
 
 const	logLabel = 'Render all: ' + project.fileName;
 	console.time(logLabel);
 	if (USE_CONSOLE_LOG_GROUPING) console.group(logLabel);
 
 const	startTime = getTimeNow();
-const	values = getAllMenuValues(project, true);
-const	valueSets = await getAllValueSets(project, values);
+const	values = project.renderBatchSelectedOptions || (project.renderBatchSelectedOptions = getAllMenuValues(project, true));
+const	valueSets = project.renderBatchSelectedSets || (project.renderBatchSelectedSets = await getAllValueSets(project, values));
 
 	if (
 		isNonNullObject(valueSets)
@@ -9590,7 +9594,7 @@ async function updateBatchCount(project, values, precounted) {
 		values = getAllMenuValues(project, true);
 	}
 
-const	startTime = project.renderBatchCounterStartTime = getTimeNow();
+const	startTime = project.renderBatchCountStartTime = getTimeNow();
 const	precounts = getOrInitChild(project, 'renderBatchCounts');
 const	key = project.renderBatchCountSelectedKey = (
 		(
@@ -9598,7 +9602,7 @@ const	key = project.renderBatchCountSelectedKey = (
 			.map((checkBox) => (checkBox.checked ? 1 : 0))
 			.join('')
 		)
-	+	'\n'
+	+	'_'
 	+	getFileNameByValues(project, values)
 	);
 
@@ -9611,15 +9615,18 @@ let	count = (
 	if (!count) {
 		count = await getAllValueSetsCount(project, values, startTime);
 
+//* if stopped by user or another count:
+
 		if (typeof count === 'undefined') {
 
-//* if stop requested by user and no other count was started, update text:
+//* if another count was started, don't update anything here:
 
-			if (startTime === project.renderBatchCounterStartTime) {
-				updateProjectOperationProgress(project, 'project_status_ready_options');
+			if (startTime !== project.renderBatchCountStartTime) {
+				return;
 			}
 
-			return;
+//* otherwise report something, at least "over 9000" or just "too much":
+
 		} else {
 			if (
 				MAX_BATCH_PRECOUNT
@@ -9633,7 +9640,7 @@ let	count = (
 		}
 	}
 
-	updateProjectOperationProgress(project, 'project_status_ready_options', count);
+	updateProjectOperationProgress(project, 'project_status_ready_options');
 }
 
 function setProjectWIPstate(project, isWIP) {
@@ -9877,6 +9884,8 @@ const	isSelect = isSelectElement(element);
 
 const	container = getProjectContainer(element);
 const	project = container.project;
+	project.renderBatchSelectedOptions = null;
+	project.renderBatchSelectedSets = null;
 
 	await updateBatchCount(project);
 
