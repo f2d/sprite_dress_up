@@ -6351,26 +6351,37 @@ const	loadedCount = project.imagesLoaded.length;
 		,	imagesCount
 		)
 	);
+
+	updateElementMinWidth(element);
+}
+
+function updateElementMinWidth(element) {
+	if (
+		element
+	&&	element.style
+	) {
+	const	width = Math.ceil(element.offsetWidth);
+
+		if (width > orz(element.style.minWidth)) {
+			element.style.minWidth = width + 'px';
+		}
+	}
 }
 
 function updateProjectOperationProgress(project, operation, ...args) {
 	if (TESTING > 9) console.log(arguments);
 
 	if (operation === 'project_status_ready_options') {
-	const	counted = args[0];
-	const	count = (
-			(typeof counted === 'undefined')
-			? (project.renderBatchCountSelected || '?')
-			: (counted === '?')
-			? (project.renderBatchCountSelected || counted)
-			: (project.renderBatchCountSelected = counted)
-		);
+	let	count = args[0];
 
-		if (count) {
-			args[0] = count;
+		if (isNaN(count)) {
+		const	precounts = getOrInitChild(project, 'renderBatchCounts');
+		const	key = project.renderBatchCountSelectedKey;
 
-			updateMenuBatchCount(project, count);
+			count = precounts[key] || '{too_many}';
 		}
+
+		updateMenuBatchCount(project, count);
 	}
 
 let	element;
@@ -6386,13 +6397,7 @@ let	element;
 	}
 
 	if (TAB_WIDTH_ONLY_GROW) {
-		if (element = project.buttonStatus || project.buttonText || project.buttonTab) {
-		const	width = element.offsetWidth;
-
-			if (width > orz(element.style.minWidth)) {
-				element.style.minWidth = width + 'px';
-			}
-		}
+		updateElementMinWidth(project.buttonStatus || project.buttonText || project.buttonTab);
 	}
 }
 
@@ -7069,7 +7074,7 @@ async function getAllValueSets(project, values, startTime, flags) {
 
 		for (const optionName of optionNames) {
 			aborted = (
-				isStopRequestedAnywhere(project)
+				isStopRequestedAnywhere(thisJob, project)
 				|| (
 					startTime
 				&&	startTime !== project.renderBatchCounterStartTime
@@ -7170,6 +7175,9 @@ let	section, optionNames, lastPauseTime;
 		return null;
 	}
 
+const	thisJob = {startTime, optionLists};
+	pendingJobs.add(thisJob);
+
 	if (optionLists.length > 0) {
 		if (ADD_PAUSE_AT_INTERVALS) {
 			lastPauseTime = startTime || getTimeNow();
@@ -7179,6 +7187,10 @@ let	section, optionNames, lastPauseTime;
 			valueSets = getOnlyNames ? null : {};
 		}
 	}
+
+	if (TESTING > 9) console.log(thisJob, pendingJobs);
+
+	pendingJobs.delete(thisJob);
 
 	if (aborted) {
 		return;
@@ -7203,11 +7215,11 @@ const	valueSets = await getAllValueSets(
 		return;
 	}
 
-	return (
-		valueSets === null
-		? getLocalizedText('too_many')
-		: valueSets.length
-	);
+	if (valueSets === null) {
+		return '{too_many}';
+	}
+
+	return valueSets.length;
 }
 
 function getUpdatedMenuValues(project, updatedValues) {
@@ -9139,6 +9151,13 @@ let	totalTime = 0;
 let	pauseAtIntervals = (ADD_PAUSE_AT_INTERVALS ? PAUSE_WORK_DURATION : 0);
 let	batchContainer, subContainer;
 
+	updateProjectOperationProgress(
+		project
+	,	'project_status_rendering_batch'
+	,	setsCount
+	,	setsCountTotal
+	);
+
 	if (flags.showOnPage) batchContainer = getEmptyRenderContainer(project); else
 	if (flags.asOneJoinedImage) batchContainer = cre('div');
 
@@ -9550,15 +9569,19 @@ function updateMenuBatchCount(project, ...args) {
 }
 
 async function updateBatchCount(project, values, precounted) {
+	if (!values) {
+		values = getAllMenuValues(project, true);
+	}
+
 const	startTime = project.renderBatchCounterStartTime = getTimeNow();
 const	precounts = getOrInitChild(project, 'renderBatchCounts');
-const	key = (
+const	key = project.renderBatchCountSelectedKey = (
 		(
 			getAllByClass('batch-checkbox', project.container)
 			.map((checkBox) => (checkBox.checked ? 1 : 0))
 			.join('')
 		)
-	+	'_'
+	+	'\n'
 	+	getFileNameByValues(project, values)
 	);
 
@@ -9573,16 +9596,13 @@ let	count = (
 
 		if (typeof count === 'undefined') {
 
-//* stop if another count was started, skip updating:
+//* if stop requested by user and no other count was started, update text:
 
-			if (startTime !== project.renderBatchCounterStartTime) {
-				return;
-			} else {
-
-//* stop if requested by user, but update text:
-
-				count = '?';
+			if (startTime === project.renderBatchCounterStartTime) {
+				updateProjectOperationProgress(project, 'project_status_ready_options');
 			}
+
+			return;
 		} else {
 			if (
 				MAX_BATCH_PRECOUNT
@@ -9600,10 +9620,10 @@ let	count = (
 }
 
 function setProjectWIPstate(project, isWIP) {
-const	state = !!isWIP;
+	isWIP = !!isWIP;
 
 	project.isStopRequested = false;
-	project.isBatchWIP = state;
+	project.isBatchWIP = isWIP;
 
 	['button', 'select', 'input'].forEach(
 		(tagName) => getAllByTag(tagName, project.container).forEach(
@@ -9611,44 +9631,43 @@ const	state = !!isWIP;
 				element.disabled = (
 					tagName === 'button'
 				&&	element.name === 'stop'
-					? !state
-					: state
+					? !isWIP
+					: isWIP
 				)
 			)
 		)
 	);
 
-	updateProjectOperationProgress(
-		project
-	,	(
-			state
-			? 'project_status_rendering'
-			: 'project_status_ready_options'
-		)
-	);
+	if (isWIP) {
+		if (PRELOAD_LAYER_IMAGES || project.isLoaded) {
+			updateProjectOperationProgress(project, 'project_status_rendering');
+		}
+	} else {
+		updateProjectOperationProgress(project, 'project_status_ready_options');
+	}
 
-	return state;
+	return isWIP;
 }
 
 function setGlobalWIPstate(isWIP) {
-const	state = !!isWIP;
+	isWIP = !!isWIP;
 
 	isStopRequested = false;
-	isBatchWIP = state;
+	isBatchWIP = isWIP;
 
 	getAllByTag('button', getAllByClass('menu-bar')[0]).forEach(
 		(element) => {
 			if (element.name !== 'download_all') {
 				element.disabled = (
 					element.name === 'stop'
-					? !state
-					: state
+					? !isWIP
+					: isWIP
 				)
 			}
 		}
 	);
 
-	return state;
+	return isWIP;
 }
 
 //* Page-specific functions: UI-side *-----------------------------------------
