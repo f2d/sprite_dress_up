@@ -54,6 +54,16 @@ label:disabled,
 input[type="file"]:disabled {
 	cursor: not-allowed;
 }
+.size-full[onclick] {
+	cursor: zoom-out;
+}
+.size-fit[onclick] {
+	cursor: zoom-in;
+}
+.size-fit {
+	max-width: 100%;
+	height: auto;	/* <- keep image from growing too wide and keep proportions */
+}
 body {
 	margin: 1em auto;
 	text-align: center;
@@ -77,14 +87,15 @@ hr {
 	border: none;
 	border-top: 0.0625em solid gray;
 }
+canvas {
+	position: relative;
+}
 #loaded-files-view img,
 canvas {
 	border: 0.0625em solid #ddd;
 	box-shadow: 0.1875em 0.1875em rgba(0,0,0, 0.1);
 }
-canvas {
-	position: relative;
-}
+#loaded-files-view img[onclick]:hover,
 canvas:hover {
 	border-color: gray;
 }
@@ -458,10 +469,6 @@ body > button,
 	padding: 0;
 	border-collapse: collapse;
 }
-.loaded-file .project-options,
-.loaded-file .project-render {
-	padding: 0.5em;
-}
 .loaded-file div[data-option-id] > img,
 .loaded-file td > img,
 .loaded-file td > section {
@@ -606,15 +613,13 @@ body > button,
 .project-options > table {
 	max-width: 20em;
 }
-.project-options {
-	/* width: 0;	/* <- take the least possible width without line-wrap */
+.preview,
+.project-options,
+.project-render {
+	padding: 0.5em;
 }
-.preview {
-	padding-right: 0.375em;
-}
-.preview img {
-	max-width: 100%;
-	height: auto;	/* <- keep image from growing too wide and keep proportions */
+.project-render {
+	padding-right: 2em;
 }
 .filename {
 	font-weight: bold;

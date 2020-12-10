@@ -180,15 +180,21 @@ const getFlatArray = (
 
 //* Config: internal, do not change *------------------------------------------
 
-const	configFilePath = 'config.js'			//* <- declarations-only file to redefine any of the above variables
-,	fetchTestFilePath = 'index.png'			//* <- smallest local file to test loading from disk
-,	localStorageNameSpace = 'spriteDressUp'
-,	LSKeyBigText = localStorageNameSpace + 'BigText'
+const	CONFIG_FILE_PATH = 'config.js'			//* <- declarations-only file to redefine any of the above variables
+,	FETCH_TEST_FILE_PATH = 'index.png'		//* <- smallest local file to test loading from disk
+,	LS_NAMESPACE = 'spriteDressUp'
+,	LS_KEY_BIG_TEXT = LS_NAMESPACE + 'BigText'
+
+,	LS = window.localStorage || localStorage
+,	URL = window.URL || window.webkitURL || URL
+,	LANG = document.documentElement.lang || 'en'
+
+,	RUNNING_FROM_DISK = isURLFromDisk('/')
+,	CAN_USE_WORKERS = (typeof Worker === 'function' && !RUNNING_FROM_DISK)
+
 ,	pendingJobs = new Set()
 
-// ,	regLayerNameToSkip		= /^(skip)$/i
-,	regLayerNameToSkip		= null
-,	regLayerNameParamOrComment	= new RegExp(
+,	regLayerNameParamOrComment = new RegExp(
 		'^'
 	+		'([^/\\[(]*)'			//* <- [1] layer identity names, e.g. "name1, name2"
 	+		'('				//* <- [2] block of logic for any of identity names
@@ -199,9 +205,10 @@ const	configFilePath = 'config.js'			//* <- declarations-only file to redefine a
 	+		'(.*?)'				//* <- [4] remainder for next step
 	+	'$'
 	)
-// ,	regLayerNameParamSplit	= /[\s,_]+/g
-,	regLayerNameParamSplit	= /[\s\r\n]+/g
-,	regLayerNameParamTrim	= getTrimReg('\\s\\r\\n,_')
+,	regLayerNameToSkip	= null			//* <- old: /^(skip)$/i
+,	regSplitLayerNames	= /[\/,]+/g
+,	regSplitParam		= /[\s\r\n]+/g		//* <- old: /[\s,_]+/g
+,	regTrimParam		= getTrimReg('\\s\\r\\n,_')
 ,	regTrimParamRadius	= /^(px|at)+|(px|at)+$/ig
 ,	regEndsWithNumPx	= /^(?:(.*?)\W+)?(\d+)px$/i
 ,	regColorCode		= /^(?:(rgba?)\W*|(hex)\W*|(#))(\w.*?)$/i
@@ -255,7 +262,6 @@ const	configFilePath = 'config.js'			//* <- declarations-only file to redefine a
 ,	regNonHex		= /[^0-9a-f]+/gi
 ,	regSpace		= /\s+/g
 ,	regCommaSpace		= /\,+s*/g
-,	regSplitLayerNames	= /[\/,]+/g
 ,	regSanitizeFileName	= /[_\s\/\\:<>?*"]+/g
 ,	regTemplateVarName	= /\{(\w+)\}/g
 ,	regHMS			= /(T\d+)-(\d+)-(\d+\D*)/
@@ -285,11 +291,7 @@ const	configFilePath = 'config.js'			//* <- declarations-only file to redefine a
 	,	showFromTree	: /^(layers|name)$/i
 	}
 
-const	LS = window.localStorage || localStorage
-,	URL = window.URL || window.webkitURL || URL
-,	LANG = document.documentElement.lang || 'en'
-
-,	SPLIT_SEC = 60
+const	SPLIT_SEC = 60
 ,	MIN_CHANNEL_VALUE = 0
 ,	MAX_CHANNEL_VALUE = 255
 ,	MAX_OPACITY = 255
@@ -475,7 +477,12 @@ const	LS = window.localStorage || localStorage
 		},
 	]
 
-,	PROJECT_CONTROLS = [
+,	PROJECT_FILE_CONTROLS = [
+		'show_project_details',
+		// 'save_ora',
+	]
+
+,	PROJECT_VIEW_CONTROLS = [
 		{
 			'header': 'reset_header',
 			'buttons': {
@@ -522,6 +529,7 @@ const	LS = window.localStorage || localStorage
 	]
 
 ,	IMAGE_DATA_KEYS_TO_LOAD = [
+		'toImage',
 		'loadImage',
 		'pixelData',
 		'maskData',
@@ -543,19 +551,16 @@ const	LS = window.localStorage || localStorage
 		// 'imgData',	//* <- keep for lazy-loading
 	])
 
-const	RUNNING_FROM_DISK = isURLFromDisk('/')
-,	CAN_USE_WORKERS = (typeof Worker === 'function' && !RUNNING_FROM_DISK)
-
 //* Config: internal, included scripts and loaders of project files *----------
 
-const	libRootDir = 'lib/'
-,	libFormatsDir = libRootDir + 'formats/'
-,	libLangDir = libRootDir + 'localization/'
-,	libUtilDir = libRootDir + 'util/'
+const	LIB_ROOT_DIR = 'lib/'
+,	LIB_FORMATS_DIR = LIB_ROOT_DIR + 'formats/'
+,	LIB_LANG_DIR = LIB_ROOT_DIR + 'localization/'
+,	LIB_UTIL_DIR = LIB_ROOT_DIR + 'util/'
 
-,	zipFormatDir = libFormatsDir + 'zip/zip_js/'
-,	zlibAsmDir = libFormatsDir + 'zlib/zlib-asm/v0.2.2/'	//* <- last version supported by zip.js, ~ x2 faster than default
-,	zlibPakoDir = libFormatsDir + 'zlib/pako/v2.0.2/'	//* <- good and fast enough for everything
+,	ZIP_FORMAT_DIR = LIB_FORMATS_DIR + 'zip/zip_js/'
+,	ZLIB_ASM_DIR = LIB_FORMATS_DIR + 'zlib/zlib-asm/v0.2.2/'	//* <- last version supported by zip.js, ~ x2 faster than default
+,	ZLIB_PAKO_DIR = LIB_FORMATS_DIR + 'zlib/pako/v2.0.2/'	//* <- good and fast enough for everything
 	;
 
 //* To be figured on the go *--------------------------------------------------
@@ -565,9 +570,10 @@ var	ora, zip, zlib, pako, PSD, UPNG, UZIP	//* <- external variable names, do not
 ,	PSD_JS
 ,	CompositionModule
 ,	CompositionFuncList
-,	fileTypeLibs
-,	fileTypeLoaders
-,	zipWorkerScripts
+
+,	FILE_TYPE_LIBS
+,	FILE_TYPE_LOADERS
+,	ZIP_WORKER_SCRIPTS
 
 ,	DEFAULT_COLLAGE
 ,	PRELOAD_LAYER_IMAGES
@@ -612,13 +618,13 @@ const	zlibPakoFileName = (
 	+	'.js'
 	);
 
-	fileTypeLibs = {
+	FILE_TYPE_LIBS = {
 		'zlib-asm': {
 
 //* source: https://github.com/ukyo/zlib-asm
 
 			'varName': 'zlib'
-		,	'dir': zlibAsmDir
+		,	'dir': ZLIB_ASM_DIR
 		,	'files': ['zlib.js']
 		},
 
@@ -627,7 +633,7 @@ const	zlibPakoFileName = (
 //* source: https://github.com/nodeca/pako
 
 			'varName': 'pako'
-		,	'dir': zlibPakoDir
+		,	'dir': ZLIB_PAKO_DIR
 		,	'files': [zlibPakoFileName]
 		},
 
@@ -636,7 +642,7 @@ const	zlibPakoFileName = (
 //* source: https://github.com/photopea/UZIP.js
 
 			'varName': 'UZIP'
-		,	'dir': libFormatsDir + 'zlib/UZIP/'
+		,	'dir': LIB_FORMATS_DIR + 'zlib/UZIP/'
 		,	'files': ['UZIP.js']
 		,	'depends': ['pako']
 		},
@@ -646,7 +652,7 @@ const	zlibPakoFileName = (
 //* source: https://github.com/photopea/UPNG.js
 
 			'varName': 'UPNG'
-		,	'dir': libFormatsDir + 'png/UPNG/'
+		,	'dir': LIB_FORMATS_DIR + 'png/UPNG/'
 		,	'files': ['UPNG.js']
 		,	'depends': zlibCodecPNG
 		},
@@ -656,7 +662,7 @@ const	zlibPakoFileName = (
 //* source: https://github.com/gildas-lormeau/zip.js
 
 			'varName': 'zip'
-		,	'dir': zipFormatDir
+		,	'dir': ZIP_FORMAT_DIR
 		,	'files': [
 				'zip.js',
 				'zip-fs.js',
@@ -698,7 +704,7 @@ const	zlibPakoFileName = (
 //* wish: draw in SAI2 → export ORA (all layers rasterized + all blending properties and modes included as attributes)
 
 			'varName': 'ora'
-		,	'dir': libFormatsDir + 'ora/ora_js/'
+		,	'dir': LIB_FORMATS_DIR + 'ora/ora_js/'
 		,	'files': ['ora.js']
 		,	'depends': ['zip.js']
 		},
@@ -709,7 +715,7 @@ const	zlibPakoFileName = (
 //* based on https://github.com/layervault/psd.rb
 
 			'varName': 'PSD_JS'
-		,	'dir': libFormatsDir + 'psd/psd_js/psd.js_build_by_rtf-const_2018-12-11/'	//* <- working with bigger files?
+		,	'dir': LIB_FORMATS_DIR + 'psd/psd_js/psd.js_build_by_rtf-const_2018-12-11/'	//* <- working with bigger files?
 		,	'files': ['psd.js']
 		,	'depends': libCodecPNG
 		},
@@ -720,32 +726,32 @@ const	zlibPakoFileName = (
 //* fork of https://github.com/meltingice/psd.js
 
 			'varName': 'PSD'
-		,	'dir': libFormatsDir + 'psd/psd_js/psd.js_fork_by_imcuttle_2018-09-19/'		//* <- working here
+		,	'dir': LIB_FORMATS_DIR + 'psd/psd_js/psd.js_fork_by_imcuttle_2018-09-19/'		//* <- working here
 		,	'files': ['psd.browser.js']
 		,	'depends': libCodecPNG
 		},
 	};
 
-	zipWorkerScripts = (
+	ZIP_WORKER_SCRIPTS = (
 		USE_ONE_FILE_ZIP_WORKER
 		? [
-			zipFormatDir + zipAllInOneFileName
+			ZIP_FORMAT_DIR + zipAllInOneFileName
 		]
 		: USE_ZLIB_CODECS
 		? [
-			zipFormatDir + 'z-worker.js',
-			zipFormatDir + zipZlibCodecWrapper,
+			ZIP_FORMAT_DIR + 'z-worker.js',
+			ZIP_FORMAT_DIR + zipZlibCodecWrapper,
 		].concat(
 			zlibCodecZIP.map(
-				(libName) => fileTypeLibs[libName].files.map(
-					(fileName) => fileTypeLibs[libName].dir + fileName
+				(libName) => FILE_TYPE_LIBS[libName].files.map(
+					(fileName) => FILE_TYPE_LIBS[libName].dir + fileName
 				)
 			)
 		)
 		: null
 	);
 
-	fileTypeLoaders = [
+	FILE_TYPE_LOADERS = [
 		{
 			'dropFileExts': ['ora', 'zip']
 		,	'inputFileAcceptMimeTypes': ['image/openraster', 'application/zip']
@@ -2215,8 +2221,13 @@ const	isBigTextEnabled = toggleClass(document.body, 'larger-text');
 	updateDropdownMenuPositions();
 
 	if (LS) {
-		LS[LSKeyBigText] = isBigTextEnabled;
+		LS[LS_KEY_BIG_TEXT] = isBigTextEnabled;
 	}
+}
+
+function makeElementFitOnClick(element, initialState) {
+	element.className = initialState || 'size-fit';
+	element.setAttribute('onclick', 'toggleClass(this, \'size-fit\'), toggleClass(this, \'size-full\')');
 }
 
 function getOffsetXY(element) {
@@ -3042,7 +3053,7 @@ async function loadLibOnDemandPromise(libName) {
 		return false;
 	}
 
-const	lib = fileTypeLibs[libName] || {};
+const	lib = FILE_TYPE_LIBS[libName] || {};
 
 	if (!lib) {
 		return false;
@@ -3087,10 +3098,10 @@ const	depends = lib.depends || null;
 //*	Scripts in the array are executed in order, and the first one should be z-worker.js, which is used to start the worker.
 //* source: http://gildas-lormeau.github.io/zip.js/core-api.html#alternative-codecs
 
-							if (zipWorkerScripts) {
+							if (ZIP_WORKER_SCRIPTS) {
 								zip.workerScripts = {
-									deflater: zipWorkerScripts,
-									inflater: zipWorkerScripts,
+									deflater: ZIP_WORKER_SCRIPTS,
+									inflater: ZIP_WORKER_SCRIPTS,
 								};
 							} else {
 								zip.workerScriptsPath = dir;
@@ -3671,6 +3682,24 @@ const	button = cre('button', parent);
 	return button;
 }
 
+function addNamedButton(container, name, label) {
+	addButton(container, getLocalizedText(label || name)).name = name || label;
+}
+
+function addButtonGroup(container, group) {
+
+	for (const buttonName in group) {
+	const	entry = group[buttonName];
+
+		if (isString(entry)) {
+			addNamedButton(container, buttonName, entry);
+		} else
+		if (isNonNullObject(entry)) {
+			addButtonGroup(cre('div', container), entry);
+		}
+	}
+}
+
 function addOption(parent, text, value) {
 const	option = cre('option', parent);
 
@@ -3686,7 +3715,7 @@ const	option = cre('option', parent);
 function trimParam(text) {
 	return (
 		String(text)
-		.replace(regLayerNameParamTrim, '')
+		.replace(regTrimParam, '')
 	);
 }
 
@@ -3828,6 +3857,22 @@ function isLayerSkipped(layer) {
 	);
 }
 
+function hasImageToLoad(layer) {
+	return (
+		layer.params.color_code
+	||	IMAGE_DATA_KEYS_TO_LOAD.some((key) => key in layer)
+	||	(
+			layer.mask
+		&&	IMAGE_DATA_KEYS_TO_LOAD.some((key) => key in layer.mask)
+		)
+	||	(
+			!layer.layers
+		&&	layer.width > 0
+		&&	layer.height > 0
+		)
+	);
+}
+
 //* pile of hacks and glue to get things working:
 
 async function getOrLoadImage(project, layer) {
@@ -3897,6 +3942,7 @@ async function getOrLoadImage(project, layer) {
 			const methodName
 			of [
 				'loadImage',
+				'toImage',
 				'toImagePngBlobPromise',
 				'toImagePngBase64Promise',
 				'toPng',
@@ -4258,7 +4304,7 @@ let	loadersTried = 0;
 let	project, totalStartTime;
 
 	try_loaders:
-	for (const loader of fileTypeLoaders) if (
+	for (const loader of FILE_TYPE_LOADERS) if (
 		loader.dropFileExts.includes(ext)
 	||	loader.inputFileAcceptMimeTypes.includes(mimeType)
 	) for (const func of loader.handlerFuncs) {
@@ -4359,9 +4405,13 @@ async function getProjectViewMenu(project) {
 
 		project.loading.errorPossible = 'project_status_error_in_images';
 
-	const	fileName = project.fileName;
-	const	images = project.loading.images.filter(arrayFilterUniqueValues);
+	const	images = (
+			project.loading.images
+			.filter(arrayFilterUniqueValues)
+			.filter(hasImageToLoad)
+		);
 	const	imagesCount = project.loading.imagesCount = images.length;
+	const	fileName = project.fileName;
 	const	actionLabel = (
 			PRELOAD_LAYER_IMAGES
 			? 'preloading ' + imagesCount + ' images or colors'
@@ -4833,19 +4883,6 @@ async function getProjectViewMenu(project) {
 			if (
 				!PRELOAD_ALL_LAYER_IMAGES
 			&&	layer.opacity > 0
-			&&	(
-					params.color_code
-				||	IMAGE_DATA_KEYS_TO_LOAD.some((key) => key in layer)
-				||	(
-						layer.mask
-					&&	IMAGE_DATA_KEYS_TO_LOAD.some((key) => key in layer.mask)
-					)
-				||	(
-						!layersInside
-					&&	layer.width > 0
-					&&	layer.height > 0
-					)
-				)
 			) {
 				project.loading.images.push(layer);
 			}
@@ -5436,33 +5473,14 @@ const	sourceFileTime = sourceFile.lastModified || sourceFile.lastModifiedDate;
 	project.imagesLoadedCountText = getAllByClass('project-images-loaded', summaryBody)[0];
 	updateProjectLoadedImagesCount(project);
 
-const	infoButton = addButton(summaryFooter, getLocalizedText('console_log'));
-	infoButton.name = 'console_log';
-
-	container.addEventListener('click', onProjectButtonClick, false);
+	for (const buttonName of PROJECT_FILE_CONTROLS) {
+		addNamedButton(summaryFooter, buttonName);
+	}
 
 //* add batch controls:
 
-	function addButtonGroup(container, group) {
-
-		function addNamedButton(container, name, label) {
-			addButton(container, getLocalizedText(label || name)).name = name || label;
-		}
-
-		for (const buttonName in group) {
-		const	entry = group[buttonName];
-
-			if (isString(entry)) {
-				addNamedButton(container, buttonName, entry);
-			} else
-			if (isNonNullObject(entry)) {
-				addButtonGroup(cre('div', container), entry);
-			}
-		}
-	}
-
 	if (project.options) {
-		for (const controlGroup of PROJECT_CONTROLS) {
+		for (const controlGroup of PROJECT_VIEW_CONTROLS) {
 		const	buttons = controlGroup.buttons;
 		const	buttonsGroup = cre('section', headerInfo);
 		const	buttonsHeader = cre('header', buttonsGroup);
@@ -5481,6 +5499,8 @@ const	infoButton = addButton(summaryFooter, getLocalizedText('console_log'));
 		cre('td', tr).className = 'project-options';
 		cre('td', tr).className = 'project-render';
 	}
+
+	container.addEventListener('click', onProjectButtonClick, false);
 
 	return container;
 }
@@ -5599,6 +5619,8 @@ const	img = await getProjectMergedImagePromise(project, {
 	}
 
 	if (img) {
+		makeElementFitOnClick(img);
+
 	const	container = createProjectView(project);
 	const	header = getAllByTag('header', container)[0];
 	const	footer = getAllByTag('footer', container)[0];
@@ -6199,7 +6221,7 @@ let	isSubLayerFolder = false;
 
 		if (isNotEmptyString(paramGroupText)) {
 			paramGroupText
-			.split(regLayerNameParamSplit)
+			.split(regSplitParam)
 			.map(trimParam)
 			.filter(arrayFilterNonEmptyValues)
 			.forEach((param) => paramList.push(param.toLowerCase()));
@@ -6744,7 +6766,7 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 							if (GET_LAYER_IMAGE_FROM_BITMAP) {
 								layerWIP.imgData = data;
 							} else {
-								layerWIP.loadImage = () => layer.toPng();
+								layerWIP.toImage = () => getOrLoadImage(project, layer);
 							}
 
 							setImageGeometryProperties(layerWIP, layer, img);
@@ -9346,8 +9368,14 @@ let	batchContainer, subContainer;
 				).catch(catchPromiseError);
 
 				if (img) {
-					if (flags.showOnPage) getEmptyRenderContainer(project).appendChild(img);
-					if (flags.saveToFile) saveDL(img.src, project.fileName + '_' + renderedImages.length, 'png', 1);
+					if (flags.showOnPage) {
+						makeElementFitOnClick(img);
+						getEmptyRenderContainer(project).appendChild(img);
+					}
+
+					if (flags.saveToFile) {
+						saveDL(img.src, project.fileName + '_' + renderedImages.length, 'png', 1);
+					}
 				}
 			}
 		}
@@ -9382,6 +9410,7 @@ let	img = null;
 		}
 
 		if (img) {
+			makeElementFitOnClick(img);
 			imgContainer.appendChild(img);
 
 //* resize img to thumbnail on button:
@@ -9746,7 +9775,7 @@ const	resetPrefix = 'reset_to_';
 	if (hasPrefix(action, resetPrefix)) {
 		setAllValues(project, action.substr(resetPrefix.length));
 	} else
-	if (action === 'console_log') {
+	if (action === 'show_project_details') {
 		console.log(project);
 
 		alert(getLocalizedText('see_console'));
@@ -10120,7 +10149,7 @@ let	logLabel = `Init localization "${LANG}"`;
 	console.time(logLabel);
 
 	toggleClass(document.body, 'loading', 1);
-	await loadLibPromise(libLangDir + 'localization.' + LANG + '.js');
+	await loadLibPromise(LIB_LANG_DIR + 'localization.' + LANG + '.js');
 	document.body.innerHTML = getLocalizedHTML('loading');
 
 	console.timeEnd(logLabel);
@@ -10158,7 +10187,7 @@ const	configVarNames = [
 	logLabel = 'Init external config';
 	console.time(logLabel);
 
-	await loadLibPromise(configFilePath);
+	await loadLibPromise(CONFIG_FILE_PATH);
 
 	console.timeEnd(logLabel);
 
@@ -10213,7 +10242,7 @@ let	canLoadLocalFiles = true;
 	if (RUNNING_FROM_DISK) {
 		logTime('Init: try loading local file.');
 
-		canLoadLocalFiles = !! await getFilePromiseFromURL(fetchTestFilePath).catch(catchPromiseError);
+		canLoadLocalFiles = !! await getFilePromiseFromURL(FETCH_TEST_FILE_PATH).catch(catchPromiseError);
 	}
 
 	if (!canLoadLocalFiles) {
@@ -10225,7 +10254,7 @@ let	canLoadLocalFiles = true;
 	logLabel = 'Init libraries';
 	console.time(logLabel);
 
-	await loadLibPromise(libUtilDir + 'composition.asm.js');
+	await loadLibPromise(LIB_UTIL_DIR + 'composition.asm.js');
 
 	if (CompositionModule = AsmCompositionModule) {
 		CompositionFuncList = Object.keys(CompositionModule(window, null, new ArrayBuffer(nextValidHeapSize(0))));
@@ -10243,7 +10272,7 @@ const	todoHTML = '<p>' + getLocalizedHTML('todo') + '</p>';
 const	fileTypesByKeys = {};
 const	inputFileAcceptTypes = [];
 
-	fileTypeLoaders.forEach(
+	FILE_TYPE_LOADERS.forEach(
 		(loader) => {
 		const	exts = loader.dropFileExts || [];
 		const	mimeTypes = loader.inputFileAcceptMimeTypes || [];
@@ -11695,7 +11724,7 @@ let	oldSetting;
 
 	if (
 		LS
-	&&	(oldSetting = LS[LSKeyBigText])
+	&&	(oldSetting = LS[LS_KEY_BIG_TEXT])
 	&&	!FALSY_STRINGS.includes(oldSetting)
 	) {
 		toggleTextSize();
