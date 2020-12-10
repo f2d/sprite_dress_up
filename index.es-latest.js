@@ -3308,11 +3308,19 @@ function setImageSrc(img, data, onLoad, onError) {
 	return img;
 }
 
+function getImageContentSize(img) {
+const	width  = img.naturalWidth  || img.width;
+const	height = img.naturalHeight || img.height;
+
+	return { width, height };
+}
+
 function getResizedCanvasFromImg(img, w,h) {
 const	canvas = cre('canvas');
 const	ctx = canvas.getContext('2d');
-const	widthFrom  = img.width;
-const	heightFrom = img.height;
+const	size = getImageContentSize(img);
+const	widthFrom  = size.width;
+const	heightFrom = size.height;
 
 let	widthTo  = w || widthFrom || 1;
 let	heightTo = h || w || heightFrom || 1;
@@ -3406,7 +3414,6 @@ function getCanvasFromImageData(imageData) {
 			imageData.data.set(data);
 		}
 
-
 		ctx.putImageData(imageData, 0,0);
 
 		return canvas;
@@ -3416,30 +3423,35 @@ function getCanvasFromImageData(imageData) {
 }
 
 function getImageData(img, x,y, w,h) {
-let	ctx = null;
+	if (!isNonNullObject(img)) {
+		return;
+	}
+
+const	size = getImageContentSize(img);
 
 	if (isCanvasElement(img)) {
 	const	canvas = img;
-		ctx = canvas.getContext('2d');
+	const	ctx = canvas.getContext('2d');
 
 		x = orz(x);
 		y = orz(y);
-		w = orz(w) || (canvas.width  - x);
-		h = orz(h) || (canvas.height - y);
-	} else
+		w = orz(w) || (size.width  - x);
+		h = orz(h) || (size.height - y);
+
+		return ctx.getImageData(x,y, w,h);
+	}
+
 	if (isImageElement(img)) {
 	const	canvas = cre('canvas');
-		ctx = canvas.getContext('2d');
+	const	ctx = canvas.getContext('2d');
 
-		canvas.width  = w = orz(w || img.width)  - orz(x);
-		canvas.height = h = orz(h || img.height) - orz(y);
+		canvas.width  = w = orz(w || size.width)  - orz(x);
+		canvas.height = h = orz(h || size.height) - orz(y);
 		x = 0;
 		y = 0;
 
 		ctx.drawImage(img, x,y);
-	}
 
-	if (ctx) {
 		return ctx.getImageData(x,y, w,h);
 	}
 }
@@ -3480,14 +3492,16 @@ function getFirstPixelRGBA(img) {
 }
 
 function getAutoCropArea(img, bgToCheck) {
-	if (!isNonNullImageData(img = getImageData(img))) {
+const	imageData = getImageData(img);
+
+	if (!isNonNullImageData(imageData)) {
 		return;
 	}
 
-const	data = img.data;
+const	w = imageData.width;
+const	h = imageData.height;
+const	data = imageData.data;
 const	totalBytes = data.length;
-const	w = img.width;
-const	h = img.height;
 const	horizontalBytes = w << 2;
 
 let	bgRGBA = null;
@@ -7878,11 +7892,12 @@ function getNewCanvasForImg(project, img) {
 	}
 
 const	canvas = cre('canvas');
+const	size = getImageContentSize(img);
 
 	canvas.top    = orz(img.top);
 	canvas.left   = orz(img.left);
-	canvas.width  = orz(img.width)  || project.width;
-	canvas.height = orz(img.height) || project.height;
+	canvas.width  = orz(size.width)  || project.width;
+	canvas.height = orz(size.height) || project.height;
 
 	return canvas;
 }
@@ -7961,13 +7976,15 @@ const	imgElement = getPropByAnyOfNamesChain(imgOrLayer, 'img');
 		return null;
 	}
 
+const	size = getImageContentSize(imgElement);
+
 	if (
 		!fillColor
 	||	(
-			!imgOrLayer.left
-		&&	!imgOrLayer.top
-		&&	(!imgOrLayer.width  || imgOrLayer.width  === project.width)
-		&&	(!imgOrLayer.height || imgOrLayer.height === project.height)
+			!imgOrLayer.left && !imgElement.left
+		&&	!imgOrLayer.top  && !imgElement.top
+		&&	(!size.width  || size.width  === project.width)
+		&&	(!size.height || size.height === project.height)
 		)
 	) {
 		return imgElement;
@@ -7982,8 +7999,8 @@ const	flatColorData = ctx.createImageData(canvas.width, canvas.height);
 	flatColorData.data.fill(fillColor);
 	ctx.putImageData(flatColorData, 0,0);
 
-const	w = orz(getPropFromAnySource('width',  imgOrLayer, imgElement, project));
-const	h = orz(getPropFromAnySource('height', imgOrLayer, imgElement, project));
+const	w = orz(getPropFromAnySource('width',  imgOrLayer, size, project));
+const	h = orz(getPropFromAnySource('height', imgOrLayer, size, project));
 const	x = orz(getPropFromAnySource('left',   imgOrLayer, imgElement));
 const	y = orz(getPropFromAnySource('top',    imgOrLayer, imgElement));
 
@@ -9019,13 +9036,14 @@ let	autocrop, crop;
 			cropValues.autocrop = {'autocrop': cropId};
 
 		const	cropName = getFileNameByValuesToSave(project, cropValues);
+		const	fullSize = getImageContentSize(img);
 
 			if (cropName in prerenders) {
 				img = prerenders[fileName] = prerenders[cropName];
 			} else
 			if (
-				crop.width < img.width
-			||	crop.height < img.height
+				crop.width  < fullSize.width
+			||	crop.height < fullSize.height
 			) {
 			const	canvas = cre('canvas');
 			const	ctx = canvas.getContext('2d');
@@ -9270,38 +9288,37 @@ let	batchContainer, subContainer;
 		function getBatchCanvasSize(rootContainer) {
 		let	x = 0;
 		let	y = 0;
-		let	w = 0;
-		let	h = 0;
+		let	width  = 0;
+		let	height = 0;
 		let	element = rootContainer.firstElementChild;
 
 			while (element) {
 				if (isImageElement(element)) {
+				const	size = getImageContentSize(element);
+
 					element.batchOffsetX = x;
 					element.batchOffsetY = y;
 
-					w = Math.max(w, x + element.width);
-					h = Math.max(h, y + element.height);
+					width  = Math.max(width,  x + size.width);
+					height = Math.max(height, y + size.height);
 
-					x += element.width + joinedPadding;
+					x += size.width + joinedPadding;
 				} else {
 				const	size = getBatchCanvasSize(element);
 
 					element.batchOffsetX = x = 0;
-					element.batchOffsetY = y = (h > 0 ? h + joinedPadding : 0);
+					element.batchOffsetY = y = (height > 0 ? height + joinedPadding : 0);
 
-					w = Math.max(w, x + size.width);
-					h = Math.max(h, y + size.height);
+					width  = Math.max(width,  x + size.width);
+					height = Math.max(height, y + size.height);
 
-					y = h + joinedPadding;
+					y = height + joinedPadding;
 				}
 
 				element = element.nextElementSibling;
 			}
 
-			return {
-				width: w
-			,	height: h
-			};
+			return { width, height };
 		}
 
 		function getBatchOffsetXY(element) {
