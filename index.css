@@ -35,10 +35,6 @@ big,
 .larger-text code {
 	font-weight: bold;
 }
-.fixed-tab-width .fixed-tab-width-button,
-.larger-text .larger-text-button {
-	background-color: #ace;
-}
 .menu-bar {
 	z-index: 1;
 	position: relative;
@@ -56,6 +52,17 @@ big,
 	height: 3em;
 	margin: 1em 1em 0 0;
 	white-space: nowrap;
+}
+.top-buttons button:hover {
+	background-color: white;
+}
+.fixed-tab-width .fixed-tab-width-button,
+.larger-text .larger-text-button {
+	background-color: #ace;
+}
+.fixed-tab-width .fixed-tab-width-button:hover,
+.larger-text .larger-text-button:hover {
+	background-color: #bdf;
 }
 a {
 	color: gray;
