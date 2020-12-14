@@ -7,12 +7,13 @@
 //* TODO: keep layer images as PNGs, create arrays for high-precision blending on demand, discard arrays when HQ mode is disabled.
 
 //* TODO ---------------------- menu: -----------------------------------------
+//* TODO: fix "null..null" outline options.
 //* TODO: checkbox (on project selection bar?) to sync all option/export actions in selected project onto all opened projects where possible.
 //* TODO: zoom format in filenames: [x1, x1.00, x100%].
 //* TODO: options menu: add/remove/copy/edit colors and outlines, or all list(s), maybe in textarea.
 //* TODO: remember already calculated batch counts and valid lists per project, in a dict with keys like joined list of all options and checkboxes.
 //* TODO: <select multiple> <optgroup> <option>?</option> </optgroup> </select>.
-//* TODO: save opened project as restructured ORA/PSD. Try https://github.com/Agamnentzar/ag-psd
+//* TODO: save opened project as restructured ORA/PSD. Make it responsive and cancellable. Try https://github.com/Agamnentzar/ag-psd
 //* TODO: save rendered image as WebP. https://bugs.chromium.org/p/chromium/issues/detail?id=170565#c77 - toDataURL/toBlob quality 1.0 = lossless.
 
 //* TODO ---------------------- rendering: ------------------------------------
@@ -121,13 +122,14 @@ var	exampleRootDir = ''
 //* source: https://stackoverflow.com/a/17772086
 [
 	// 'AsyncFunction',	//* <- it maybe better to get just 'Function' from end to match this
-	'Promise',
-	'ArrayBuffer',
 	'Array',
+	'ArrayBuffer',
+	'Blob',
 	'Date',
 	'Function',
 	'ImageData',
 	'Number',
+	'Promise',
 	'RegExp',
 	'String',
 	'HTMLCanvasElement',
@@ -2979,91 +2981,96 @@ function saveDL(data, fileName, ext, addTime, jsonReplacerFunc) {
 
 	function cleanUpAfterDL() {
 		if (a) del(a);
-		if (blob) URL.revokeObjectURL(blob.url);
+		if (revokeURL) URL.revokeObjectURL(url);
 	}
 
-	data = (
-		isNonNullObject(data)
-		? JSON.stringify(
-			data
-		,	jsonReplacerFunc || null
-		,	'\t'
-		)
-		: String(data)
+	if (TESTING > 1) console.log(fileName, ext, data);
+
+let	blob, size, type, url;
+let	revokeURL = false;
+
+	if (isBlob(data)) {
+		blob = data;
+		size = blob.size;
+		type = blob.type;
+		url = URL.createObjectURL(blob);
+		revokeURL = true;
+	} else {
+		type = TYPE_TEXT;
+		data = (
+			isNonNullObject(data)
+			? JSON.stringify(
+				data
+			,	jsonReplacerFunc || null
+			,	'\t'
+			)
+			: String(data)
+		);
+
+		if (hasPrefix(data, BLOB_PREFIX)) {
+			url = data;
+			blob = true;
+			size = data.length;
+		} else {
+			if (hasPrefix(data, DATA_PREFIX)) {
+				url = data;
+			} else {
+				url = DATA_PREFIX + type + ',' + encodeURIComponent(data);
+			}
+
+			if (blob = dataToBlob(data)) {
+				size = blob.size;
+				type = blob.type;
+				url = blob.url;
+				revokeURL = true;
+			} else {
+				size = url.length;
+				type = url.split(';', 1)[0].split(':', 2)[1];
+			}
+
+			if (!ext) {
+				ext = type.split('/').slice(-1)[0];
+			}
+		}
+	}
+
+	if (ext === 'plain') ext = 'txt';
+
+const	time = (
+		!fileName || addTime
+		? getFormattedTime({fileNameFormat: true})
+		: ''
 	);
 
-let	dataURI = '';
-let	type = TYPE_TEXT;
-let	blob = false;
+const	baseName = (
+		!fileName ? time
+		: (addTime > 0) ? fileName + '_' + time
+		: (addTime < 0) ? time + '_' + fileName
+		: fileName
+	);
 
-	if (hasPrefix(data, BLOB_PREFIX)) {
-		dataURI = data;
-		blob = true;
-	} else
-	if (hasPrefix(data, DATA_PREFIX)) {
-		dataURI = data;
-	} else {
-		dataURI = DATA_PREFIX + type + ',' + encodeURIComponent(data);
-	}
-
-let	size = dataURI.length;
+	fileName = baseName + (ext ? '.' + ext : '');
 
 	logTime(
-		[
-			'saving "' + fileName + '"'
-		,	'data size = ' + data.length + ' bytes'
-		,
-		].concat(
+		'saving "' + fileName + '", '
+		+ (
 			blob
-			? ['blob URI = ' + dataURI]
-			: ['data URI size = ' + size + ' bytes']
-		).join(', ')
+			? 'data size = ' + size + ' bytes, blob URI = ' + url
+			: 'data URI size = ' + size + ' bytes'
+		)
 	);
 
 const	a = cre('a', document.body);
 
-	if ('download' in a) {
-		try {
-			if (!blob) {
-				if (blob = dataToBlob(data)) {
-					size = blob.size;
-					type = blob.type;
-					dataURI = blob.url;
-				} else {
-					type = dataURI.split(';', 1)[0].split(':', 2)[1];
-				}
-				if (!ext) {
-					ext = type.split('/').slice(-1)[0];
-				}
-			}
-			if (ext === 'plain') ext = 'txt';
+	if (a && 'download' in a) {
+		a.download = fileName;
+		a.href = url;
 
-		const	time = (
-				!fileName || addTime
-				? getFormattedTime({fileNameFormat: true})
-				: ''
-			);
+		// if (TESTING > 1) setTimeout(() => a.click(), 3456); else
 
-		const	baseName = (
-				!fileName ? time
-				: (addTime > 0) ? fileName + '_' + time
-				: (addTime < 0) ? time + '_' + fileName
-				: fileName
-			);
-
-			fileName = baseName + (ext ? '.' + ext : '');
-
-			a.onclick = cleanUpAfterDL;	//* <- https://stackoverflow.com/a/26643754
-			a.download = fileName;
-			a.href = String(dataURI);
-			a.click();
-
-			logTime('saving "' + fileName + '"');
-		} catch (error) {
-			logError(error, arguments);
-		}
+		a.click();
 	} else {
-		window.open(dataURI, '_blank');
+		window.open(url, '_blank');
 
 		logTime('opened file to save');
 	}
@@ -7277,7 +7284,7 @@ let	section, optionNames, lastPauseTime;
 		return null;
 	}
 
-const	thisJob = {startTime, optionLists};
+const	thisJob = { startTime, optionLists };
 	pendingJobs.add(thisJob);
 
 	if (optionLists.length > 0) {
@@ -7289,8 +7296,6 @@ const	thisJob = {startTime, optionLists};
 			valueSets = getOnlyNames ? null : {};
 		}
 	}
-
-	if (TESTING > 9) console.log(thisJob, pendingJobs);
 
 	pendingJobs.delete(thisJob);
 
@@ -9606,12 +9611,26 @@ async function saveProject(project) {
 	async function getLayersInOraFormat(layers) {
 
 		async function addOneLayer(layer) {
+			if (
+				ADD_PAUSE_AT_INTERVALS
+			&&	(getTimeNow() - lastPauseTime) > PAUSE_WORK_INTERVAL
+			) {
+				updateProjectLoadedImagesCount(project);
+
+				await pause(PAUSE_WORK_DURATION);
+
+				lastPauseTime = getTimeNow();
+			}
+
+			if (isStopRequestedAnywhere(thisJob)) {
+				return null;
+			}
+
 		const	name = layer.nameOriginal || layer.name;
 		let	oraNode, mask;
 
 			if (layer.layers) {
 				oraNode = new ora.OraStack(name);
-				oraNode.layers = await getLayersInOraFormat(layer.layers);
 				oraNode.isolation = (layer.isPassThrough ? 'auto' : 'isolate');
 			} else {
 				oraNode = new ora.OraLayer(name, layer.width, layer.height);
@@ -9700,6 +9719,16 @@ async function saveProject(project) {
 				}
 			}
 
+			if (layer.layers) {
+			const	subLayers = await getLayersInOraFormat(layer.layers);
+
+				if (null === subLayers) {
+					return null;
+				}
+
+				oraNode.layers = subLayers;
+			}
+
 			oraLayers.push(oraNode);
 		}
 
@@ -9710,9 +9739,11 @@ async function saveProject(project) {
 	const	oraLayers = [];
 
 		for (const layer of layers) {
+		let	tempLayer = layer;
+
 			if (layer.isVirtualFolder) {
 			const	subLayer = layer.subLayer;
-			const	tempLayer = {};
+				tempLayer = {};
 
 				for (const key in subLayer) {
 				const	takeOver = VIRTUAL_FOLDER_TAKEOVER_PROPERTIES.find(
@@ -9726,10 +9757,10 @@ async function saveProject(project) {
 						: subLayer
 					)[key];
 				}
+			}
 
-				await addOneLayer(tempLayer);
-			} else {
-				await addOneLayer(layer);
+			if (null === await addOneLayer(tempLayer)) {
+				return null;
 			}
 		}
 
@@ -9741,18 +9772,29 @@ async function saveProject(project) {
 	}
 
 const	isSingleWIP = setProjectWIPstate(project, true);
-const	actionLabel = 'saving to "' + project.baseName + '.ora"';
+const	actionLabel = 'creating ORA file content';
 	logTime('"' + project.fileName + '" started ' + actionLabel);
 
-const	oraFile = new ora.Ora(project.width, project.height);
-	oraFile.layers = await getLayersInOraFormat(project.layers);
-	oraFile.prerendered = await getRenderedImg(project);	//* <- use current selected options to create merged preview
-	oraFile.save(
-		(blob) => saveDL(URL.createObjectURL(blob), project.baseName, 'ora', 1)
-	,	console.error
-	);
+let	lastPauseTime = getTimeNow();
+const	thisJob = { lastPauseTime, actionLabel };
+	pendingJobs.add(thisJob);
 
-	logTime('"' + project.fileName + '" finished ' + actionLabel);
+const	oraLayers = await getLayersInOraFormat(project.layers);
+
+	if (oraLayers) {
+	const	oraFile = new ora.Ora(project.width, project.height);
+		oraFile.layers = oraLayers;
+		oraFile.prerendered = await getRenderedImg(project);	//* <- use current selected options to create merged preview
+		oraFile.save(
+			// TESTING ? console.log :
+			(blob) => saveDL(blob, project.baseName, 'ora', 1)
+		,	console.error
+		);
+	}
+
+	pendingJobs.delete(thisJob);
+
+	logTime('"' + project.fileName + '" ' + (oraLayers === null ? 'stopped' : 'finished') + ' ' + actionLabel);
 	if (isSingleWIP) setProjectWIPstate(project, false);
 }
 
@@ -10183,8 +10225,7 @@ let	files, name, ext;
 async function loadFromFileList(files, evt) {
 let	loadedProjectsCount = 0;
 const	startTime = getTimeNow();
-const	thisJob = {startTime, files, evt};
-
+const	thisJob = { startTime, files, evt };
 	pendingJobs.add(thisJob);
 
 	if (
@@ -10237,8 +10278,6 @@ const	thisJob = {startTime, files, evt};
 	} else if (TESTING) {
 		console.error('Cannot load files:', [files, 'From event:', evt]);
 	}
-
-	if (TESTING > 9) console.log(thisJob, pendingJobs);
 
 	pendingJobs.delete(thisJob);
 

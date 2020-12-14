@@ -134,7 +134,7 @@ PSD file parser:
 * Lightly modified [fork](https://github.com/imcuttle/psd.js) of [psd.js](https://github.com/meltingice/psd.js), globally usable without `require()`.
 * Original version and many other forks do not work here.
 
-PNG file parser (not used here yet):
+PNG file parser:
 * Lightly modified [UPNG.js](https://github.com/photopea/UPNG.js), should be backward compatible.
 * Unmodified [UZIP.js](https://github.com/photopea/UZIP.js).
 * Unmodified [pako](https://github.com/nodeca/pako).
