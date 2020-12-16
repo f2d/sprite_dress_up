@@ -134,6 +134,9 @@ label:hover {
 .menu-head > .button::before {
 	content: "\25BE\A0";
 }
+.menu-head:hover > .button {
+	background-color: white;
+}
 .menu-drop {
 	display: none;
 	position: relative;
@@ -142,11 +145,11 @@ label:hover {
 .menu-head:hover .menu-drop,
 .menu-drop:hover {
 	display: block;
-	z-index: 99;
+	z-index: 1;
 }
 .menu-head:hover .menu-drop,
 .menu-drop:hover {
-	z-index: 999;
+	z-index: 2;
 }
 .menu-hid {
 	display: block;
@@ -293,7 +296,7 @@ label:hover {
 	position: absolute;
 	top: 100%;
 	left: 100%;
-	z-index: 9;
+	z-index: 1;
 }
 .thumbnail-hover:not(:hover) .larger {
 	display: none;
