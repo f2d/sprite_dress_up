@@ -17,6 +17,7 @@
 //* TODO: save rendered image as WebP. https://bugs.chromium.org/p/chromium/issues/detail?id=170565#c77 - toDataURL/toBlob quality 1.0 = lossless.
 
 //* TODO ---------------------- rendering: ------------------------------------
+//* TODO: above/below copypaste params.
 //* TODO: properly check copypaste visibility.
 //* TODO: stop images moving to hidden container when save collage button was clicked.
 //* TODO: fix hiding of clipping group with skipped/invisible/empty base layer.
@@ -1103,13 +1104,20 @@ const	counts = [];
 	goDeeper(0);
 }
 
-//* Source: https://stackoverflow.com/a/30229089
 function arrayFillRepeat(dest, src) {
 const	srcLength = src.length;
-let	i = dest.length;
+let	destIndex = dest.length;
 
-	while (i--) {
-		dest[i] = src[i % srcLength];
+	if (destIndex === srcLength) {
+		dest.set(src);
+	} else {
+
+//* Simple generic solution that works well:
+//* Source: https://stackoverflow.com/a/30229089
+
+		while (destIndex--) {
+			dest[destIndex] = src[destIndex % srcLength];
+		}
 	}
 
 	return dest;
@@ -3229,6 +3237,7 @@ const	depends = asFlatArray(lib.depends);
 
 					if (varName === 'ora') {
 						ora.preloadImages = false;
+						ora.zipCompressImageFiles = true;
 						ora.enableWorkers = USE_WORKERS_IF_CAN;
 						ora.scriptsPath = dir;
 					}
@@ -4081,12 +4090,12 @@ async function getOrLoadImage(project, layer) {
 		) if (isNonNullObject(sourceOrTarget))
 		for (
 			const mergedOrNode
-			of [
-				layer ? null : sourceOrTarget.mergedImage
+			of (layer ? [sourceOrTarget] : [
+				sourceOrTarget.mergedImage
 			,	sourceOrTarget.prerendered
 			,	sourceOrTarget.thumbnail
 			,	sourceOrTarget
-			]
+			])
 		) if (isNonNullObject(mergedOrNode))
 		for (
 			const imgOrNode
@@ -9655,8 +9664,8 @@ async function saveProject(project) {
 			}
 
 		const	name = layer.nameOriginal || layer.name;
-		const	x = orz(layer.left);
-		const	y = orz(layer.top);
+		let	x = orz(layer.left);
+		let	y = orz(layer.top);
 		let	oraNode, mask;
 
 			if (layer.layers) {
@@ -9671,16 +9680,14 @@ async function saveProject(project) {
 
 					if (!isImageElement(img)) {
 					const	rgba = getRGBACutOrPadded(img, DEFAULT_COLOR_VALUE_ARRAY);
-					let	width  = Math.max(1, project.width  - x);
-					let	height = Math.max(1, project.height - y);
+					let	width  = oraNode.width  = Math.max(1, project.width);
+					let	height = oraNode.height = Math.max(1, project.height);
 
 						if (SAVE_COLOR_AS_ONE_PIXEL_IMAGE) {
-							oraNode.width  = width;
-							oraNode.height = height;
-
-							width  = 1;
-							height = 1;
+							width = height = 1;
 						}
+
+						x = y = 0;
 
 						imgFromColor = await getImageElementFromData({
 							'data' : rgba
