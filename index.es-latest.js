@@ -78,7 +78,8 @@ var	exampleRootDir = ''
 ,	TAB_THUMBNAIL_SIZE = 0
 ,	TAB_ZOOM_STEP_MAX_FACTOR = 0	//* <- scaling in one step is blocky, stepping by factor of 2 is blurry, 4 may be okay for 20px and less.
 
-,	ADD_COUNT_ON_BUTTON_LABEL	= false	//* <- if not, add separate text element.
+,	ADD_BATCH_COUNT_ON_BUTTON	= false	//* <- if not, add separate text element.
+,	ADD_BATCH_COUNT_ON_NEW_LINE	= false
 ,	ADD_PAUSE_AT_INTERVALS		= true	//* <- let UI update when loading files, rendering images, counting batch combinations, etc.
 ,	ADD_PAUSE_BEFORE_EACH_FOLDER	= false	//* <- can take ~1-5x longer than pause at intervals, but UI response is not very good.
 ,	ADD_PAUSE_BEFORE_EACH_LAYER	= false	//* <- can take ~1.5-2x longer than pause at folders, but UI response does not improve much.
@@ -93,6 +94,7 @@ var	exampleRootDir = ''
 ,	PRELOAD_ALL_LAYER_IMAGES	= false
 ,	PRELOAD_USED_LAYER_IMAGES	= false
 ,	READ_FILE_CONTENT_TO_GET_TYPE	= false	//* <- this relies on the browser or the OS to magically determine file type.
+,	SAVE_COLOR_AS_ONE_PIXEL_IMAGE	= false	//* <- may be stretched back by layers attributes, but not yet standard.
 ,	START_WITH_BIG_TEXT		= false
 ,	START_WITH_FIXED_TAB_WIDTH	= true
 ,	START_WITH_OPEN_FIRST_MENU_TAB	= true
@@ -119,7 +121,7 @@ var	exampleRootDir = ''
 
 //* ---------------------------------------------------------------------------
 //* Create type-checking functions, e.g. "isString()" or "isImageElement()":
-//* source: https://stackoverflow.com/a/17772086
+//* Source: https://stackoverflow.com/a/17772086
 [
 	// 'AsyncFunction',	//* <- it maybe better to get just 'Function' from end to match this
 	'Array',
@@ -351,7 +353,7 @@ const	SPLIT_SEC = 60
 
 ,	BLEND_MODES_ALPHA_PREFIXES = ['source', 'destination', 'xor']
 
-//* from https://www.w3.org/TR/SVGCompositing/#comp-op-property
+//* Source: https://www.w3.org/TR/SVGCompositing/#comp-op-property
 
 ,	BLEND_MODES_IN_SVG = [
 		'clear'
@@ -408,7 +410,7 @@ const	SPLIT_SEC = 60
 	,	'plus':		BLEND_MODE_ADD
 	,	'linear-dodge':	BLEND_MODE_ADD
 
-//* from SAI2, remap according to PSD.js:
+//* From SAI2, remap according to PSD.js:
 
 	,	'burn':		'color-burn'
 	,	'burn-dodge':	'vivid-light'
@@ -433,7 +435,7 @@ const	SPLIT_SEC = 60
 	,	'vivid-light'
 	]
 
-//* taken from PSDLIB.js:
+//* Source: https://github.com/Braunbart/PSDLIB.js
 
 ,	PSD_COLOR_MODES = [
 		'Bitmap'
@@ -530,10 +532,41 @@ const	SPLIT_SEC = 60
 
 ,	PROJECT_FILE_CONTROLS = [
 		'show_project_details',
-		'save_ora',
 	]
 
 ,	PROJECT_VIEW_CONTROLS = [
+		/*{
+			'header': 'original_view_header',
+			'buttons': {
+				'show_original': 'show_original_png',
+				'save_original': 'save_original_png',
+				'save_original_ora': 'save_original_ora',
+			},
+		},*/
+		{
+			'header': 'current_view_header',
+			'buttons': {
+				'show': 'show_png',
+				'save': 'save_png',
+				'save_ora': 'save_ora',
+			},
+		},
+		{
+			'header': 'batch_view_header',
+			'buttons': {
+				'left': {
+					'show_all': 'show_png_batch',
+					'save_all': 'save_png_batch',
+					// 'save_zip': 'save_png_batch_zip',
+				},
+				'right': {
+					'show_join': 'show_png_collage',
+					'save_join': 'save_png_collage',
+					// 'stop': 'stop',
+				},
+				'stop': 'stop',
+			},
+		},
 		{
 			'header': 'reset_header',
 			'buttons': {
@@ -541,27 +574,6 @@ const	SPLIT_SEC = 60
 				'reset_to_top': 'reset_to_top',
 				'reset_to_bottom': 'reset_to_bottom',
 				'reset_to_empty': 'reset_to_empty',
-			},
-		},
-		{
-			'header': 'current_header',
-			'buttons': {
-				'show': 'show_png',
-				'save': 'save_png',
-			},
-		},
-		{
-			'header': 'batch_header',
-			'buttons': {
-				'show': {
-					'show_all': 'show_png_batch',
-					'save_all': 'save_png_batch',
-				},
-				'save': {
-					'show_join': 'show_png_collage',
-					'save_join': 'save_png_collage',
-				},
-				'stop': 'stop',
 			},
 		},
 	]
@@ -644,7 +656,6 @@ var	ora, zip, zlib, pako, PSD, UPNG, UZIP	//* <- external variable names, do not
 function initLibParams() {
 	USE_WORKERS_IF_CAN = (USE_WORKERS && CAN_USE_WORKERS);
 
-const	libCodecPNG = [USE_UPNG ? 'UPNG.js' : null];
 const	zlibCodecPNG = [USE_UZIP ? 'UZIP.js' : 'pako'];
 const	zlibCodecZIP = [USE_ZLIB_ASM ? 'zlib-asm' : 'pako'];
 
@@ -674,7 +685,7 @@ const	zlibPakoFileName = (
 	FILE_TYPE_LIBS = {
 		'zlib-asm': {
 
-//* source: https://github.com/ukyo/zlib-asm
+//* Source: https://github.com/ukyo/zlib-asm
 
 			'varName': 'zlib'
 		,	'dir': ZLIB_ASM_DIR
@@ -683,7 +694,7 @@ const	zlibPakoFileName = (
 
 		'pako': {
 
-//* source: https://github.com/nodeca/pako
+//* Source: https://github.com/nodeca/pako
 
 			'varName': 'pako'
 		,	'dir': ZLIB_PAKO_DIR
@@ -692,7 +703,7 @@ const	zlibPakoFileName = (
 
 		'UZIP.js': {
 
-//* source: https://github.com/photopea/UZIP.js
+//* Source: https://github.com/photopea/UZIP.js
 
 			'varName': 'UZIP'
 		,	'dir': LIB_FORMATS_DIR + 'zlib/UZIP/'
@@ -702,7 +713,7 @@ const	zlibPakoFileName = (
 
 		'UPNG.js': {
 
-//* source: https://github.com/photopea/UPNG.js
+//* Source: https://github.com/photopea/UPNG.js
 
 			'varName': 'UPNG'
 		,	'dir': LIB_FORMATS_DIR + 'png/UPNG/'
@@ -712,7 +723,7 @@ const	zlibPakoFileName = (
 
 		'zip.js': {
 
-//* source: https://github.com/gildas-lormeau/zip.js
+//* Source: https://github.com/gildas-lormeau/zip.js
 
 			'varName': 'zip'
 		,	'dir': ZIP_FORMAT_DIR
@@ -725,7 +736,7 @@ const	zlibPakoFileName = (
 				:
 
 //* CORS workaround: when not using Workers, include scripts here.
-//* https://github.com/gildas-lormeau/zip.js/issues/169#issuecomment-312110395
+//* Source: https://github.com/gildas-lormeau/zip.js/issues/169#issuecomment-312110395
 
 				USE_ONE_FILE_ZIP_WORKER
 				? [zipAllInOneFileName]
@@ -748,13 +759,13 @@ const	zlibPakoFileName = (
 
 		'ora.js': {
 
-//* source: https://github.com/zsgalusz/ora.js
+//* Source: https://github.com/zsgalusz/ora.js
 
-//* no support for ORA in CSP, SAI, etc.
-//* not enough supported features in Krita, etc.
+//* No support for ORA in CSP, SAI, etc.
+//* Not enough supported features in Krita, etc.
 
-//* way: draw in SAI2 → export PSD → import PSD in Krita (loses clipping groups) → export ORA (loses opacity masks)
-//* wish: draw in SAI2 → export ORA (all layers rasterized + all blending properties and modes included as attributes)
+//* Way: draw in SAI2 → export PSD → import PSD in Krita (loses clipping groups) → export ORA (loses opacity masks)
+//* Wish: draw in SAI2 → export ORA (all layers rasterized + all blending properties and modes included as attributes)
 
 			'varName': 'ora'
 		,	'dir': LIB_FORMATS_DIR + 'ora/ora_js/'
@@ -764,24 +775,22 @@ const	zlibPakoFileName = (
 
 		'psd.js': {
 
-//* source: https://github.com/meltingice/psd.js/issues/154#issuecomment-446279652
-//* based on https://github.com/layervault/psd.rb
+//* Source: https://github.com/meltingice/psd.js/issues/154#issuecomment-446279652
+//* Based on https://github.com/layervault/psd.rb
 
 			'varName': 'PSD_JS'
 		,	'dir': LIB_FORMATS_DIR + 'psd/psd_js/psd.js_build_by_rtf-const_2018-12-11/'	//* <- working with bigger files?
 		,	'files': ['psd.js']
-		,	'depends': libCodecPNG
 		},
 
 		'psd.browser.js': {
 
-//* source: https://github.com/imcuttle/psd.js/tree/release
-//* fork of https://github.com/meltingice/psd.js
+//* Source: https://github.com/imcuttle/psd.js/tree/release
+//* Fork of https://github.com/meltingice/psd.js
 
 			'varName': 'PSD'
 		,	'dir': LIB_FORMATS_DIR + 'psd/psd_js/psd.js_fork_by_imcuttle_2018-09-19/'		//* <- working here
 		,	'files': ['psd.browser.js']
-		,	'depends': libCodecPNG
 		},
 	};
 
@@ -905,7 +914,7 @@ const	protocol = (
 	return (protocol === 'file');
 }
 
-//* source: https://stackoverflow.com/a/55896125
+//* Source: https://stackoverflow.com/a/55896125
 function isImageTypeExportSupported(type) {
 const	canvas = cre('canvas');
 	canvas.width = 1;
@@ -931,7 +940,7 @@ function getClassReg(...words) {
 }
 
 /*
-//* source: https://cwestblog.com/2011/05/02/cartesian-product-of-multiple-arrays/
+//* Source: https://cwestblog.com/2011/05/02/cartesian-product-of-multiple-arrays/
 //* Description:
 //*	Get array of all possible combinations of values from multiple arrays.
 //* Usage example:
@@ -956,11 +965,11 @@ function getCrossProductArray() {
 	);
 }
 
-//* Shorter version, source: https://stackoverflow.com/a/43053803
+//* Shorter version, Source: https://stackoverflow.com/a/43053803
 const getCrossProductSub = (a, b) => [].concat(...a.map(d => b.map(e => [].concat(d, e))));
 const getCrossProductArr = (a, b, ...c) => (b ? getCrossProductArr(getCrossProductSub(a, b), ...c) : a);
 
-//* source: http://phrogz.net/lazy-cartesian-product
+//* Source: http://phrogz.net/lazy-cartesian-product
 //* Description:
 //*	Construct lazy iterator for all possible combinations without saving them all beforehand.
 //* Usage example:
@@ -999,7 +1008,7 @@ let	totalCount = 1;
 	};
 }
 
-//* source: http://phrogz.net/lazy-cartesian-product
+//* Source: http://phrogz.net/lazy-cartesian-product
 //* Description:
 //*	Iterate through all possible combinations without saving them all, until stopped.
 //*	Combination array becomes arguments for callback.
@@ -1052,7 +1061,7 @@ const	counts = [];
 }
 */
 
-//* source: http://phrogz.net/lazy-cartesian-product
+//* Source: http://phrogz.net/lazy-cartesian-product
 //* Description:
 //*	Iterate through all possible combinations without saving them all.
 //*	Combination array becomes arguments for callback.
@@ -1092,6 +1101,18 @@ const	counts = [];
 	}
 
 	goDeeper(0);
+}
+
+//* Source: https://stackoverflow.com/a/30229089
+function arrayFillRepeat(dest, src) {
+const	srcLength = src.length;
+let	i = dest.length;
+
+	while (i--) {
+		dest[i] = src[i % srcLength];
+	}
+
+	return dest;
 }
 
 function arrayFilterNonEmptyValues(value) {
@@ -1735,12 +1756,12 @@ function getColorTextFromArray(rgba, maxCount) {
 	return String(rgba);
 }
 
-//* source: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/assign#Deep_Clone
+//* Source: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/assign#Deep_Clone
 function getPatchedObject(obj, jsonReplacerFunc) {
 	return JSON.parse(JSON.stringify(obj, jsonReplacerFunc || null));
 }
 
-//* source: https://stackoverflow.com/a/53593328
+//* Source: https://stackoverflow.com/a/53593328
 function orderedJSONstringify(obj, space) {
 const	allKeys = [];
 
@@ -1872,7 +1893,7 @@ function cleanupObjectTree(obj, childKeys, keysToRemove) {
 	return obj;
 }
 
-//* source: https://gist.github.com/wellcaffeinated/5399067#gistcomment-1364265
+//* Source: https://gist.github.com/wellcaffeinated/5399067#gistcomment-1364265
 function nextValidHeapSize(realSize) {
 const	SIZE_64_KB = 65536;	// 0x10000
 const	SIZE_64_MB = 67108864;	// 0x4000000
@@ -2683,7 +2704,7 @@ async function resolvePromiseOnImgLoad(img, resolve, reject) {
 function getFilePromise(file, projectOrTab) {
 
 //* Note: "file" may be a blob object.
-//* source: https://stackoverflow.com/a/15981017
+//* Source: https://stackoverflow.com/a/15981017
 
 	if (
 		!file
@@ -2728,7 +2749,7 @@ function getFilePromise(file, projectOrTab) {
 function getFilePromiseFromURL(url, responseType, projectOrTab) {
 
 //* Note: "url" may be a "blob:" or "data:" url.
-//* source: https://www.mwguy.com/decoding-a-png-image-in-javascript/
+//* Source: https://www.mwguy.com/decoding-a-png-image-in-javascript/
 
 	if (
 		!url
@@ -2876,30 +2897,53 @@ let	count = 0;
 	return count;
 }
 
-function getImageElementFromData(imageData) {
-	if (isNonNullImageData(imageData)) {
-	const	{data, width, height} = imageData;
+function getImageDataFromData(imageData) {
+	if (isImageData(imageData)) {
+		return imageData;
+	}
 
-		if (!isImageData(imageData)) {
-			imageData = new ImageData(width, height);
-			imageData.data.set(data);
+	if (isNonNullImageData(imageData)) {
+	const	{ data, width, height } = imageData;
+
+		imageData = new ImageData(width, height);
+		arrayFillRepeat(imageData.data, data);
+
+		return imageData;
+	}
+}
+
+async function getImageElementFromData(imageData, project, colorsCount) {
+	if (imageData = getImageDataFromData(imageData)) {
+		if (
+			USE_UPNG
+		&&	await loadLibOnDemandPromise('UPNG.js')
+		) {
+		const	arrayBuffer = UPNG.encode(
+				[imageData.data.buffer]	//* <- array of frames. A frame is an ArrayBuffer (RGBA, 8 bits per channel).
+			,	imageData.width
+			,	imageData.height
+			,	orz(colorsCount)	//* <- does not make color-fill PNGs smaller
+			);
+
+		const	url = getBlobURLFromByteArray(arrayBuffer, 'image/png');
+		const	img = cre('img', (TESTING_PNG ? document.body : null));
+			img.src = url;
+
+			if (TESTING_PNG) console.log('getImageElementFromData:', [imageData, arrayBuffer, url, img]);
+
+			return new Promise(
+				(resolve, reject) => resolvePromiseOnImgLoad(img, resolve, reject)
+			).catch(catchPromiseError);
 		}
 
-	const	arrayBuffer = UPNG.encode(
-			[imageData.data.buffer]	//* <- array of frames. A frame is an ArrayBuffer (RGBA, 8 bits per channel).
-		,	imageData.width
-		,	imageData.height
-		);
+	let	canvas, img;
 
-	const	url = getBlobURLFromByteArray(arrayBuffer, 'image/png');
-	const	img = cre('img', (TESTING_PNG ? document.body : null));
-		img.src = url;
-
-		if (TESTING_PNG) console.log('getImageElementFromData:', [imageData, arrayBuffer, url, img]);
-
-		return new Promise(
-			(resolve, reject) => resolvePromiseOnImgLoad(img, resolve, reject)
-		).catch(catchPromiseError);
+		if (
+			isCanvasElement(canvas = getCanvasFromImageData(imageData))
+		&&	isImageElement(img = await getImagePromiseFromCanvasToBlob(canvas, project))
+		) {
+			return img;
+		}
 	}
 }
 
@@ -3065,9 +3109,6 @@ const	a = cre('a', document.body);
 	if (a && 'download' in a) {
 		a.download = fileName;
 		a.href = url;
-
-		// if (TESTING > 1) setTimeout(() => a.click(), 3456); else
-
 		a.click();
 	} else {
 		window.open(url, '_blank');
@@ -3075,10 +3116,7 @@ const	a = cre('a', document.body);
 		logTime('opened file to save');
 	}
 
-	if (a) setTimeout(
-		cleanUpAfterDL
-	,	Math.max(Math.ceil(size / 1000), 12345)
-	);
+	if (a) setTimeout(cleanUpAfterDL, Math.max(Math.ceil(size / 1000), 12345));
 
 	return size;
 }
@@ -3176,7 +3214,7 @@ const	depends = asFlatArray(lib.depends);
 //* Notes:
 //*	Either zip.workerScripts or zip.workerScriptsPath may be set, not both.
 //*	Scripts in the array are executed in order, and the first one should be z-worker.js, which is used to start the worker.
-//* source: http://gildas-lormeau.github.io/zip.js/core-api.html#alternative-codecs
+//* Source: http://gildas-lormeau.github.io/zip.js/core-api.html#alternative-codecs
 
 							if (ZIP_WORKER_SCRIPTS) {
 								zip.workerScripts = {
@@ -3481,18 +3519,13 @@ const	zoomFactor = TAB_ZOOM_STEP_MAX_FACTOR || ZOOM_STEP_MAX_FACTOR;
 }
 
 function getCanvasFromImageData(imageData) {
-	if (isNonNullImageData(imageData)) {
+	if (imageData = getImageDataFromData(imageData)) {
 	const	canvas = cre('canvas');
 	const	ctx = canvas.getContext('2d');
-	const	{data, width, height} = imageData;
+	const	{ data, width, height } = imageData;
 
 		canvas.width = width;
 		canvas.height = height;
-
-		if (!isImageData(imageData)) {
-			imageData = new ImageData(width, height);
-			imageData.data.set(data);
-		}
 
 		ctx.putImageData(imageData, 0,0);
 
@@ -3500,6 +3533,31 @@ function getCanvasFromImageData(imageData) {
 	}
 
 	if (TESTING > 2) console.error('getCanvasFromImageData failed:', arguments);
+}
+
+function getCtxFromImageData(imageData) {
+const	canvas = cre('canvas');
+const	ctx = canvas.getContext('2d');
+
+	canvas.width = imageData.width;
+	canvas.height = imageData.height;
+
+	ctx.putImageData(imageData, 0,0);
+
+	return ctx;
+}
+
+function getImageDataInverted(imageData) {
+const	ctx = getCtxFromImageData(imageData);
+const	w = imageData.width;
+const	h = imageData.height;
+
+	ctx.globalAlpha = 1;
+	ctx.globalCompositeOperation = BLEND_MODE_INVERT;
+	ctx.fillStyle = 'white';
+	ctx.fillRect(0,0, w,h);
+
+	return ctx.getImageData(0,0, w,h);
 }
 
 function getImageData(img, x,y, w,h) {
@@ -3534,31 +3592,6 @@ const	size = getImageContentSize(img);
 
 		return ctx.getImageData(x,y, w,h);
 	}
-}
-
-function getCtxFromImageData(imageData) {
-const	canvas = cre('canvas');
-const	ctx = canvas.getContext('2d');
-
-	canvas.width = imageData.width;
-	canvas.height = imageData.height;
-
-	ctx.putImageData(imageData, 0,0);
-
-	return ctx;
-}
-
-function getImageDataInverted(imageData) {
-const	ctx = getCtxFromImageData(imageData);
-const	w = imageData.width;
-const	h = imageData.height;
-
-	ctx.globalAlpha = 1;
-	ctx.globalCompositeOperation = BLEND_MODE_INVERT;
-	ctx.fillStyle = 'white';
-	ctx.fillRect(0,0, w,h);
-
-	return ctx.getImageData(0,0, w,h);
 }
 
 function getFirstPixelRGBA(img) {
@@ -4010,19 +4043,7 @@ async function getOrLoadImage(project, layer) {
 			,	height: getPropFromAnySource('height', pixelData, target, node)
 			};
 
-			if (
-				USE_UPNG
-			&&	(img = await getImageElementFromData(imgData))
-			) {
-				return img;
-			}
-
-		const	canvas = getCanvasFromImageData(imgData);
-
-			if (
-				canvas
-			&&	(img = await getImagePromiseFromCanvasToBlob(canvas, project))
-			) {
+			if (img = await getImageElementFromData(imgData, project)) {
 				return img;
 			}
 		}
@@ -6453,15 +6474,22 @@ const	loadedCount = project.imagesLoaded.length;
 	updateElementMinWidth(element);
 }
 
-function updateElementMinWidth(element) {
+function updateElementMinWidth(element, ref) { return updateElementFixedWidth(element, ref, 'minWidth'); }
+function updateElementMaxWidth(element, ref) { return updateElementFixedWidth(element, ref, 'maxWidth'); }
+function updateElementFixedWidth(element, ref, key) {
 	if (
 		element
 	&&	element.style
 	) {
-	const	width = Math.ceil(element.offsetWidth);
+		if (!ref) ref = element;
+		if (!key) key = 'width';
 
-		if (width > orz(element.style.minWidth)) {
-			element.style.minWidth = width + 'px';
+	const	width = Math.ceil(ref.width || ref.offsetWidth || ref.scrollWidth || ref.clientWidth);
+
+		if (width > orz(element.style[key])) {
+			element.style[key] = width + 'px';
+
+			return true;
 		}
 	}
 }
@@ -6864,7 +6892,7 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 //*	"Fill" opacity is used in PSD from SAI2
 //*	to store opacity value instead of standard opacity
 //*	for layers with certain blending modes (non-TS versions).
-//* source: https://github.com/meltingice/psd.js/issues/153#issuecomment-436456896
+//* Source: https://github.com/meltingice/psd.js/issues/153#issuecomment-436456896
 
 				,	isBlendModeTS: (
 						hasNoFillOpacityValue
@@ -9335,7 +9363,7 @@ let	batchContainer, subContainer;
 		++setsCountWithoutPause;
 
 //* Note: Chrome skips downloads if more than 10 in 1 second.
-//* source: https://stackoverflow.com/a/53841885
+//* Source: https://stackoverflow.com/a/53841885
 
 		if (
 			(needWaitBetweenDL && setsCountWithoutPause > 9)
@@ -9627,6 +9655,8 @@ async function saveProject(project) {
 			}
 
 		const	name = layer.nameOriginal || layer.name;
+		const	x = orz(layer.left);
+		const	y = orz(layer.top);
 		let	oraNode, mask;
 
 			if (layer.layers) {
@@ -9637,16 +9667,26 @@ async function saveProject(project) {
 			const	img = layer.img || await getOrLoadImage(project, layer);
 
 				if (img) {
-				let	imgFromColor, rgba;
+				let	imgFromColor;
 
 					if (!isImageElement(img)) {
-						rgba = getRGBACutOrPadded(img, DEFAULT_COLOR_VALUE_ARRAY);
+					const	rgba = getRGBACutOrPadded(img, DEFAULT_COLOR_VALUE_ARRAY);
+					let	width  = Math.max(1, project.width  - x);
+					let	height = Math.max(1, project.height - y);
+
+						if (SAVE_COLOR_AS_ONE_PIXEL_IMAGE) {
+							oraNode.width  = width;
+							oraNode.height = height;
+
+							width  = 1;
+							height = 1;
+						}
 
 						imgFromColor = await getImageElementFromData({
 							'data' : rgba
-						,	'width' : 1
-						,	'height' : 1
-						});
+						,	'width' : width
+						,	'height' : height
+						}, project, 1);
 
 						if (TESTING > 9) console.log(
 							'oraNode.image:', [
@@ -9663,8 +9703,8 @@ async function saveProject(project) {
 				}
 			}
 
-			oraNode.x = orz(layer.left);
-			oraNode.y = orz(layer.top);
+			oraNode.x = x;
+			oraNode.y = y;
 			oraNode.opacity = orzFloat(layer.opacity);
 			oraNode.visibility = (layer.isVisible ? 'visible' : 'hidden');
 
@@ -9767,34 +9807,67 @@ async function saveProject(project) {
 		return oraLayers;
 	}
 
-	if (! await loadAllLibsOnDemand('ora.js', 'UPNG.js')) {
+	if (! await loadLibOnDemandPromise('ora.js')) {
 		return;
 	}
 
 const	isSingleWIP = setProjectWIPstate(project, true);
-const	actionLabel = 'creating ORA file content';
+const	actionLabel = 'exporting to ORA file';
 	logTime('"' + project.fileName + '" started ' + actionLabel);
 
 let	lastPauseTime = getTimeNow();
 const	thisJob = { lastPauseTime, actionLabel };
 	pendingJobs.add(thisJob);
 
-const	oraLayers = await getLayersInOraFormat(project.layers);
+let	oraLayers, failed;
+
+	try {
+		oraLayers = await getLayersInOraFormat(project.layers);
+
+	} catch (error) {
+		failed = true;
+
+		console.error(error);
+	}
 
 	if (oraLayers) {
 	const	oraFile = new ora.Ora(project.width, project.height);
 		oraFile.layers = oraLayers;
 		oraFile.prerendered = await getRenderedImg(project);	//* <- use current selected options to create merged preview
-		oraFile.save(
-			// TESTING ? console.log :
-			(blob) => saveDL(blob, project.baseName, 'ora', 1)
-		,	console.error
-		);
+
+		await new Promise(
+			(resolve, reject) => oraFile.save(
+				(blob) => {
+					try {
+						saveDL(blob, project.baseName, 'ora', 1);
+
+						resolve();
+
+					} catch (error) {
+						failed = true;
+
+						reject(error);
+					}
+				}
+			,	(error) => {
+					failed = true;
+
+					console.error(error);
+				}
+			)
+		).catch(catchPromiseError);
 	}
 
 	pendingJobs.delete(thisJob);
 
-	logTime('"' + project.fileName + '" ' + (oraLayers === null ? 'stopped' : 'finished') + ' ' + actionLabel);
+	logTime('"' + project.fileName + '" ' + (
+		oraLayers === null
+		? 'stopped'
+		: failed
+		? 'failed'
+		: 'finished'
+	) + ' ' + actionLabel);
+
 	if (isSingleWIP) setProjectWIPstate(project, false);
 }
 
@@ -9827,7 +9900,7 @@ function updateCheckBox(checkBox, params) {
 }
 
 function updateMenuBatchCount(project, ...args) {
-	if (ADD_COUNT_ON_BUTTON_LABEL) {
+	if (ADD_BATCH_COUNT_ON_BUTTON) {
 		['show_all', 'save_all'].forEach(
 			(name) => getAllByName(name, project.container).forEach(
 				(button) => {
@@ -9848,12 +9921,27 @@ function updateMenuBatchCount(project, ...args) {
 			let	container = getAllByName('show_all', project.container)[0] || project.container;
 				container = getThisOrParentByTagName(container, 'section');
 
-				label = project.renderBatchCountMenuLabel = cre('div', container, container.lastElementChild);
-				label.className = labelClass;
+				if (ADD_BATCH_COUNT_ON_NEW_LINE) {
+					label = project.renderBatchCountMenuLabel = cre('div', container, container.lastElementChild);
+					label.className = labelClass;
+				} else {
+					label = getAllByTag('header', container)[0];
+					toggleClass(label, labelClass, 1);
+				}
 			}
 		}
 
-		label.textContent = (
+	let	textOverflow = false;
+
+		if (!ADD_BATCH_COUNT_ON_NEW_LINE) {
+		const	ref = label.nextElementSibling || label.previousElementSibling;
+
+			if (ref && updateElementFixedWidth(label, ref)) {
+				textOverflow = true;
+			}
+		}
+
+	const	countText = (
 			getLocalizedOrEmptyText(
 				args.length > 1
 				? 'batch_counting'
@@ -9862,6 +9950,21 @@ function updateMenuBatchCount(project, ...args) {
 			)
 		||	args.join(' / ')
 		);
+
+		label.textContent = (
+			ADD_BATCH_COUNT_ON_NEW_LINE
+		||	args.length > 1
+			? countText
+			: (
+				getLocalizedText('batch_view_header')
+			+	':\n'
+			+	countText.toLowerCase()
+			)
+		);
+
+		if (textOverflow) {
+			label.title = label.textContent;
+		}
 	}
 }
 
@@ -9981,7 +10084,7 @@ function onBeforeUnload(evt) {
 	) {
 
 //* Note: given message text won't be used in modern browsers.
-//* source: https://habr.com/ru/post/141793/
+//* Source: https://habr.com/ru/post/141793/
 
 	const	message = getLocalizedText('confirm_close_page');
 
@@ -10351,7 +10454,7 @@ let	isProjectLoaded = false;
 					link.click();
 
 //* Note: Chrome skips downloads if more than 10 in 1 second.
-//* source: https://stackoverflow.com/a/53841885
+//* Source: https://stackoverflow.com/a/53841885
 
 					if (++countWithoutPause >= 10) {
 						countWithoutPause = 0;

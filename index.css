@@ -438,6 +438,7 @@ label:hover {
 .fixed-tab-width #loaded-files-selection .button-text {
 	width: 8em;			/* <- "em" is bad with different font-sizes on different lines, so set only here */
 }
+.project-header header,
 .fixed-tab-width #loaded-files-selection .button-text,
 .fixed-tab-width #loaded-files-selection .button-text * {
 	overflow: hidden;
@@ -549,11 +550,14 @@ label:hover {
 	display: inline-block;
 	margin: 0;
 }
-.project-header footer > div:not(:first-child) {
+.project-header footer > div + div {
 	margin-left: 0.5em;
 }
 .project-header button:not(:first-child) {
 	margin-top: 0.5em;
+}
+.project-header button:not(:last-child) {
+	margin-bottom: 0.5em;
 }
 .project-header button,
 .project-options select {
