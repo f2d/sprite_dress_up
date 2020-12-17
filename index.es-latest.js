@@ -9832,8 +9832,8 @@ let	oraLayers, failed;
 		oraLayers = await getLayersInOraFormat(project.layers);
 
 	} catch (error) {
-		failed = true;
 
+		failed = true;
 		console.error(error);
 	}
 
@@ -9842,25 +9842,20 @@ let	oraLayers, failed;
 		oraFile.layers = oraLayers;
 		oraFile.prerendered = await getRenderedImg(project);	//* <- use current selected options to create merged preview
 
-		await new Promise(
+		failed = ! await new Promise(
 			(resolve, reject) => oraFile.save(
 				(blob) => {
 					try {
 						saveDL(blob, project.baseName, 'ora', 1);
-
-						resolve();
+						resolve(true);
 
 					} catch (error) {
-						failed = true;
-
 						reject(error);
 					}
 				}
-			,	(error) => {
-					failed = true;
-
-					console.error(error);
-				}
+			,	reject
+			// ,	(bytesDone, bytesTotal) => {}
+			// ,	(stepsDone, stepsTotal) => {}
 			)
 		).catch(catchPromiseError);
 	}
@@ -9868,10 +9863,10 @@ let	oraLayers, failed;
 	pendingJobs.delete(thisJob);
 
 	logTime('"' + project.fileName + '" ' + (
-		oraLayers === null
-		? 'stopped'
-		: failed
+		failed
 		? 'failed'
+		: oraLayers === null
+		? 'stopped'
 		: 'finished'
 	) + ' ' + actionLabel);
 
