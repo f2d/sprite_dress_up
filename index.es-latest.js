@@ -7,7 +7,6 @@
 //* TODO: keep layer images as PNGs, create arrays for high-precision blending on demand, discard arrays when HQ mode is disabled.
 
 //* TODO ---------------------- menu: -----------------------------------------
-//* TODO: fix "null..null" outline options.
 //* TODO: checkbox (on project selection bar?) to sync all option/export actions in selected project onto all opened projects where possible.
 //* TODO: zoom format in filenames: [x1, x1.00, x100%].
 //* TODO: options menu: add/remove/copy/edit colors and outlines, or all list(s), maybe in textarea.
@@ -6001,10 +6000,10 @@ const	params = getOrInitChild(layer, 'params');
 								if (directions.length > 1) {
 									forEachSetInCrossProduct(
 										directions
-									,	() => {
+									,	(...args) => {
 										const	interval = {
-												'in': Math.min(...arguments)
-											,	'out': Math.max(...arguments)
+												'in': Math.min(...args)
+											,	'out': Math.max(...args)
 											};
 
 											addToBoundaryList(interval);
