@@ -4562,7 +4562,7 @@ async function getProjectViewMenu(project) {
 		&&	(result = await getLayerMaskLoadPromise(layer.mask, project))
 		) if (
 			ADD_PAUSE_AT_INTERVALS
-		&&	(getTimeNow() - lastPauseTime) > PAUSE_WORK_INTERVAL
+		&&	lastPauseTime + PAUSE_WORK_INTERVAL < getTimeNow()
 		) {
 			updateProjectLoadedImagesCount(project);
 
@@ -6453,7 +6453,7 @@ const	loadedCount = project.imagesLoaded.length;
 
 	project.imagesLoadedCount = loadedCount;
 
-	if (!project.isLoaded) {
+	if (!project.isLoaded || !project.rendering) {
 		updateProjectOperationProgress(
 			project
 		,	'project_status_reading_images'
@@ -6642,11 +6642,11 @@ async function loadORA(project) {
 							file
 						,	resolve
 						,	reject
-						,	(done, total) => updateProjectOperationProgress(
+						,	(stepsDone, stepsTotal) => updateProjectOperationProgress(
 								project
 							,	'project_status_reading_file'
-							,	done
-							,	total
+							,	stepsDone
+							,	stepsTotal
 							)
 						);
 					} catch (error) {
@@ -6776,7 +6776,7 @@ async function loadORA(project) {
 
 				if (
 					ADD_PAUSE_AT_INTERVALS
-				&&	(getTimeNow() - lastPauseTime) > PAUSE_WORK_INTERVAL
+				&&	lastPauseTime + PAUSE_WORK_INTERVAL < getTimeNow()
 				) {
 					updateProjectOperationProgress(
 						project
@@ -6959,7 +6959,7 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 
 				if (
 					ADD_PAUSE_AT_INTERVALS
-				&&	(getTimeNow() - lastPauseTime) > PAUSE_WORK_INTERVAL
+				&&	lastPauseTime + PAUSE_WORK_INTERVAL < getTimeNow()
 				) {
 					updateProjectOperationProgress(
 						project
@@ -7260,7 +7260,7 @@ async function getAllValueSets(project, values, startTime, flags) {
 
 				if (
 					ADD_PAUSE_AT_INTERVALS
-				&&	(getTimeNow() - lastPauseTime) > PAUSE_WORK_INTERVAL
+				&&	lastPauseTime + PAUSE_WORK_INTERVAL < getTimeNow()
 				) {
 					updateProjectOperationProgress(
 						project
@@ -8347,7 +8347,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 			if (
 				ADD_PAUSE_AT_INTERVALS
-			&&	(getTimeNow() - PR.lastPauseTime) > PAUSE_WORK_INTERVAL
+			&&	PR.lastPauseTime + PAUSE_WORK_INTERVAL < getTimeNow()
 			) {
 				updateProjectLoadedImagesCount(project);
 
@@ -9068,7 +9068,7 @@ async function getOrCreateRenderedImg(project, render) {
 		).catch(catchPromiseError);
 	}
 
-	if (!render) {
+	if (!isNonNullObject(render)) {
 		render = await getOrCreateRender(project);
 	}
 
@@ -9248,7 +9248,7 @@ function getNewLineSubcontainer(container, values, options) {
 }
 
 async function renderAll(project, flags) {
-	setProjectWIPstate(project, true);
+	setWIPstate(true, project);
 
 	if (!isNonNullObject(flags)) {
 		flags = {};
@@ -9278,7 +9278,7 @@ const	valueSets = project.renderBatchSelectedSets || (project.renderBatchSelecte
 	if (USE_CONSOLE_LOG_GROUPING) console.groupEnd(logLabel);
 	console.timeEnd(logLabel);
 
-	setProjectWIPstate(project, false);
+	setWIPstate(false, project);
 }
 
 async function renderBatch(project, flags, startTime, values, valueSets) {
@@ -9375,8 +9375,8 @@ let	batchContainer, subContainer;
 //* Source: https://stackoverflow.com/a/53841885
 
 		if (
-			(needWaitBetweenDL && setsCountWithoutPause > 9)
-		||	(ADD_PAUSE_AT_INTERVALS && (endTime - lastPauseTime > PAUSE_WORK_INTERVAL))
+			(needWaitBetweenDL && (setsCountWithoutPause > 9))
+		||	(ADD_PAUSE_AT_INTERVALS && (lastPauseTime + PAUSE_WORK_INTERVAL < endTime))
 		) {
 			updateProjectOperationProgress(
 				project
@@ -9556,7 +9556,7 @@ function showJoin(project) {renderAll(project, {asOneJoinedImage: true});}
 function saveJoin(project) {renderAll(project, {saveToFile: true, asOneJoinedImage: true});}
 
 async function showImg(project, render, container) {
-const	isSingleWIP = (render ? false : setProjectWIPstate(project, true));
+const	isSingleWIP = (render ? false : setWIPstate(true, project));
 let	img;
 
 	try {
@@ -9592,13 +9592,13 @@ let	img;
 		project.rendering = null;
 	}
 
-	if (isSingleWIP) setProjectWIPstate(project, false);
+	if (isSingleWIP) setWIPstate(false, project);
 
 	return img;
 }
 
 async function saveImg(project, render, fileName) {
-const	isSingleWIP = (render ? false : setProjectWIPstate(project, true));
+const	isSingleWIP = (render ? false : setWIPstate(true, project));
 let	img;
 
 	try {
@@ -9614,13 +9614,13 @@ let	img;
 		project.rendering = null;
 	}
 
-	if (isSingleWIP) setProjectWIPstate(project, false);
+	if (isSingleWIP) setWIPstate(false, project);
 
 	return img;
 }
 
 async function getRenderedImg(project, render) {
-const	isSingleWIP = (render ? false : setProjectWIPstate(project, true));
+const	isSingleWIP = (render ? false : setWIPstate(true, project));
 let	img;
 
 	try {
@@ -9631,7 +9631,7 @@ let	img;
 		project.rendering = null;
 	}
 
-	if (isSingleWIP) setProjectWIPstate(project, false);
+	if (isSingleWIP) setWIPstate(false, project);
 
 	return img;
 }
@@ -9650,7 +9650,7 @@ async function saveProject(project) {
 		async function addOneLayer(layer) {
 			if (
 				ADD_PAUSE_AT_INTERVALS
-			&&	(getTimeNow() - lastPauseTime) > PAUSE_WORK_INTERVAL
+			&&	lastPauseTime + PAUSE_WORK_INTERVAL < getTimeNow()
 			) {
 				updateProjectLoadedImagesCount(project);
 
@@ -9659,7 +9659,7 @@ async function saveProject(project) {
 				lastPauseTime = getTimeNow();
 			}
 
-			if (isStopRequestedAnywhere(thisJob)) {
+			if (isStopRequestedAnywhere(thisJob, project)) {
 				return null;
 			}
 
@@ -9818,7 +9818,7 @@ async function saveProject(project) {
 		return;
 	}
 
-const	isSingleWIP = setProjectWIPstate(project, true);
+const	isSingleWIP = setWIPstate(true, project);
 const	actionLabel = 'exporting to ORA file';
 	logTime('"' + project.fileName + '" started ' + actionLabel);
 
@@ -9826,21 +9826,61 @@ let	lastPauseTime = getTimeNow();
 const	thisJob = { lastPauseTime, actionLabel };
 	pendingJobs.add(thisJob);
 
-let	oraLayers, failed;
+let	oraLayers, img, randomOtherImg, failed, timeNow;
+
+//* Use current selected options to create merged preview:
 
 	try {
-		oraLayers = await getLayersInOraFormat(project.layers);
+	const	render = await getOrCreateRender(
+			project
+		,	{
+				values : getPatchedObject(
+					getUpdatedMenuValues(project)
+				,	replaceJSONpartsForZoomRef
+				)
+			}
+		);
 
+		if (isStopRequestedAnywhere(thisJob, project)) {
+			oraLayers = null;
+		} else {
+			if (render) {
+				img = render.img;
+			}
+
+//* If current selected options give empty result, pick another prerendered image:
+
+			if (!img) {
+			const	renders = project.renders;
+
+				if (isNonNullObject(renders)) for (const key in renders)
+				if (isImageElement(randomOtherImg = renders[key])) {
+					img = randomOtherImg;
+
+					break;
+				}
+			}
+
+//* Convert layer tree to format used by the library:
+
+			if (img) {
+				oraLayers = await getLayersInOraFormat(project.layers);
+			} else {
+				failed = true;
+			}
+		}
 	} catch (error) {
 
 		failed = true;
 		console.error(error);
 	}
 
-	if (oraLayers) {
+//* Pass prepared data to the library API and save the file content that it gives back:
+
+	if (img && oraLayers) {
 	const	oraFile = new ora.Ora(project.width, project.height);
 		oraFile.layers = oraLayers;
-		oraFile.prerendered = await getRenderedImg(project);	//* <- use current selected options to create merged preview
+		oraFile.prerendered = img;
 
 		failed = ! await new Promise(
 			(resolve, reject) => oraFile.save(
@@ -9854,11 +9894,35 @@ let	oraLayers, failed;
 					}
 				}
 			,	reject
-			// ,	(bytesDone, bytesTotal) => {}
-			// ,	(stepsDone, stepsTotal) => {}
+			,	(bytesDone, bytesTotal) => {
+					if (lastPauseTime + PAUSE_WORK_INTERVAL < (timeNow = getTimeNow())) {
+						lastPauseTime = timeNow;
+
+						updateProjectOperationProgress(
+							project
+						,	'project_status_saving_file'
+						,	bytesDone.toLocaleString(LANG)
+						,	bytesTotal.toLocaleString(LANG)
+						);
+					}
+				}
+			,	(stepsDone, stepsTotal) => {
+					if (lastPauseTime + PAUSE_WORK_INTERVAL < (timeNow = getTimeNow())) {
+						lastPauseTime = timeNow;
+
+						updateProjectOperationProgress(
+							project
+						,	'project_status_saving_images'
+						,	stepsDone
+						,	stepsTotal
+						);
+					}
+				}
 			)
 		).catch(catchPromiseError);
 	}
+
+//* Done, report, cleanup:
 
 	pendingJobs.delete(thisJob);
 
@@ -9870,7 +9934,7 @@ let	oraLayers, failed;
 		: 'finished'
 	) + ' ' + actionLabel);
 
-	if (isSingleWIP) setProjectWIPstate(project, false);
+	if (isSingleWIP) setWIPstate(false, project);
 }
 
 async function updateMenuAndShowImg(project) {
@@ -10024,53 +10088,49 @@ let	count = (
 	updateProjectOperationProgress(project, 'project_status_ready_options');
 }
 
-function setProjectWIPstate(project, isWIP) {
+function setWIPstate(isWIP, project) {
 	isWIP = !!isWIP;
 
-	project.isStopRequested = false;
-	project.isBatchWIP = isWIP;
+	if (project) {
+		project.isStopRequested = false;
+		project.isBatchWIP = isWIP;
 
-	['button', 'select', 'input'].forEach(
-		(tagName) => getAllByTag(tagName, project.container).forEach(
-			(element) => (
-				element.disabled = (
-					tagName === 'button'
-				&&	element.name === 'stop'
-					? !isWIP
-					: isWIP
-				)
+		['button', 'select', 'input'].forEach(
+			(tagName) => getAllByTag(tagName, project.container).forEach(
+				(element) => {
+					element.disabled = (
+						tagName === 'button'
+					&&	element.name === 'stop'
+						? !isWIP
+						: isWIP
+					);
+				}
 			)
-		)
-	);
+		);
 
-	if (isWIP) {
-		if (PRELOAD_LAYER_IMAGES || project.isLoaded) {
-			updateProjectOperationProgress(project, 'project_status_rendering');
+		if (isWIP) {
+			if (PRELOAD_LAYER_IMAGES || project.isLoaded) {
+				updateProjectOperationProgress(project, 'project_status_rendering');
+			}
+		} else {
+			updateProjectOperationProgress(project, 'project_status_ready_options');
 		}
 	} else {
-		updateProjectOperationProgress(project, 'project_status_ready_options');
-	}
+		isStopRequested = false;
+		isBatchWIP = isWIP;
 
-	return isWIP;
-}
-
-function setGlobalWIPstate(isWIP) {
-	isWIP = !!isWIP;
-
-	isStopRequested = false;
-	isBatchWIP = isWIP;
-
-	getAllByTag('button', getAllByClass('menu-bar')[0]).forEach(
-		(element) => {
-			if (element.name !== 'download_all') {
-				element.disabled = (
-					element.name === 'stop'
-					? !isWIP
-					: isWIP
-				)
+		getAllByTag('button', getAllByClass('menu-bar')[0]).forEach(
+			(element) => {
+				if (element.name !== 'download_all') {
+					element.disabled = (
+						element.name === 'stop'
+						? !isWIP
+						: isWIP
+					);
+				}
 			}
-		}
-	);
+		);
+	}
 
 	return isWIP;
 }
@@ -10467,7 +10527,7 @@ let	isProjectLoaded = false;
 			}
 		} else
 		if (action === 'load_all') {
-			setGlobalWIPstate(true);
+			setWIPstate(true);
 
 			for (const otherButton of getAllByTag('button', filesTable)) {
 				if (url = getButtonURL(otherButton)) {
@@ -10486,7 +10546,7 @@ let	isProjectLoaded = false;
 				}
 			}
 
-			setGlobalWIPstate(false);
+			setWIPstate(false);
 		} else {
 			console.error('Unknown action: ' + action, [button, filesTable]);
 		}
@@ -12156,7 +12216,7 @@ const	linkTooltips = [
 
 //* enable/disable main menu buttons:
 
-	setGlobalWIPstate(false);
+	setWIPstate(false);
 
 //* add global on-page events:
 //* Note: drop event may not work without dragover.
