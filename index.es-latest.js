@@ -9649,13 +9649,13 @@ async function saveProject(project) {
 		async function addOneLayer(layer) {
 			if (
 				ADD_PAUSE_AT_INTERVALS
-			&&	lastPauseTime + PAUSE_WORK_INTERVAL < getTimeNow()
+			&&	thisJob.lastPauseTime + PAUSE_WORK_INTERVAL < getTimeNow()
 			) {
 				updateProjectLoadedImagesCount(project);
 
 				await pause(PAUSE_WORK_DURATION);
 
-				lastPauseTime = getTimeNow();
+				thisJob.lastPauseTime = getTimeNow();
 			}
 
 			if (isStopRequestedAnywhere(thisJob, project)) {
@@ -9821,8 +9821,7 @@ const	isSingleWIP = setWIPstate(true, project);
 const	actionLabel = 'exporting to ORA file';
 	logTime('"' + project.fileName + '" started ' + actionLabel);
 
-let	lastPauseTime = getTimeNow();
-const	thisJob = { lastPauseTime, actionLabel };
+const	thisJob = { project, lastPauseTime : getTimeNow() };
 	pendingJobs.add(thisJob);
 
 let	oraLayers, img, randomOtherImg, failed, timeNow;
@@ -9893,29 +9892,11 @@ let	oraLayers, img, randomOtherImg, failed, timeNow;
 					}
 				}
 			,	reject
-			,	(bytesDone, bytesTotal) => {
-					if (lastPauseTime + PAUSE_WORK_INTERVAL < (timeNow = getTimeNow())) {
-						lastPauseTime = timeNow;
-
-						updateProjectOperationProgress(
-							project
-						,	'project_status_saving_file'
-						,	bytesDone.toLocaleString(LANG)
-						,	bytesTotal.toLocaleString(LANG)
-						);
-					}
-				}
-			,	(stepsDone, stepsTotal) => {
-					if (lastPauseTime + PAUSE_WORK_INTERVAL < (timeNow = getTimeNow())) {
-						lastPauseTime = timeNow;
-
-						updateProjectOperationProgress(
-							project
-						,	'project_status_saving_images'
-						,	stepsDone
-						,	stepsTotal
-						);
-					}
+			,	{
+					'imageFound' : getProgressUpdaterFunction(thisJob, 'project_status_saving_layers'),
+					'imageDedup' : getProgressUpdaterFunction(thisJob, 'project_status_saving_images'),
+					'imageMerge' : getProgressUpdaterFunction(thisJob, 'project_status_saving_render'),
+					'zipExport' : getProgressUpdaterFunction(thisJob, 'project_status_saving_file', true),
 				}
 			)
 		).catch(catchPromiseError);
@@ -9934,6 +9915,29 @@ let	oraLayers, img, randomOtherImg, failed, timeNow;
 	) + ' ' + actionLabel);
 
 	if (isSingleWIP) setWIPstate(false, project);
+}
+
+function getProgressUpdaterFunction(thisJob, key, isCountFormatted) {
+const	getCountFormatted = (
+		isCountFormatted
+		? (value) => value.toLocaleString(LANG)
+		: (value) => value
+	);
+
+	return (countDone, countTotal) => {
+	const	timeNow = getTimeNow();
+
+		if (thisJob.lastPauseTime + PAUSE_WORK_INTERVAL < timeNow) {
+			thisJob.lastPauseTime = timeNow;
+
+			updateProjectOperationProgress(
+				thisJob.project
+			,	key
+			,	getCountFormatted(countDone)
+			,	getCountFormatted(countTotal)
+			);
+		}
+	};
 }
 
 async function updateMenuAndShowImg(project) {
