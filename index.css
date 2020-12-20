@@ -707,3 +707,10 @@ header:not(.show) [name="close_section"],
 	transition: opacity 0.7s ease-in;
 	opacity: 0;
 }
+.wip::before {
+	display: inline-flex;
+	align-self: center;
+	align-content: center;
+	content: attr(data-wip);
+	width: 1em;
+}

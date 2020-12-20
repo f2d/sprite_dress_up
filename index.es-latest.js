@@ -83,6 +83,7 @@ var	exampleRootDir = ''
 ,	ADD_PAUSE_AT_INTERVALS		= true	//* <- let UI update when loading files, rendering images, counting batch combinations, etc.
 ,	ADD_PAUSE_BEFORE_EACH_FOLDER	= false	//* <- can take ~1-5x longer than pause at intervals, but UI response is not very good.
 ,	ADD_PAUSE_BEFORE_EACH_LAYER	= false	//* <- can take ~1.5-2x longer than pause at folders, but UI response does not improve much.
+,	ADD_WIP_TEXT_ROLL		= false
 ,	ASK_BEFORE_EXIT_IF_OPENED_FILES	= true	//* <- this is annoying and would not be needed if big files could load fast.
 ,	CACHE_UNALTERABLE_FOLDERS_MERGED	= true	//* <- not much opportunity if almost everything is recolored or passthrough.
 ,	CACHE_UNALTERABLE_IMAGES_TRIMMED	= false	//* <- images are compressed faster by canvas API, when stored as PNG.
@@ -330,6 +331,7 @@ const	SPLIT_SEC = 60
 ,	DATA_PREFIX = 'data:'
 ,	TYPE_TEXT = 'text/plain'
 ,	TITLE_LINE_BREAK = ' \r\n'
+,	WIP_TEXT_ROLL = '\\|/-'
 
 ,	TIME_PARTS_YMD = ['FullYear', 'Month', 'Date']
 ,	TIME_PARTS_HMS = ['Hours', 'Minutes', 'Seconds']
@@ -2708,7 +2710,7 @@ async function resolvePromiseOnImgLoad(img, resolve, reject) {
 	}
 }
 
-function getFilePromise(file, projectOrTab) {
+function getFilePromise(file, context) {
 
 //* Note: "file" may be a blob object.
 //* Source: https://stackoverflow.com/a/15981017
@@ -2724,11 +2726,11 @@ function getFilePromise(file, projectOrTab) {
 		(resolve, reject) => {
 		const	reader = new FileReader();
 
-			if (projectOrTab) {
+			if (context) {
 				reader.onloadstart =
 				reader.onloadend =
 				reader.onprogress = (evt) => updateProjectOperationProgress(
-					projectOrTab
+					context
 				,	'project_status_loading_file'
 				,	evt.loaded || evt.position || '?'
 				,	getLocalizedOrDefaultText('file_bytes', evt.total || evt.totalSize || '?')
@@ -2753,7 +2755,7 @@ function getFilePromise(file, projectOrTab) {
 	).catch(catchPromiseError);
 }
 
-function getFilePromiseFromURL(url, responseType, projectOrTab) {
+function getFilePromiseFromURL(url, responseType, context) {
 
 //* Note: "url" may be a "blob:" or "data:" url.
 //* Source: https://www.mwguy.com/decoding-a-png-image-in-javascript/
@@ -2769,11 +2771,11 @@ function getFilePromiseFromURL(url, responseType, projectOrTab) {
 		(resolve, reject) => {
 		const	request = new XMLHttpRequest();
 
-			if (projectOrTab) {
+			if (context) {
 				request.onloadstart =
 				request.onloadend =
 				request.onprogress = (evt) => updateProjectOperationProgress(
-					projectOrTab
+					context
 				,	'project_status_loading_file'
 				,	evt.loaded || evt.position || '?'
 				,	getLocalizedOrDefaultText('file_bytes', evt.total || evt.totalSize || '?')
@@ -6502,7 +6504,9 @@ function updateElementFixedWidth(element, ref, key) {
 	}
 }
 
-function updateProjectOperationProgress(project, operation, ...args) {
+function updateProjectOperationProgress(context, operation, ...args) {
+const	project = context.project || context;
+
 	if (TESTING > 9) console.log(arguments);
 
 	if (operation === 'project_status_ready_options') {
@@ -6527,6 +6531,16 @@ let	element;
 	if (TAB_STATUS_TEXT) {
 		if (element = project.buttonStatus) {
 			element.title = element.textContent = getLocalizedText(operation, ...args);
+
+			if (ADD_WIP_TEXT_ROLL) {
+				if (operation.includes('project_status_ready')) {
+					toggleClass(element, 'wip', -1);
+				} else {
+				const	i = WIP_TEXT_ROLL.indexOf(element.getAttribute('data-wip')) + 1;
+					element.setAttribute('data-wip', WIP_TEXT_ROLL[i % WIP_TEXT_ROLL.length]);
+					toggleClass(element, 'wip', 1);
+				}
+			}
 		}
 	} else {
 		if (element = project.buttonTab) {
@@ -9917,7 +9931,7 @@ let	oraLayers, img, randomOtherImg, failed, timeNow;
 	if (isSingleWIP) setWIPstate(false, project);
 }
 
-function getProgressUpdaterFunction(thisJob, key, isCountFormatted) {
+function getProgressUpdaterFunction(context, key, isCountFormatted) {
 const	getCountFormatted = (
 		isCountFormatted
 		? (value) => value.toLocaleString(LANG)
@@ -9927,11 +9941,11 @@ const	getCountFormatted = (
 	return (countDone, countTotal) => {
 	const	timeNow = getTimeNow();
 
-		if (thisJob.lastPauseTime + PAUSE_WORK_INTERVAL < timeNow) {
-			thisJob.lastPauseTime = timeNow;
+		if (context.lastPauseTime + PAUSE_WORK_INTERVAL < timeNow) {
+			context.lastPauseTime = timeNow;
 
 			updateProjectOperationProgress(
-				thisJob.project
+				context
 			,	key
 			,	getCountFormatted(countDone)
 			,	getCountFormatted(countTotal)
