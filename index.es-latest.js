@@ -68,6 +68,7 @@ var	exampleRootDir = ''
 ,	PAUSE_WORK_DURATION = 20
 ,	PAUSE_WORK_INTERVAL = 200
 
+,	ORA_EXPORT_THUMBNAIL_SIZE = 256
 ,	PREVIEW_SIZE = 80
 ,	THUMBNAIL_SIZE = 20
 ,	ZOOM_STEP_MAX_FACTOR = 2
@@ -6447,8 +6448,9 @@ function updateProjectLoadedImagesCount(project) {
 const	element = project.imagesLoadedCountText;
 const	imagesCount = project.imagesCount;
 const	loadedCount = project.imagesLoaded.length;
+const	notChanged = (project.imagesLoadedCount === loadedCount);
 
-	if (project.imagesLoadedCount === loadedCount) {
+	if (!ADD_WIP_TEXT_ROLL && notChanged) {
 		return;
 	}
 
@@ -6463,7 +6465,7 @@ const	loadedCount = project.imagesLoaded.length;
 		);
 	}
 
-	if (!element) {
+	if (!element || notChanged) {
 		return;
 	}
 
@@ -9895,10 +9897,10 @@ let	oraLayers, img, randomOtherImg, failed, timeNow;
 		oraFile.prerendered = img;
 
 		if (
-			project.width > 256
-		||	project.height > 256
+			project.width  > ORA_EXPORT_THUMBNAIL_SIZE
+		||	project.height > ORA_EXPORT_THUMBNAIL_SIZE
 		) {
-			oraFile.thumbnail = await getImagePromiseFromCanvasToBlob(getResizedCanvasFromImg(img, 256, 256));
+			oraFile.thumbnail = await getImagePromiseFromCanvasToBlob(getResizedCanvasFromImg(img, ORA_EXPORT_THUMBNAIL_SIZE));
 		} else {
 			oraFile.thumbnail = img;
 		}
@@ -10696,6 +10698,7 @@ const	configVarNames = [
 		'DEFAULT_COLLAGE_PADDING',
 		'DEFAULT_COLLAGE_PADDING_INSIDE',
 		'DEFAULT_COLLAGE_PADDING_OUTSIDE',
+		'ORA_EXPORT_THUMBNAIL_SIZE',
 		'PAUSE_WORK_DURATION',
 		'PAUSE_WORK_INTERVAL',
 		'PREVIEW_SIZE',
