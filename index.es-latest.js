@@ -9894,6 +9894,15 @@ let	oraLayers, img, randomOtherImg, failed, timeNow;
 		oraFile.layers = oraLayers;
 		oraFile.prerendered = img;
 
+		if (
+			project.width > 256
+		||	project.height > 256
+		) {
+			oraFile.thumbnail = await getImagePromiseFromCanvasToBlob(getResizedCanvasFromImg(img, 256, 256));
+		} else {
+			oraFile.thumbnail = img;
+		}
+
 		failed = ! await new Promise(
 			(resolve, reject) => oraFile.save(
 				(blob) => {
