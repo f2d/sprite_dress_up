@@ -9688,40 +9688,51 @@ async function saveProject(project) {
 				oraNode.isolation = (layer.isPassThrough ? 'auto' : 'isolate');
 			} else {
 				oraNode = new ora.OraLayer(name, layer.width, layer.height);
-			const	img = layer.img || await getOrLoadImage(project, layer);
+			const	img = layer.imgFromColor || layer.img || await getOrLoadImage(project, layer);
+
+				if (isImageElement(img)) {
+					oraNode.image = img;
+
+//* Reuse color-fill image kept from previous save:
+
+					if (layer.imgFromColor) {
+						oraNode.width  = Math.max(1, project.width);
+						oraNode.height = Math.max(1, project.height);
+						x = y = 0;
+					}
+				} else
+
+//* Get color-fill image from color and keep for next save:
 
 				if (img) {
-				let	imgFromColor;
+				const	rgba = getRGBACutOrPadded(img, DEFAULT_COLOR_VALUE_ARRAY);
+				let	width  = oraNode.width  = Math.max(1, project.width);
+				let	height = oraNode.height = Math.max(1, project.height);
+					x = y = 0;
 
-					if (!isImageElement(img)) {
-					const	rgba = getRGBACutOrPadded(img, DEFAULT_COLOR_VALUE_ARRAY);
-					let	width  = oraNode.width  = Math.max(1, project.width);
-					let	height = oraNode.height = Math.max(1, project.height);
-
-						if (SAVE_COLOR_AS_ONE_PIXEL_IMAGE) {
-							width = height = 1;
-						}
-
-						x = y = 0;
-
-						imgFromColor = await getImageElementFromData({
-							'data' : rgba
-						,	'width' : width
-						,	'height' : height
-						}, project, 1);
-
-						if (TESTING > 9) console.log(
-							'oraNode.image:', [
-								'oraNode:', oraNode,
-								'layer:', layer,
-								'img:', img,
-								'rgba:', rgba,
-								'imgFromColor:', imgFromColor,
-							]
-						);
+					if (SAVE_COLOR_AS_ONE_PIXEL_IMAGE) {
+						width = height = 1;
 					}
 
-					oraNode.image = imgFromColor || img;
+				const	imgFromColor = await getImageElementFromData({
+						'data' : rgba
+					,	'width' : width
+					,	'height' : height
+					}, project, 1);
+
+					if (TESTING > 9) console.log(
+						'oraNode.image:', [
+							'oraNode:', oraNode,
+							'layer:', layer,
+							'img:', img,
+							'rgba:', rgba,
+							'imgFromColor:', imgFromColor,
+						]
+					);
+
+					if (isImageElement(imgFromColor)) {
+						oraNode.image = layer.imgFromColor = imgFromColor;
+					}
 				}
 			}
 
