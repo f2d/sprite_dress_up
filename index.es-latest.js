@@ -1,40 +1,45 @@
 
 'use strict';
 
-//* TODO ---------------------- source file data: -----------------------------
-//* TODO: keep all layer-name parameters single-word if possible.
-//* TODO: whole config in JSON-format?
-//* TODO: keep layer images as PNGs, create arrays for high-precision blending on demand, discard arrays when HQ mode is disabled.
-
-//* TODO ---------------------- menu: -----------------------------------------
-//* TODO: checkbox (on project selection bar?) to sync all option/export actions in selected project onto all opened projects where possible.
-//* TODO: zoom format in filenames: [x1, x1.00, x100%].
+//* TODO ---------------------- UI, menu: -------------------------------------
+//* TODO: consistent UI colors (what blue, yellow, white, etc. means across the whole page).
+//* TODO: checkbox/selectbox to sync clicked/all option/export actions in selected project onto all opened projects, where possible.
+//* TODO: find zoom/scale of the screen/page before regenerating thumbnails.
 //* TODO: options menu: add/remove/copy/edit colors and outlines, or all list(s), maybe in textarea.
 //* TODO: remember already calculated batch counts and valid lists per project, in a dict with keys like joined list of all options and checkboxes.
+//* TODO: store (in)validated combination in a Map by filename as key, and combinations to render (each wrapped in object as pointer to Map element and the filename) in a Set. Or make the checking algorithm faster somehow, without bruteforcing cross-product of all combos.
 //* TODO: <select multiple> <optgroup> <option>?</option> </optgroup> </select>.
-//* TODO: save opened project as restructured ORA/PSD. Make it responsive and cancellable. Try https://github.com/Agamnentzar/ag-psd
-//* TODO: save rendered image as WebP. https://bugs.chromium.org/p/chromium/issues/detail?id=170565#c77 - toDataURL/toBlob quality 1.0 = lossless.
+
+//* TODO ---------------------- params: ---------------------------------------
+//* TODO: keep all layer-name parameters single-word if possible.
+//* TODO: zoom format in filenames: [x1, x1.00, x100%].
+//* TODO: copypaste: above/below.
+//* TODO: outline: more methods.
+//* TODO: wireframe rendering.
+//* TODO: multiselect?
 
 //* TODO ---------------------- rendering: ------------------------------------
-//* TODO: above/below copypaste params.
-//* TODO: properly check copypaste visibility.
-//* TODO: stop images moving to hidden container when save collage button was clicked.
-//* TODO: fix hiding of clipping group with skipped/invisible/empty base layer.
-//* TODO: keep track of current root of (possibly nested) copy-pasted layer (in array property with push-pop?) while rendering.
-//* TODO: arithmetic emulation of all blending operations, not native to JS.
-//* TODO: arithmetic emulation of all operations in 16/32-bit until final result; to be optionally available as checkbox/selectbox.
-//* TODO: set RGB of zero-alpha pixels to average of all non-zero-alpha neighbour RGB values ignoring alpha.
-//* TODO: for files without merged image data - render ignoring options, but respecting layer visibility properties. Or buttons to show embedded and/or rendered image regardless of options. Or add this as top-most option for any project, with or without options.
+//* TODO: collage: arrange joined images without using DOM, to avoid currently visible images moving to hidden container when saving collage.
+//* TODO: clipping: fix hiding of clipping group with skipped/invisible/empty base layer.
+//* TODO: copypaste: properly check visibility of (possibly nested) pasted layer; keep track of its current root while rendering; push/pop in pasted layer's prop[]?
+//* TODO: blending: arithmetic emulation of all operations, not native to JS.
+//* TODO: blending: arithmetic emulation of all operations in 16/32-bit (float?) until final result; optional with checkbox/selectbox.
+//* TODO: blending: keep layer images as PNGs, create arrays for high-precision blending on demand, discard arrays when HQ mode is disabled.
+//* TODO: encode: set RGB of zero-alpha pixels to average of all non-zero-alpha neighbour RGB values ignoring alpha.
+//* TODO: compose: for files without merged image data - render ignoring options, but respecting layer visibility properties. Or buttons to show embedded and/or rendered image regardless of options. Or add this as top-most option for any project, with or without options.
 //* TODO: revoke collage blob urls when cleaning view container?
 //* TODO: revoke any image blob urls right after image element's loading, without ever tracking/listing them?
 
+//* TODO ---------------------- export: ---------------------------------------
+//* TODO: save opened project as restructured ORA/PSD. Try https://github.com/Agamnentzar/ag-psd
+//* TODO: save rendered image as WebP. https://bugs.chromium.org/p/chromium/issues/detail?id=170565#c77 - toDataURL/toBlob quality 1.0 = lossless.
+//* TODO: make exported project files identically reproducible?
+
 //* TODO ---------------------- other: ----------------------------------------
-//* TODO: store (in)validated combination in a Map by filename as key, and combinations to render (each wrapped in object as pointer to Map element and the filename) in a Set.
-//* TODO: find zoom/scale of the screen/page before regenerating thumbnails.
-//* TODO: consistent UI colors (what blue, yellow, white, etc. means across the whole page).
 //* TODO: global job list for WIP cancelling instead of spaghetti-coded flag checks.
 //* TODO: split JS files in a way that lets older browsers to use parts they can parse and execute (only show menu, or only load ORA, etc.).
-//* TODO: split functionality into modules to reuse with drawpad, etc.
+//* TODO: split JS functionality into modules to reuse with drawpad, etc.
+//* TODO: whole config in JSON-format?
 
 //* ---------------------------------------------------------------------------
 //* Config: defaults, do not change here, redefine in external config file *---
@@ -5585,7 +5590,7 @@ const	layersTextParts = [];
 const	layersText = getNestedFilteredArrayJoinedText(layersTextParts, ', ');
 
 const	sourceFile = project.loading.data.file || {};
-const	sourceFileTime = sourceFile.lastModified || sourceFile.lastModifiedDate;
+const	sourceFileTime = project.lastModTime = sourceFile.lastModified || sourceFile.lastModifiedDate;
 const	fileSizeText = (sourceFile.size ? getFormattedFileSize(sourceFile.size) : '');
 const	fileTimeText = (sourceFileTime ? getLocalizedText('file_date', getFormattedTime(sourceFileTime)) : '');
 
@@ -9904,6 +9909,7 @@ let	oraLayers, img, randomOtherImg, failed, timeNow;
 
 	if (img && oraLayers) {
 	const	oraFile = new ora.Ora(project.width, project.height);
+		oraFile.lastModTime = project.lastModTime;
 		oraFile.layers = oraLayers;
 		oraFile.prerendered = img;
 
@@ -12196,7 +12202,7 @@ const	toggleFixedTabWidthHTML = (
 		'<button class="fixed-tab-width-button" onclick="return toggleFixedTabWidth()"'
 	+		getTagAttrIfNotEmpty('title', getLocalizedOrEmptyText('fixed_tab_width'))
 	+	'>'
-	+		'[...]'
+	+		'[&#x22EF;]'
 	+	'</button>'
 	);
 
