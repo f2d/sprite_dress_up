@@ -852,7 +852,7 @@ const toggleClass = (
 //* legacy way:
 
 	? (element, className, keep) => {
-	const	oldText = element.className || element.getAttribute('className') || '';
+	const	oldText = element.className || element.getAttribute('class') || '';
 	const	classNames = oldText.split(regSpace).filter(arrayFilterNonEmptyValues);
 	const	index = classNames.indexOf(className);
 
@@ -868,7 +868,7 @@ const toggleClass = (
 		} else
 		if (oldText) {
 			element.className = '';
-			element.removeAttribute('className');
+			element.removeAttribute('class');
 		}
 
 		return classNames.includes(className);
@@ -6631,6 +6631,9 @@ const	actionLabel = 'processing document with ' + libName;
 	}
 
 	if (sourceData) {
+
+		if (TESTING > 1) console.log(sourceData);
+
 		project.loading.errorPossible = 'project_status_error_in_layers';
 		project.sourceData = sourceData;
 
