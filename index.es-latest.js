@@ -177,9 +177,9 @@ const getFlatArray = (
 			(value) => {
 				if (isArray(value)) {
 					if (maxDepth > 0) {
-						flatArray.concat(getFlatArray(value, maxDepth - 1))
+						flatArray = flatArray.concat(getFlatArray(value, maxDepth - 1));
 					} else {
-						flatArray.concat(value)
+						flatArray = flatArray.concat(value);
 					}
 				} else {
 					flatArray.push(value)
@@ -2292,9 +2292,8 @@ const	header = getOneById('top-menu-' + sectionName);
 
 		if (source) {
 		const	sourceElement = (isString(source) ? getOneById('top-menu-' + source) : source);
-		const	fromSection = getThisOrParentByTagName(sourceElement, 'section');
 		const	toSection = getThisOrParentByTagName(header, 'section');
-
+		let	fromSection = getThisOrParentByTagName(sourceElement, 'section');
 		let	alignWithTop = true;
 
 			while (fromSection && toSection) {
@@ -11417,6 +11416,8 @@ const	helpSections = {
 			{
 				'text_key': 'notes',
 				'text_replace_values': [
+					wrap.code.param('[no-render]'),
+					getHelpSectionLinkHTML('help_other'),
 					getTableHTML(
 						[
 							'{help_code_list_folder}:',
