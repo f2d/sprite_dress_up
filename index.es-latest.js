@@ -10086,6 +10086,11 @@ async function updateBatchCount(project, values, precounted) {
 		values = getAllMenuValues(project, true);
 	}
 
+	if (!precounted) {
+		project.renderBatchSelectedOptions = null;
+		project.renderBatchSelectedSets = null;
+	}
+
 const	startTime = project.renderBatchCountStartTime = getTimeNow();
 const	precounts = getOrInitChild(project, 'renderBatchCounts');
 const	key = project.renderBatchCountSelectedKey = (
@@ -10373,8 +10378,6 @@ const	isSelect = isSelectElement(element);
 
 const	container = getProjectContainer(element);
 const	project = container.project;
-	project.renderBatchSelectedOptions = null;
-	project.renderBatchSelectedSets = null;
 
 	await updateBatchCount(project);
 
