@@ -6,19 +6,25 @@
 //* TODO: checkbox/selectbox to sync clicked/all option/export actions in selected project onto all opened projects, where possible.
 //* TODO: find zoom/scale of the screen/page before regenerating thumbnails.
 //* TODO: options menu: add/remove/copy/edit colors and outlines, or all list(s), maybe in textarea.
-//* TODO: remember already calculated batch counts and valid lists per project, in a dict with keys like joined list of all options and checkboxes.
-//* TODO: store (in)validated combination in a Map by filename as key, and combinations to render (each wrapped in object as pointer to Map element and the filename) in a Set. Or make the checking algorithm faster somehow, without bruteforcing cross-product of all combos.
+//* TODO: options menu: buttons to show all or only relevant select boxes, global and per type header (parts, colors, etc).
+//* TODO: options menu: switches for selected keys/values in saved PNG filenames.
 //* TODO: <select multiple> <optgroup> <option>?</option> </optgroup> </select>.
+//* TODO: batch: store (in)validated combination in a Map by filename as key, and combinations to render (each wrapped in object as pointer to Map element and the filename) in a Set. Or make the checking algorithm faster somehow, without bruteforcing cross-product of all combos.
+//* TODO: batch: remember already calculated batch counts and valid lists per project; dict key = joined list of all options and checkboxes.
+//* TODO: batch: clone selection dict via json only for adding to list of valid sets; reuse one dict for all deep checking.
 
 //* TODO ---------------------- params: ---------------------------------------
 //* TODO: keep all layer-name parameters single-word if possible.
 //* TODO: zoom format in filenames: [x1, x1.00, x100%].
-//* TODO: copypaste: above/below.
 //* TODO: outline: more methods.
 //* TODO: wireframe rendering.
 //* TODO: multiselect?
+//* TODO: separate/split: [separated] any marked folder, not only automatic root.
+//* TODO: colors: fix empty folders like "listname [colors batch]" and "listname [colors] / name".
+//* TODO: colors: add "name1,2,3,etc[gradient-map=N/N%=rgb-N-N-N/N%=next+rgb-N-N-N/avg|max|min|rgb]" to interpolate between selected given color values in given name order using given source RGB (or avg/max/min of them). If too many gradient points (number of names > 2 + number points), ignore leftover points. If too many names, distribute undefined points evenly in the last (top?) stretch of gradient. Autosort points by %value. Color value after percent may be used to insert given color value or calculate value dependent on next/previous point (cycle in passes until all are defined). 0/100% may be used for defining colors; use names for omitted. If no usable color names, do nothing.
 
 //* TODO ---------------------- rendering: ------------------------------------
+//* TODO: collage: fix stuck rendering of oversized collage.
 //* TODO: collage: arrange joined images without using DOM, to avoid currently visible images moving to hidden container when saving collage.
 //* TODO: clipping: fix hiding of clipping group with skipped/invisible/empty base layer.
 //* TODO: copypaste: properly check visibility of (possibly nested) pasted layer; keep track of its current root while rendering; push/pop in pasted layer's prop[]?
@@ -31,9 +37,11 @@
 //* TODO: revoke any image blob urls right after image element's loading, without ever tracking/listing them?
 
 //* TODO ---------------------- export: ---------------------------------------
+//* TODO: save PNG batch in ZIP.
 //* TODO: save opened project as restructured ORA/PSD. Try https://github.com/Agamnentzar/ag-psd
 //* TODO: save rendered image as WebP. https://bugs.chromium.org/p/chromium/issues/detail?id=170565#c77 - toDataURL/toBlob quality 1.0 = lossless.
 //* TODO: make exported project files identically reproducible?
+//* TODO: add button to export all parts one by one with all other parts hidden.
 
 //* TODO ---------------------- other: ----------------------------------------
 //* TODO: global job list for WIP cancelling instead of spaghetti-coded flag checks.
@@ -229,14 +237,14 @@ const	CONFIG_FILE_PATH = 'config.js'			//* <- declarations-only file to redefine
 
 ,	regLayerNameParamType = {
 		'skip':		/^(skip)$/i
-	,	'skip_render':	/^(skip|no)\W+(render)$/i
-	,	'check_order':	/^(?:check\W+)?(?:top|bottom\W+)?(down|up)$/i
+	,	'skip_render':	/^(skip|no)-(render)$/i
+	,	'check_order':	/^(?:(?:check|top|bottom)\W+)*(down|up)$/i
 	,	'none':		/^(none)$/i
 	,	'if_only':	/^(if|in)$/i
 	,	'not':		/^(\!|not?)$/i
 	,	'any':		/^(\?|any|some)$/i
 
-	,	'copypaste':	/^(copy|paste)(?:\W(.*))?$/i
+	,	'copypaste':	/^(copy|paste(?:-(?:above|below))?)(?:\W(.*))?$/i
 	,	'color_code':	regColorCode
 
 	,	'colors':	/^(colou?r)s$/i
@@ -468,6 +476,7 @@ const	SPLIT_SEC = 60
 ,	PARAM_KEYWORDS_SET_VALUE_TO_NAME = ['preselect']
 ,	PARAM_KEYWORDS_SET_VALUE_TO_TRUE = ['last', 'no_prefix']
 ,	PARAM_KEYWORDS_SHORTCUT_FOR_ALL = ['all', 'etc']
+,	PARAM_KEYWORDS_PASTE = ['paste', 'paste-above', 'paste-below']
 ,	PARAM_OPTIONS_FOR_EACH_NAME = ['opacities', 'paddings']
 ,	PARAM_OPTIONS_GLOBAL = ['autocrop', 'collage', 'separate', 'side', 'zoom']
 ,	PARAM_OPTIONS_LOCAL = ['parts', 'colors', 'paddings', 'opacities']
@@ -4933,22 +4942,18 @@ async function getProjectViewMenu(project) {
 			}
 
 		const	layersInside = layer.layers;
-		const	layerCopyParams = params.copypaste;
+		const	aliasesToCopy = getPropByNameChain(params, 'copypaste', 'copy');
 
-			if (layerCopyParams) {
-			const	aliasTypes = getOrInitChild(project, 'layersForCopyPaste');
+			if (isArray(aliasesToCopy)) {
+			const	aliases = getOrInitChild(project, 'layersForCopyByAlias');
 
-				for (const paramType in layerCopyParams) {
-				const	aliases = getOrInitChild(aliasTypes, paramType);
+				aliasesToCopy.forEach(
+					(alias) => {
+					const	layersByAlias = getOrInitChild(aliases, alias, Array);
 
-					layerCopyParams[paramType].forEach(
-						(alias) => {
-						const	layersByAlias = getOrInitChild(aliases, alias, Array);
-
-							addToListIfNotYet(layersByAlias, layer);
-						}
-					);
-				}
+						addToListIfNotYet(layersByAlias, layer);
+					}
+				);
 			}
 
 			PARAM_OPTIONS_GLOBAL.forEach(
@@ -5111,7 +5116,7 @@ async function getProjectViewMenu(project) {
 
 							layer.isUnalterable = !(
 								isContentAlterable
-							||	getPropByNameChain(layer.params, 'copypaste', 'paste')
+							||	getPropByAnyOfNamesChain(layer.params.copypaste, ...PARAM_KEYWORDS_PASTE)
 							||	(
 									layer.isPassThrough
 								// &&	!layer.names.some((name) => colorListNames.includes(name))
@@ -8504,27 +8509,60 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 			if (TESTING_RENDER) addDebugImage(project, img, 'clippingGroupResult: img = getRenderByValues', 'cyan');
 		} else {
 
-		const	addCopyPaste = (
-				skipCopyPaste
-				? null
-				: getPropByNameChain(params, 'copypaste', 'paste')
-			);
-
 		let	layers = layer.layers || null;
 
 //* append copypasted layers to subqueue:
 
-			if (isArray(addCopyPaste)) {
-				if (!isArray(layers)) {
-					layers = (layer.img ? [layer] : []);
-				}
+		let	addCopyPaste = false;
 
-				addCopyPaste.forEach(
-					(alias) => (
-						getPropByNameChain(project, 'layersForCopyPaste', 'copy', alias) || []
-					).forEach(
-						(layer) => addToListIfNotYet(layers, layer)
-					)
+			if (!skipCopyPaste) {
+				PARAM_KEYWORDS_PASTE.forEach(
+					(pasteType) => {
+					const	aliasesToPaste = getPropByNameChain(params, 'copypaste', pasteType);
+
+						if (isArray(aliasesToPaste)) {
+							addCopyPaste = true;
+
+							if (!isArray(layers)) {
+								layers = [layer];
+							}
+
+						const	oldLayersCount = layers.length;
+
+							aliasesToPaste.forEach(
+								(alias) => (
+									getPropByNameChain(project, 'layersForCopyByAlias', alias) || []
+								).forEach(
+									(layer) => addToListIfNotYet(layers, layer)
+								)
+							);
+
+						const	addedLayersCount = layers.length - oldLayersCount;
+
+//* put copypasted layers atop own content:
+
+							if (
+								oldLayersCount > 0
+							&&	addedLayersCount > 0
+							&&	!pasteType.includes('below')
+							) {
+								layers = (
+									layers.slice(oldLayersCount)
+								).concat(
+									layers.slice(0, oldLayersCount)
+								);
+							}
+
+							if (TESTING > 9) console.log(
+								'layers after copypaste:', [
+									layers,
+									'was:', oldLayersCount,
+									'added:', addedLayersCount,
+									'total:', layers.length,
+								]
+							);
+						}
+					}
 				);
 			}
 
@@ -11285,6 +11323,17 @@ const	helpSections = {
 				'code_sample': '[paste={help_clone_alias}]',
 				'text_key': 'paste',
 				'text_replace_values': ['{help_clone_alias}'],
+			}, {
+				'code_sample': '[paste-above=A]',
+				'text_key': 'paste_above',
+				'text_replace_values': [wrap.code.param('[paste]')],
+			}, {
+				'code_sample': '[paste-below=B]',
+				'text_key': 'paste_below',
+				'text_replace_values': [
+					wrap.code.param('[paste]'),
+					wrap.code.param('[paste-above]'),
+				],
 			}, {
 				'code_sample': [
 					'[copy]',
