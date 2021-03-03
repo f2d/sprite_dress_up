@@ -8503,6 +8503,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 			,	{
 					ignoreColors
 				,	clippingGroupWIP: true
+				,	skipCopyPaste
 				}
 			);
 
