@@ -12,6 +12,7 @@
 //* TODO: batch: store (in)validated combination in a Map by filename as key, and combinations to render (each wrapped in object as pointer to Map element and the filename) in a Set. Or make the checking algorithm faster somehow, without bruteforcing cross-product of all combos.
 //* TODO: batch: remember already calculated batch counts and valid lists per project; dict key = joined list of all options and checkboxes.
 //* TODO: batch: clone selection dict via json only for adding to list of valid sets; reuse one dict for all deep checking.
+//* TODO: export: configurable order/visibility of option types in filename.
 
 //* TODO ---------------------- params: ---------------------------------------
 //* TODO: keep all layer-name parameters single-word if possible.
@@ -19,7 +20,7 @@
 //* TODO: outline: more methods.
 //* TODO: wireframe rendering.
 //* TODO: multiselect?
-//* TODO: separate/split: [separated] any marked folder, not only automatic root.
+//* TODO: separate/split: [separate=groupname] any marked folder = add [groupname=N_layername] in filename, for each layer inside that folder.
 //* TODO: colors: fix empty folders like "listname [colors batch]" and "listname [colors] / name".
 //* TODO: colors: add "name1,2,3,etc[gradient-map=N/N%=rgb-N-N-N/N%=next+rgb-N-N-N/avg|max|min|rgb]" to interpolate between selected given color values in given name order using given source RGB (or avg/max/min of them). If too many gradient points (number of names > 2 + number points), ignore leftover points. If too many names, distribute undefined points evenly in the last (top?) stretch of gradient. Autosort points by %value. Color value after percent may be used to insert given color value or calculate value dependent on next/previous point (cycle in passes until all are defined). 0/100% may be used for defining colors; use names for omitted. If no usable color names, do nothing.
 
@@ -258,7 +259,7 @@ const	CONFIG_FILE_PATH = 'config.js'			//* <- declarations-only file to redefine
 	,	'zoom':		/^(?:(?:zoom|scale|x)\W*)(\d[^%]*)%(\d*)$/i
 
 	,	'side':		/^(front|back|reverse(?:\W(.*))?)$/i
-	,	'separate':	/^(separate|split)$/i
+	,	'separate':	/^(separate|split)(?:\W(.*))?$/i
 
 	,	'autocrop':	/^(autocrop)(?:\W(.*))?$/i
 	,	'collage':	/^(collage)(?:\W(.*))?$/i
@@ -3925,7 +3926,30 @@ function getParentLayer(layer, propName, isTrue) {
 	return layer;
 }
 
-function getLayerPath(layer, flags) {
+function getLayerVisibilityParent(layer) {
+	if (layer.copyPastedTo) {
+		return null;
+	}
+
+	return layer.clippingLayer || getParentLayer(layer);
+}
+
+function getLayerChain(layer, getNextLayerCallback) {
+const	layers = [];
+
+	while (layer) {
+		layers.push(layer);
+
+		layer = getNextLayerCallback(layer);
+	}
+
+	return layers.reverse();
+}
+
+function getLayerNestingChain(layer) { return getLayerChain(layer, getParentLayer); }
+function getLayerVisibilityChain(layer) { return getLayerChain(layer, getLayerVisibilityParent); }
+
+function getLayerPathNamesChain(layer, flags) {
 	if (!layer) {
 		return [];
 	}
@@ -3948,19 +3972,7 @@ const	path = (flags.includeSelf ? [layer.name] : []);
 }
 
 function getLayerPathText(layer) {
-	return getLayerPath(layer, {includeSelf: true, asText: true});
-}
-
-function getLayerVisibilityChain(layer) {
-const	layers = [];
-
-	while (layer) {
-		layers.push(layer);
-
-		layer = layer.clippingLayer || getParentLayer(layer);
-	}
-
-	return layers.reverse();
+	return getLayerPathNamesChain(layer, {includeSelf: true, asText: true});
 }
 
 function getLayersTopSeparated(layers) {
@@ -4942,18 +4954,56 @@ async function getProjectViewMenu(project) {
 			}
 
 		const	layersInside = layer.layers;
-		const	aliasesToCopy = getPropByNameChain(params, 'copypaste', 'copy');
+		const	layerCopyParams = params.copypaste;
 
-			if (isArray(aliasesToCopy)) {
-			const	aliases = getOrInitChild(project, 'layersForCopyByAlias');
+			if (isNonNullObject(layerCopyParams)) {
+			const	layerParents = getLayerNestingChain(layer);
+			const	sourcesByAlias = getOrInitChild(project, 'layersCopyPasteSourcesByAlias');
+			const	targetsByAlias = getOrInitChild(project, 'layersCopyPasteTargetsByAlias');
 
-				aliasesToCopy.forEach(
-					(alias) => {
-					const	layersByAlias = getOrInitChild(aliases, alias, Array);
+				for (const paramType in layerCopyParams) {
 
-						addToListIfNotYet(layersByAlias, layer);
+				const	aliases = (
+						paramType === 'copy'
+						? sourcesByAlias
+						: targetsByAlias
+					);
+
+					if (paramType === 'copy') {
+						layer.isCopySource = true;
+					} else {
+						layer.isPasteTarget = true;
+
+//* prevent recursive copypaste, ignore pasting aliases inside any parent labeled as source of that alias:
+
+						layerCopyParams[paramType] = layerCopyParams[paramType].filter(
+							(alias) => !layerParents.some(
+								(layerParent) => {
+								const	aliasesToCopy = getPropByNameChain(
+										layerParent.params
+									,	'copypaste'
+									,	'copy'
+									);
+
+									if (
+										isArray(aliasesToCopy)
+									&&	aliasesToCopy.includes(alias)
+									) {
+										return true;
+									}
+								}
+							)
+						);
 					}
-				);
+
+					layerCopyParams[paramType].forEach(
+						(alias) => {
+						const	layersByAlias = getOrInitChild(aliases, alias, Array);
+
+							addToListIfNotYet(layersByAlias, layer);
+						}
+					);
+				}
 			}
 
 			PARAM_OPTIONS_GLOBAL.forEach(
@@ -8241,13 +8291,43 @@ const	selectBox = getAllByTag('select', project.container).find(
 	return defaultValue;
 }
 
+function isLayerVisibleByCopyPaste(project, layer, values, listName) {
+
+	if (layer.isCopySource) {
+	const	aliases = layer.params.copypaste.copy;
+
+		if (
+			isArray(aliases)
+		&&	aliases.some(
+				(alias) => (
+					getPropByNameChain(project, 'layersCopyPasteTargetsByAlias', alias) || []
+				).some(
+					(targetLayer) => getLayerPathVisibilityByValues(project, targetLayer, values, listName)
+				)
+			)
+		) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
 function getLayerPathVisibilityByValues(project, layer, values, listName) {
 	if (TESTING && !layer.params) {
 		console.error('No params:', [project, layer, values, listName]);
 	}
 
 	if (layer.params.check_order === 'up') {
-		if (getLayerVisibilityChain(layer).some(
+	const	layers = getLayerVisibilityChain(layer);
+
+		if (layers.slice().reverse().some(
+			(layer) => isLayerVisibleByCopyPaste(project, layer, values, listName)
+		)) {
+			return true;
+		}
+
+		if (layers.some(
 			(layer) => !getLayerVisibilityByValues(project, layer, values, listName)
 		)) {
 			return false;
@@ -8257,7 +8337,11 @@ function getLayerPathVisibilityByValues(project, layer, values, listName) {
 			if (!getLayerVisibilityByValues(project, layer, values, listName)) {
 				return false;
 			}
-		} while (layer = layer.clippingLayer || getParentLayer(layer));
+
+			if (isLayerVisibleByCopyPaste(project, layer, values, listName)) {
+				return true;
+			}
+		} while (layer = getLayerVisibilityParent(layer));
 	}
 
 	return true;
@@ -8327,8 +8411,13 @@ function getLayerVisibilityByValues(project, layer, values, listName) {
 let	isVisible = !!(
 		layer.isVisible
 	||	layer.isVisibilityOptional
+	||	layer.copyPastedTo
 	||	layer.params.skip_render
 	);
+
+	if (layer.copyPastedTo) {
+		return getOpacityByAnyName(listName ? [listName] : layer.names);
+	}
 
 	if (layer.isOnlyForOneSide) {
 	const	selectedName = getPropBySameNameChain(values, 'side');
@@ -8391,19 +8480,27 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 		,	PR.nestedLayers.length
 		);
 
+		if (TESTING > 9) console.log(
+			'rendering nested layer at:'
+		,	PR.nestedLayers.length
+		,	PR.nestedLayers.map((v) => v.name).join(' / ')
+		,	PR.nestedLayers
+		);
+
+	const	{ ignoreColors, skipCopyPaste, clippingGroupWIP } = renderParams;
+	const	{ names, params } = layer;
+
+	const	skipRecoloring = !!params.if_only;
 	const	backward = (
 			layer.isOrderedBySide
 		&&	isBackSide
 		);
 
-	const	flipSide = orz(backward ? layer.flipSide : 0);
-
-	const	names = layer.names;
-	const	params = layer.params;
-	const	skipColoring = !!params.if_only;		//* <- check logical visibility, but skip recolor
-	const	ignoreColors = !!renderParams.ignoreColors;	//* <- only care about alpha channel, for mask generation
-	const	skipCopyPaste = !!renderParams.skipCopyPaste;
-	const	clippingGroupWIP = !!renderParams.clippingGroupWIP;
+	const	flipSide = orz(
+			backward
+			? layer.flipSide
+			: 0
+		);
 
 	const	canSaveMergedImage = (
 			!!renderParams.canSaveMergedImage
@@ -8502,8 +8599,8 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 			,	clippingGroupLayers
 			,	{
 					ignoreColors
-				,	clippingGroupWIP: true
 				,	skipCopyPaste
+				,	clippingGroupWIP: true
 				}
 			);
 
@@ -8516,7 +8613,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 		let	addCopyPaste = false;
 
-			if (!skipCopyPaste) {
+			if (skipCopyPaste !== layer) {
 				PARAM_KEYWORDS_PASTE.forEach(
 					(pasteType) => {
 					const	aliasesToPaste = getPropByNameChain(params, 'copypaste', pasteType);
@@ -8532,9 +8629,16 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 							aliasesToPaste.forEach(
 								(alias) => (
-									getPropByNameChain(project, 'layersForCopyByAlias', alias) || []
+									getPropByNameChain(project, 'layersCopyPasteSourcesByAlias', alias) || []
 								).forEach(
-									(layer) => addToListIfNotYet(layers, layer)
+									(linkedLayer) => {
+										if (
+											!linkedLayer.copyPastedTo
+										&&	addToListIfNotYet(layers, linkedLayer)
+										) {
+											linkedLayer.copyPastedTo = layer;
+										}
+									}
 								)
 							);
 
@@ -8572,7 +8676,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 //* get a flat color fill, using the first non-empty value found in associated lists:
 
 				if (
-					!skipColoring
+					!skipRecoloring
 				&&	layer.isColorList
 				) {
 					names.find(
@@ -8656,8 +8760,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 						,	{
 								ignoreColors: (ignoreColors || isToRecolor)
 							,	baseCanvas: canvasCopy
-							,	opacity: (addCopyPaste ? opacity : 0)	//* <- TODO: properly check copypaste visibility
-							,	skipCopyPaste: !!addCopyPaste
+							,	skipCopyPaste: (addCopyPaste ? layer : false)
 							,	canSaveMergedImage: !layer.isUnalterable
 							}
 						);
@@ -8671,6 +8774,16 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 					}
 
 					if (TESTING_RENDER) addDebugImage(project, img, 'folder content result: img = getRenderByValues');
+				}
+
+				if (addCopyPaste) {
+					layers.forEach(
+						(renderedLayer) => {
+							if (renderedLayer.copyPastedTo === layer) {
+								renderedLayer.copyPastedTo = null;
+							}
+						}
+					)
 				}
 			} else {
 
@@ -8699,9 +8812,9 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 						mask = await getRenderByValues(
 							project
 						,	values
-						,	layersToRender.slice(0, indexToRender)	//* <- content after this layer
+						,	layersToRender.slice(0, indexToRender)	//* <- content after/above this layer
 						,	{
-								ignoreColors: true
+								ignoreColors: true		//* <- only care about alpha channel
 							}
 						);
 
@@ -8750,7 +8863,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 //* apply color:
 
 				if (
-					!skipColoring
+					!skipRecoloring
 				&&	!ignoreColors
 				&&	!layer.isColorList	//* <- already got selected color fill
 				) {
