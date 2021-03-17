@@ -552,6 +552,12 @@ const	SPLIT_SEC = 60
 		'show_project_details',
 	]
 
+,	PROJECT_SAVE_ALL_BUTTON_NAMES = [
+		'show_all',
+		'save_all',
+		'save_zip',
+	]
+
 ,	PROJECT_VIEW_CONTROLS = [
 		/*{
 			'header': 'original_view_header',
@@ -575,14 +581,14 @@ const	SPLIT_SEC = 60
 				'left': {
 					'show_all': 'show_png_batch',
 					'save_all': 'save_png_batch',
-					// 'save_zip': 'save_png_batch_zip',
+					'save_zip': 'save_png_batch_zip',
 				},
 				'right': {
 					'show_join': 'show_png_collage',
 					'save_join': 'save_png_collage',
-					// 'stop': 'stop',
+					'stop': 'stop',
 				},
-				'stop': 'stop',
+				// 'stop': 'stop',
 			},
 		},
 		{
@@ -9222,8 +9228,10 @@ async function getOrCreateRenderedImg(project, render) {
 
 			const	msec = canvas.renderingTime;
 
-				img.title = img.alt = (
-					fileName + '.png'
+				img.name = fileName + '.png';
+				img.alt =
+				img.title = (
+					img.name
 				+	TITLE_LINE_BREAK
 				+	'('
 				+		img.width + 'x' + img.height
@@ -9428,8 +9436,18 @@ async function renderAll(project, flags) {
 		flags = {};
 	}
 
-	if (!flags.saveToFile) {
+	if (
+		!flags.saveToFile
+	&&	!flags.saveToZipFile
+	) {
 		flags.showOnPage = true;
+	}
+
+	if (
+		flags.saveToZipFile
+	&&	! await loadLibOnDemandPromise('zip.js')
+	) {
+		return;
 	}
 
 	project.renderBatchCountStartTime = null;
@@ -9458,8 +9476,13 @@ const	valueSets = project.renderBatchSelectedSets || (project.renderBatchSelecte
 async function renderBatch(project, flags, startTime, values, valueSets) {
 let	lastPauseTime = getTimeNow();
 
+const	needWaitBetweenDL = (
+		flags.saveToFile
+	&&	!flags.saveToZipFile
+	&&	!flags.asOneJoinedImage
+	);
+
 const	renderedImages = [];
-const	needWaitBetweenDL = (flags.saveToFile && !flags.asOneJoinedImage);
 const	optionsForNewLines = getNewLineOptionLists(project.options);
 const	setsCountTotal = Object.keys(valueSets).length;
 
@@ -9511,7 +9534,10 @@ let	batchContainer, subContainer;
 			);
 		}
 
-		if (flags.asOneJoinedImage) {
+		if (
+			flags.asOneJoinedImage
+		||	flags.saveToZipFile
+		) {
 			if (!img) {
 				img = await getRenderedImg(project, render);
 			}
@@ -9519,6 +9545,7 @@ let	batchContainer, subContainer;
 			if (
 				img
 			&&	addToListIfNotYet(renderedImages, img)
+			&&	flags.asOneJoinedImage
 			&&	!flags.showOnPage
 			) {
 				subContainer.appendChild(img);
@@ -9582,10 +9609,79 @@ let	batchContainer, subContainer;
 	+	' ms total (excluding pauses)'
 	);
 
-	if (
-		flags.asOneJoinedImage
-	&&	!isStopRequestedAnywhere(project)
-	) {
+	if (isStopRequestedAnywhere(project)) {
+		return;
+	}
+
+	if (flags.saveToZipFile) {
+	const	thisJob = { project, lastPauseTime : getTimeNow() };
+		pendingJobs.add(thisJob);
+
+	let	imagesDone = 0;
+	const	imagesTotal = renderedImages.length;
+	const	onImageAddedProgress = getProgressUpdaterFunction(thisJob, 'project_status_saving_images');
+
+	const	zipFile = new zip.fs.FS();
+		zipFile.compressionLevel = 0;
+
+		onImageAddedProgress(imagesDone, imagesTotal);
+
+		for (const img of renderedImages) {
+		let	content = img.src;
+
+			if (
+				content
+			&&	isString(content)
+			&&	hasPrefix(content, 'blob:')
+			) {
+				content = await getFilePromiseFromURL(content, 'blob');
+			}
+
+			if (TESTING > 9) console.log(
+				'add image to zip file: ' + imagesDone + ' / ' + imagesTotal,
+				[
+					'URI:', img.src,
+					'content type:', content.type || typeof content,
+					'content size:', content.size || content.length,
+				]
+			);
+
+			if (content) {
+				zipFile.root[
+					isBlob(content)
+					? 'addBlob'
+					:
+					isString(content) && hasPrefix(content, 'data:')
+					? 'addData64URI'
+					: 'addText'
+				](img.name, content);
+
+				onImageAddedProgress(++imagesDone, imagesTotal);
+			}
+		}
+
+		onImageAddedProgress(imagesDone, imagesTotal);
+
+	const	isFileSaved = await new Promise(
+			(resolve, reject) => zipFile.exportBlob(
+				(blob) => {
+					try {
+						saveDL(blob, project.fileName + '_' + imagesDone, 'zip', 1);
+						resolve(true);
+
+					} catch (error) {
+						reject(error);
+					}
+				}
+			,	getProgressUpdaterFunction(thisJob, 'project_status_saving_file', true)
+			,	reject
+			)
+		).catch(catchPromiseError);
+
+		pendingJobs.delete(thisJob);
+	}
+
+	if (flags.asOneJoinedImage) {
 
 		function getBatchCanvasSize(rootContainer) {
 		let	x = 0;
@@ -9692,8 +9788,10 @@ let	batchContainer, subContainer;
 					const	endTime = getTimeNow();
 						totalTime = (endTime - startTime);
 
-						img.title = img.alt = (
-							project.fileName + '.png'
+						img.name = project.fileName + '.png';
+						img.alt =
+						img.title = (
+							img.name
 						+	TITLE_LINE_BREAK
 						+	'('
 						+		w + 'x' + h + ', '
@@ -9726,6 +9824,7 @@ let	batchContainer, subContainer;
 
 function showAll(project) {renderAll(project);}
 function saveAll(project) {renderAll(project, {saveToFile: true});}
+function saveZip(project) {renderAll(project, {saveToZipFile: true});}
 function showJoin(project) {renderAll(project, {asOneJoinedImage: true});}
 function saveJoin(project) {renderAll(project, {saveToFile: true, asOneJoinedImage: true});}
 
@@ -10166,7 +10265,7 @@ function updateCheckBox(checkBox, params) {
 
 function updateMenuBatchCount(project, ...args) {
 	if (ADD_BATCH_COUNT_ON_BUTTON) {
-		['show_all', 'save_all'].forEach(
+		PROJECT_SAVE_ALL_BUTTON_NAMES.forEach(
 			(name) => getAllByName(name, project.container).forEach(
 				(button) => {
 				const	label = button.lastElementChild || cre('span', button);
@@ -10462,6 +10561,7 @@ const	resetPrefix = 'reset_to_';
 	if (action === 'save') saveImg(project); else
 	if (action === 'show_all') showAll(project); else
 	if (action === 'save_all') saveAll(project); else
+	if (action === 'save_zip') saveZip(project); else
 	if (action === 'show_join') showJoin(project); else
 	if (action === 'save_join') saveJoin(project); else
 	if (action === 'save_ora') saveProject(project); else
