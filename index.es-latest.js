@@ -11,8 +11,7 @@
 //* TODO: <select multiple> <optgroup> <option>?</option> </optgroup> </select>.
 //* TODO: batch: store (in)validated combination in a Map by filename as key, and combinations to render (each wrapped in object as pointer to Map element and the filename) in a Set. Or make the checking algorithm faster somehow, without bruteforcing cross-product of all combos.
 //* TODO: batch: remember already calculated batch counts and valid lists per project; dict key = joined list of all options and checkboxes.
-//* TODO: batch: clone selection dict via json only for adding to list of valid sets; reuse one dict for all deep checking.
-//* TODO: export: configurable order/visibility of option groups in filename; but keep option order in each group as found in project file.
+//* TODO: export: configurable order of option groups in filename; but keep option order in each group as found in project file.
 //* TODO: export: all parts one by one with all other parts hidden.
 
 //* TODO ---------------------- params: ---------------------------------------
@@ -7320,17 +7319,10 @@ const	values = {};
 
 async function getAllValueSets(project, values, startTime, flags) {
 
-	async function goDeeper(optionLists, partialValueSet) {
-
-	const	[ sectionName, listName, optionNames ] = optionLists[0];
-	const	partialValueSetText = JSON.stringify(partialValueSet || {});
-	const	optionsLeft = (
-			optionLists.length > 1
-			? optionLists.slice(1)
-			: null
-		);
-
+	async function goDeeper(optionListIndex) {
 	let	isGoingDeeper = true;
+
+	const	[ sectionName, listName, optionNames ] = optionLists[optionListIndex];
 
 		for (const optionName of optionNames) {
 			aborted = (
@@ -7352,25 +7344,31 @@ async function getAllValueSets(project, values, startTime, flags) {
 				return false;
 			}
 
-		let	values = JSON.parse(partialValueSetText);
-			getOrInitChild(values, sectionName)[listName] = optionName;
+			valueSetToCheck[sectionName][listName] = optionName;
 
-			if (optionsLeft) {
-				isGoingDeeper = await goDeeper(optionsLeft, values);
-			} else
-			if (isSetOfValuesOK(project, values = getSetOfRelevantValues(project, values))) {
-			const	fileName = getKeyForValueSet(project, values);
+			if (optionListIndex < maxListIndex) {
+				isGoingDeeper = await goDeeper(optionListIndex + 1);
+			} else {
+			const	valueSet = getSetOfRelevantValues(project, valueSetToCheck);
+		//	const	isValid = isSetOfValuesOK(project, valueSet);
 
-				if (getOnlyNames) {
-					if (addToListIfNotYet(valueSets, fileName)) {
-						++addedCount;
-					}
-				} else
-				if (!(fileName in valueSets)) {
-					valueSets[fileName] = values;
-
-					++addedCount;
-				}
+				if (TESTING > 9) console.log(
+					[
+						'goDeeper:',
+						optionListIndex,
+						'/',
+						maxListIndex,
+						// '=',
+						// isValid,
+						':',
+						addedCount,
+						'added',
+					].join(' '),
+					[
+						JSON.stringify(valueSetToCheck),
+						JSON.stringify(valueSet),
+					]
+				);
 
 				if (
 					ADD_PAUSE_AT_INTERVALS
@@ -7393,6 +7391,21 @@ async function getAllValueSets(project, values, startTime, flags) {
 
 					lastPauseTime = getTimeNow();
 				}
+
+			//	if (!isValid) continue;
+
+			const	fileName = getKeyForValueSet(project, valueSet);
+
+				if (getOnlyNames) {
+					if (addToListIfNotYet(valueSets, fileName)) {
+						++addedCount;
+					}
+				} else
+				if (!(fileName in valueSets)) {
+					valueSets[fileName] = valueSet;
+
+					++addedCount;
+				}
 			}
 		}
 
@@ -7412,10 +7425,11 @@ const	{
 	}
 
 const	optionLists = [];
-
+const	valueSetToCheck = {};
 let	valueSets = getOnlyNames ? [] : {};
 let	aborted = false;
 let	addedCount = 0;
+let	maxListIndex = 0;
 let	maxPossibleCount = 1;
 let	section, optionNames, lastPauseTime;
 
@@ -7439,11 +7453,23 @@ const	thisJob = { startTime, optionLists };
 	pendingJobs.add(thisJob);
 
 	if (optionLists.length > 0) {
+		maxListIndex = optionLists.length - 1;
+
+		for (const sectionName in values) {
+			valueSetToCheck[sectionName] = {};
+		}
+
+		if (TESTING > 9) console.log(
+			'getAllValueSets:',
+			valueSetToCheck,
+			optionLists.map(String),
+		);
+
 		if (ADD_PAUSE_AT_INTERVALS) {
 			lastPauseTime = startTime || getTimeNow();
 		}
 
-		if (! await goDeeper(optionLists)) {
+		if (! await goDeeper(0)) {
 			valueSets = getOnlyNames ? null : {};
 		}
 	}
