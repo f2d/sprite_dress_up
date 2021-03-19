@@ -12,7 +12,8 @@
 //* TODO: batch: store (in)validated combination in a Map by filename as key, and combinations to render (each wrapped in object as pointer to Map element and the filename) in a Set. Or make the checking algorithm faster somehow, without bruteforcing cross-product of all combos.
 //* TODO: batch: remember already calculated batch counts and valid lists per project; dict key = joined list of all options and checkboxes.
 //* TODO: batch: clone selection dict via json only for adding to list of valid sets; reuse one dict for all deep checking.
-//* TODO: export: configurable order/visibility of option types in filename.
+//* TODO: export: configurable order/visibility of option groups in filename; but keep option order in each group as found in project file.
+//* TODO: export: all parts one by one with all other parts hidden.
 
 //* TODO ---------------------- params: ---------------------------------------
 //* TODO: keep all layer-name parameters single-word if possible.
@@ -38,11 +39,9 @@
 //* TODO: revoke any image blob urls right after image element's loading, without ever tracking/listing them?
 
 //* TODO ---------------------- export: ---------------------------------------
-//* TODO: save PNG batch in ZIP.
 //* TODO: save opened project as restructured ORA/PSD. Try https://github.com/Agamnentzar/ag-psd
 //* TODO: save rendered image as WebP. https://bugs.chromium.org/p/chromium/issues/detail?id=170565#c77 - toDataURL/toBlob quality 1.0 = lossless.
 //* TODO: make exported project files identically reproducible?
-//* TODO: add button to export all parts one by one with all other parts hidden.
 
 //* TODO ---------------------- other: ----------------------------------------
 //* TODO: global job list for WIP cancelling instead of spaghetti-coded flag checks.
@@ -98,13 +97,14 @@ var	exampleRootDir = ''
 ,	ADD_PAUSE_AT_INTERVALS		= true	//* <- let UI update when loading files, rendering images, counting batch combinations, etc.
 ,	ADD_PAUSE_BEFORE_EACH_FOLDER	= false	//* <- can take ~1-5x longer than pause at intervals, but UI response is not very good.
 ,	ADD_PAUSE_BEFORE_EACH_LAYER	= false	//* <- can take ~1.5-2x longer than pause at folders, but UI response does not improve much.
-,	ADD_WIP_TEXT_ROLL		= false
+,	ADD_WIP_TEXT_ROLL		= false	//* <- rotating stick symbol, does not look good in tabs
 ,	ASK_BEFORE_EXIT_IF_OPENED_FILES	= true	//* <- this is annoying and would not be needed if big files could load fast.
 ,	CACHE_UNALTERABLE_FOLDERS_MERGED	= true	//* <- not much opportunity if almost everything is recolored or passthrough.
 ,	CACHE_UNALTERABLE_IMAGES_TRIMMED	= false	//* <- images are compressed faster by canvas API, when stored as PNG.
 ,	DOWNSCALE_BY_MAX_FACTOR_FIRST	= true	//* <- other way (starting with partial factor) is not better, probably worse.
 ,	EXAMPLE_NOTICE			= false	//* <- show the warning near the list of files.
 ,	FILE_NAME_ADD_PARAM_KEY		= true
+,	FILE_NAME_OMIT_SINGLE_OPTIONS	= true
 ,	GET_LAYER_IMAGE_FROM_BITMAP	= true
 ,	LOCALIZED_CASE_BY_CROSS_COUNT	= false	//* <- determine word case by product of all numbers in args; if not, then by the last number.
 ,	PRELOAD_ALL_LAYER_IMAGES	= false
@@ -139,24 +139,22 @@ var	exampleRootDir = ''
 //* Create type-checking functions, e.g. "isString()" or "isImageElement()":
 //* Source: https://stackoverflow.com/a/17772086
 [
-	// 'AsyncFunction',	//* <- it maybe better to get just 'Function' from end to match this
-	'Array',
-	'ArrayBuffer',
+	'Array',	//* <- matches anything with 'Array' at the end, e.g. 'Uint8Array'
 	'Blob',
+	'CanvasElement',
 	'Date',
-	'Function',
+	'Function',	//* <- matches anything with 'Function' at the end, e.g. 'AsyncFunction'
 	'ImageData',
+	'ImageElement',	//* <- matches anything with 'ImageElement' at the end, e.g. 'HTMLImageElement'
 	'Number',
 	'Promise',
 	'RegExp',
+	'SelectElement',
 	'String',
-	'HTMLCanvasElement',
-	'HTMLImageElement',
-	'HTMLSelectElement',
 ].forEach(
 	function (typeName) {
 		window[
-			'is' + typeName.replace('HTML', '')
+			'is' + typeName
 		] = function (value) {
 			return (toString.call(value).slice(-1 - typeName.length, -1) === typeName);
 		};
@@ -263,13 +261,14 @@ const	CONFIG_FILE_PATH = 'config.js'			//* <- declarations-only file to redefine
 
 	,	'autocrop':	/^(autocrop)(?:\W(.*))?$/i
 	,	'collage':	/^(collage)(?:\W(.*))?$/i
-	,	'layout':	/^(inline|newline|rows|columns)$/i
+	,	'layout':	/^(?:(inline|rows)|(newline|columns))$/i
+
+	,	'batch':	/^(?:(single|no-batch)|(batch|batched))?$/i
+	,	'prefix':	/^(?:(prefix|prefixed)|(unprefixed|no-prefix))?$/i
+	,	'option':	/^(?:(omitable|(?:omit|no)-single(?:-name)?)|(unomitable|(?:add-|)single(?:-name)?))$/i
 
 	,	'multi_select':	/^(optional|x(\d[\d+-]*))$/i
 	,	'preselect':	/^(preselect|initial|last)$/i
-	,	'batch':	/^(batch|no-batch|single)?$/i
-
-	,	'no_prefix':	/^(no-prefix)$/i
 	}
 
 ,	regLayerBlendModePass	= /^pass[-through]*$/i
@@ -494,19 +493,18 @@ const	SPLIT_SEC = 60
 	}
 
 ,	SWITCH_CLASS_BY_INDEX = ['unchecked', 'checked']
-,	SWITCH_CLASS_BY_TYPE = {
-		'batch': ['single', 'all']
-	,	'layout': ['inline', 'newline']
-	}
-
 ,	SWITCH_NAMES_BY_TYPE = {
-		'batch': ['single', 'batch']
+		'batch': ['single', 'batched']
 	,	'layout': ['inline', 'newline']
+	,	'prefix': ['prefixed', 'unprefixed']
+	,	'option': ['omitable', 'unomitable']
 	}
 
 ,	SWITCH_NAMES_DEFAULT = {
-		'batch': 'batch'
+		'batch': 'batched'
 	,	'layout': 'inline'
+	,	'prefix': 'prefixed'
+	,	'option': 'omitable'
 	}
 
 ,	PROJECT_OPTION_GROUPS = [
@@ -578,12 +576,12 @@ const	SPLIT_SEC = 60
 		{
 			'header': 'batch_view_header',
 			'buttons': {
-				'left': {
+				'separate': {
 					'show_all': 'show_png_batch',
 					'save_all': 'save_png_batch',
 					'save_zip': 'save_png_batch_zip',
 				},
-				'right': {
+				'joined': {
 					'show_join': 'show_png_collage',
 					'save_join': 'save_png_collage',
 					'stop': 'stop',
@@ -594,10 +592,24 @@ const	SPLIT_SEC = 60
 		{
 			'header': 'reset_header',
 			'buttons': {
-				'reset_to_init': 'reset_to_init',
-				'reset_to_top': 'reset_to_top',
-				'reset_to_bottom': 'reset_to_bottom',
-				'reset_to_empty': 'reset_to_empty',
+				'options': {
+					'reset_options_to_init': '',
+					'reset_options_to_top': '',
+					'reset_options_to_bottom': '',
+					'reset_options_to_empty': '',
+				},
+				'batching': {
+					'reset_switch_batch_to_batched': '',
+					'reset_switch_batch_to_single': '',
+					'reset_switch_layout_to_inline': '',
+					'reset_switch_layout_to_newline': '',
+				},
+				'naming': {
+					'reset_switch_option_to_unomitable': '',
+					'reset_switch_option_to_omitable': '',
+					'reset_switch_prefix_to_prefixed': '',
+					'reset_switch_prefix_to_unprefixed': '',
+				},
 			},
 		},
 	]
@@ -2872,6 +2884,7 @@ function getImagePromiseFromCanvasToBlob(canvas, trackList, mimeType, quality, i
 					getErrorFromEvent(evt, 'Canvas to blob: image loading failed.', reject);
 				};
 
+				img.type = blob.type.split('/').pop();
 				img.src = url;
 			}
 		);
@@ -5401,7 +5414,7 @@ async function getProjectViewMenu(project) {
 					params[implicitName] = isImplied;
 					params[explicitName] = !isImplied;
 
-				const	switchNames = SWITCH_CLASS_BY_TYPE[switchType];
+				const	switchNames = SWITCH_NAMES_BY_TYPE[switchType];
 				const	td = cre('td', tr);
 				const	label = cre('label', td);
 				const	checkBox = cre('input', label);
@@ -5414,14 +5427,17 @@ async function getProjectViewMenu(project) {
 
 					for (const index in switchNames) {
 					const	switchName = switchNames[index];
+					const	textKey = 'switch_' + switchType + '_' + switchName;
 					const	button = cre('div', label);
 
 						button.className = switchType + '-' + switchName + ' ' + SWITCH_CLASS_BY_INDEX[index];
 						button.title = (
-							getLocalizedText('switch_' + switchName)
-						+	':'
+							'['
+						+	getLocalizedText(textKey)
+						+	']'
 						+	TITLE_LINE_BREAK
-						+	getLocalizedText('hint_switch_' + switchName)
+						+	TITLE_LINE_BREAK
+						+	getLocalizedText('hint_' + textKey)
 						);
 					}
 				}
@@ -5917,6 +5933,9 @@ const	params = getOrInitChild(layer, 'params');
 		param_types:
 		for (const paramType in regLayerNameParamType) if (match = param.match(regLayerNameParamType[paramType])) {
 
+			if (paramType in SWITCH_NAMES_BY_TYPE) {
+				params[SWITCH_NAMES_BY_TYPE[paramType][match[1] ? 0 : 1]] = true;
+			} else
 			if (NAME_PARTS_FOLDERS.includes(paramType)) {
 				layer.type = paramType;
 				layer.isVisibilityOptional = true;
@@ -6214,9 +6233,6 @@ const	params = getOrInitChild(layer, 'params');
 			const	key = 'last';
 				params[param.includes(key) ? key : paramType] = true;
 			} else
-			if (paramType === 'batch') {
-				params[param === paramType ? paramType : 'single'] = true;
-			} else
 			if (paramType === 'autocrop') {
 			const	values = (
 					(match[2] || DEFAULT_AUTOCROP)
@@ -6279,9 +6295,6 @@ const	params = getOrInitChild(layer, 'params');
 						}
 					}
 				);
-			} else
-			if (paramType === 'layout') {
-				params[param === 'rows' || param === 'newline' ? 'newline' : 'inline'] = true;
 			} else
 			if (paramType === 'color_code') {
 				params[paramType] = getRGBAFromColorCodeMatch(match);
@@ -7237,7 +7250,25 @@ const	optionItem = getAllByTag('option', selectBox).find(
 	return selectBox.value;
 }
 
+async function setAllSwitches(project, key, value) {
+
+	getAllByType('checkbox', project.container).forEach(
+		(checkBox) => {
+			if (checkBox.getAttribute('data-switch-type') === key) {
+				checkBox.checked = (SWITCH_NAMES_BY_TYPE[key].indexOf(value) > 0);
+
+				updateCheckBox(checkBox);
+			}
+		}
+	);
+
+	if (key === 'batch') {
+		updateBatchCount(project);
+	}
+}
+
 async function setAllValues(project, targetPosition) {
+
 	getAllByTag('select', project.container).forEach(
 		(selectBox) => selectValueByPos(selectBox, targetPosition)
 	);
@@ -9089,6 +9120,10 @@ function getFileNameByValues(project, values, flags) {
 		function getProcessedListName(listName) {
 		let	optionName = section[listName];
 
+			if (flags.addEverything) {
+				return listName + '=' + optionName;
+			}
+
 			if (!optionName.length) {
 				return;
 			}
@@ -9096,13 +9131,19 @@ function getFileNameByValues(project, values, flags) {
 		const	params = getPropByNameChain(project, 'options', sectionName, listName, 'params');
 
 			if (params) {
-				if (flags.checkSelectedValue) {
-					if (
+				if (
+					FILE_NAME_OMIT_SINGLE_OPTIONS
+				&&	flags.checkSelectedValue
+				&&	(
+						params.omitable
+					||	!(params.unomitable || params.no_single)
+					)
+				&&	(
 						params.single
-					||	!params.batch
-					) {
-						return;
-					}
+					||	!(params.batched || params.batch)
+					)
+				) {
+					return;
 				}
 
 				if (flags.skipDefaultPercent) {
@@ -9127,13 +9168,13 @@ function getFileNameByValues(project, values, flags) {
 				}
 
 				if (
-					flags.addAllListNames
-				||	(
-						FILE_NAME_ADD_PARAM_KEY
-					&&	!params.no_prefix
+					FILE_NAME_ADD_PARAM_KEY
+				&&	(
+						params.prefixed
+					||	!(params.unprefixed || params.no_prefix)
 					)
 				) {
-					optionName = listName + '=' + optionName;
+					return listName + '=' + optionName;
 				}
 			}
 
@@ -9190,7 +9231,7 @@ function getKeyForValueSet(project, values) {
 	return getFileNameByValuesToSave(
 		project
 	,	values
-	,	{ addAllListNames: true }
+	,	{ addEverything: true }
 	);
 }
 
@@ -9210,8 +9251,8 @@ const	refValues = render.refValues || (
 			)
 		)
 	);
-const	refName   = render.refName   || (render.refName   = getFileNameByValuesToSave(project, refValues));
-const	fileName  = render.fileName  || (render.fileName  = getFileNameByValuesToSave(project, values));
+const	refName   = render.refName   || (render.refName   = getKeyForValueSet(project, refValues));
+const	fileName  = render.fileName  || (render.fileName  = getKeyForValueSet(project, values));
 const	img       = render.img       || (render.img       = await getOrCreateRenderedImg(project, render));
 
 	return render;
@@ -9228,7 +9269,7 @@ async function getOrCreateRenderedImg(project, render) {
 
 			const	msec = canvas.renderingTime;
 
-				img.name = fileName + '.png';
+				img.name = fileName + '.' + (img.type || 'png');
 				img.alt =
 				img.title = (
 					img.name
@@ -9542,13 +9583,25 @@ let	batchContainer, subContainer;
 				img = await getRenderedImg(project, render);
 			}
 
-			if (
-				img
-			&&	addToListIfNotYet(renderedImages, img)
-			&&	flags.asOneJoinedImage
-			&&	!flags.showOnPage
-			) {
-				subContainer.appendChild(img);
+			if (img) {
+				if (flags.saveToZipFile) {
+					img.nameToSave = getFileNameByValuesToSave(
+						project,
+						values,
+						{
+							checkSelectedValue: true,
+							skipDefaultPercent: true,
+						}
+					) + '.' + (img.type || 'png');
+				}
+
+				if (
+					addToListIfNotYet(renderedImages, img)
+				&&	flags.asOneJoinedImage
+				&&	!flags.showOnPage
+				) {
+					subContainer.appendChild(img);
+				}
 			}
 		} else
 		if (flags.saveToFile) {
@@ -9614,15 +9667,15 @@ let	batchContainer, subContainer;
 	}
 
 	if (flags.saveToZipFile) {
+	const	zipFile = new zip.fs.FS();
+		zipFile.compressionLevel = 0;
+
 	const	thisJob = { project, lastPauseTime : getTimeNow() };
 		pendingJobs.add(thisJob);
 
 	let	imagesDone = 0;
 	const	imagesTotal = renderedImages.length;
 	const	onImageAddedProgress = getProgressUpdaterFunction(thisJob, 'project_status_saving_images');
-
-	const	zipFile = new zip.fs.FS();
-		zipFile.compressionLevel = 0;
 
 		onImageAddedProgress(imagesDone, imagesTotal);
 
@@ -9654,13 +9707,11 @@ let	batchContainer, subContainer;
 					isString(content) && hasPrefix(content, 'data:')
 					? 'addData64URI'
 					: 'addText'
-				](img.name, content);
+				](img.nameToSave || img.name, content);
 
 				onImageAddedProgress(++imagesDone, imagesTotal);
 			}
 		}
-
-		onImageAddedProgress(imagesDone, imagesTotal);
 
 	const	isFileSaved = await new Promise(
 			(resolve, reject) => zipFile.exportBlob(
@@ -9788,7 +9839,7 @@ let	batchContainer, subContainer;
 					const	endTime = getTimeNow();
 						totalTime = (endTime - startTime);
 
-						img.name = project.fileName + '.png';
+						img.name = project.fileName + '.' + (img.type || 'png');
 						img.alt =
 						img.title = (
 							img.name
@@ -9814,7 +9865,12 @@ let	batchContainer, subContainer;
 					}
 
 					if (flags.saveToFile) {
-						saveDL(img.src, project.fileName + '_' + renderedImages.length, 'png', 1);
+						saveDL(
+							img.src
+						,	project.fileName + '_' + renderedImages.length
+						,	img.type || 'png'
+						,	1
+						);
 					}
 				}
 			}
@@ -9879,7 +9935,11 @@ let	img;
 		img = render.img;
 
 		if (img) {
-			saveDL(img.src, fileName || render.fileName, 'png');
+			saveDL(
+				img.src
+			,	fileName || render.fileName
+			,	img.type || 'png'
+			);
 		}
 	} catch (error) {
 		logError(error, arguments);
@@ -10551,27 +10611,41 @@ let	button = evt;
 
 const	container = getProjectContainer(button);
 const	project = container.project;
-const	action = button.name;
-const	resetPrefix = 'reset_to_';
+const	action = String(button.name);
+const	actionWords = action.split(regNonAlphaNum);
 
-	if (action === 'stop') {
+	if (actionWords.includes('stop')) {
 		project.isStopRequested = true;
 	} else
-	if (action === 'show') showImg(project); else
-	if (action === 'save') saveImg(project); else
-	if (action === 'show_all') showAll(project); else
-	if (action === 'save_all') saveAll(project); else
-	if (action === 'save_zip') saveZip(project); else
-	if (action === 'show_join') showJoin(project); else
-	if (action === 'save_join') saveJoin(project); else
-	if (action === 'save_ora') saveProject(project); else
-	if (hasPrefix(action, resetPrefix)) {
-		setAllValues(project, action.substr(resetPrefix.length));
-	} else
-	if (action === 'show_project_details') {
-		console.log(project);
+	if (actionWords.includes('show')) {
+		if (actionWords.includes('details')) {
+			console.log(project);
 
-		alert(getLocalizedText('see_console'));
+			alert(getLocalizedText('see_console'));
+		} else
+		if (actionWords.includes('all')) showAll(project); else
+		if (actionWords.includes('join')) showJoin(project);
+		else showImg(project);
+	} else
+	if (actionWords.includes('save')) {
+		if (actionWords.includes('ora')) saveProject(project); else
+		if (actionWords.includes('zip')) saveZip(project); else
+		if (actionWords.includes('all')) saveAll(project); else
+		if (actionWords.includes('join')) saveJoin(project);
+		else saveImg(project);
+	} else
+	if (actionWords.includes('reset')) {
+	const	toIndex = actionWords.indexOf('to');
+
+		if (actionWords.includes('switch')) setAllSwitches(
+			project
+		,	actionWords[toIndex - 1]
+		,	actionWords[toIndex + 1]
+		); else
+		if (actionWords.includes('options')) setAllValues(
+			project
+		,	actionWords[toIndex + 1]
+		);
 	} else {
 		console.error(
 			'Unknown action: ' + action
@@ -11504,6 +11578,7 @@ const	helpSections = {
 			}, {
 				'code_sample': [
 					wrap.span.name('{help_code_list_name}') + '[batch]',
+					wrap.span.name('{help_code_list_name}') + '[batched]',
 				],
 				'text_key': 'all',
 			}, {
@@ -11512,6 +11587,20 @@ const	helpSections = {
 					wrap.span.name('{help_code_list_name}') + '[single]',
 				],
 				'text_key': 'single',
+			}, {
+				'code_sample': [
+					wrap.span.name('{help_code_list_name}') + '[omitable]',
+					wrap.span.name('{help_code_list_name}') + '[omit-single]',
+					wrap.span.name('{help_code_list_name}') + '[no-single-name]',
+				],
+				'text_key': 'omitable',
+			}, {
+				'code_sample': [
+					wrap.span.name('{help_code_list_name}') + '[unomitable]',
+					wrap.span.name('{help_code_list_name}') + '[add-single]',
+					wrap.span.name('{help_code_list_name}') + '[single-name]',
+				],
+				'text_key': 'unomitable',
 			}, {
 				'code_sample': [
 					wrap.span.name('{help_code_list_name}') + '[inline]',
@@ -11865,12 +11954,22 @@ const	helpSections = {
 						wrap.span.name('{help_code_option_name}'),
 						'[preselect]',
 					],
-
 				],
 				'text_key': 'preselect',
 			}, {
-				'code_sample': '[no-prefix]' + wrap.span.name('{help_code_list_name}'),
+				'code_sample': [
+					wrap.span.name('{help_code_list_name}') + '[prefix]',
+					wrap.span.name('{help_code_list_name}') + '[prefixed]',
+				],
+				'text_key': 'prefix',
+				'text_replace_values': '"{filename_option_group}"',
+			}, {
+				'code_sample': [
+					wrap.span.name('{help_code_list_name}') + '[no-prefix]',
+					wrap.span.name('{help_code_list_name}') + '[unprefixed]',
+				],
 				'text_key': 'no_prefix',
+				'text_replace_values': '"{filename_option}"',
 			}, {
 				'code_sample': '[no-render]',
 				'text_key': 'no_render',

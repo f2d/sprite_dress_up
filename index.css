@@ -584,17 +584,21 @@ label:hover {
 	height: 1.25em;
 }
 .project-options label :not(input) {
-	display: block;
+	display: flex;
 	height: 100%;
+	align-items: center;
 	text-align: center;
 }
 .project-options label :not(input):not(:empty) {
 	min-width: 4em;
 	padding: 0 0.5em;
 }
-.project-options .batch-all::before {		content: "\2E2C";}
-.project-options .batch-all {			background-color: #eda;}
-.project-options .batch-all:hover {		background-color: #feb;}
+.project-options label :not(input)::before {
+	width: 100%;
+}
+.project-options .batch-batched::before {	content: "\2E2C";}
+.project-options .batch-batched {		background-color: #eda;}
+.project-options .batch-batched:hover {		background-color: #feb;}
 
 .project-options .batch-single::before {	content: "\2E30";}
 .project-options .batch-single {		background-color: #ace;}
@@ -607,6 +611,22 @@ label:hover {
 .project-options .layout-newline::before {	content: "\22EE";}
 .project-options .layout-newline {		background-color: #cea;}
 .project-options .layout-newline:hover {	background-color: #dfc;}
+
+.project-options .prefix-unprefixed::before {	content: "[o]"; font-family: monospace;}
+.project-options .prefix-unprefixed {		background-color: #bbb;}
+.project-options .prefix-unprefixed:hover {	background-color: #ccc;}
+
+.project-options .prefix-prefixed::before {	content: "[=]"; font-family: monospace;}
+.project-options .prefix-prefixed {		background-color: #ace;}
+.project-options .prefix-prefixed:hover {	background-color: #bdf;}
+
+.project-options .option-omitable::before {	content: "[-]"; font-family: monospace;}
+.project-options .option-omitable {		background-color: #ace;}
+.project-options .option-omitable:hover {	background-color: #bdf;}
+
+.project-options .option-unomitable::before {	content: "[+]"; font-family: monospace;}
+.project-options .option-unomitable {		background-color: #8cd;}
+.project-options .option-unomitable:hover {	background-color: #9df;}
 
 .project-options label input:disabled ~ :not(input):hover,
 .project-options label input:disabled ~ :not(input) {
