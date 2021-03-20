@@ -20,7 +20,8 @@
 //* TODO: outline: more methods.
 //* TODO: wireframe rendering.
 //* TODO: multiselect?
-//* TODO: separate/split: [separate=groupname] any marked folder = add [groupname=N_layername] in filename, for each layer inside that folder.
+//* TODO: separate/split: [separate=groupname] any marked folder = add [groupname=(N)_layername] in filename, for each layer inside that folder.
+//* TODO: separate/split: [separate-num=groupname] -> "groupname_(N)_variant", [separate-equal=groupname] -> "groupname=variant".
 //* TODO: colors: fix empty folders like "listname [colors batch]" and "listname [colors] / name".
 //* TODO: colors: add "name1,2,3,etc[gradient-map=N/N%=rgb-N-N-N/N%=next+rgb-N-N-N/avg|max|min|rgb]" to interpolate between selected given color values in given name order using given source RGB (or avg/max/min of them). If too many gradient points (number of names > 2 + number points), ignore leftover points. If too many names, distribute undefined points evenly in the last (top?) stretch of gradient. Autosort points by %value. Color value after percent may be used to insert given color value or calculate value dependent on next/previous point (cycle in passes until all are defined). 0/100% may be used for defining colors; use names for omitted. If no usable color names, do nothing.
 
@@ -8579,6 +8580,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 		if (
 			!clippingGroupWIP
 		&&	!ignoreColors
+		&&	(layer.parent !== layersToRenderOne)
 		) {
 			clippingGroupLayers = [];
 
@@ -9003,6 +9005,10 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 		return;
 	}
 
+	if (!isNonNullObject(renderParams)) {
+		renderParams = {};
+	}
+
 let	layer, layersToRenderOne;
 
 	if (project.rendering) {
@@ -9043,10 +9049,6 @@ let	layer, layersToRenderOne;
 		,	nestedLayers: []
 		,	colors: {}
 		};
-	}
-
-	if (!isNonNullObject(renderParams)) {
-		renderParams = {};
 	}
 
 let	layersToRender = layersToRenderOne || nestedLayersBatch || project.layers;
