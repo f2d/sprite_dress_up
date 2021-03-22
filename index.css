@@ -565,8 +565,10 @@ label:hover {
 	width: 100%;
 	min-width: 8em;
 }
-.project-options select {
+.project-options .option-select {
 	max-width: 10em;
+}
+.project-options select {
 	border-width: 0.0625em;
 }
 .project-options select,
