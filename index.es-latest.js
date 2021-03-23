@@ -168,12 +168,12 @@ const getFlatArray = (
 
 //* modern way:
 
-	? (array, maxDepth) => Array.prototype.flat.call(array, isNaN(maxDepth) ? Infinity : maxDepth)
+	? (array, maxDepth) => Array.prototype.flat.call(array, isRealNumber(maxDepth) ? maxDepth : Infinity)
 
 //* legacy way:
 
 	: (array, maxDepth) => {
-		if (isNaN(maxDepth)) {
+		if (!isRealNumber(maxDepth)) {
 			maxDepth = Infinity;
 		}
 
@@ -234,40 +234,40 @@ const	CONFIG_FILE_PATH = 'config.js'			//* <- declarations-only file to redefine
 ,	regColorCode		= /^(?:(rgba?)\W*|(hex)\W*|(#))(\w.*?)$/i
 
 ,	regLayerNameParamType = {
-		'skip':		/^(skip)$/i
-	,	'skip_render':	/^(skip|no)-(render)$/i
-	,	'check_order':	/^(?:(?:check|top|bottom)\W+)*(down|up)$/i	//* <- switch for speed/complexity testing, not useful
-	,	'none':		/^(none)$/i
-	,	'if_only':	/^(if|in)$/i
-	,	'not':		/^(\!|not?)$/i
-	,	'any':		/^(\?|any|some)$/i
+		'skip'		: /^(skip)$/i
+	,	'skip_render'	: /^(skip|no)-(render)$/i
+	,	'check_order'	: /^(?:(?:check|top|bottom)\W+)*(down|up)$/i	//* <- switch for speed/complexity testing, not useful
+	,	'none'		: /^(none)$/i
+	,	'if_only'	: /^(if|in)$/i
+	,	'not'		: /^(\!|not?)$/i
+	,	'any'		: /^(\?|any|some)$/i
 
-	,	'copypaste':	/^(copy|paste(?:-(?:above|below))?)(?:\W(.*))?$/i
-	,	'color_code':	regColorCode
+	,	'copypaste'	: /^(copy|paste(?:-(?:above|below))?)(?:\W(.*))?$/i
+	,	'color_code'	: regColorCode
 
-	,	'colors':	/^(colou?r)s$/i
-	,	'parts':	/^(option|part|type)s$/i
+	,	'colors'	: /^(colou?r)s$/i
+	,	'parts'		: /^(option|part|type)s$/i
 
-	,	'paddings':	/^(outline|pad[ding]*)$/i
-	,	'radius':	/^(.*?\d.*)px(?:\W(.*))?$/i
-	// ,	'wireframe':	/^(?:wire\W*)?(frame|fill)$/i
+	,	'paddings'	: /^(outline|pad[ding]*)$/i
+	,	'radius'	: /^(.*?\d.*)px(?:\W(.*))?$/i
+	// ,	'wireframe'	: /^(?:wire\W*)?(frame|fill)$/i
 
-	,	'opacities':	/^(?:(?:opacit[yies]*)\W*)?(\d[^%]*)%(\d*)$/i
-	,	'zoom':		/^(?:(?:zoom|scale|x)\W*)(\d[^%]*)%(\d*)$/i
+	,	'opacities'	: /^(?:(?:opacit[yies]*)\W*)?(\d[^%]*)%(\d*)$/i
+	,	'zoom'		: /^(?:(?:zoom|scale|x)\W*)(\d[^%]*)%(\d*)$/i
 
-	,	'side':		/^(front|back|reverse(?:\W(.*))?)$/i
-	,	'separate':	/^((?:separate|split)\w*)(?:-((e)?\w*))?(?:\W(.*))?$/i
+	,	'side'		: /^(front|back|reverse(?:\W(.*))?)$/i
+	,	'separate'	: /^((?:separate|split)\w*)(?:-((e)?\w*))?(?:\W(.*))?$/i
 
-	,	'autocrop':	/^(autocrop)(?:\W(.*))?$/i
-	,	'collage':	/^(collage)(?:\W(.*))?$/i
-	,	'layout':	/^(?:(inline|rows)|(newline|columns))$/i
+	,	'autocrop'	: /^(autocrop)(?:\W(.*))?$/i
+	,	'collage'	: /^(collage)(?:\W(.*))?$/i
+	,	'layout'	: /^(?:(inline|rows)|(newline|columns))$/i
 
-	,	'batch':	/^(?:(single|no-batch)|(batch|batched))?$/i
-	,	'prefix':	/^(?:(prefix|prefixed)|(unprefixed|no-prefix))?$/i
-	,	'option':	/^(?:(omitable|(?:omit|no)-single(?:-name)?)|(unomitable|(?:add-|)single(?:-name)?))$/i
+	,	'batch'		: /^(?:(single|no-batch)|(batch|batched))?$/i
+	,	'prefix'	: /^(?:(prefix|prefixed)|(unprefixed|no-prefix))?$/i
+	,	'option'	: /^(?:(omitable|(?:omit|no)-single(?:-name)?)|(unomitable|(?:add-|)single(?:-name)?))$/i
 
-	,	'multi_select':	/^(optional|required|x(\d[\d+-]*))$/i
-	,	'preselect':	/^(preselect|initial|(last))$/i
+	,	'multi_select'	: /^(optional|required|x(\d[\d+-]*))$/i
+	,	'preselect'	: /^(preselect|initial|(last))$/i
 	}
 
 ,	regLayerBlendModePass	= /^pass[-through]*$/i
@@ -306,11 +306,11 @@ const	CONFIG_FILE_PATH = 'config.js'			//* <- declarations-only file to redefine
 ,	regClassShow		= getClassReg('show')
 
 ,	regJSONstringify = {
-		asFlatLine	: /^(data)$/i
-	,	asFlatLines	: /^(layers)$/i
-	,	skipByKey	: /^(channels|parent|sourceData)$/i
-	,	skipByKeyIfLong	: /^(imageData)$/i
-	,	showFromTree	: /^(layers|name)$/i
+		'asFlatLine'	: /^(data)$/i
+	,	'asFlatLines'	: /^(layers)$/i
+	,	'skipByKey'	: /^(channels|parent|sourceData)$/i
+	,	'skipByKeyIfLong' : /^(imageData)$/i
+	,	'showFromTree'	: /^(layers|name)$/i
 	}
 
 const	SPLIT_SEC = 60
@@ -319,35 +319,57 @@ const	SPLIT_SEC = 60
 ,	MAX_OPACITY = 255
 ,	MAX_BATCH_PRECOUNT = 9999
 
+,	FLAG_EVENT_STOP_IMMEDIATE = { 'stopImmediatePropagation' : true }
+,	FLAG_EVENT_NO_DEFAULT = { 'preventDefault' : true }
+
 ,	FLAG_FLIP_HORIZONTAL = 1
 ,	FLAG_FLIP_VERTICAL = 2
 
-,	FLAG_EVENT_STOP_IMMEDIATE = { stopImmediatePropagation : true }
-,	FLAG_EVENT_NO_DEFAULT = { preventDefault : true }
-
-,	FLAG_FILENAME_AS_KEY = { isForStorageKey : true }
+,	FLAG_FILENAME_AS_KEY = { 'isForStorageKey' : true }
 ,	FLAG_FILENAME_TO_SAVE = {
-		checkSelectedValue : true,
-		skipDefaultPercent : true,
+		'checkSelectedValue' : true,
+		'skipDefaultPercent' : true,
 	}
 
+,	FLAG_JOIN_TEXT_FILTER = { 'filter' : true }
+
+,	FLAG_LAYER_PATH_TEXT = {
+		'includeSelf' : true,
+		'asText' : true,
+	}
+
+,	FLAG_PROJECT_SET_THUMBNAIL = { 'alsoSetThumbnail' : true }
+
+,	FLAG_RENDER_LAYER_COPY = { 'isCopyNeeded' : true }
+,	FLAG_RENDER_IGNORE_COLORS = { 'ignoreColors' : true }
+
+,	FLAG_SAVE_ALL = { 'saveToFile' : true }
+,	FLAG_SAVE_ZIP = { 'saveToZipFile' : true }
+,	FLAG_SHOW_JOIN = { 'asOneJoinedImage' : true }
+,	FLAG_SAVE_JOIN = {
+		'saveToFile' : true,
+		'asOneJoinedImage' : true,
+	}
+
+,	FLAG_TIME_LOG_FORMAT = { 'logFormat' : true }
+,	FLAG_TIME_FILENAME_FORMAT = { 'fileNameFormat' : true }
+
 ,	DUMMY_OPTION_PARAMS = Object.freeze({
-		noOptionSwitches : true,
-		skipInFileNames : true,
-		// skipInStorageKeys : true,
-		preselect : 'last',
+		'noOptionSwitches' : true,
+		'skipInFileNames' : true,
+		'preselect' : 'last',
 	})
 
 ,	DUMMY_OPTIONAL_PARAMS = Object.freeze(
 		Object.assign(
-			{ optional : true }
+			{ 'optional' : true }
 		,	DUMMY_OPTION_PARAMS
 		)
 	)
 
 ,	DUMMY_LAYER = Object.freeze({
-		name : 'dummy',
-		names : [],
+		'name' : 'dummy',
+		'names' : [],
 	})
 
 ,	DUMMY_ARRAY = Object.freeze( [null] )	//* <- immutable, for cross-product combinations
@@ -376,11 +398,11 @@ const	SPLIT_SEC = 60
 ,	TIME_PARTS_HMS = ['Hours', 'Minutes', 'Seconds']
 
 ,	QUERY_SELECTOR = {
-		getElementsByClassName:	['.', ''],
-		getElementsByTagName:	['', ''],
-		getElementsByName:	['*[name="', '"]'],
-		getElementsByType:	['*[type="', '"]'],
-		getElementsById:	['*[id="', '"]'],
+		'getElementsByClassName' : ['.', ''],
+		'getElementsByTagName'   : ['', ''],
+		'getElementsByName' : ['*[name="', '"]'],
+		'getElementsByType' : ['*[type="', '"]'],
+		'getElementsById'   : ['*[id="', '"]'],
 	}
 
 ,	BLEND_MODE_NORMAL = 'source-over'
@@ -425,7 +447,7 @@ const	SPLIT_SEC = 60
 	]
 
 ,	BLEND_MODES_REMAP_TO_ORA = {
-		BLEND_MODE_ADD:	'plus'
+		[ BLEND_MODE_ADD ] : 'plus'
 	}
 
 ,	BLEND_MODES_REPLACE_TO_ORA = [
@@ -446,22 +468,22 @@ const	SPLIT_SEC = 60
 	]
 
 ,	BLEND_MODES_REMAP = {
-		'normal':	BLEND_MODE_NORMAL
-	,	'add':		BLEND_MODE_ADD
-	,	'plus':		BLEND_MODE_ADD
-	,	'linear-dodge':	BLEND_MODE_ADD
+		'normal'	: BLEND_MODE_NORMAL
+	,	'add'		: BLEND_MODE_ADD
+	,	'plus'		: BLEND_MODE_ADD
+	,	'linear-dodge'	: BLEND_MODE_ADD
 
 //* From SAI2, remap according to PSD.js:
 
-	,	'burn':		'color-burn'
-	,	'burn-dodge':	'vivid-light'
-	,	'darken-color':	'darker-color'
-	,	'dodge':	'color-dodge'
-	,	'exclude':	'exclusion'
-	,	'lighten-color':'lighter-color'
-	,	'shade':	'linear-burn'
-	,	'shade-shine':	'linear-light'
-	,	'shine':	BLEND_MODE_ADD
+	,	'burn'		: 'color-burn'
+	,	'burn-dodge'	: 'vivid-light'
+	,	'darken-color'	: 'darker-color'
+	,	'dodge'		: 'color-dodge'
+	,	'exclude'	: 'exclusion'
+	,	'lighten-color'	: 'lighter-color'
+	,	'shade'		: 'linear-burn'
+	,	'shade-shine'	: 'linear-light'
+	,	'shine'		: BLEND_MODE_ADD
 	}
 
 ,	BLEND_MODES_WITH_TS_VERSION = [
@@ -517,70 +539,70 @@ const	SPLIT_SEC = 60
 ,	NAME_PARTS_SEPARATOR = ''
 
 ,	PARAM_OPTIONS_ADD_BY_DEFAULT = {
-		'collage':  ['no-batch', 'last', 'optional', 'collage']
-	,	'autocrop': ['no-batch', 'last', 'optional', 'autocrop']
+		'collage'  : ['no-batch', 'last', 'optional', 'collage']
+	,	'autocrop' : ['no-batch', 'last', 'optional', 'autocrop']
 	}
 
 ,	SWITCH_CLASS_BY_INDEX = ['unchecked', 'checked']
 ,	SWITCH_NAMES_BY_TYPE = {
-		'batch': ['single', 'batched']
-	,	'layout': ['inline', 'newline']
-	,	'prefix': ['prefixed', 'unprefixed']
-	,	'option': ['omitable', 'unomitable']
+		'batch'  : ['single', 'batched']
+	,	'layout' : ['inline', 'newline']
+	,	'prefix' : ['prefixed', 'unprefixed']
+	,	'option' : ['omitable', 'unomitable']
 	}
 
 ,	SWITCH_NAMES_DEFAULT = {
-		'batch': 'batched'
-	,	'layout': 'inline'
-	,	'prefix': 'prefixed'
-	,	'option': 'omitable'
+		'batch'  : 'batched'
+	,	'layout' : 'inline'
+	,	'prefix' : 'prefixed'
+	,	'option' : 'omitable'
 	}
 
 ,	PROJECT_OPTION_GROUPS = [
 		{
-			'header': 'option_header_collage',
-			'select': {
-				'collage': {
-					'align': 'option_collage_align',
-					'background': 'option_collage_background',
-					'border': 'option_collage_border',
-					'padding': 'option_collage_padding',
+			'header' : 'option_header_collage',
+			'select' : {
+				'collage' : {
+					'align' : 'option_collage_align',
+					'background' : 'option_collage_background',
+					'border' : 'option_collage_border',
+					'padding' : 'option_collage_padding',
 				},
 			},
 		},
 		{
-			'header': 'option_header_separate',
-			'select': {
-				'separate': {
-					'naming': 'option_separate_naming',
-					'group': 'option_separate_group',
-					'separate': 'option_separate_part',
+			'header' : 'option_header_separate',
+			'select' : {
+				'separate' : {
+					'naming' : 'option_separate_naming',
+					'group' : 'option_separate_group',
+					'separate' : 'option_separate_part',
 				},
 			},
 		},
 		{
-			'header': 'option_header_view',
-			'select': {
-				'autocrop': 'option_autocrop',
-				'zoom': 'option_zoom',
-				'side': 'option_side',
+			'header' : 'option_header_view',
+			'select' : {
+				'autocrop' : 'option_autocrop',
+				'zoom' : 'option_zoom',
+				'side' : 'option_side',
 			},
 		},
 		{
-			'parts': 'option_header_parts',
-			'opacities': 'option_header_opacities',
-			'paddings': 'option_header_paddings',
-			'colors': 'option_header_colors',
+			'parts' : 'option_header_parts',
+			'opacities' : 'option_header_opacities',
+			'paddings' : 'option_header_paddings',
+			'colors' : 'option_header_colors',
 		},
 	]
 
 ,	EXAMPLE_CONTROLS = [
 		{
-			'download_all': 'download_all',
-			'load_all': 'open_example_all',
+			'download_all' : 'download_all',
+			'load_all' : 'open_example_all',
 		},
 		{
-			'stop': 'stop',
+			'stop' : 'stop',
 		},
 	]
 
@@ -596,57 +618,57 @@ const	SPLIT_SEC = 60
 
 ,	PROJECT_VIEW_CONTROLS = [
 		/*{
-			'header': 'original_view_header',
-			'buttons': {
-				'show_original': 'show_original_png',
-				'save_original': 'save_original_png',
-				'save_original_ora': 'save_original_ora',
+			'header' : 'original_view_header',
+			'buttons' : {
+				'show_original' : 'show_original_png',
+				'save_original' : 'save_original_png',
+				'save_original_ora' : 'save_original_ora',
 			},
 		},*/
 		{
-			'header': 'current_view_header',
-			'buttons': {
-				'show': 'show_png',
-				'save': 'save_png',
-				'save_ora': 'save_ora',
+			'header' : 'current_view_header',
+			'buttons' : {
+				'show' : 'show_png',
+				'save' : 'save_png',
+				'save_ora' : 'save_ora',
 			},
 		},
 		{
-			'header': 'batch_view_header',
-			'buttons': {
-				'batch': {
-					'show_all': 'show_png_batch',
-					'save_all': 'save_png_batch',
-					'save_zip': 'save_png_batch_zip',
+			'header' : 'batch_view_header',
+			'buttons' : {
+				'batch' : {
+					'show_all' : 'show_png_batch',
+					'save_all' : 'save_png_batch',
+					'save_zip' : 'save_png_batch_zip',
 				},
-				'collage': {
-					'show_join': 'show_png_collage',
-					'save_join': 'save_png_collage',
-					'stop': 'stop',
+				'collage' : {
+					'show_join' : 'show_png_collage',
+					'save_join' : 'save_png_collage',
+					'stop' : 'stop',
 				},
-				// 'stop': 'stop',
+				// 'stop' : 'stop',
 			},
 		},
 		{
-			'header': 'reset_header',
-			'buttons': {
-				'options': {
-					'reset_options_to_init': '',
-					'reset_options_to_top': '',
-					'reset_options_to_bottom': '',
-					'reset_options_to_empty': '',
+			'header' : 'reset_header',
+			'buttons' : {
+				'options' : {
+					'reset_options_to_init' : '',
+					'reset_options_to_top' : '',
+					'reset_options_to_bottom' : '',
+					'reset_options_to_empty' : '',
 				},
-				'batching': {
-					'reset_switch_batch_to_batched': '',
-					'reset_switch_batch_to_single': '',
-					'reset_switch_layout_to_inline': '',
-					'reset_switch_layout_to_newline': '',
+				'batching' : {
+					'reset_switch_batch_to_batched' : '',
+					'reset_switch_batch_to_single' : '',
+					'reset_switch_layout_to_inline' : '',
+					'reset_switch_layout_to_newline' : '',
 				},
-				'naming': {
-					'reset_switch_option_to_unomitable': '',
-					'reset_switch_option_to_omitable': '',
-					'reset_switch_prefix_to_prefixed': '',
-					'reset_switch_prefix_to_unprefixed': '',
+				'naming' : {
+					'reset_switch_option_to_unomitable' : '',
+					'reset_switch_option_to_omitable' : '',
+					'reset_switch_prefix_to_prefixed' : '',
+					'reset_switch_prefix_to_unprefixed' : '',
 				},
 			},
 		},
@@ -665,11 +687,11 @@ const	SPLIT_SEC = 60
 		['height', 'h'],
 	]
 
-,	VIRTUAL_FOLDER_TAKEOVER_PROPERTIES = [
-		['blendMode', BLEND_MODE_NORMAL],
-		['isBlendModeTS', false],
-		['isClipped', false],
-	]
+,	VIRTUAL_FOLDER_TAKEOVER_PROPERTIES = {
+		'blendMode' : BLEND_MODE_NORMAL,
+		'isBlendModeTS' : false,
+		'isClipped' : false,
+	}
 
 ,	IMAGE_DATA_KEYS_TO_LOAD = [
 		'toImage',
@@ -763,51 +785,51 @@ const	zlibPakoFileName = (
 	);
 
 	FILE_TYPE_LIBS = {
-		'zlib-asm': {
+		'zlib-asm' : {
 
 //* Source: https://github.com/ukyo/zlib-asm
 
-			'varName': 'zlib'
-		,	'dir': ZLIB_ASM_DIR
-		,	'files': ['zlib.js']
+			'varName' : 'zlib'
+		,	'dir' : ZLIB_ASM_DIR
+		,	'files' : ['zlib.js']
 		},
 
-		'pako': {
+		'pako' : {
 
 //* Source: https://github.com/nodeca/pako
 
-			'varName': 'pako'
-		,	'dir': ZLIB_PAKO_DIR
-		,	'files': [zlibPakoFileName]
+			'varName' : 'pako'
+		,	'dir' : ZLIB_PAKO_DIR
+		,	'files' : [zlibPakoFileName]
 		},
 
-		'UZIP.js': {
+		'UZIP.js' : {
 
 //* Source: https://github.com/photopea/UZIP.js
 
-			'varName': 'UZIP'
-		,	'dir': LIB_FORMATS_DIR + 'zlib/UZIP/'
-		,	'files': ['UZIP.js']
-		,	'depends': ['pako']
+			'varName' : 'UZIP'
+		,	'dir' : LIB_FORMATS_DIR + 'zlib/UZIP/'
+		,	'files' : ['UZIP.js']
+		,	'depends' : ['pako']
 		},
 
-		'UPNG.js': {
+		'UPNG.js' : {
 
 //* Source: https://github.com/photopea/UPNG.js
 
-			'varName': 'UPNG'
-		,	'dir': LIB_FORMATS_DIR + 'png/UPNG/'
-		,	'files': ['UPNG.js']
-		,	'depends': zlibCodecPNG
+			'varName' : 'UPNG'
+		,	'dir' : LIB_FORMATS_DIR + 'png/UPNG/'
+		,	'files' : ['UPNG.js']
+		,	'depends' : zlibCodecPNG
 		},
 
-		'zip.js': {
+		'zip.js' : {
 
 //* Source: https://github.com/gildas-lormeau/zip.js
 
-			'varName': 'zip'
-		,	'dir': ZIP_FORMAT_DIR
-		,	'files': [
+			'varName' : 'zip'
+		,	'dir' : ZIP_FORMAT_DIR
+		,	'files' : [
 				'zip.js',
 				'zip-fs.js',
 			].concat(
@@ -828,7 +850,7 @@ const	zlibPakoFileName = (
 					'inflate.js',
 				]
 			)
-		,	'depends': (
+		,	'depends' : (
 				USE_WORKERS_IF_CAN
 			||	USE_ONE_FILE_ZIP_WORKER
 			||	!USE_ZLIB_CODECS
@@ -837,7 +859,7 @@ const	zlibPakoFileName = (
 			)
 		},
 
-		'ora.js': {
+		'ora.js' : {
 
 //* Source: https://github.com/zsgalusz/ora.js
 
@@ -847,30 +869,30 @@ const	zlibPakoFileName = (
 //* Way: draw in SAI2 → export PSD → import PSD in Krita (loses clipping groups) → export ORA (loses opacity masks)
 //* Wish: draw in SAI2 → export ORA (all layers rasterized + all blending properties and modes included as attributes)
 
-			'varName': 'ora'
-		,	'dir': LIB_FORMATS_DIR + 'ora/ora_js/'
-		,	'files': ['ora.js']
-		,	'depends': ['zip.js']
+			'varName' : 'ora'
+		,	'dir' : LIB_FORMATS_DIR + 'ora/ora_js/'
+		,	'files' : ['ora.js']
+		,	'depends' : ['zip.js']
 		},
 
-		'psd.js': {
+		'psd.js' : {
 
 //* Source: https://github.com/meltingice/psd.js/issues/154#issuecomment-446279652
 //* Based on https://github.com/layervault/psd.rb
 
-			'varName': 'PSD_JS'
-		,	'dir': LIB_FORMATS_DIR + 'psd/psd_js/psd.js_build_by_rtf-const_2018-12-11/'	//* <- working with bigger files?
-		,	'files': ['psd.js']
+			'varName' : 'PSD_JS'
+		,	'dir' : LIB_FORMATS_DIR + 'psd/psd_js/psd.js_build_by_rtf-const_2018-12-11/'	//* <- working with bigger files?
+		,	'files' : ['psd.js']
 		},
 
-		'psd.browser.js': {
+		'psd.browser.js' : {
 
 //* Source: https://github.com/imcuttle/psd.js/tree/release
 //* Fork of https://github.com/meltingice/psd.js
 
-			'varName': 'PSD'
-		,	'dir': LIB_FORMATS_DIR + 'psd/psd_js/psd.js_fork_by_imcuttle_2018-09-19/'		//* <- working here
-		,	'files': ['psd.browser.js']
+			'varName' : 'PSD'
+		,	'dir' : LIB_FORMATS_DIR + 'psd/psd_js/psd.js_fork_by_imcuttle_2018-09-19/'		//* <- working here
+		,	'files' : ['psd.browser.js']
 		},
 	};
 
@@ -895,16 +917,16 @@ const	zlibPakoFileName = (
 
 	FILE_TYPE_LOADERS = [
 		{
-			'dropFileExts': ['ora', 'zip']
-		,	'inputFileAcceptMimeTypes': ['image/openraster', 'application/zip']
-		,	'handlerFuncs': [
+			'dropFileExts' : ['ora', 'zip']
+		,	'inputFileAcceptMimeTypes' : ['image/openraster', 'application/zip']
+		,	'handlerFuncs' : [
 				loadORA,
 			]
 		},
 		{
-			'dropFileExts': ['psd']
-		,	'inputFileAcceptMimeTypes': ['image/x-photoshop', 'image/vnd.adobe.photoshop']
-		,	'handlerFuncs': [
+			'dropFileExts' : ['psd']
+		,	'inputFileAcceptMimeTypes' : ['image/x-photoshop', 'image/vnd.adobe.photoshop']
+		,	'handlerFuncs' : [
 				loadPSD,
 				// loadPSDBrowser,	//* <- second parser is only needed if it could success on different files
 			]
@@ -966,6 +988,13 @@ function isNonEmptyArray(value) {
 	return (
 		isArray(value)
 	&&	value.length > 0
+	);
+}
+
+function isRealNumber(value) {
+	return (
+		isNumber(value)
+	&&	!isNaN(value)
 	);
 }
 
@@ -1221,15 +1250,15 @@ function arrayFilterNonEmptyValues(value) {
 	);
 }
 
-function arrayFilterUniqueValues(value, index, array) {return (array.indexOf(value) === index);}
-function orz(value) {return parseInt(value||0)||0;}
-function orzClamp(value, min, max) {return Math.max(min, Math.min(max, orz(value)));}
-function orzFloat(value) {return parseFloat(value||.0)||.0;}
-function orzTrim(value) {return orz(String(value).replace(regTrimNaN, ''));}
+function arrayFilterUniqueValues(value, index, array) { return (array.indexOf(value) === index); }
+function orz(value) { return parseInt(value||0)||0; }
+function orzClamp(value, min, max) { return Math.max(min, Math.min(max, orz(value))); }
+function orzFloat(value) { return parseFloat(value||.0)||.0; }
+function orzTrim(value) { return orz(String(value).replace(regTrimNaN, '')); }
 
-function getDistance(x,y) {return Math.sqrt(x*x + y*y);}
-function getAlphaDataIndex(x,y, width) {return (((y*width + x) << 2) | 3);} // {return (((y*width + x) * 4) + 3);}
-function repeatText(text, numberOfTimes) {return (new Array(numberOfTimes + 1)).join(text);}
+function getDistance(x,y) { return Math.sqrt(x*x + y*y); }
+function getAlphaDataIndex(x,y, width) { return (((y*width + x) << 2) | 3); } // { return (((y*width + x) * 4) + 3); }
+function repeatText(text, numberOfTimes) { return (new Array(numberOfTimes + 1)).join(text); }
 
 function replaceAll(text, replaceWhat, replaceWith) {
 	if (isArray(replaceWhat)) {
@@ -1398,11 +1427,11 @@ function getNestedJoinedText(value, ...joinTexts) {
 }
 
 function getNestedFilteredArrayJoinedText(value, ...joinTexts) {
-	return getNestedArrayJoinedText(value, {filter: true}, ...joinTexts);
+	return getNestedArrayJoinedText(value, FLAG_JOIN_TEXT_FILTER, ...joinTexts);
 }
 
 function getNestedFilteredArrayEnclosedJoinedText(value, prefix, suffix, ...joinTexts) {
-	return getNestedArrayJoinedText(value, {prefix, suffix, filter: true}, ...joinTexts);
+	return getNestedArrayJoinedText(value, { prefix, suffix, 'filter' : true }, ...joinTexts);
 }
 
 function getNestedArrayJoinedText(value, flags, ...joinTexts) {
@@ -1415,8 +1444,8 @@ function getNestedArrayJoinedText(value, flags, ...joinTexts) {
 	}
 
 const	wrapText = {
-		'prefix': '',
-		'suffix': '',
+		'prefix' : '',
+		'suffix' : '',
 	};
 
 	for (const key in wrapText) if (key in flags) {
@@ -1477,23 +1506,17 @@ function getLocalizedKeyByCount(key, ...args) {
 			LOCALIZED_CASE_BY_CROSS_COUNT
 			? args.reduce(
 				(result, arg) => (
-					isNaN(arg)
-					? result
-					: (
-						(
-							isNaN(result)
-							? 1
-							: result
-						) * arg
-					)
+					isRealNumber(arg)
+					? arg * (isRealNumber(result) ? result : 1)
+					: result
 				)
 			,	undefined
 			)
 			: args.reduce(
 				(result, arg) => (
-					isNaN(arg)
-					? result
-					: arg
+					isRealNumber(arg)
+					? arg
+					: result
 				)
 			,	undefined
 			)
@@ -2023,12 +2046,12 @@ function getElementsArray(by, text, parent) {
 	return [];
 }
 
-function getAllByClass	(text, parent) {return getElementsArray('getElementsByClassName', text, parent);}
-function getAllByTag	(text, parent) {return getElementsArray('getElementsByTagName', text, parent);}
-function getAllByType	(text, parent) {return getElementsArray('getElementsByType', text, parent);}
-function getAllByName	(text, parent) {return getElementsArray('getElementsByName', text, parent);}
-function getAllById	(text, parent) {return getElementsArray('getElementsById', text, parent);}
-function getOneById	(text) {return document.getElementById(text);}
+function getAllByClass	(text, parent) { return getElementsArray('getElementsByClassName', text, parent); }
+function getAllByTag	(text, parent) { return getElementsArray('getElementsByTagName', text, parent); }
+function getAllByType	(text, parent) { return getElementsArray('getElementsByType', text, parent); }
+function getAllByName	(text, parent) { return getElementsArray('getElementsByName', text, parent); }
+function getAllById	(text, parent) { return getElementsArray('getElementsById', text, parent); }
+function getOneById	(text) { return document.getElementById(text); }
 
 function cre(tagName, parent, before) {
 const	element = document.createElement(tagName);
@@ -2443,13 +2466,13 @@ let	parentOffsetY = 0;
 		parentOffsetY = offset.y;
 	}
 
-	if (isNaN(x)) {
+	if (isRealNumber(x)) {
+		x = orz(x) + parentOffsetX;
+		y = orz(y) + parentOffsetY;
+	} else {
 	let	offset = getOffsetXY(element);
 		x = offset.x;
 		y = offset.y;
-	} else {
-		x = orz(x) + parentOffsetX;
-		y = orz(y) + parentOffsetY;
 	}
 
 	if (!changeOnlyY) {
@@ -2512,10 +2535,10 @@ const	index = name.lastIndexOf('.');
 	);
 }
 
-function getFileExt(name) {return name.split(/\./g).pop().toLowerCase();}
-function getFileName(path) {return path.split(/\//g).pop();}
-function getFilePathFromUrl(url) {return url.split(/\#/g).shift().split(/\?/g).shift();}
-function getFormattedFileNamePart(name) {return (name ? '[' + name + ']' : '');}
+function getFileExt(name) { return name.split(/\./g).pop().toLowerCase(); }
+function getFileName(path) { return path.split(/\//g).pop(); }
+function getFilePathFromUrl(url) { return url.split(/\#/g).shift().split(/\?/g).shift(); }
+function getFormattedFileNamePart(name) { return (name ? '[' + name + ']' : ''); }
 
 function getFormattedFileSize(bytes, shortened) {
 let	bytesText;
@@ -2718,8 +2741,8 @@ const	textParts = [];
 	}
 }
 
-function getTimeNow() {return +new Date();}
-function getLogTime() {return getFormattedTime({logFormat: true});}
+function getTimeNow() { return +new Date(); }
+function getLogTime() { return getFormattedTime(FLAG_TIME_LOG_FORMAT); }
 
 function logTime() {
 let	logText = getLogTime();
@@ -2755,14 +2778,12 @@ function logError(error, args, context) {
 	,	[
 			error,
 		].concat(
-			typeof args === 'undefined'
-			? [] : [
+			typeof args === 'undefined' ? [] : [
 				// 'In function:', args.callee.name,	//* <- not available in strict mode
 				'With arguments:', args,
 			]
 		).concat(
-			typeof context === 'undefined'
-			? [] : [
+			typeof context === 'undefined' ? [] : [
 				'Context:', context
 			]
 		)
@@ -3176,7 +3197,7 @@ let	revokeURL = false;
 
 const	time = (
 		!fileName || addTime
-		? getFormattedTime({fileNameFormat: true})
+		? getFormattedTime(FLAG_TIME_FILENAME_FORMAT)
 		: ''
 	);
 
@@ -3312,8 +3333,8 @@ const	depends = asFlatArray(lib.depends);
 
 							if (ZIP_WORKER_SCRIPTS) {
 								zip.workerScripts = {
-									deflater: ZIP_WORKER_SCRIPTS,
-									inflater: ZIP_WORKER_SCRIPTS,
+									'deflater' : ZIP_WORKER_SCRIPTS,
+									'inflater' : ZIP_WORKER_SCRIPTS,
 								};
 							} else {
 								zip.workerScriptsPath = dir;
@@ -3384,8 +3405,8 @@ const	depends = asFlatArray(lib.depends);
 
 //* Page-specific functions: internal, utility *-------------------------------
 
-function getProjectContainer(element) {return getTargetParentByClass(element, regClassLoadedFile);}
-function getProjectButton(element) {return getTargetParentByClass(element, regClassButton);}
+function getProjectContainer(element) { return getTargetParentByClass(element, regClassLoadedFile); }
+function getProjectButton(element) { return getTargetParentByClass(element, regClassButton); }
 
 function replaceJSONpartsForCropRef(key, value) {
 	if (key === 'autocrop') {
@@ -3876,14 +3897,14 @@ const	foundWidth = foundRight - foundLeft + 1;
 const	foundHeight = foundBottom - foundTop + 1;
 
 	return {
-		'left': foundLeft
-	,	'right': foundRight
+		'left'   : foundLeft
+	,	'right'  : foundRight
 
-	,	'top': foundTop
-	,	'bottom': foundBottom
+	,	'top'    : foundTop
+	,	'bottom' : foundBottom
 
-	,	'width': foundWidth
-	,	'height': foundHeight
+	,	'width'  : foundWidth
+	,	'height' : foundHeight
 	};
 }
 
@@ -4042,7 +4063,7 @@ const	path = (flags.includeSelf ? [layer.name] : []);
 }
 
 function getLayerPathText(layer) {
-	return getLayerPathNamesChain(layer, {includeSelf: true, asText: true});
+	return getLayerPathNamesChain(layer, FLAG_LAYER_PATH_TEXT);
 }
 
 function getLayersTopSeparated(layers) {
@@ -4145,9 +4166,9 @@ async function getOrLoadImage(project, layer) {
 
 		if (pixelData = getPropByAnyOfNamesChain(node, 'imgData', 'maskData', 'pixelData')) {
 		const	imgData = {
-				data: getPropByAnyOfNamesChain(pixelData, 'data')
-			,	width: getPropFromAnySource('width', pixelData, target, node)
-			,	height: getPropFromAnySource('height', pixelData, target, node)
+				'data' : getPropByAnyOfNamesChain(pixelData, 'data')
+			,	'width' : getPropFromAnySource('width', pixelData, target, node)
+			,	'height' : getPropFromAnySource('height', pixelData, target, node)
 			};
 
 			if (img = await getImageElementFromData(imgData, project)) {
@@ -4181,14 +4202,18 @@ async function getOrLoadImage(project, layer) {
 		for (const target of targets) if (isNonNullObject(target))
 		for (
 			const sourceOrTarget
-			of [
+			of (project.loading ? [
 				target.sourceData
 			,	target
-			]
+			] : [
+				target
+			])
 		) if (isNonNullObject(sourceOrTarget))
 		for (
 			const mergedOrNode
-			of (layer ? [sourceOrTarget] : [
+			of (layer ? [
+				sourceOrTarget
+			] : [
 				sourceOrTarget.mergedImage
 			,	sourceOrTarget.prerendered
 			,	sourceOrTarget.thumbnail
@@ -4357,8 +4382,8 @@ const	projectButtons = {
 		buttonText,
 		buttonStatus,
 		imgThumb,
-		errorParams: sourceFile.ext,
-		errorPossible: 'project_status_error_file_type',
+		'errorParams' : sourceFile.ext,
+		'errorPossible' : 'project_status_error_file_type',
 	};
 
 	updateProjectOperationProgress(projectButtons, 'project_status_loading');
@@ -4389,7 +4414,7 @@ let	project, container;
 				project
 			,	childKeys
 			,	(
-					TESTING > 1
+					TESTING
 					? CLEANUP_KEYS_TESTING
 					: CLEANUP_KEYS
 				)
@@ -4550,17 +4575,17 @@ let	project, totalStartTime;
 		,	buttonTab
 		,	buttonText
 		,	buttonStatus
-		,	thumbnail: imgThumb
-		,	foldersCount: 0
-		,	layersCount: 0
-		,	imagesCount: 0
-		,	imagesLoadedCount: 0
-		,	imagesLoaded: []
-		,	loading: {
+		,	'thumbnail' : imgThumb
+		,	'foldersCount' : 0
+		,	'layersCount' : 0
+		,	'imagesCount' : 0
+		,	'imagesLoadedCount' : 0
+		,	'imagesLoaded' : []
+		,	'loading' : {
 				startTime
-			,	data: sourceFile
-			,	images: []
-			,	errorPossible: 'project_status_error_in_format'
+			,	'data' : sourceFile
+			,	'images' : []
+			,	'errorPossible' : 'project_status_error_in_format'
 			}
 		};
 
@@ -4778,8 +4803,8 @@ async function getProjectViewMenu(project) {
 						if (optionMS.max < paramMS.max) optionMS.max = paramMS.max;
 					} else {
 						optionParams[paramName] = {
-							min: paramMS.min
-						,	max: paramMS.max
+							'min' : paramMS.min
+						,	'max' : paramMS.max
 						};
 					}
 				}
@@ -4836,7 +4861,9 @@ async function getProjectViewMenu(project) {
 						(optionValue) => {
 						let	optionName = String(optionValue);
 
-							if (isNaN(optionValue)) {
+							if (isRealNumber(optionValue)) {
+								optionItems[optionName] = optionValue;
+							} else {
 								optionName = optionName.replace(regNonAlphaNum, '').toLowerCase();
 
 								if (PARAM_KEYWORDS_SHORTCUT_FOR_ALL.includes(optionName)) {
@@ -4852,8 +4879,6 @@ async function getProjectViewMenu(project) {
 								if (getRGBAFromColorCodeOrName(optionValue)) {
 									optionItems[optionValue] = optionValue;
 								}
-							} else {
-								optionItems[optionName] = optionValue;
 							}
 						}
 					);
@@ -5471,13 +5496,13 @@ async function getProjectViewMenu(project) {
 			&&	(optionList = section[sectionName])
 			) {
 				section.naming = {
-					'items': {}
-				,	'params': Object.assign({ skipInStorageKeys : true }, DUMMY_OPTION_PARAMS)
+					'items' : {}
+				,	'params' : Object.assign({ 'skipInStorageKeys' : true }, DUMMY_OPTION_PARAMS)
 				};
 
 				section.group = {
-					'items': {}
-				,	'params': DUMMY_OPTIONAL_PARAMS
+					'items' : {}
+				,	'params' : DUMMY_OPTIONAL_PARAMS
 				};
 
 			const	items = optionList.items;
@@ -5527,9 +5552,9 @@ async function getProjectViewMenu(project) {
 							], ' ');
 
 							separatedLayers[optionLabel] = {
-								'layer': layer
-							,	'group': groupName
-							,	'index': partNum
+								'layer' : layer
+							,	'group' : groupName
+							,	'index' : partNum
 							};
 						}
 					);
@@ -5998,9 +6023,7 @@ async function getProjectMergedImagePromise(project, flags) {
 }
 
 async function getProjectViewImage(project) {
-const	img = await getProjectMergedImagePromise(project, {
-		alsoSetThumbnail: true,
-	});
+const	img = await getProjectMergedImagePromise(project, FLAG_PROJECT_SET_THUMBNAIL);
 
 	if (isStopRequestedAnywhere(project)) {
 		return;
@@ -6268,7 +6291,7 @@ const	params = getOrInitChild(layer, 'params');
 										count += addToListIfNotYet(
 											boundaries
 										,	{
-												'radius': interval
+												'radius' : interval
 											}
 										);
 									}
@@ -6276,8 +6299,8 @@ const	params = getOrInitChild(layer, 'params');
 										count += addToListIfNotYet(
 											boundaries
 										,	{
-												'x': interval
-											,	'y': interval
+												'x' : interval
+											,	'y' : interval
 											}
 										);
 									}
@@ -6288,8 +6311,8 @@ const	params = getOrInitChild(layer, 'params');
 										directions
 									,	(...args) => {
 										const	interval = {
-												'in': Math.min(...args)
-											,	'out': Math.max(...args)
+												'in'  : Math.min(...args)
+											,	'out' : Math.max(...args)
 											};
 
 											addToBoundaryList(interval);
@@ -6301,10 +6324,12 @@ const	params = getOrInitChild(layer, 'params');
 										const	interval = (
 												isHollow
 												? {
-													'in': outerRadius
-												,	'out': outerRadius
+													'in'  : outerRadius
+												,	'out' : outerRadius
 												}
-												: {'out': outerRadius}
+												: {
+													'out' : outerRadius
+												}
 											);
 
 											addToBoundaryList(interval);
@@ -6339,13 +6364,13 @@ const	params = getOrInitChild(layer, 'params');
 											count += addToListIfNotYet(
 												boundaries
 											,	{
-													'x': {
-														'in': Math.min(x1, x2)
-													,	'out': Math.max(x1, x2)
+													'x' : {
+														'in'  : Math.min(x1, x2)
+													,	'out' : Math.max(x1, x2)
 													}
-												,	'y': {
-														'in': Math.min(y1, y2)
-													,	'out': Math.max(y1, y2)
+												,	'y' : {
+														'in'  : Math.min(y1, y2)
+													,	'out' : Math.max(y1, y2)
 													}
 												}
 											);
@@ -6368,8 +6393,8 @@ const	params = getOrInitChild(layer, 'params');
 											count += addToListIfNotYet(
 												boundaries
 											,	{
-													'x': {'out': outerX}
-												,	'y': {'out': outerY}
+													'x' : { 'out' : outerX }
+												,	'y' : { 'out' : outerY }
 												}
 											);
 										}
@@ -6388,7 +6413,7 @@ const	params = getOrInitChild(layer, 'params');
 				const	collection = getOrInitChild(params, paramType, Array);
 
 					if (!boundaries.length) {
-						boundaries = [{'radius': {'out': DEFAULT_ALPHA_MASK_PADDING}}];
+						boundaries = [{ 'radius' : { 'out' : DEFAULT_ALPHA_MASK_PADDING } }];
 					}
 
 					if (!methods.length) {
@@ -6419,8 +6444,8 @@ const	params = getOrInitChild(layer, 'params');
 				);
 
 			const	limits = params[paramType] = {
-					'min': Math.max(0, values[0])
-				,	'max': Math.max(1, values[values.length > 1?1:0])
+					'min' : Math.max(0, values[0])
+				,	'max' : Math.max(1, values[values.length > 1 ? 1 : 0])
 				};
 
 				if (limits.min > 0) {
@@ -6635,21 +6660,22 @@ let	match, separator, subLayer;
 		layer = {
 			subLayer
 		,	nameOriginal
-		,	isVirtualFolder: true
-		,	isVisible: true
-		,	opacity: 1
+		,	'isVirtualFolder' : true
+		,	'isVisible' : true
+		,	'opacity' : 1
 		};
 
-		VIRTUAL_FOLDER_TAKEOVER_PROPERTIES.forEach(
-			([ key, defaultValue ]) => {
-				if (subLayer[key] !== defaultValue) {
-					layer[key] = subLayer[key];
-					subLayer[key] = defaultValue;
-				} else {
-					layer[key] = defaultValue;
-				}
+		for (const key in VIRTUAL_FOLDER_TAKEOVER_PROPERTIES) {
+
+		const	defaultValue = VIRTUAL_FOLDER_TAKEOVER_PROPERTIES[key];
+
+			if (subLayer[key] !== defaultValue) {
+				layer[key] = subLayer[key];
+				subLayer[key] = defaultValue;
+			} else {
+				layer[key] = defaultValue;
 			}
-		);
+		}
 
 		layer.isPassThrough = (layer.blendMode === BLEND_MODE_NORMAL);
 
@@ -6838,7 +6864,7 @@ const	project = context.project || context;
 	if (operation === 'project_status_ready_options') {
 	let	count = args[0];
 
-		if (isNaN(count)) {
+		if (!isRealNumber(count)) {
 		const	precounts = getOrInitChild(project, 'renderBatchCounts');
 		const	key = project.renderBatchCountSelectedKey;
 
@@ -6957,9 +6983,7 @@ const	actionLabel = 'processing document with ' + libName;
 		project.sourceData = sourceData;
 
 		if (TAB_THUMBNAIL_PRELOAD) {
-			getProjectMergedImagePromise(project, {
-				alsoSetThumbnail: true,
-			});
+			getProjectMergedImagePromise(project, FLAG_PROJECT_SET_THUMBNAIL);
 		}
 
 		if (await treeConstructorFunc(project, sourceData)) {
@@ -7062,7 +7086,7 @@ async function loadORA(project) {
 			const	modeColor = layer.composite_color || mode || '';//* <- non-standard, for testing
 			const	mask = layer.mask || null;			//* <- non-standard, for testing
 			const	layers = layer.layers || null;
-			const	isLayerFolder = (layers && layers.length > 0);
+			const	isLayerFolder = (isNonNullObject(layers) && isRealNumber(layers.length));
 
 			const	alphaMode = getNormalizedBlendMode(modeAlpha);
 			const	colorMode = getNormalizedBlendMode(modeColor);
@@ -7086,14 +7110,15 @@ async function loadORA(project) {
 				);
 
 			const	layerWIP = {
-					blendMode
-				,	blendModeOriginal: mode
-				,	blendModeOriginalAlpha: modeAlpha
-				,	blendModeOriginalColor: modeColor
-				,	isClipped
+					isLayerFolder
 				,	isPassThrough
+				,	isClipped
 				,	isVisible
-				,	opacity: orzFloat(layer.opacity)
+				,	blendMode
+				,	'blendModeOriginal' : mode
+				,	'blendModeOriginalAlpha' : modeAlpha
+				,	'blendModeOriginalColor' : modeColor
+				,	'opacity' : orzFloat(layer.opacity)
 				};
 
 				if (!isLayerFolder) {
@@ -7161,8 +7186,8 @@ async function loadORA(project) {
 	);
 }
 
-async function loadPSD       (project) {return await loadPSDCommonWrapper(project, 'psd.js', 'PSD_JS');}
-async function loadPSDBrowser(project) {return await loadPSDCommonWrapper(project, 'psd.browser.js', 'PSD');}
+async function loadPSD       (project) { return await loadPSDCommonWrapper(project, 'psd.js', 'PSD_JS'); }
+async function loadPSDBrowser(project) { return await loadPSDCommonWrapper(project, 'psd.browser.js', 'PSD'); }
 
 async function loadPSDCommonWrapper(project, libName, varName) {
 	return await loadCommonWrapper(
@@ -7172,6 +7197,7 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 			return window[varName].fromDroppedFile(file);
 		}
 	,	async function treeConstructorFunc(project, sourceData) {
+
 			if (
 				!sourceData.layers
 			||	!sourceData.layers.length
@@ -7189,17 +7215,32 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 			project.bitDepth = projectHeader.depth;
 			project.channels = projectHeader.channels;
 			project.colorMode = (
-				isNaN(projectMode)
-				? projectMode
-				: PSD_COLOR_MODES[projectMode]
+				isRealNumber(projectMode)
+				? PSD_COLOR_MODES[projectMode]
+				: projectMode
 			);
 
 //* gather layers into a tree object:
+
+			function isFolderNode(node) {
+				return (
+					(isFunction(node.isFolder) && node.isFolder())
+				||	(isFunction(node.isLayer) && !node.isLayer())
+				||	(isFunction(node.hasChildren) && node.hasChildren())
+				);
+			}
 
 			async function addLayerToTree(layer, parentGroup) {
 			const	node = layer;
 				layer = node.layer || node;
 
+			const	layers = (
+					[node, layer].some(isFolderNode)
+					? node.children()
+					: null
+				);
+
+			const	isLayerFolder = (isNonNullObject(layers) && isRealNumber(layers.length));
 			const	name = getPropFromAnySource('name',  layer, node) || '';
 			const	img  = getPropFromAnySource('image', layer, node);
 			const	mask = getPropFromAnySource('mask',  layer, node, img);
@@ -7221,23 +7262,8 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 
 			const	hasNoFillOpacityValue = (
 					fillOpacity === null
-				||	isNaN(fillOpacity)
+				||	!isRealNumber(fillOpacity)
 				);
-
-			const	layers = (
-					node.hasChildren()
-					? node.children()
-					: null
-				);
-
-			const	isLayerFolder = (layers && typeof layers.length !== 'undefined');
-
-			const	layerWIP = {
-					blendMode
-				,	blendModeOriginal: blending
-				,	isPassThrough
-				,	isClipped: getTruthyValue(clipping)
-				,	isVisible: getTruthyValue(layer.visible)
 
 //* Note:
 //*	"Fill" opacity is used in PSD from SAI2
@@ -7245,13 +7271,20 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 //*	for layers with certain blending modes (non-TS versions).
 //* Source: https://github.com/meltingice/psd.js/issues/153#issuecomment-436456896
 
-				,	isBlendModeTS: (
+			const	layerWIP = {
+					isLayerFolder
+				,	isPassThrough
+				,	'isClipped' : getTruthyValue(clipping)
+				,	'isVisible' : getTruthyValue(layer.visible)
+				,	blendMode
+				,	'blendModeOriginal' : blending
+				,	'isBlendModeTS' : (
 						hasNoFillOpacityValue
 					&&	BLEND_MODES_WITH_TS_VERSION.includes(blendMode)
 					)
-				,	opacity: (
+				,	'opacity' : (
 						getNormalizedOpacity(layer.opacity)
-					*	(hasNoFillOpacityValue ? 1 : getNormalizedOpacity(fillOpacity))
+						* (hasNoFillOpacityValue ? 1 : getNormalizedOpacity(fillOpacity))
 					)
 				};
 
@@ -7279,8 +7312,8 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 					&&	!(mask.disabled || (mask.flags & 2))	//* <- mask visibility checkbox, supposedly
 					) {
 						layerWIP.mask = {
-							defaultColor: orz(mask.defaultColor)
-						,	imgData: img.maskData		//* <- RGBA byte array
+							'defaultColor' : orz(mask.defaultColor)
+						,	'imgData' : img.maskData		//* <- RGBA byte array
 						};
 
 						setImageGeometryProperties(layerWIP.mask, mask, img);
@@ -7417,11 +7450,9 @@ function isSetOfValuesOK(project, values) {
 	for (const sectionName in values) {
 	const	section = values[sectionName];
 
-		if (section) {
-			for (const listName in section) {
-				if (!isOptionValueRelevant(project, values, sectionName, listName)) {
-					return false;
-				}
+		for (const listName in section) {
+			if (!isOptionValueRelevant(project, values, sectionName, listName)) {
+				return false;
 			}
 		}
 	}
@@ -7434,17 +7465,14 @@ const	resultSet = {};
 
 	for (const sectionName in values) {
 	const	section = values[sectionName];
+	const	resultSection = resultSet[sectionName] = {};
 
-		if (section) {
-			for (const listName in section) {
-			const	resultSection = getOrInitChild(resultSet, sectionName);
-
-				resultSection[listName] = (
-					isOptionValueRelevant(project, values, sectionName, listName)
-					? section[listName]
-					: ''
-				);
-			}
+		for (const listName in section) {
+			resultSection[listName] = (
+				isOptionValueRelevant(project, values, sectionName, listName)
+				? section[listName]
+				: ''
+			);
 		}
 	}
 
@@ -7771,9 +7799,9 @@ const	valueSets = await getAllValueSets(
 	,	values
 	,	startTime
 	,	{
-			getOnlyNames: true,
-			checkSelectedValue: true,
-			stopAtMaxCount: MAX_BATCH_PRECOUNT && MAX_BATCH_PRECOUNT > 0,
+			'getOnlyNames' : true,
+			'checkSelectedValue' : true,
+			'stopAtMaxCount' : MAX_BATCH_PRECOUNT && MAX_BATCH_PRECOUNT > 0,
 		}
 	);
 
@@ -8732,7 +8760,7 @@ function getLayerVisibilityByValues(project, layer, values, listName) {
 			layer.names
 			? (
 				isNot
-				? layer.names.some((name) => callback(name, isNot))
+				? layer.names.some ((name) => callback(name, isNot))
 				: layer.names.every((name) => callback(name, isNot))
 			)
 			: callback(layer.name, isNot)
@@ -8985,7 +9013,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 			,	{
 					ignoreColors
 				,	skipCopyPaste
-				,	clippingGroupWIP: true
+				,	'clippingGroupWIP' : true
 				}
 			);
 
@@ -9006,9 +9034,11 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 						if (isNonEmptyArray(aliasesToPaste)) {
 							addCopyPaste = true;
 
-							if (!isArray(layers)) {
-								layers = [layer];
-							}
+							layers = (
+								isArray(layers)
+								? layers.slice()
+								: [layer]
+							);
 
 						const	oldLayersCount = layers.length;
 
@@ -9121,7 +9151,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 						||	layer.mask
 						||	layer.isMaskGenerated
 						) {
-							canvasCopy = getCanvasFlipped(project, canvas, flipSide, {isCopyNeeded: true});
+							canvasCopy = getCanvasFlipped(project, canvas, flipSide, FLAG_RENDER_LAYER_COPY);
 						} else {
 							layersToRender = layersToRender.slice(0, indexToRender).concat(layers);
 							indexToRender = layersToRender.length;
@@ -9143,10 +9173,10 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 						,	values
 						,	layers
 						,	{
-								ignoreColors: (ignoreColors || isToRecolor)
-							,	baseCanvas: canvasCopy
-							,	skipCopyPaste: (addCopyPaste ? layer : false)
-							,	canSaveMergedImage: !layer.isUnalterable
+								'ignoreColors' : (ignoreColors || isToRecolor)
+							,	'baseCanvas' : canvasCopy
+							,	'skipCopyPaste' : (addCopyPaste ? layer : false)
+							,	'canSaveMergedImage' : !layer.isUnalterable
 							}
 						);
 
@@ -9198,9 +9228,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 							project
 						,	values
 						,	layersToRender.slice(0, indexToRender)	//* <- content after/above this layer
-						,	{
-								ignoreColors: true		//* <- only care about alpha channel
-							}
+						,	FLAG_RENDER_IGNORE_COLORS			//* <- only care about alpha channel
 						);
 
 						if (TESTING_RENDER) addDebugImage(project, mask, 'mask = getRenderByValues');
@@ -9356,13 +9384,13 @@ let	layer, layersToRenderOne;
 
 		project.rendering = {
 			startTime
-		,	lastPauseTime: startTime
-		,	fileName: getFileNameByValues(project, values)
-		,	layersApplyCount: 0
-		,	layersBatchCount: 1
-		,	nestedLevelMax: 0
-		,	nestedLayers: []
-		,	colors: {}
+		,	'lastPauseTime' : startTime
+		,	'fileName' : getFileNameByValues(project, values)
+		,	'layersApplyCount' : 0
+		,	'layersBatchCount' : 1
+		,	'nestedLevelMax' : 0
+		,	'nestedLayers' : []
+		,	'colors' : {}
 		};
 	}
 
@@ -9706,7 +9734,7 @@ const	refName = render.refName;
 				prerenders[fileName] = null;
 			}
 		} else {
-			render = {values: render.refValues};
+			render = { 'values' : render.refValues };
 			render = await getOrCreateRender(project, render);
 			img = render.img;
 		}
@@ -9756,7 +9784,7 @@ let	autocrop, crop;
 			,	'h=' + crop.height
 			].join(',');
 
-			cropValues.autocrop = {'autocrop': cropId};
+			cropValues.autocrop = { 'autocrop' : cropId };
 
 		const	cropName = getFileNameByValuesToSave(project, cropValues);
 		const	fullSize = getImageContentSize(img);
@@ -10036,7 +10064,7 @@ let	batchContainer, subContainer;
 	const	zipFile = new zip.fs.FS();
 		zipFile.compressionLevel = 0;
 
-	const	thisJob = { project, lastPauseTime : getTimeNow() };
+	const	thisJob = { project, 'lastPauseTime' : getTimeNow() };
 		pendingJobs.add(thisJob);
 
 	let	imagesDone = 0;
@@ -10280,11 +10308,11 @@ let	batchContainer, subContainer;
 	}
 }
 
-function showAll(project) {renderAll(project);}
-function saveAll(project) {renderAll(project, { saveToFile : true });}
-function saveZip(project) {renderAll(project, { saveToZipFile : true });}
-function showJoin(project) {renderAll(project, { asOneJoinedImage : true });}
-function saveJoin(project) {renderAll(project, { saveToFile : true, asOneJoinedImage : true });}
+function showAll(project) { renderAll(project); }
+function saveAll(project) { renderAll(project, FLAG_SAVE_ALL); }
+function saveZip(project) { renderAll(project, FLAG_SAVE_ZIP); }
+function saveJoin(project) { renderAll(project, FLAG_SAVE_JOIN); }
+function showJoin(project) { renderAll(project, FLAG_SHOW_JOIN); }
 
 async function showImg(project, render, container) {
 const	isSingleWIP = (render ? false : setWIPstate(true, project));
@@ -10403,7 +10431,7 @@ async function saveProject(project) {
 		let	y = orz(layer.top);
 		let	oraNode, mask;
 
-			if (layer.layers) {
+			if (layer.isLayerFolder) {
 				oraNode = new ora.OraStack(name);
 				oraNode.isolation = (layer.isPassThrough ? 'auto' : 'isolate');
 			} else {
@@ -10512,21 +10540,21 @@ async function saveProject(project) {
 				}
 			}
 
-			if (layer.layers) {
+			if (layer.isLayerFolder) {
 			const	subLayers = await getLayersInOraFormat(layer.layers);
 
 				if (null === subLayers) {
 					return null;
 				}
 
-				oraNode.layers = subLayers;
+				oraNode.layers = subLayers || [];
 			}
 
 			oraLayers.push(oraNode);
 		}
 
 		if (!layers) {
-			return;
+			return [];
 		}
 
 	const	oraLayers = [];
@@ -10539,13 +10567,9 @@ async function saveProject(project) {
 				tempLayer = {};
 
 				for (const key in subLayer) {
-				const	takeOver = VIRTUAL_FOLDER_TAKEOVER_PROPERTIES.find(
-						([ takeOverKey, defaultValue ]) => (takeOverKey === key)
-					);
-
 					tempLayer[key] = (
-						takeOver
-					&&	takeOver[1] !== layer[key]
+						key in VIRTUAL_FOLDER_TAKEOVER_PROPERTIES
+					&&	layer[key] !== VIRTUAL_FOLDER_TAKEOVER_PROPERTIES[key]
 						? layer
 						: subLayer
 					)[key];
@@ -10568,7 +10592,7 @@ const	isSingleWIP = setWIPstate(true, project);
 const	actionLabel = 'exporting to ORA file';
 	logTime('"' + project.fileName + '" started ' + actionLabel);
 
-const	thisJob = { project, lastPauseTime : getTimeNow() };
+const	thisJob = { project, 'lastPauseTime' : getTimeNow() };
 	pendingJobs.add(thisJob);
 
 let	oraLayers, img, randomOtherImg, failed, timeNow;
@@ -10579,7 +10603,7 @@ let	oraLayers, img, randomOtherImg, failed, timeNow;
 	const	render = await getOrCreateRender(
 			project
 		,	{
-				values : getPatchedObject(
+				'values' : getPatchedObject(
 					getUpdatedMenuValues(project)
 				,	replaceJSONpartsForZoomRef
 				)
@@ -10653,7 +10677,7 @@ let	oraLayers, img, randomOtherImg, failed, timeNow;
 					'imageFound' : getProgressUpdaterFunction(thisJob, 'project_status_saving_layers'),
 					'imageDedup' : getProgressUpdaterFunction(thisJob, 'project_status_saving_images'),
 					'imageMerge' : getProgressUpdaterFunction(thisJob, 'project_status_saving_render'),
-					'zipExport' : getProgressUpdaterFunction(thisJob, 'project_status_saving_file', true),
+					'zipExport'  : getProgressUpdaterFunction(thisJob, 'project_status_saving_file', true),
 				}
 			)
 		).catch(catchPromiseError);
@@ -11937,7 +11961,7 @@ const	batchButtonsHTML = (
 
 	function getArrayCodeReplaceSlashToNewLine(...values) {
 		return values.map(
-			(value) => wrap.code.param(
+			(value) => wrap.code.list(
 				isFunction(value.split)
 				? value.split('/').join('\n')
 				: value
@@ -11945,19 +11969,113 @@ const	batchButtonsHTML = (
 		);
 	}
 
+	function getCodeListNameAndOrPrefix(...values) {
+		return values.map(
+			(value) => (
+				isArray(value)
+				? (
+					wrap.span.name('{help_code_list_name}' + value[0])
+					+ (value.length <= 1 ? '' : '[' + value[1])
+					+ (value.length <= 2 ? '' : ']' + value[2])
+				)
+				: '[' + value
+			)
+		);
+	}
+
+	function getCodeColoredParamWithListName(...values) {
+		return values.map(
+			(value) => (
+				isArray(value)
+				? (
+					'['
+					+ value[0]
+					+ (value.length <= 1 ? '' : wrap.span.sample(value[1]))
+					+ ']'
+					+ (value.length <= 2 ? '' : wrap.span.name('{help_code_list_name}' + value[2]))
+				)
+				: (
+					'[' + value + ']'
+					+ wrap.span.name('{help_code_list_name}')
+				)
+			)
+		);
+	}
+
+	function getCodeColoredParamPercentages(...values) {
+		return values.map(
+			(value) => getCodeListNameAndOrPrefix(value)
+			+ wrap.span.sample('0/10/20/'
+			+ wrap.span.custom('({help_code_more_numbers})')
+			+ '/100%')
+			+ ']'
+		);
+	}
+
+	function getCodeColoredParamAlias(...values) {
+		return values.map(
+			(value) => getCodeListNameAndOrPrefix(value)
+			+ wrap.span.sample('{help_code_alias}')
+			+ ']'
+		);
+	}
+
+	function getCodeColoredParamOutline(...values) {
+		return values.map(
+			(value) => wrap.span.name('{help_code_list_name}')
+			+ '[outline '
+			+ wrap.span.sample(value)
+			+ ']'
+		);
+	}
+
+	function getCodeColoredParamOutlineColorValue(...values) {
+		return values.map(
+			(value) => wrap.span.name('{help_code_list_name}')
+			+ '['
+			+ wrap.span.custom('red')
+			+ ' outline '
+			+ wrap.span.sample(value)
+			+ ']'
+		);
+	}
+
+	function getSaveFileNamingExample(name) {
+		return (
+			wrap.span.button('{save_png}')
+			+ ' → '
+			+ wrap.span.filename(
+				getLocalizedText(name).replace(
+					/(\[)([^\[\].]+)(\])/g
+				,	(match, open, inside, close) => (
+						open
+						+ wrap.span.variant(inside)
+						+ close
+					)
+				)
+			)
+		);
+	}
+
 const	wrap = {
-		'code': {},
-		'span': {},
+		'code' : {},
+		'span' : {},
 	};
 
 const	wrapperClassNames = [
+		'button-text',
 		'comment',
+		'custom param value',
+		'filename',
 		'folder ignore',
 		'ignore',
+		'list param',
 		'name',
 		'nested-layer ignore',
 		'param',
 		'path',
+		'sample param value',
+		'variant',
 	];
 
 	wrapperClassNames.forEach(
@@ -11975,36 +12093,44 @@ const	wrapperClassNames = [
 	);
 
 const	helpSections = {
-		'autocrop': [
+		'autocrop' : [
 			{
-				'text_key': 'notes',
+				'text_key' : 'notes',
 			}, {
-				'code_sample': '[autocrop={help_code_color_value}/{help_code_color_value}2/({help_code_more_values})]',
-				'text_key': 'color',
-				'text_replace_values': getHelpSectionLinkHTML('help_color_value'),
+				'code_sample' : '[autocrop='
+					+ wrap.span.custom('{help_code_color_value}/{help_code_color_value}2/({help_code_more_values})')
+					+ ']',
+				'text_key' : 'color',
+				'text_replace_values' : getHelpSectionLinkHTML('help_color_value'),
 			}, {
-				'code_sample': '[autocrop=top-left/top-right/bottom-left/bottom-right]',
-				'text_key': 'corner',
+				'code_sample' : '[autocrop='
+					+ wrap.span.sample('top-left/top-right/bottom-left/bottom-right')
+					+ ']',
+				'text_key' : 'corner',
 			}, {
-				'code_sample': '[autocrop=all/etc]',
-				'text_key': 'all',
+				'code_sample' : '[autocrop='
+					+ wrap.span.sample('all/etc')
+					+ ']',
+				'text_key' : 'all',
 			}, {
-				'code_sample': '[autocrop]',
-				'text_key': 'default',
-				'text_replace_values': getArrayCodeReplaceSlashToNewLine(DEFAULT_AUTOCROP),
+				'code_sample' : '[autocrop]',
+				'text_key' : 'default',
+				'text_replace_values' : getArrayCodeReplaceSlashToNewLine(DEFAULT_AUTOCROP),
 			},
 		],
-		'batch': [
+		'batch' : [
 			{
-				'text_key': 'notes',
-				'text_replace_values': [
+				'text_key' : 'notes',
+				'text_replace_values' : [
 					getTableHTML(
 						[
 							'1.',
 							[
 								'<code>',
 									wrap.span.name('{help_code_list_name_parts}'),
-									wrap.span.param('[parts batch]'),
+									wrap.span.param('['
+									+ wrap.span.sample('parts')
+									+ ' batch]'),
 								'</code>',
 							],
 						], [
@@ -12012,130 +12138,144 @@ const	helpSections = {
 							[
 								'<code>',
 									wrap.span.name('{help_code_list_name_colors}'),
-									wrap.span.param('[colors rows]'),
+									wrap.span.param('['
+									+ wrap.span.sample('colors')
+									+ ' rows]'),
 								'</code>',
 							],
 						], [
 							'3.',
 							[
-								wrap.code.param('[zoom=50/100% no-batch]'),
+								wrap.code.param('['
+								+ wrap.span.sample('zoom=50/100%')
+								+ ' no-batch]'),
 							],
 						],
 					),
 				],
 			}, {
-				'code_sample': [
+				'code_sample' : [
 					wrap.span.name('{help_code_list_name}') + '[batch]',
 					wrap.span.name('{help_code_list_name}') + '[batched]',
 				],
-				'text_key': 'all',
+				'text_key' : 'all',
 			}, {
-				'code_sample': [
+				'code_sample' : [
 					wrap.span.name('{help_code_list_name}') + '[no-batch]',
 					wrap.span.name('{help_code_list_name}') + '[single]',
 				],
-				'text_key': 'single',
+				'text_key' : 'single',
 			}, {
-				'code_sample': [
+				'code_sample' : [
 					wrap.span.name('{help_code_list_name}') + '[omitable]',
 					wrap.span.name('{help_code_list_name}') + '[omit-single]',
 					wrap.span.name('{help_code_list_name}') + '[no-single-name]',
 				],
-				'text_key': 'omitable',
+				'text_key' : 'omitable',
 			}, {
-				'code_sample': [
+				'code_sample' : [
 					wrap.span.name('{help_code_list_name}') + '[unomitable]',
 					wrap.span.name('{help_code_list_name}') + '[add-single]',
 					wrap.span.name('{help_code_list_name}') + '[single-name]',
 				],
-				'text_key': 'unomitable',
+				'text_key' : 'unomitable',
 			}, {
-				'code_sample': [
+				'code_sample' : [
 					wrap.span.name('{help_code_list_name}') + '[inline]',
 					wrap.span.name('{help_code_list_name}') + '[columns]',
 				],
-				'text_key': 'inline',
+				'text_key' : 'inline',
 			}, {
-				'code_sample': [
+				'code_sample' : [
 					wrap.span.name('{help_code_list_name}') + '[newline]',
 					wrap.span.name('{help_code_list_name}') + '[rows]',
 				],
-				'text_key': 'newline',
+				'text_key' : 'newline',
 			},
 		],
-		'clone': [
+		'clone' : [
 			{
-				'text_key': 'notes',
+				'text_key' : 'notes',
 			}, {
-				'code_sample': '[copy={help_code_alias}]',
-				'text_key': 'copy',
-				'text_replace_values': '{help_code_alias}',
+				'code_sample' : getCodeColoredParamAlias('copy='),
+				'text_key' : 'copy',
+				'text_replace_values' : '{help_code_alias}',
 			}, {
-				'code_sample': '[paste={help_code_alias}]',
-				'text_key': 'paste',
-				'text_replace_values': '{help_code_alias}',
+				'code_sample' : getCodeColoredParamAlias('paste='),
+				'text_key' : 'paste',
+				'text_replace_values' : '{help_code_alias}',
 			}, {
-				'code_sample': '[paste-above=A]',
-				'text_key': 'paste_above',
-				'text_replace_values': wrap.code.param('[paste]'),
+				'code_sample' : '[paste-above=' + wrap.span.sample('A') + ']',
+				'text_key' : 'paste_above',
+				'text_replace_values' : wrap.code.param('[paste]'),
 			}, {
-				'code_sample': '[paste-below=B]',
-				'text_key': 'paste_below',
-				'text_replace_values': [
+				'code_sample' : '[paste-below=' + wrap.span.sample('B') + ']',
+				'text_key' : 'paste_below',
+				'text_replace_values' : [
 					wrap.code.param('[paste]'),
 					wrap.code.param('[paste-above]'),
 				],
 			}, {
-				'code_sample': [
+				'code_sample' : [
 					wrap.span.name('{help_code_name} 1, 2') + '[copy]',
 					wrap.span.name('{help_code_name} 1, 2') + '[paste]',
 				],
-				'text_key': 'layer_names',
+				'text_key' : 'layer_names',
 			}, {
-				'code_sample': [
+				'code_sample' : [
 					'[copy=]',
 					'[paste=]',
 				],
-				'text_key': 'empty_id',
+				'text_key' : 'empty_id',
 			}, {
-				'code_sample': '[copy=A copy=B]',
-				'text_key': 'multi_copy',
+				'code_sample' : '[copy=' + wrap.span.custom('A') + ' copy=' + wrap.span.sample('B') + ']',
+				'text_key' : 'multi_copy',
 			}, {
-				'code_sample': '[paste=A paste=B]',
-				'text_key': 'multi_paste',
+				'code_sample' : '[paste=' + wrap.span.custom('A') + ' paste=' + wrap.span.sample('B') + ']',
+				'text_key' : 'multi_paste',
 			},
 		],
-		'collage': [
+		'collage' : [
 			{
-				'text_key': 'notes',
+				'text_key' : 'notes',
 			}, {
-				'code_sample': '[collage={help_code_color_value}/{help_code_color_value}2/({help_code_more_values})]',
-				'text_key': 'color',
-				'text_replace_values': getHelpSectionLinkHTML('help_color_value'),
+				'code_sample' : '[collage='
+					+ wrap.span.custom('{help_code_color_value}/{help_code_color_value}2/({help_code_more_values})')
+					+ ']',
+				'text_key' : 'color',
+				'text_replace_values' : getHelpSectionLinkHTML('help_color_value'),
 			}, {
-				'code_sample': '[collage=border=(0,1,2,5...10)px]',
-				'text_key': 'border',
+				'code_sample' : '[collage='
+					+ wrap.span.sample('border=(0,1,2,5...10)px')
+					+ ']',
+				'text_key' : 'border',
 			}, {
-				'code_sample': '[collage=padding=(0,1,2,5...10)px]',
-				'text_key': 'padding',
+				'code_sample' : '[collage='
+					+ wrap.span.sample('padding=(0,1,2,5...10)px')
+					+ ']',
+				'text_key' : 'padding',
 			}, {
-				'code_sample': '[collage=(0,1,2,5...10)px/({help_code_more_numbers})px]',
-				'text_key': 'pixels',
+				'code_sample' : '[collage='
+					+ wrap.span.sample('(0,1,2,5...10)px/'
+					+ wrap.span.custom('({help_code_more_numbers})')
+					+ 'px')
+					+ ']',
+				'text_key' : 'pixels',
 			//* TODO:
 			// }, {
-				// 'code_sample': '[collage=top-left/top-right/bottom-left/bottom-right/top/bottom/left/right]',
-				// 'text_key': 'align',
+				// 'code_sample' : '[collage=top-left/top-right/bottom-left/bottom-right/top/bottom/left/right]',
+				// 'text_key' : 'align',
 			// }, {
-				// 'code_sample': '[collage=all/etc]',
-				// 'text_key': 'all',
+				// 'code_sample' : '[collage=all/etc]',
+				// 'text_key' : 'all',
 			}, {
-				'code_sample': '[collage]',
-				'text_key': 'default',
-				'text_replace_values': [
+				'code_sample' : '[collage]',
+				'text_key' : 'default',
+				'text_replace_values' : [
 					getTableHTML(
 						{
-							'cell_tag_name': 'th',
-							'cells': [
+							'cell_tag_name' : 'th',
+							'cells' : [
 								'{help_collage_default_colors}',
 								'{help_collage_default_align}',
 								'{help_collage_default_padding}',
@@ -12150,81 +12290,81 @@ const	helpSections = {
 				],
 			},
 		],
-		'color_value': [
+		'color_value' : [
 			{
-				'text_key': 'notes',
-				'text_replace_values': [
+				'text_key' : 'notes',
+				'text_replace_values' : [
 					getCodeTableHTML(
 						{
-							'cell_tag_name': 'th',
-							'cells': [
+							'cell_tag_name' : 'th',
+							'cells' : [
 								'{help_color_value_table_short_hex}',
 								'{help_color_value_table_split_hex}',
 								'{help_color_value_table_split_dec}',
 							],
 						}, [
-							'[#1]',
-							'[hex=11-11-11]',
-							'[rgb=17-17-17]',
+							'[#' + wrap.span.sample('1') + ']',
+							'[hex=' + wrap.span.sample('11-11-11') + ']',
+							'[rgb=' + wrap.span.sample('17-17-17') + ']',
 						], [
-							'[#12]',
-							'[hex=12-12-12]',
-							'[rgb=18-18-18]',
+							'[#' + wrap.span.sample('12') + ']',
+							'[hex=' + wrap.span.sample('12-12-12') + ']',
+							'[rgb=' + wrap.span.sample('18-18-18') + ']',
 						], [
-							'[#123]',
-							'[hex=11-22-33]',
-							'[rgb=17-34-51]',
+							'[#' + wrap.span.sample('123') + ']',
+							'[hex=' + wrap.span.sample('11-22-33') + ']',
+							'[rgb=' + wrap.span.sample('17-34-51') + ']',
 						], [
-							'[#1234]',
-							'[hex=11-22-33-44]',
-							'[rgba=17-34-51-68]',
+							'[#' + wrap.span.sample('1234') + ']',
+							'[hex=' + wrap.span.sample('11-22-33-44') + ']',
+							'[rgba=' + wrap.span.sample('17-34-51-68') + ']',
 						], [
-							'[#12345]',
-							'[hex=12-34-5]',
-							'[rgb=18-52-5]',
+							'[#' + wrap.span.sample('12345') + ']',
+							'[hex=' + wrap.span.sample('12-34-5') + ']',
+							'[rgb=' + wrap.span.sample('18-52-5') + ']',
 						], [
-							'[#123456]',
-							'[hex=12-34-56]',
-							'[rgb=18-52-86]',
+							'[#' + wrap.span.sample('123456') + ']',
+							'[hex=' + wrap.span.sample('12-34-56') + ']',
+							'[rgb=' + wrap.span.sample('18-52-86') + ']',
 						], [
-							'[#1234567]',
-							'[hex=12-34-56-7]',
-							'[rgba=18-52-86-7]',
+							'[#' + wrap.span.sample('1234567') + ']',
+							'[hex=' + wrap.span.sample('12-34-56-7') + ']',
+							'[rgba=' + wrap.span.sample('18-52-86-7') + ']',
 						], [
-							'[#12345678]',
-							'[hex=12-34-56-78]',
-							'[rgba=18-52-86-120]',
+							'[#' + wrap.span.sample('12345678') + ']',
+							'[hex=' + wrap.span.sample('12-34-56-78') + ']',
+							'[rgba=' + wrap.span.sample('18-52-86-120') + ']',
 						],
 					),
 					getHelpSectionLinkAwayHTML('help_color_value_names_link'),
 				],
 			}, {
-				'code_sample': [
-					'[rgb=10-20-30]',
-					'[rgba=0-100-200-255]',
-					'[rgba(0,100,200,255)]',
+				'code_sample' : [
+					'[rgb=' + wrap.span.sample('10-20-30') + ']',
+					'[rgba=' + wrap.span.sample('0-100-200-255') + ']',
+					'[rgba' + wrap.span.sample('(0,100,200,255)') + ']',
 				],
-				'text_key': 'split_dec',
+				'text_key' : 'split_dec',
 			}, {
-				'code_sample': [
-					'[hex=12-34-56]',
-					'[hex=12-34-ab-cd]',
-					'[hex(12,34,ab,cd)]',
+				'code_sample' : [
+					'[hex=' + wrap.span.sample('12-34-56') + ']',
+					'[hex=' + wrap.span.sample('12-34-ab-cd') + ']',
+					'[hex' + wrap.span.sample('(12,34,ab,cd)') + ']',
 				],
-				'text_key': 'split_hex',
+				'text_key' : 'split_hex',
 			}, {
-				'code_sample': '[#1234abcd]',
-				'text_key': 'short_hex',
+				'code_sample' : '[#' + wrap.span.sample('1234abcd') + ']',
+				'text_key' : 'short_hex',
 			}, {
-				'code_sample': '[transparent]',
-				'text_key': 'transparent',
-				'text_replace_values': wrap.code.param('[rgba(0,0,0,0)]'),
+				'code_sample' : '[transparent]',
+				'text_key' : 'transparent',
+				'text_replace_values' : wrap.code.param('[rgba' + wrap.span.sample('(0,0,0,0)') + ']'),
 			},
 		],
-		'colors': [
+		'colors' : [
 			{
-				'text_key': 'notes',
-				'text_replace_values': [
+				'text_key' : 'notes',
+				'text_replace_values' : [
 					wrap.code.param('[no-render]'),
 					getHelpSectionLinkHTML('help_other'),
 					getTableHTML(
@@ -12243,7 +12383,7 @@ const	helpSections = {
 								'<code>',
 									wrap.span.nested(),
 									wrap.span.name('{help_code_option_name_color} 1'),
-									wrap.span.param('[red]'),
+									wrap.span.custom('[red]'),
 								'</code>',
 							],
 						], [
@@ -12254,7 +12394,7 @@ const	helpSections = {
 									wrap.span.comment('({help_code_more_folders})'),
 									wrap.span.path('/'),
 									wrap.span.name('{help_code_option_name_color} 2'),
-									wrap.span.param('[green]'),
+									wrap.span.custom('[green]'),
 								'</code>',
 							],
 						], [
@@ -12262,9 +12402,9 @@ const	helpSections = {
 							[
 								'<code>',
 									wrap.span.nested(),
-									wrap.span.param('[not]'),
+									wrap.span.sample('[not]'),
 									wrap.span.name('{help_code_option_name_color} 1'),
-									wrap.span.param('[blue]'),
+									wrap.span.custom('[blue]'),
 								'</code>',
 							],
 						], [
@@ -12286,18 +12426,18 @@ const	helpSections = {
 					getHelpSectionLinkHTML('help_color_value'),
 				],
 			}, {
-				'code_sample': [
+				'code_sample' : [
 					[
 						'[colors]',
 						wrap.span.name('{help_code_list_name} 1, 2'),
 						wrap.span.path('/'),
 						wrap.span.name('{help_code_option_name} 1, 2'),
-						'[red]',
+						wrap.span.custom('[red]'),
 					],
 				],
-				'text_key': 'add',
+				'text_key' : 'add',
 			}, {
-				'code_sample': [
+				'code_sample' : [
 					[
 						'[colors]',
 						wrap.span.name('{help_code_list_name}'),
@@ -12305,96 +12445,79 @@ const	helpSections = {
 						wrap.span.comment('({help_code_more_folders})'),
 						wrap.span.path('/'),
 						wrap.span.name('{help_code_option_name}'),
-						'[green]',
+						wrap.span.custom('[green]'),
 					],
 				],
-				'text_key': 'nested',
+				'text_key' : 'nested',
 			}, {
-				'code_sample': [
+				'code_sample' : [
 					[
 						'[colors]',
 						wrap.span.name('{help_code_list_name_colors}'),
 						wrap.span.path('/'),
-						'[if parts]',
+						wrap.code.sample('[if parts]'),
 						wrap.span.name('{help_code_list_name_parts}'),
 						wrap.span.path('/'),
 						wrap.span.name('{help_code_option_name_part}'),
 						wrap.span.path('/'),
 						wrap.span.name('{help_code_option_name_color_same}'),
-						'[blue]',
+						wrap.span.custom('[blue]'),
 					], [
 						'[colors]',
 						wrap.span.name('{help_code_list_name_colors}'),
 						wrap.span.path('/'),
-						'[not]',
+						wrap.code.sample('[not]'),
 						wrap.span.name('{help_code_option_name_color_same}'),
-						'[gray]',
+						wrap.span.custom('[gray]'),
 					], [
 						'[colors]',
 						wrap.span.name('{help_code_list_name_colors}'),
 						wrap.span.path('/'),
 						wrap.span.comment('({help_code_otherwise})'),
 						wrap.span.name('{help_code_option_name_color_same}'),
-						'[dark-blue]',
+						wrap.span.custom('[dark-blue]'),
 					],
 				],
-				'text_key': 'path_logic',
-				'text_replace_values': [
+				'text_key' : 'path_logic',
+				'text_replace_values' : [
 					wrap.code.param('[not]'),
 					wrap.code.param('[if]'),
 					getHelpSectionLinkHTML('help_path_logic'),
 				],
 			},
 		],
-		'opacity': [
+		'opacity' : [
 			{
-				'text_key': 'notes',
+				'text_key' : 'notes',
 			}, {
-				'code_sample': [
-					[
-						wrap.span.name('{help_code_list_name}'),
-						'[opacity=0/10/20/({help_code_more_numbers})/100%]',
-					], [
-						wrap.span.name('{help_code_list_name} 1, 2'),
-						'[0/10/20/({help_code_more_numbers})/100%]',
-					],
-				],
-				'text_key': 'set',
-				'text_replace_values': [
+				'code_sample' : getCodeColoredParamPercentages(
+					['', 'opacity='],
+					[' 1, 2', ''],
+				),
+				'text_key' : 'set',
+				'text_replace_values' : [
 					wrap.code.param('[optional]'),
 					getHelpSectionLinkHTML('help_other'),
 				],
 			},
 		],
-		'other': [
+		'other' : [
 			{
-				'code_sample': [
-					[
-						'[optional parts]',
-						wrap.span.name('{help_code_list_name}'),
-					], [
-						'[optional colors]',
-						wrap.span.name('{help_code_list_name}'),
-					], [
-						'[optional zoom=25/50%]',
-					],
-				],
-				'text_key': 'optional',
+				'code_sample' : getCodeColoredParamWithListName(
+					['optional ', 'parts', ''],
+					['optional ', 'colors', ''],
+					['optional ', 'zoom=25/50%'],
+				),
+				'text_key' : 'optional',
 			}, {
-				'code_sample': [
-					[
-						'[last parts]',
-						wrap.span.name('{help_code_list_name}'),
-					], [
-						'[last colors]',
-						wrap.span.name('{help_code_list_name}'),
-					], [
-						'[last zoom=100/50%]',
-					],
-				],
-				'text_key': 'last',
+				'code_sample' : getCodeColoredParamWithListName(
+					['last ', 'parts', ''],
+					['last ', 'colors', ''],
+					['last ', 'zoom=25/50%'],
+				),
+				'text_key' : 'last',
 			}, {
-				'code_sample': [
+				'code_sample' : [
 					[
 						'[initial]',
 						wrap.span.name('{help_code_option_name}'),
@@ -12402,115 +12525,104 @@ const	helpSections = {
 						'[preselect]',
 						wrap.span.name('{help_code_option_name}'),
 					], [
-						'[parts]',
+						wrap.span.sample('[parts]'),
 						wrap.span.name('{help_code_list_name}'),
 						wrap.span.path('/'),
 						wrap.span.name('{help_code_option_name}'),
 						'[preselect]',
 					],
 				],
-				'text_key': 'preselect',
+				'text_key' : 'preselect',
 			}, {
-				'code_sample': [
-					'[prefix]'   + wrap.span.name('{help_code_list_name}'),
-					'[prefixed]' + wrap.span.name('{help_code_list_name}'),
-				],
-				'text_key': 'prefix',
-				'text_replace_values': '{save_png} → "{filename_option_group}"',
+				'code_sample' : getCodeColoredParamWithListName(
+					'prefix',
+					'prefixed',
+				),
+				'text_key' : 'prefix',
+				'text_replace_values' : getSaveFileNamingExample('"{filename_option_group}"'),
 			}, {
-				'code_sample': [
-					'[no-prefix]'  + wrap.span.name('{help_code_list_name}'),
-					'[unprefixed]' + wrap.span.name('{help_code_list_name}'),
-				],
-				'text_key': 'no_prefix',
-				'text_replace_values': '{save_png} → "{filename_option}"',
+				'code_sample' : getCodeColoredParamWithListName(
+					'no-prefix',
+					'unprefixed',
+				),
+				'text_key' : 'no_prefix',
+				'text_replace_values' : getSaveFileNamingExample('"{filename_option}"'),
 			}, {
-				'code_sample': '[no-render]',
-				'text_key': 'no_render',
+				'code_sample' : '[no-render]',
+				'text_key' : 'no_render',
 			}, {
-				'code_sample': '[skip]',
-				'text_key': 'skip',
+				'code_sample' : '[skip]',
+				'text_key' : 'skip',
 			},
 		],
-		'padding': [
+		'padding' : [
 			{
-				'text_key': 'notes',
+				'text_key' : 'notes',
 			}, {
-				'code_sample': [
-					wrap.span.name('{help_code_list_name}') + '[outline red 0px 1/2/3px (4,5,6)px]',
-					wrap.span.name('{help_code_list_name}') + '[outline red (-1...1)/(5...10)px]',
-				],
-				'text_key': 'outer_radius',
-				'text_replace_values': wrap.code.param('/'),
+				'code_sample' : getCodeColoredParamOutlineColorValue(
+					'0px 1/2/3px (4,5,6)px',
+					'(-1...1)/(5...10)px',
+				),
+				'text_key' : 'outer_radius',
+				'text_replace_values' : wrap.code.param('/'),
 			}, {
-				'code_sample': [
-					wrap.span.name('{help_code_list_name}') + '[outline 1:2px]',
-					wrap.span.name('{help_code_list_name}') + '[outline ((0,1,2...5):(5...10))px]',
-				],
-				'text_key': 'inner_radius',
-				'text_replace_values': wrap.code.param(':'),
+				'code_sample' : getCodeColoredParamOutline(
+					'1:2px',
+					'((0,1,2...5):(5...10))px',
+				),
+				'text_replace_values' : wrap.code.param(':'),
 			}, {
-				'code_sample': [
-					wrap.span.name('{help_code_list_name}') + '[outline 1x2px]',
-				],
-				'text_key': 'outer_box',
-				'text_replace_values': wrap.code.param('x'),
+				'code_sample' : getCodeColoredParamOutline('1x2px'),
+				'text_key' : 'outer_box',
+				'text_replace_values' : wrap.code.param('x'),
 			}, {
-				'code_sample': [
-					wrap.span.name('{help_code_list_name}') + '[outline ((1:2)x(3:4))px]',
-				],
-				'text_key': 'inner_box',
+				'code_sample' : getCodeColoredParamOutline('((1:2)x(3:4))px'),
+				'text_key' : 'inner_box',
 			}, {
-				'code_sample': [
-					wrap.span.name('{help_code_list_name}') + '[outline 1xpx]',
-					wrap.span.name('{help_code_list_name}') + '[outline (x1)px]',
-				],
-				'text_key': 'outer_square',
+				'code_sample' : getCodeColoredParamOutline(
+					'1xpx',
+					'(x1)px',
+				),
+				'text_key' : 'outer_square',
 			}, {
-				'code_sample': [
-					wrap.span.name('{help_code_list_name}') + '[outline 1:xpx]',
-					wrap.span.name('{help_code_list_name}') + '[outline 1x1:px]',
-					wrap.span.name('{help_code_list_name}') + '[outline x((-1...1):(-2...2))px]',
-				],
-				'text_key': 'inner_square',
+				'code_sample' : getCodeColoredParamOutline(
+					'1:xpx',
+					'1x1:px',
+					'x((-1...1):(-2...2))px',
+				),
+				'text_key' : 'inner_square',
 			}, {
-				'code_sample': [
-					wrap.span.name('{help_code_list_name}') + '[outline 1x2:3x4px]',
-				],
-				'text_key': 'invalid',
-				'text_replace_values': wrap.code.param('[outline 1x2:3px]'),
+				'code_sample' : getCodeColoredParamOutline('1x2:3x4px'),
+				'text_key' : 'invalid',
+				'text_replace_values' : wrap.code.sample('1x2:3px'),
 			}, {
-				'code_sample': [
-					wrap.span.name('{help_code_list_name}') + '[outline at=0,1,2,({help_code_more_numbers})]',
-					wrap.span.name('{help_code_list_name}') + '[outline at=5...10]',
-				],
-				'text_key': 'threshold',
+				'code_sample' : getCodeColoredParamOutline(
+					'at=0,1,2,' + wrap.span.custom('({help_code_more_numbers})'),
+					'at=5...10',
+				),
+				'text_key' : 'threshold',
 			//* TODO:
 			// }, {
-				// 'code_sample': [
-					// wrap.span.name('{help_code_list_name}') + '[outline max/min]',
-				// ],
-				// 'text_key': 'method',
+				// 'code_sample' : getCodeColoredParamOutline('max/min'),
+				// 'text_key' : 'method',
 			}, {
-				'code_sample': [
-					wrap.span.name('{help_code_list_name}') + '[outline at=0,5...10,16/(1...2):(3...4)x(5...6):(7...8)px]',
-				],
-				'text_key': 'cross',
-				'text_replace_values': [
+				'code_sample' : getCodeColoredParamOutline('at=0,5...10,16/(1...2):(3...4)x(5...6):(7...8)px'),
+				'text_key' : 'cross',
+				'text_replace_values' : [
 					DEFAULT_ALPHA_MASK_PADDING,
 					DEFAULT_ALPHA_MASK_THRESHOLD,
 				],
 			},
 		],
-		'param': [
+		'param' : [
 			{
-				'text_key': 'notes',
-				'text_replace_values': [
+				'text_key' : 'notes',
+				'text_replace_values' : [
 					getHelpSectionLinkHTML('help_virtual_path'),
-					wrap.code.param(' [ {help_param_params} ] '),
-					wrap.code.comment(' ( {help_param_comments} ) '),
-					wrap.code.name(' {help_param_names} '),
-					wrap.code.path(' / '),
+					wrap.code.param('[ {help_param_params} ]'),
+					wrap.code.comment('( {help_param_comments} )'),
+					wrap.code.name('{help_param_names}'),
+					wrap.code.path('/'),
 					getTableHTML(
 						[
 							'1.',
@@ -12546,10 +12658,10 @@ const	helpSections = {
 				],
 			},
 		],
-		'parts': [
+		'parts' : [
 			{
-				'text_key': 'notes',
-				'text_replace_values': [
+				'text_key' : 'notes',
+				'text_replace_values' : [
 					getTableHTML(
 						[
 							'{help_code_list_folder}:',
@@ -12583,7 +12695,7 @@ const	helpSections = {
 							[
 								'<code>',
 									wrap.span.nested(),
-									wrap.span.param('[not]'),
+									wrap.span.sample('[not]'),
 									wrap.span.name('{help_code_option_name_part} 1'),
 								'</code>',
 							],
@@ -12591,7 +12703,7 @@ const	helpSections = {
 					),
 				],
 			}, {
-				'code_sample': [
+				'code_sample' : [
 					[
 						'[parts]',
 						wrap.span.name('{help_code_list_name} 1, 2'),
@@ -12599,211 +12711,211 @@ const	helpSections = {
 						wrap.span.name('{help_code_option_name} 1, 2'),
 					],
 				],
-				'text_key': 'add',
-				'text_replace_values': [
+				'text_key' : 'add',
+				'text_replace_values' : [
 					wrap.code.param('[not]'),
 					wrap.code.param('[if]'),
 					getHelpSectionLinkHTML('help_path_logic'),
 				],
 			},
 		],
-		'path_logic': [
+		'path_logic' : [
 			{
-				'text_key': 'notes',
-				'text_replace_values': wrap.code.param('[if]'),
+				'text_key' : 'notes',
+				'text_replace_values' : wrap.code.param('[if]'),
 			}, {
-				'code_sample': [
+				'code_sample' : [
 					[
-						'[if parts]',
+						'[if ' + wrap.span.sample('parts') + ']',
 						wrap.span.name('{help_code_list_name}'),
 						wrap.span.path('/'),
 						wrap.span.name('{help_code_option_name}'),
 					], [
-						'[if colors]',
+						'[if ' + wrap.span.sample('colors') + ']',
 						wrap.span.name('{help_code_list_name}'),
 						wrap.span.path('/'),
 						wrap.span.name('{help_code_option_name}'),
 					],
 				],
-				'text_key': 'if',
+				'text_key' : 'if',
 			}, {
-				'code_sample': [
+				'code_sample' : [
 					[
-						'[if parts]',
+						'[if ' + wrap.span.sample('parts') + ']',
 						wrap.span.name('{help_code_list_name}'),
 						wrap.span.path('/'),
 						'[not]',
 						wrap.span.name('{help_code_option_name}'),
 					], [
-						'[if colors]',
-						wrap.span.name('{help_code_list_name}'),
-						wrap.span.path('/'),
-						'[not]',
-						wrap.span.name('{help_code_option_name}'),
-					],
-				],
-				'text_key': 'if_not_option',
-			}, {
-				'code_sample': [
-					[
-						'[if not parts]',
-						wrap.span.name('{help_code_list_name}'),
-						wrap.span.path('/'),
-						wrap.span.name('{help_code_option_name}'),
-					], [
-						'[if not colors]',
-						wrap.span.name('{help_code_list_name}'),
-						wrap.span.path('/'),
-						wrap.span.name('{help_code_option_name}'),
-					],
-				],
-				'text_key': 'if_not_list',
-				'text_replace_values': wrap.code.param('[not]'),
-			}, {
-				'code_sample': [
-					[
-						'[if not parts]',
-						wrap.span.name('{help_code_list_name}'),
-						wrap.span.path('/'),
-						'[not]',
-						wrap.span.name('{help_code_option_name}'),
-					], [
-						'[if not colors]',
+						'[if ' + wrap.span.sample('colors') + ']',
 						wrap.span.name('{help_code_list_name}'),
 						wrap.span.path('/'),
 						'[not]',
 						wrap.span.name('{help_code_option_name}'),
 					],
 				],
-				'text_key': 'if_not_both',
-				'text_replace_values': wrap.code.param('[not]'),
+				'text_key' : 'if_not_option',
 			}, {
-				'code_sample': [
+				'code_sample' : [
 					[
-						'[if parts]',
+						'[if not ' + wrap.span.sample('parts') + ']',
+						wrap.span.name('{help_code_list_name}'),
+						wrap.span.path('/'),
+						wrap.span.name('{help_code_option_name}'),
+					], [
+						'[if not ' + wrap.span.sample('colors') + ']',
+						wrap.span.name('{help_code_list_name}'),
+						wrap.span.path('/'),
+						wrap.span.name('{help_code_option_name}'),
+					],
+				],
+				'text_key' : 'if_not_list',
+				'text_replace_values' : wrap.code.param('[not]'),
+			}, {
+				'code_sample' : [
+					[
+						'[if not ' + wrap.span.sample('parts') + ']',
+						wrap.span.name('{help_code_list_name}'),
+						wrap.span.path('/'),
+						'[not]',
+						wrap.span.name('{help_code_option_name}'),
+					], [
+						'[if not ' + wrap.span.sample('colors') + ']',
+						wrap.span.name('{help_code_list_name}'),
+						wrap.span.path('/'),
+						'[not]',
+						wrap.span.name('{help_code_option_name}'),
+					],
+				],
+				'text_key' : 'if_not_both',
+				'text_replace_values' : wrap.code.param('[not]'),
+			}, {
+				'code_sample' : [
+					[
+						'[if ' + wrap.span.sample('parts') + ']',
 						wrap.span.name('{help_code_list_name}'),
 						wrap.span.path('/'),
 						'[not none]',
 					], [
-						'[if colors]',
+						'[if ' + wrap.span.sample('colors') + ']',
 						wrap.span.name('{help_code_list_name}'),
 						wrap.span.path('/'),
 						'[not none]',
 					], [
-						'[if any parts]',
+						'[if any ' + wrap.span.sample('parts') + ']',
 						wrap.span.name('{help_code_list_name} 1, 2'),
 					], [
-						'[if any colors]',
+						'[if any ' + wrap.span.sample('colors') + ']',
 						wrap.span.name('{help_code_list_name} 1, 2'),
 					],
 				],
-				'text_key': 'if_any',
+				'text_key' : 'if_any',
 			}, {
-				'code_sample': [
+				'code_sample' : [
 					[
-						'[if parts]',
-						wrap.span.name('{help_code_list_name}'),
-						wrap.span.path('/'),
-						'[none]',,
-					], [
-						'[if colors]',
+						'[if ' + wrap.span.sample('parts') + ']',
 						wrap.span.name('{help_code_list_name}'),
 						wrap.span.path('/'),
 						'[none]',
 					], [
-						'[if not any parts]',
+						'[if ' + wrap.span.sample('colors') + ']',
+						wrap.span.name('{help_code_list_name}'),
+						wrap.span.path('/'),
+						'[none]',
+					], [
+						'[if not any ' + wrap.span.sample('parts') + ']',
 						wrap.span.name('{help_code_list_name} 1, 2'),
 					], [
-						'[if not any colors]',
+						'[if not any ' + wrap.span.sample('colors') + ']',
 						wrap.span.name('{help_code_list_name} 1, 2'),
 					],
 				],
-				'text_key': 'if_not_any',
-				'text_replace_values': wrap.code.param('[not]'),
+				'text_key' : 'if_not_any',
+				'text_replace_values' : wrap.code.param('[not]'),
 			}, {
-				'code_sample': '[not]',
-				'text_key': 'not',
-				'text_replace_values': [
+				'code_sample' : '[not]',
+				'text_key' : 'not',
+				'text_replace_values' : [
 					wrap.code.param('[if]'),
 					wrap.code.param('[any]'),
 				],
 			}, {
-				'code_sample': '[any]',
-				'text_key': 'any',
-				'text_replace_values': wrap.code.param('[if]'),
+				'code_sample' : '[any]',
+				'text_key' : 'any',
+				'text_replace_values' : wrap.code.param('[if]'),
 			}, {
-				'code_sample': '[none]',
-				'text_key': 'none',
+				'code_sample' : '[none]',
+				'text_key' : 'none',
 			},
 		],
-		'separate': [
+		'separate' : [
 			{
-				'text_key': 'notes',
+				'text_key' : 'notes',
 			}, {
-				'code_sample': '[separate]',
-				'text_key': 'global',
+				'code_sample' : '[separate]',
+				'text_key' : 'global',
 			}, {
-				'code_sample': '[separate={help_code_alias}]',
-				'text_key': 'alias_id',
-				'text_replace_values': '{help_code_alias}',
+				'code_sample' : getCodeColoredParamAlias('separate='),
+				'text_key' : 'alias_id',
+				'text_replace_values' : '{help_code_alias}',
 			}, {
-				'code_sample': '[separate-equal={help_code_alias}]',
-				'text_key': 'equal',
-				'text_replace_values': '{save_png} → "{separate_naming_equal}"',
+				'code_sample' : getCodeColoredParamAlias('separate-equal='),
+				'text_key' : 'equal',
+				'text_replace_values' : getSaveFileNamingExample('"{separate_naming_equal}"'),
 			}, {
-				'code_sample': '[separate-numbered={help_code_alias}]',
-				'text_key': 'numbered',
-				'text_replace_values': '{save_png} → "{separate_naming_numbered}"',
+				'code_sample' : getCodeColoredParamAlias('separate-numbered='),
+				'text_key' : 'numbered',
+				'text_replace_values' : getSaveFileNamingExample('"{separate_naming_numbered}"'),
 			}, {
-				'code_sample': [
-					'[separated]',
-					'[separate-equal]',
-					'[separate-numbered]',
-				],
-				'text_key': 'layer_names',
+				'code_sample' : getCodeListNameAndOrPrefix(
+					[' 1, 2', 'separated', ''],
+					[' 2', 'separate-equal', ''],
+					[' 3', 'separate-numbered', ''],
+				),
+				'text_key' : 'layer_names',
 			}, {
-				'code_sample': [
+				'code_sample' : [
 					'[separate=]',
 				],
-				'text_key': 'empty_id',
+				'text_key' : 'empty_id',
 			},
 		],
-		'side': [
+		'side' : [
 			{
-				'text_key': 'notes',
+				'text_key' : 'notes',
 			}, {
-				'code_sample': [
+				'code_sample' : [
 					'[front]',
 					'[not back]',
 					'[if not reverse]',
 				],
-				'text_key': 'front',
+				'text_key' : 'front',
 			}, {
-				'code_sample': [
+				'code_sample' : [
 					'[back]',
 					'[not front]',
 					'[if reverse]',
 				],
-				'text_key': 'back',
+				'text_key' : 'back',
 			}, {
-				'code_sample': [
+				'code_sample' : [
 					'[reverse]' + wrap.span.comment('({help_code_folder})'),
 				],
-				'text_key': 'reverse',
+				'text_key' : 'reverse',
 			}, {
-				'code_sample': '[reverse=hor]',
-				'text_key': 'flip_hor',
-				'text_replace_values': wrap.code.param('reverse'),
+				'code_sample' : '[reverse=' + wrap.span.sample('hor') + ']',
+				'text_key' : 'flip_hor',
+				'text_replace_values' : wrap.code.param('reverse'),
 			}, {
-				'code_sample': '[reverse=ver]',
-				'text_key': 'flip_ver',
-				'text_replace_values': wrap.code.param('reverse'),
+				'code_sample' : '[reverse=' + wrap.span.sample('ver') + ']',
+				'text_key' : 'flip_ver',
+				'text_replace_values' : wrap.code.param('reverse'),
 			},
 		],
-		'virtual_path': [
+		'virtual_path' : [
 			{
-				'text_key': 'notes',
-				'text_replace_values': [
+				'text_key' : 'notes',
+				'text_replace_values' : [
 					[
 						[
 							'{help_code_layer}:&nbsp;',
@@ -12841,13 +12953,13 @@ const	helpSections = {
 				],
 			},
 		],
-		'zoom': [
+		'zoom' : [
 			{
-				'code_sample': [
-					'[zoom=10/20/({help_code_more_numbers})/100%]',
-					'[x10/20/({help_code_more_numbers})/100%]',
-				],
-				'text_key': 'notes',
+				'code_sample' : getCodeColoredParamPercentages(
+					'zoom=',
+					'x',
+				),
+				'text_key' : 'notes',
 			},
 		],
 	};
@@ -12970,18 +13082,18 @@ const	menuHTMLpartsOrder = [
 
 const	aboutLinks = [
 		{
-			'content': getLocalizedHTML('about_notes')
+			'content' : getLocalizedHTML('about_notes')
 		}
 	,	{
-			'pretext': '<hr>'
-		,	'header': getLocalizedHTML('about_source')
-		,	'links': [
+			'pretext' : '<hr>'
+		,	'header' : getLocalizedHTML('about_source')
+		,	'links' : [
 				['https://github.com/f2d/sprite_dress_up', 'GitHub']
 			]
 		}
 	,	{
-			'header': getLocalizedHTML('about_lang')
-		,	'links': (
+			'header' : getLocalizedHTML('about_lang')
+		,	'links' : (
 				getAllByTag('link')
 				.filter(
 					(element) => (

@@ -401,14 +401,17 @@ label:hover {
 	border-bottom-width: 0.5em;
 	margin-top: 0.5em;
 }
-#top-menu-help code,
-#top-menu-help code > *,
-#top-menu-help pre > * {
-	display: inline-flex;	/* <- (TODO) does not fill parent table-cell height, but a little better than inline-block */
+/* #top-menu-help pre > :not(.ignore):not(.value), */
+/* #top-menu-help code > :not(.ignore):not(.value), */
+/* #top-menu-help code, */
+#top-menu-help .list,
+#top-menu-help .button-text {
+	display: inline-flex;	/* <- (TODO) does not fill parent table-cell height */
 }
+#top-menu-help pre > :not(.value),
+#top-menu-help code > :not(.value),
 #top-menu-help code[class],
-#top-menu-help code > *,
-#top-menu-help pre > * {
+#top-menu-help .button-text {
 	padding-left: 0.5em;
 	padding-right: 0.5em;
 }
@@ -425,11 +428,15 @@ label:hover {
 }
 #top-menu-help code,
 #top-menu-help pre,
+#top-menu-help .button-text,
 #top-menu-help .ignore {	background-color: #e2e2e2;}
 #top-menu-help .comment {	background-color: #f3d7d7;}
 #top-menu-help .name {		background-color: #d7d7f3;}
 #top-menu-help .param {		background-color: #d7f3d7;}
 #top-menu-help .path {		background-color: #f3f300;}
+#top-menu-help .variant {	color: #5f9ea0;}
+#top-menu-help .value {		color: #1e90ff;}
+#top-menu-help .custom {	color: red;}	/* cadetblue = #5f9ea0, dodgerblue = #1e90ff */
 #top-menu-help .ignore {
 	min-width: 2em;
 	text-align: center;
