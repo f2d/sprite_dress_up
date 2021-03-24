@@ -11974,7 +11974,16 @@ const	batchButtonsHTML = (
 			(value) => (
 				isArray(value)
 				? (
-					wrap.span.name('{help_code_list_name}' + value[0])
+					wrap.span.name(
+						value[0]
+					&&	value[0].length > 0
+					&&	value[0]
+						.replace(regNumDots, '')
+						.replace(regCommaSpace, '')
+						.length > 0
+						? value[0]
+						: '{help_code_list_name}' + value[0]
+					)
 					+ (value.length <= 1 ? '' : '[' + value[1])
 					+ (value.length <= 2 ? '' : ']' + value[2])
 				)
@@ -12005,7 +12014,7 @@ const	batchButtonsHTML = (
 	function getCodeColoredParamPercentages(...values) {
 		return values.map(
 			(value) => getCodeListNameAndOrPrefix(value)
-			+ wrap.span.sample('0/10/20/'
+			+ wrap.span.sample('10/20/'
 			+ wrap.span.custom('({help_code_more_numbers})')
 			+ '/100%')
 			+ ']'
@@ -12022,7 +12031,7 @@ const	batchButtonsHTML = (
 
 	function getCodeColoredParamOutline(...values) {
 		return values.map(
-			(value) => wrap.span.name('{help_code_list_name}')
+			(value) => wrap.span.name('{help_code_list_name_padding}')
 			+ '[outline '
 			+ wrap.span.sample(value)
 			+ ']'
@@ -12031,13 +12040,42 @@ const	batchButtonsHTML = (
 
 	function getCodeColoredParamOutlineColorValue(...values) {
 		return values.map(
-			(value) => wrap.span.name('{help_code_list_name}')
+			(value) => wrap.span.name('{help_code_list_name_padding}')
 			+ '['
 			+ wrap.span.custom('red')
 			+ ' outline '
 			+ wrap.span.sample(value)
 			+ ']'
 		);
+	}
+
+	function getCodeColoredParamParts(parentParam, childParam) {
+		return NAME_PARTS_FOLDERS.map(
+			(listType) => [
+				'[if ' + (parentParam || '') + wrap.span.sample(listType) + ']',
+				wrap.span.name('{help_code_list_name_' + listType + '}'),
+				wrap.span.path('/') + (childParam || ''),
+				wrap.span.name('{help_code_option_name_' + listType.slice(0, -1) + '}'),
+			]
+		);
+	}
+
+	function getCodeColoredParamPartsAny(parentParam, childParam) {
+		return [
+			...NAME_PARTS_FOLDERS.map(
+				(listType) => [
+					'[if ' + wrap.span.sample(listType) + ']',
+					wrap.span.name('{help_code_list_name_' + listType + '}'),
+					'[' + (childParam || '') + 'none]',
+				]
+			),
+			...NAME_PARTS_FOLDERS.map(
+				(listType) => [
+					'[if ' + (parentParam || '') + 'any ' + wrap.span.sample(listType) + ']',
+					wrap.span.name('{help_code_list_name_' + listType + '} 1, 2'),
+				]
+			),
+		];
 	}
 
 	function getSaveFileNamingExample(name) {
@@ -12127,28 +12165,22 @@ const	helpSections = {
 							'1.',
 							[
 								'<code>',
+									wrap.span.param('[' + wrap.span.sample('parts') + ' batch]'),
 									wrap.span.name('{help_code_list_name_parts}'),
-									wrap.span.param('['
-									+ wrap.span.sample('parts')
-									+ ' batch]'),
 								'</code>',
 							],
 						], [
 							'2.',
 							[
 								'<code>',
+									wrap.span.param('[' + wrap.span.sample('colors') + ' rows]'),
 									wrap.span.name('{help_code_list_name_colors}'),
-									wrap.span.param('['
-									+ wrap.span.sample('colors')
-									+ ' rows]'),
 								'</code>',
 							],
 						], [
 							'3.',
 							[
-								wrap.code.param('['
-								+ wrap.span.sample('zoom=50/100%')
-								+ ' no-batch]'),
+								wrap.code.param('[' + wrap.span.sample('zoom=50/100%') + ' no-batch]'),
 							],
 						],
 					),
@@ -12429,9 +12461,9 @@ const	helpSections = {
 				'code_sample' : [
 					[
 						'[colors]',
-						wrap.span.name('{help_code_list_name} 1, 2'),
+						wrap.span.name('{help_code_list_name_colors} 1, 2'),
 						wrap.span.path('/'),
-						wrap.span.name('{help_code_option_name} 1, 2'),
+						wrap.span.name('{help_code_option_name_color} 1, 2'),
 						wrap.span.custom('[red]'),
 					],
 				],
@@ -12440,11 +12472,11 @@ const	helpSections = {
 				'code_sample' : [
 					[
 						'[colors]',
-						wrap.span.name('{help_code_list_name}'),
+						wrap.span.name('{help_code_list_name_colors}'),
 						wrap.span.path('/'),
 						wrap.span.comment('({help_code_more_folders})'),
 						wrap.span.path('/'),
-						wrap.span.name('{help_code_option_name}'),
+						wrap.span.name('{help_code_option_name_color}'),
 						wrap.span.custom('[green]'),
 					],
 				],
@@ -12460,21 +12492,21 @@ const	helpSections = {
 						wrap.span.path('/'),
 						wrap.span.name('{help_code_option_name_part}'),
 						wrap.span.path('/'),
-						wrap.span.name('{help_code_option_name_color_same}'),
+						wrap.span.name('{help_code_option_name_color} 1'),
 						wrap.span.custom('[blue]'),
 					], [
 						'[colors]',
 						wrap.span.name('{help_code_list_name_colors}'),
 						wrap.span.path('/'),
 						wrap.code.sample('[not]'),
-						wrap.span.name('{help_code_option_name_color_same}'),
+						wrap.span.name('{help_code_option_name_color} 1'),
 						wrap.span.custom('[gray]'),
 					], [
 						'[colors]',
 						wrap.span.name('{help_code_list_name_colors}'),
 						wrap.span.path('/'),
 						wrap.span.comment('({help_code_otherwise})'),
-						wrap.span.name('{help_code_option_name_color_same}'),
+						wrap.span.name('{help_code_option_name_color} 1'),
 						wrap.span.custom('[dark-blue]'),
 					],
 				],
@@ -12491,8 +12523,8 @@ const	helpSections = {
 				'text_key' : 'notes',
 			}, {
 				'code_sample' : getCodeColoredParamPercentages(
-					['', 'opacity='],
-					[' 1, 2', ''],
+					['{help_code_list_name_opacity}', 'opacity='],
+					['{help_code_list_name_opacity} 1, 2', ''],
 				),
 				'text_key' : 'set',
 				'text_replace_values' : [
@@ -12706,9 +12738,9 @@ const	helpSections = {
 				'code_sample' : [
 					[
 						'[parts]',
-						wrap.span.name('{help_code_list_name} 1, 2'),
+						wrap.span.name('{help_code_list_name_parts} 1, 2'),
 						wrap.span.path('/'),
-						wrap.span.name('{help_code_option_name} 1, 2'),
+						wrap.span.name('{help_code_option_name_part} 1, 2'),
 					],
 				],
 				'text_key' : 'add',
@@ -12724,112 +12756,24 @@ const	helpSections = {
 				'text_key' : 'notes',
 				'text_replace_values' : wrap.code.param('[if]'),
 			}, {
-				'code_sample' : [
-					[
-						'[if ' + wrap.span.sample('parts') + ']',
-						wrap.span.name('{help_code_list_name}'),
-						wrap.span.path('/'),
-						wrap.span.name('{help_code_option_name}'),
-					], [
-						'[if ' + wrap.span.sample('colors') + ']',
-						wrap.span.name('{help_code_list_name}'),
-						wrap.span.path('/'),
-						wrap.span.name('{help_code_option_name}'),
-					],
-				],
+				'code_sample' : getCodeColoredParamParts(),
 				'text_key' : 'if',
 			}, {
-				'code_sample' : [
-					[
-						'[if ' + wrap.span.sample('parts') + ']',
-						wrap.span.name('{help_code_list_name}'),
-						wrap.span.path('/'),
-						'[not]',
-						wrap.span.name('{help_code_option_name}'),
-					], [
-						'[if ' + wrap.span.sample('colors') + ']',
-						wrap.span.name('{help_code_list_name}'),
-						wrap.span.path('/'),
-						'[not]',
-						wrap.span.name('{help_code_option_name}'),
-					],
-				],
+				'code_sample' : getCodeColoredParamParts('', '[not]'),
 				'text_key' : 'if_not_option',
 			}, {
-				'code_sample' : [
-					[
-						'[if not ' + wrap.span.sample('parts') + ']',
-						wrap.span.name('{help_code_list_name}'),
-						wrap.span.path('/'),
-						wrap.span.name('{help_code_option_name}'),
-					], [
-						'[if not ' + wrap.span.sample('colors') + ']',
-						wrap.span.name('{help_code_list_name}'),
-						wrap.span.path('/'),
-						wrap.span.name('{help_code_option_name}'),
-					],
-				],
+				'code_sample' : getCodeColoredParamParts('not '),
 				'text_key' : 'if_not_list',
 				'text_replace_values' : wrap.code.param('[not]'),
 			}, {
-				'code_sample' : [
-					[
-						'[if not ' + wrap.span.sample('parts') + ']',
-						wrap.span.name('{help_code_list_name}'),
-						wrap.span.path('/'),
-						'[not]',
-						wrap.span.name('{help_code_option_name}'),
-					], [
-						'[if not ' + wrap.span.sample('colors') + ']',
-						wrap.span.name('{help_code_list_name}'),
-						wrap.span.path('/'),
-						'[not]',
-						wrap.span.name('{help_code_option_name}'),
-					],
-				],
+				'code_sample' : getCodeColoredParamParts('not ', '[not]'),
 				'text_key' : 'if_not_both',
 				'text_replace_values' : wrap.code.param('[not]'),
 			}, {
-				'code_sample' : [
-					[
-						'[if ' + wrap.span.sample('parts') + ']',
-						wrap.span.name('{help_code_list_name}'),
-						wrap.span.path('/'),
-						'[not none]',
-					], [
-						'[if ' + wrap.span.sample('colors') + ']',
-						wrap.span.name('{help_code_list_name}'),
-						wrap.span.path('/'),
-						'[not none]',
-					], [
-						'[if any ' + wrap.span.sample('parts') + ']',
-						wrap.span.name('{help_code_list_name} 1, 2'),
-					], [
-						'[if any ' + wrap.span.sample('colors') + ']',
-						wrap.span.name('{help_code_list_name} 1, 2'),
-					],
-				],
+				'code_sample' : getCodeColoredParamPartsAny('not '),
 				'text_key' : 'if_any',
 			}, {
-				'code_sample' : [
-					[
-						'[if ' + wrap.span.sample('parts') + ']',
-						wrap.span.name('{help_code_list_name}'),
-						wrap.span.path('/'),
-						'[none]',
-					], [
-						'[if ' + wrap.span.sample('colors') + ']',
-						wrap.span.name('{help_code_list_name}'),
-						wrap.span.path('/'),
-						'[none]',
-					], [
-						'[if not any ' + wrap.span.sample('parts') + ']',
-						wrap.span.name('{help_code_list_name} 1, 2'),
-					], [
-						'[if not any ' + wrap.span.sample('colors') + ']',
-						wrap.span.name('{help_code_list_name} 1, 2'),
-					],
-				],
+				'code_sample' : getCodeColoredParamPartsAny('', 'not '),
 				'text_key' : 'if_not_any',
 				'text_replace_values' : wrap.code.param('[not]'),
 			}, {
@@ -12867,11 +12811,11 @@ const	helpSections = {
 				'text_key' : 'numbered',
 				'text_replace_values' : getSaveFileNamingExample('"{separate_naming_numbered}"'),
 			}, {
-				'code_sample' : getCodeListNameAndOrPrefix(
-					[' 1, 2', 'separated', ''],
-					[' 2', 'separate-equal', ''],
-					[' 3', 'separate-numbered', ''],
-				),
+				'code_sample': [
+					wrap.span.name('{help_code_separate_group_name}') + '[separated]',
+					wrap.span.name('{help_code_separate_group_name}') + '[separate-equal]',
+					wrap.span.name('{help_code_separate_group_name}') + '[separate-numbered]',
+				],
 				'text_key' : 'layer_names',
 			}, {
 				'code_sample' : [
@@ -12960,6 +12904,10 @@ const	helpSections = {
 					'x',
 				),
 				'text_key' : 'notes',
+				'text_replace_values' : [
+					wrap.code.param('[optional]'),
+					getHelpSectionLinkHTML('help_other'),
+				],
 			},
 		],
 	};
