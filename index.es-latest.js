@@ -5295,13 +5295,9 @@ async function getProjectViewMenu(project) {
 								: false
 							);
 
-							layer.isUnalterable = !(
+						const	isLayerAlterable = (
 								isContentAlterable
 							||	getPropByAnyOfNamesChain(layer.params.copypaste, ...PARAM_KEYWORDS_PASTE)
-							||	(
-									layer.isPassThrough
-								// &&	!layer.names.some((name) => colorListNames.includes(name))
-								)
 							||	(
 									layer.params.side
 									? VIEW_SIDES.includes(layer.params.side)
@@ -5309,10 +5305,18 @@ async function getProjectViewMenu(project) {
 								)
 							);
 
+							layer.isUnalterable = !(
+								isLayerAlterable
+							||	(
+									layer.isPassThrough
+								// &&	!layer.names.some((name) => colorListNames.includes(name))
+								)
+							);
+
 							return (
-								layer.isUnalterable
+								isResultUnalterable
+							&&	!isLayerAlterable
 							&&	!layer.names.some((name) => alterableLayerNames.includes(name))
-							&&	isResultUnalterable
 							);
 						}
 					,	true
