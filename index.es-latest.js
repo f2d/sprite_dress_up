@@ -304,6 +304,7 @@ const	CONFIG_FILE_PATH = 'config.js'			//* <- declarations-only file to redefine
 ,	regClassLoaded		= getClassReg('loaded')
 ,	regClassLoading		= getClassReg('loading')
 ,	regClassShow		= getClassReg('show')
+,	regClassRow		= getClassReg('row')
 
 ,	regJSONstringify = {
 		'asFlatLine'	: /^(data)$/i
@@ -3920,21 +3921,32 @@ const	button = cre('button', parent);
 }
 
 function addNamedButton(container, name, label) {
-	addButton(container, getLocalizedText(label || name)).name = name || label;
+const	button = addButton(container, getLocalizedText(label || name));
+	button.name = name || label;
+
+	return button;
 }
 
 function addButtonGroup(container, group) {
 
+const	buttonsBox = cre('div', container);
+	buttonsBox.className = 'panel';
+
 	for (const buttonName in group) {
 	const	entry = group[buttonName];
-
 		if (isString(entry)) {
-			addNamedButton(container, buttonName, entry);
+			addNamedButton(buttonsBox, buttonName, entry);
 		} else
 		if (isNonNullObject(entry)) {
-			addButtonGroup(cre('div', container), entry);
+		const	nestedBox = addButtonGroup(buttonsBox, entry);
+
+			if (!regClassRow.test(buttonsBox.className)) {
+				toggleClass(nestedBox, 'row', 1);
+			}
 		}
 	}
+
+	return container;
 }
 
 function addOption(parent, text, value) {
@@ -4743,7 +4755,7 @@ async function getProjectViewMenu(project) {
 //* render default set when everything is ready:
 
 			const	container = createProjectView(project);
-				createOptionsMenu(project, getAllByClass('project-options', container)[0]);
+				createOptionsMenu(project, getAllByClass('project-options', container)[0] || container);
 
 				return container;
 			}
@@ -5839,18 +5851,24 @@ async function getProjectViewMenu(project) {
 function createProjectView(project) {
 const	container = cre('div');
 
-const	headerTitle = cre('header', container);
-	headerTitle.className = 'project-header filename';
-	headerTitle.textContent = project.fileName;
+const	projectTitle = cre('header', container);
+	projectTitle.className = 'filename';
+	projectTitle.textContent = project.fileName;
+
+const	buttonsPanel = cre('div', container);
+	buttonsPanel.className = 'panel row wrap';
 
 const	headerInfo = cre('header', container);
 	headerInfo.className = 'project-header project-info';
 
 //* show overall project info:
 
-const	summary       = cre('section', headerInfo);
-const	summaryBody   = cre('div',    summary);
+const	summary = cre('div', buttonsPanel);
+	summary.className = 'sub panel';
+
+const	summaryBody = cre('div', summary);
 const	summaryFooter = cre('footer', summary);
+	summaryFooter.className = 'panel';
 
 const	bitDepthText = (
 		project.channels && project.bitDepth
@@ -5900,23 +5918,27 @@ const	summaryTextParts = [
 
 	if (project.options) {
 		for (const controlGroup of PROJECT_VIEW_CONTROLS) {
-		const	buttons = controlGroup.buttons;
-		const	buttonsGroup = cre('section', headerInfo);
-		const	buttonsHeader = cre('header', buttonsGroup);
-		const	buttonsFooter = cre('footer', buttonsGroup);
+		const	buttonsGroup = cre('div', buttonsPanel);
+			buttonsGroup.className = 'sub panel';
 
+		const	buttonsHeader = cre('header', buttonsGroup);
 			buttonsHeader.textContent = getLocalizedText(controlGroup.header) + ':';
 
-			addButtonGroup(buttonsFooter, buttons);
+			addButtonGroup(buttonsGroup, controlGroup.buttons);
 		}
 
 		container.addEventListener('change', onProjectMenuUpdate, false);
 
-//* place for results:
+//* add place for options menu and results:
 
-	const	tr = cre('tr', cre('table', container));
-		cre('td', tr).className = 'project-options';
-		cre('td', tr).className = 'project-render';
+	const	renderingPanel = cre('div', container);
+		renderingPanel.className = 'panel row';
+
+	const	renderingOptions = cre('div', renderingPanel);
+		renderingOptions.className = 'panel project-options';
+
+	const	renderedImages = cre('div', renderingPanel);
+		renderedImages.className = 'panel project-render';
 	}
 
 	container.addEventListener('click', onProjectButtonClick, false);
@@ -6048,8 +6070,8 @@ const	img = await getProjectMergedImagePromise(project, FLAG_PROJECT_SET_THUMBNA
 
 		comment.innerHTML = getLocalizedHTML('no_options');
 
-	const	preview = cre('div', container)
-		preview.className = 'preview';
+	const	preview = cre('div', container);
+		preview.className = 'project-prerender';
 		preview.appendChild(img);
 
 		return container;
@@ -6850,10 +6872,19 @@ function updateElementFixedWidth(element, ref, key) {
 		if (!ref) ref = element;
 		if (!key) key = 'width';
 
-	const	width = Math.ceil(ref.width || ref.offsetWidth || ref.scrollWidth || ref.clientWidth);
+	const	refWidth = Math.ceil(ref.width || ref.offsetWidth || ref.scrollWidth || ref.clientWidth);
+	const	ownWidth = orz(element.style[key]);
 
-		if (width > orz(element.style[key])) {
-			element.style[key] = width + 'px';
+		if (TESTING > 9) console.log(
+			'updateElementFixedWidth:', [
+				'ref:', refWidth, ref,
+				(refWidth > ownWidth ? '>' : '<='),
+				'target:', ownWidth, element,
+			]
+		);
+
+		if (refWidth > ownWidth) {
+			element.style[key] = refWidth + 'px';
 
 			return true;
 		}
@@ -6886,7 +6917,8 @@ let	element;
 
 	if (TAB_STATUS_TEXT) {
 		if (element = project.buttonStatus) {
-			element.title = element.textContent = getLocalizedText(operation, ...args);
+			element.title =
+			element.textContent = getLocalizedText(operation, ...args);
 
 			if (ADD_WIP_TEXT_ROLL) {
 				if (operation.includes('project_status_ready')) {
@@ -10404,10 +10436,18 @@ let	img;
 }
 
 function getEmptyRenderContainer(project) {
-	return delAllChildNodes(
-		project.renderContainer
-	||	(project.renderContainer = getAllByClass('project-render', project.container)[0])
-	);
+let	container = project.renderContainer;
+
+	if (!container) {
+		container = project.renderContainer = (
+			getAllByClass('project-render', project.container)[0]
+		||	getAllByClass('project-prerender', project.container)[0]
+		);
+	}
+
+	if (container) {
+		return delAllChildNodes(container);
+	}
 }
 
 async function saveProject(project) {
@@ -10773,10 +10813,10 @@ function updateMenuBatchCount(project, ...args) {
 
 			if (!label) {
 			let	container = getAllByName('show_all', project.container)[0] || project.container;
-				container = getThisOrParentByTagName(container, 'section');
+				container = getThisOrParentByClass(container, 'sub');
 
 				if (ADD_BATCH_COUNT_ON_NEW_LINE) {
-					label = project.renderBatchCountMenuLabel = cre('div', container, container.lastElementChild);
+					label = project.renderBatchCountMenuLabel = cre('header', container, container.lastElementChild);
 					label.className = labelClass;
 				} else {
 					label = getAllByTag('header', container)[0];
@@ -10790,7 +10830,7 @@ function updateMenuBatchCount(project, ...args) {
 		if (!ADD_BATCH_COUNT_ON_NEW_LINE) {
 		const	ref = label.nextElementSibling || label.previousElementSibling;
 
-			if (ref && updateElementFixedWidth(label, ref)) {
+			if (ref && updateElementMaxWidth(label, ref)) {
 				textOverflow = true;
 			}
 		}
@@ -10805,6 +10845,7 @@ function updateMenuBatchCount(project, ...args) {
 		||	args.join(' / ')
 		);
 
+		label.title =
 		label.textContent = (
 			ADD_BATCH_COUNT_ON_NEW_LINE
 		||	args.length > 1
@@ -10815,10 +10856,6 @@ function updateMenuBatchCount(project, ...args) {
 			+	countText.toLowerCase()
 			)
 		);
-
-		if (textOverflow) {
-			label.title = label.textContent;
-		}
 	}
 }
 
@@ -11046,6 +11083,10 @@ let	button = evt;
 	}
 
 	eventStop(evt, FLAG_EVENT_STOP_IMMEDIATE);
+
+	if (button.disabled) {
+		return;
+	}
 
 const	container = getProjectContainer(button);
 const	project = container.project;
@@ -12774,10 +12815,10 @@ const	helpSections = {
 				'text_key' : 'if_not_both',
 				'text_replace_values' : wrap.code.param('[not]'),
 			}, {
-				'code_sample' : getCodeColoredParamPartsAny('not '),
+				'code_sample' : getCodeColoredParamPartsAny('', 'not '),
 				'text_key' : 'if_any',
 			}, {
-				'code_sample' : getCodeColoredParamPartsAny('', 'not '),
+				'code_sample' : getCodeColoredParamPartsAny('not '),
 				'text_key' : 'if_not_any',
 				'text_replace_values' : wrap.code.param('[not]'),
 			}, {
@@ -13134,8 +13175,8 @@ const	toggleTextSizeHTML = (
 		'<div class="menu-bar">'
 	+		menuHTML
 	+	'</div>'
-	+	'<div id="loaded-files-selection"></div>'
-	+	'<div id="loaded-files-view"></div>'
+	+	'<div class="main panel row wrap" id="loaded-files-selection"></div>'
+	+	'<div class="main panel" id="loaded-files-view"></div>'
 	+	'<div class="top-buttons">'
 	+		toggleFixedTabWidthHTML
 	+		toggleTextSizeHTML
