@@ -71,6 +71,14 @@ big,
 	display: flex;
 	gap: 0.5em;
 }
+.panel.sub .panel,
+.panel.sub {
+	gap: 0.5em 1em;
+}
+.draggable-order .panel.sub .panel,
+.draggable-order .panel.sub {
+	gap: 0.5em;
+}
 .panel:not(.row),
 .panel.column {
 	flex-flow: column;
@@ -94,25 +102,57 @@ big,
 .panel header.filename {
 	padding: 0 1em 1em 0;
 }
-.panel header,
+.draggable-order header {
+	padding: 0.5em 0;
+}
+.no-gap .draggable-order header,
+.panel[draggable] .panel.sub,
 .panel.sub {
 	padding: 0.5em 1em;
 }
-.panel.sub header {
-	padding: 0.5em 0;
+.no-gap .panel button,
+.no-gap .panel.main > *,
+.no-gap .panel.sub > *,
+.no-gap .panel[draggable] {
+	margin: 0.25em;	/* <- for browsers without "gap" support, e.g. Firefox 56 */
 }
-.panel.sub .panel,
-.panel.sub {
-	gap: 0.5em 1em;
-}
-.panel.sub {
-	background-color: rgba(0,0,0, 0.1);
+.no-gap .panel.sub {
+	padding: 0;
 }
 .panel.sub button,
 .panel.sub header,
 .panel.sub footer {
 	text-align: center;
 }
+.panel.sub {
+	background-color: rgba(0,0,0, 0.1);
+}
+.panel header {
+	align-items: center;
+	align-self: center;
+	padding: 0.5em 1em;
+}
+.panel[draggable] {
+	cursor: resize;
+	cursor: col-resize;
+	cursor: e-resize;
+}
+.panel.row[draggable] {
+	cursor: row-resize;
+	cursor: n-resize;
+}
+/*
+Trying to set up "user-friendly" web-API-based drag-n-drop visual style gives broken result everywhere,
+from Firefox 56 to latest Vivaldi (chrome-based browser),
+one way or another to a various degree of being annoying or unusable.
+Let's keep it simple and at least not totally wrong for now.
+*/
+/* .dragging-order .dragged, */
+.draggable-order [draggable]:hover {		background-color: #eee;}
+.draggable-order [draggable]:active {		background-color: #f5f5f5;}
+/* .dragging-order .dragged.row, */
+.draggable-order [draggable].row:hover {	background-color: #ace;}
+.draggable-order [draggable].row:active {	background-color: #bdf;}
 a {
 	color: gray;
 }
@@ -494,7 +534,7 @@ label:hover {
 .fixed-tab-width #loaded-files-selection .button-text {
 	width: 8em;			/* <- "em" is bad with different font-sizes on different lines, so set only here */
 }
-.panel header,
+.count-line,
 .fixed-tab-width #loaded-files-selection .button-text,
 .fixed-tab-width #loaded-files-selection .button-text * {
 	overflow: hidden;
@@ -694,9 +734,9 @@ header:not(:hover) .section-link:not(a)::before {
 }
 header.show [name="open_section"],
 header:not(.show) [name="close_section"],
-button[hidden],
+[hidden],
 .hidden {
-	display: none;
+	display: none !important;
 }
 .fade-out {
 	transition: opacity 0.7s ease-in;

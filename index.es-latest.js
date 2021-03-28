@@ -109,6 +109,7 @@ var	exampleRootDir = ''
 ,	READ_FILE_CONTENT_TO_GET_TYPE	= false	//* <- this relies on the browser or the OS to magically determine file type.
 ,	REQUIRE_NON_EMPTY_SELECTION	= false	//* <- buggy
 ,	SAVE_COLOR_AS_ONE_PIXEL_IMAGE	= false	//* <- may be stretched back by layers attributes, but not yet standard.
+,	SORT_OPTION_LIST_NAMES		= false
 ,	START_WITH_BIG_TEXT		= false
 ,	START_WITH_FIXED_TAB_WIDTH	= true
 ,	START_WITH_OPEN_FIRST_MENU_TAB	= true
@@ -305,6 +306,9 @@ const	CONFIG_FILE_PATH = 'config.js'			//* <- declarations-only file to redefine
 ,	regClassLoading		= getClassReg('loading')
 ,	regClassShow		= getClassReg('show')
 ,	regClassRow		= getClassReg('row')
+,	regClassSub		= getClassReg('sub')
+,	regClassDragging	= getClassReg('dragging-order', 'dragging')
+,	regClassDraggable	= getClassReg('draggable-order', 'draggable')
 
 ,	regJSONstringify = {
 		'asFlatLine'	: /^(data)$/i
@@ -320,8 +324,12 @@ const	SPLIT_SEC = 60
 ,	MAX_OPACITY = 255
 ,	MAX_BATCH_PRECOUNT = 9999
 
-,	FLAG_EVENT_STOP_IMMEDIATE = { 'stopImmediatePropagation' : true }
 ,	FLAG_EVENT_NO_DEFAULT = { 'preventDefault' : true }
+,	FLAG_EVENT_STOP_IMMEDIATE = { 'stopImmediatePropagation' : true }
+,	FLAG_EVENT_STOP_DEFAULT = {
+		'preventDefault' : true,
+		'stopImmediatePropagation' : true,
+	}
 
 ,	FLAG_FLIP_HORIZONTAL = 1
 ,	FLAG_FLIP_VERTICAL = 2
@@ -389,6 +397,7 @@ const	SPLIT_SEC = 60
 	,	'undefined'
 	]
 
+,	DRAG_ORDER_PREFIX = 'drag-order:\n'
 ,	BLOB_PREFIX = 'blob:'
 ,	DATA_PREFIX = 'data:'
 ,	TYPE_TEXT = 'text/plain'
@@ -675,6 +684,19 @@ const	SPLIT_SEC = 60
 		},
 	]
 
+,	PROJECT_NAMING_BUTTONS = [
+		'saved_file_naming_change',
+		// 'saved_file_naming_reset_to_initial',
+		// 'saved_file_naming_reset_to_default',
+		'saved_file_naming_close',
+	]
+
+,	PROJECT_NAMING_EVENT_HANDLERS = {
+		'dragstart' :	onPanelDragStart,
+		'dragenter' :	onPanelDragMove,
+		'drop' :	onPanelDragMove,
+	}
+
 ,	PROJECT_CONTROL_TAGNAMES = [
 		'button',
 		'select',
@@ -748,6 +770,7 @@ var	ora, zip, zlib, pako, PSD, UPNG, UZIP	//* <- external variable names, do not
 ,	USE_ES5_JS
 ,	USE_WORKERS_IF_CAN
 
+,	draggedElement
 ,	thumbnailPlaceholder
 ,	isStopRequested
 ,	isBatchWIP
@@ -2114,6 +2137,8 @@ function encodeTagAttr(text) {
 	);
 }
 
+function getCapitalizedString(text) { return text.slice(0,1).toUpperCase() + text.slice(1).toLowerCase(); }
+
 //* propNameForIE:
 function dashedToCamelCase(text) {
 	return (
@@ -2123,7 +2148,7 @@ function dashedToCamelCase(text) {
 			(word, index) => (
 				index === 0
 				? word.toLowerCase()
-				: word.slice(0,1).toUpperCase() + word.slice(1).toLowerCase()
+				: getCapitalizedString(word)
 			)
 		)
 		.join('')
@@ -2155,6 +2180,48 @@ function getChildByAttr(element, attrName, attrValue) {
 	}
 
 	return element;
+}
+
+function getDraggableElementOrParent(element) {
+	while (element) {
+		if (element.draggable) {
+			return element;
+		}
+
+		element = element.parentNode;
+	}
+}
+
+function isElementOrAnyParentDraggable(element) {
+	while (element) {
+		if (element.draggable) {
+			return true;
+		}
+
+		element = element.parentNode;
+	}
+
+	return false;
+}
+
+function isElementAfterSibling(element, sibling) {
+	while (element && (element = element.previousSibling)) {
+		if (element === sibling) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+function isElementBeforeSibling(element, sibling) {
+	while (element && (element = element.nextSibling)) {
+		if (element === sibling) {
+			return true;
+		}
+	}
+
+	return false;
 }
 
 function getPreviousSiblingByClass(element, className) {
@@ -2435,8 +2502,11 @@ const	isBigTextEnabled = toggleClass(document.body, 'larger-text');
 }
 
 function makeElementFitOnClick(element, initialState) {
+
+//* Not listeners, because need attributes for style:
+
 	element.className = initialState || 'size-fit';
-	element.setAttribute('onclick', 'toggleClass(this, \'size-fit\'), toggleClass(this, \'size-full\')');
+	element.setAttribute('onclick', `toggleClass(this, 'size-fit'), toggleClass(this, 'size-full')`);
 }
 
 function getOffsetXY(element) {
@@ -4447,6 +4517,8 @@ let	project, container;
 				if (result = await updateMenuAndShowImg(project) || TESTING) {
 					await updateBatchCount(project);
 
+					updateFileNamingPanel(project);
+
 					buttonTab.className = 'button loaded with-options';
 				}
 			}
@@ -4751,6 +4823,29 @@ async function getProjectViewMenu(project) {
 				project.loading.errorPossible = 'project_status_error_creating_menu';
 				project.options = options;
 				project.layersTopSeparated = getLayersTopSeparated(project.layers);
+
+			const	sections = project.optionsOrderOfSections = [];
+			const	listsBySection = project.optionsOrderOfListsBySection = {};
+
+				for (const sectionName in options) {
+					addToListIfNotYet(sections, sectionName);
+
+					if (SORT_OPTION_LIST_NAMES) {
+					const	listNamesPresorted = Object.keys(options[sectionName]).sort();
+
+						for (const listName of listNamesPresorted) {
+						const	listNames = getOrInitChild(listsBySection, sectionName, Array);
+
+							addToListIfNotYet(listNames, listName);
+						}
+					} else {
+						for (const listName in options[sectionName]) {
+						const	listNames = getOrInitChild(listsBySection, sectionName, Array);
+
+							addToListIfNotYet(listNames, sectionName);
+						}
+					}
+				}
 
 //* render default set when everything is ready:
 
@@ -5858,8 +5953,92 @@ const	projectTitle = cre('header', container);
 const	buttonsPanel = cre('div', container);
 	buttonsPanel.className = 'panel row wrap';
 
-const	headerInfo = cre('header', container);
-	headerInfo.className = 'project-header project-info';
+	if (TESTING && project.options) {
+	const	fileSaveTitle = cre('header', container);
+		fileSaveTitle.className = 'panel row';
+
+	const	fileSaveNamePretext = cre('div', fileSaveTitle);
+		fileSaveNamePretext.className = 'pretext';
+		fileSaveNamePretext.textContent = getLocalizedText('saved_file_naming_preview') + ':';
+
+	const	fileSaveNamePreview = cre('div', fileSaveTitle);
+		fileSaveNamePreview.className = 'filename';
+		fileSaveNamePreview.id = 'saved_file_naming_preview';
+		fileSaveNamePreview.textContent = project.fileName + '[test].png';
+
+	const	fileNaming = cre('div', container);
+		fileNaming.className = 'panel row';
+
+	const	fileNamingBox = cre('div', fileNaming);
+		fileNamingBox.className = 'sub panel';
+
+	const	fileNamingButtons = cre('div', fileNamingBox);
+		fileNamingButtons.className = 'panel row';
+
+		PROJECT_NAMING_BUTTONS.forEach(
+			(name) => addNamedButton(fileNamingButtons, name)
+		);
+
+	const	fileNamingOrderBox = cre('div', fileNamingBox);
+		fileNamingOrderBox.className = 'panel draggable-order';
+
+		addEventListeners(fileNamingOrderBox, PROJECT_NAMING_EVENT_HANDLERS);
+
+		NAME_PARTS_ORDER.forEach(
+			(sectionName) => {
+			const	optionLists = project.options[sectionName];
+
+				if (!isNonNullObject(optionLists)) {
+					return;
+				}
+
+			const	listNames = Object.keys(optionLists);
+			const	isOnlySectionName = !(
+					listNames.length > 0
+				&&	listNames.some(
+						(listName) => (listName !== sectionName)
+					)
+				);
+
+			let	fileNamingSection;
+
+				for (const listName of listNames) {
+
+					if (!fileNamingSection) {
+						fileNamingSection = cre('div', fileNamingOrderBox);
+						fileNamingSection.className = 'sub panel row';
+						fileNamingSection.draggable = true;
+
+					const	fileNamingSectionName = cre('header', fileNamingSection);
+						fileNamingSectionName.name = sectionName;
+						fileNamingSectionName.textContent = getCapitalizedString(
+							getLocalizedOrEmptyText('option_header_' + sectionName)
+						||	getLocalizedOrEmptyText('option_' + sectionName)
+						||	sectionName
+						);
+
+						if (listNames.length > 1) {
+							fileNamingSection = cre('div', fileNamingSection);
+							fileNamingSection.className = 'panel row wrap';
+						}
+					}
+
+					if (isOnlySectionName) {
+						break;
+					}
+
+				const	fileNamingListName = cre('div', fileNamingSection);
+					fileNamingListName.className = 'sub panel';
+					fileNamingListName.name =
+					fileNamingListName.textContent = listName;
+
+					if (listNames.length > 1) {
+						fileNamingListName.draggable = true;
+					}
+				}
+			}
+		);
+	}
 
 //* show overall project info:
 
@@ -7909,7 +8088,7 @@ const	values = {};
 					: selectedValue
 				));
 
-			const	container = getThisOrParentByClass(selectBox, 'project-option') || selectBox.parentNode;
+			const	container = getThisOrParentByClass(selectBox, regClassOption) || selectBox.parentNode;
 			const	style = container.style;
 
 				if (style.display != hide) {
@@ -8420,6 +8599,40 @@ async function addDebugImage(project, canvas, comment, highLightColor) {
 	}
 }
 
+async function setMergedImage(project, img, layer) {
+	if (CACHE_UNALTERABLE_FOLDERS_MERGED) {
+		if (CACHE_UNALTERABLE_IMAGES_TRIMMED) {
+			img = getCroppedCanvasCopy(project, img) || img;
+		}
+
+		if (img = await getImagePromiseFromCanvasToBlob(img, project)) {
+			project.mergedImages.push(layer.mergedImage = img);
+
+			if (TESTING > 1) console.log('Set merged branch image:', layer);
+
+			if (TESTING > 2 || TESTING_RENDER) {
+				img.onclick = del;
+				img.title = [
+					getLayerPathText(layer)
+				,	'merged branch image: ' + img.width + 'x' + img.height + ', click to remove'
+				].join(TITLE_LINE_BREAK);
+
+				if (typeof img.top !== 'undefined') {
+					img.title = [
+						img.title
+					,	'x = ' + img.left
+					,	'y = ' + img.top
+					].join(TITLE_LINE_BREAK);
+				}
+
+				document.body.append(img);
+			}
+		}
+
+		return img;
+	}
+}
+
 function getCroppedCanvasCopy(project, img) {
 const	crop = getAutoCropArea(img);
 
@@ -8456,40 +8669,6 @@ const	crop = getAutoCropArea(img);
 		}
 
 		return canvas;
-	}
-}
-
-async function setMergedImage(project, img, layer) {
-	if (CACHE_UNALTERABLE_FOLDERS_MERGED) {
-		if (CACHE_UNALTERABLE_IMAGES_TRIMMED) {
-			img = getCroppedCanvasCopy(project, img) || img;
-		}
-
-		if (img = await getImagePromiseFromCanvasToBlob(img, project)) {
-			project.mergedImages.push(layer.mergedImage = img);
-
-			if (TESTING > 1) console.log('Set merged branch image:', layer);
-
-			if (TESTING > 2 || TESTING_RENDER) {
-				img.onclick = del;
-				img.title = [
-					getLayerPathText(layer)
-				,	'merged branch image: ' + img.width + 'x' + img.height + ', click to remove'
-				].join(TITLE_LINE_BREAK);
-
-				if (typeof img.top !== 'undefined') {
-					img.title = [
-						img.title
-					,	'x = ' + img.left
-					,	'y = ' + img.top
-					].join(TITLE_LINE_BREAK);
-				}
-
-				document.body.append(img);
-			}
-		}
-
-		return img;
 	}
 }
 
@@ -10782,6 +10961,30 @@ async function updateMenuAndShowImg(project) {
 	return await showImg(project);
 }
 
+function updateFileNamingPanel(project, action) {
+const	isClosing = !action;
+const	orderBox = (
+		project.fileNamingOrderBox
+	||	(project.fileNamingOrderBox = getAllByClass('draggable-order', project.container)[0])
+	);
+
+	if (orderBox) {
+		orderBox.hidden = isClosing;
+	}
+
+	PROJECT_NAMING_BUTTONS.forEach(
+		(name, index) => getAllByName(name, project.container).forEach(
+			(button) => {
+				if (index > 0) {
+					button.hidden = isClosing;
+				} else {
+					button.disabled = !isClosing;
+				}
+			}
+		)
+	);
+}
+
 function updateCheckBox(checkBox, params) {
 	if (params || (params = checkBox.params)) {
 	const	switchType = checkBox.getAttribute('data-switch-type');
@@ -10813,7 +11016,7 @@ function updateMenuBatchCount(project, ...args) {
 
 			if (!label) {
 			let	container = getAllByName('show_all', project.container)[0] || project.container;
-				container = getThisOrParentByClass(container, 'sub');
+				container = getThisOrParentByClass(container, regClassSub);
 
 				if (ADD_BATCH_COUNT_ON_NEW_LINE) {
 					label = project.renderBatchCountMenuLabel = cre('header', container, container.lastElementChild);
@@ -10975,6 +11178,18 @@ function setWIPstate(isWIP, project) {
 
 //* Page-specific functions: UI-side *-----------------------------------------
 
+function addEventListeners(e, funcByEventName) {
+	for (var i in funcByEventName) {
+		try {
+			e.addEventListener(i, funcByEventName[i], { capture : true, passive : false });
+		} catch (error) {
+			console.error(error);
+
+			e.addEventListener(i, funcByEventName[i], true);
+		}
+	}
+}
+
 function onBeforeUnload(evt) {
 	evt = eventStop(evt, FLAG_EVENT_STOP_IMMEDIATE);
 
@@ -11095,6 +11310,14 @@ const	actionWords = action.split(regNonAlphaNum);
 
 	if (actionWords.includes('stop')) {
 		project.isStopRequested = true;
+	} else
+	if (actionWords.includes('naming')) {
+		if (actionWords.includes('reset')) {
+			if (actionWords.includes('initial')) updateFileNamingPanel(project, 'initial');
+			else updateFileNamingPanel(project, 'default');
+		} else
+		if (actionWords.includes('change')) updateFileNamingPanel(project, 'change');
+		else updateFileNamingPanel(project);
 	} else
 	if (actionWords.includes('show')) {
 		if (actionWords.includes('details')) {
@@ -11229,26 +11452,137 @@ const	project = container.project;
 	}
 }
 
+function updateSaveFileName(evt) {
+const	element = evt.target;
+const	container = getProjectContainer(element);
+const	project = container.project;
+
+	//* TODO:
+
+	// if (TESTING) console.log('updateSaveFileName:', project.fileName, [element, project]);
+}
+
+function updateDraggedElement(evt) {
+	if (
+		evt
+	&&	evt.type
+	&&	evt.type === 'dragstart'
+	) {
+		return draggedElement = getDraggableElementOrParent(evt.target);
+	}
+
+	if (
+		evt
+	&&	evt.type
+	&&	evt.type === 'drop'
+	) {
+		return draggedElement = null;
+	}
+}
+
+function onPanelDragStart(evt) {
+
+	if (!isElementOrAnyParentDraggable(evt.target)) {
+		return;
+	}
+
+	evt = eventStop(evt, FLAG_EVENT_STOP_IMMEDIATE);
+
+	if (!updateDraggedElement(evt)) {
+		return;
+	}
+
+const	sectionHeader = draggedElement.firstElementChild || draggedElement.parentNode.firstElementChild;
+const	sectionName = sectionHeader.name || sectionHeader.textContent;
+let	content;
+
+	if (draggedElement.firstElementChild) {
+		content = sectionName;
+	} else {
+		content = sectionName + '\n' + (draggedElement.name || draggedElement.textContent);
+	}
+
+	evt.dataTransfer.effectAllowed = 'move';
+	evt.dataTransfer.setData('text/plain', DRAG_ORDER_PREFIX + content);
+}
+
+function onPanelDragMove(evt) {
+
+	if (!isElementOrAnyParentDraggable(evt.target)) {
+		updateDraggedElement(evt);
+
+		return;
+	}
+
+	if (!draggedElement) {
+		return;
+	}
+
+	evt = eventStop(evt, FLAG_EVENT_STOP_IMMEDIATE);
+
+const	targetElement = evt.target;
+
+	if (
+		targetElement
+	&&	targetElement.draggable
+	&&	targetElement !== draggedElement
+	&&	targetElement.parentNode
+	&&	targetElement.parentNode === draggedElement.parentNode
+	) {
+		evt.dataTransfer.dropEffect = 'move';
+
+		targetElement.parentNode.insertBefore(
+			draggedElement
+		,	(
+				isElementAfterSibling(draggedElement, targetElement)
+				? targetElement
+				: targetElement.nextSibling
+			)
+		);
+	}
+
+	updateDraggedElement(evt);
+	updateSaveFileName(evt);
+}
+
 function onPageDragOver(evt) {
 	evt = eventStop(evt, FLAG_EVENT_NO_DEFAULT);
 
 const	batch = evt.dataTransfer;
 const	files = batch.files;
 const	items = batch.items;
+let	itemsArray;
 
 	batch.dropEffect = (
-		(files && files.length > 0)
-	||	(items && items.length > 0 && Array.from(items).some((item) => (item.kind === 'file')))
-		? 'copy'
-		: 'none'
+		hasPrefix(batch.getData('text/plain'), DRAG_ORDER_PREFIX)
+		? (
+			isElementOrAnyParentDraggable(evt.target)
+			? 'move'
+			: 'none'
+		)
+		: (
+			(files && files.length > 0)
+		||	(items && items.length > 0 && Array.from(items).some((item) => (item.kind === 'file')))
+			? 'copy'
+			: 'none'
+		)
 	);
 }
 
 function onPageDrop(evt) {
 	evt = eventStop(evt, FLAG_EVENT_NO_DEFAULT) || evt;
 
-const	filesToLoad = [];
+	updateDraggedElement(evt);
 
+	if (
+		evt
+	&&	evt.dataTransfer
+	&&	hasPrefix(evt.dataTransfer.getData('text/plain'), DRAG_ORDER_PREFIX)
+	) {
+		return;
+	}
+
+const	filesToLoad = [];
 let	files, name, ext;
 
 //* get list of files to process:
@@ -11368,7 +11702,7 @@ async function loadFromButton(button, startTime, inBatch) {
 
 		if (
 			!url
-		&&	(container = getThisOrParentByClass(button, 'example-file'))
+		&&	(container = getThisOrParentByClass(button, regClassExampleFile))
 		&&	(link = getAllByTag('a', container)[0])
 		) {
 			url = link.href;
@@ -13183,6 +13517,10 @@ const	toggleTextSizeHTML = (
 	+	'</div>'
 	);
 
+	if (!getStyleValue(getAllByClass('panel')[0], 'gap')) {
+		toggleClass(document.body, 'no-gap', 1);
+	}
+
 	getAllByClass('thumbnail').forEach(
 		(element) => {
 			if (!element.firstElementChild) {
@@ -13216,18 +13554,19 @@ const	linkTooltips = [
 	setWIPstate(false);
 
 //* add global on-page events:
-//* Note: drop event may not work without dragover.
+//* Notes:
+//*	"drop" may not work without "dragover".
+//*	"keypress" ignores Esc key in some modern browsers.
 
-const	eventHandlers = [
-		['beforeunload',onBeforeUnload],
-		['dragover',	onPageDragOver],
-		['drop',	onPageDrop],
-		['keydown',	onPageKeyDown],	//* <- 'keypress' ignores Esc key in some modern browsers
-		['resize',	onResize],
-	];
-
-	eventHandlers.forEach(
-		([ eventName, handlerFunction ]) => window.addEventListener(eventName, handlerFunction, false)
+	addEventListeners(
+		window
+	,	{
+			'beforeunload' : onBeforeUnload
+		,	'dragover' :	onPageDragOver
+		,	'drop' :	onPageDrop
+		,	'keydown' :	onPageKeyDown
+		,	'resize' :	onResize
+		}
 	);
 
 //* open or restore state of UI parts:
@@ -13251,7 +13590,7 @@ let	oldSetting;
 	}
 
 	if (START_WITH_OPEN_FIRST_MENU_TAB) {
-		toggleClass(getAllByTag('header')[0], 'show');
+		toggleClass(getAllByTag('header')[0], 'show', 1);
 
 		updateDropdownMenuPositions();
 	}
