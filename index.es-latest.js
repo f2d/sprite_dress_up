@@ -180,19 +180,17 @@ const getFlatArray = (
 
 	let	flatArray = [];
 
-		Array.from(array).forEach(
-			(value) => {
-				if (isArray(value)) {
-					if (maxDepth > 0) {
-						flatArray = flatArray.concat(getFlatArray(value, maxDepth - 1));
-					} else {
-						flatArray = flatArray.concat(value);
-					}
+		for (const value of array) {
+			if (isArray(value)) {
+				if (maxDepth > 0) {
+					flatArray = flatArray.concat(getFlatArray(value, maxDepth - 1));
 				} else {
-					flatArray.push(value)
+					flatArray = flatArray.concat(value);
 				}
+			} else {
+				flatArray.push(value);
 			}
-		);
+		}
 
 		return flatArray;
 	}
@@ -323,6 +321,11 @@ const	SPLIT_SEC = 60
 ,	MAX_CHANNEL_VALUE = 255
 ,	MAX_OPACITY = 255
 ,	MAX_BATCH_PRECOUNT = 9999
+
+,	FLAG_EVENT_LISTENER_CAPTURE = {
+		'capture' : true,
+		'passive' : false,
+	}
 
 ,	FLAG_EVENT_NO_DEFAULT = { 'preventDefault' : true }
 ,	FLAG_EVENT_STOP_IMMEDIATE = { 'stopImmediatePropagation' : true }
@@ -684,7 +687,7 @@ const	SPLIT_SEC = 60
 		},
 	]
 
-,	PROJECT_NAMING_BUTTONS = [
+,	PROJECT_NAMING_BUTTON_NAMES = [
 		'saved_file_naming_change',
 		// 'saved_file_naming_reset_to_initial',
 		// 'saved_file_naming_reset_to_default',
@@ -723,6 +726,8 @@ const	SPLIT_SEC = 60
 		'maskData',
 		'imgData',
 	]
+
+,	CLEANUP_CHILD_KEYS = ['layers']
 
 ,	CLEANUP_KEYS_TESTING = [
 		'loading',
@@ -1093,11 +1098,10 @@ function getCrossProductArray() {
 	,	(a, b) => {
 		const	result = [];
 
-			a.forEach(
-				(a) => b.forEach(
-					(b) => result.push(a.concat([b]))
-				)
-			);
+			for (const ai of a)
+			for (const bi of b) {
+				result.push(ai.concat([bi]));
+			}
 
 			return result;
 		}
@@ -1286,13 +1290,9 @@ function repeatText(text, numberOfTimes) { return (new Array(numberOfTimes + 1))
 
 function replaceAll(text, replaceWhat, replaceWith) {
 	if (isArray(replaceWhat)) {
-		Array.from(arguments).forEach(
-			(arg) => {
-				if (isArray(arg)) {
-					text = replaceAll(text, ...arg);
-				}
-			}
-		);
+		for (const arg of arguments) if (isArray(arg)) {
+			text = replaceAll(text, ...arg);
+		}
 
 		return text;
 	}
@@ -1355,47 +1355,46 @@ function addToListIfNotYet(values, value) {
 }
 
 function addRangeToList(values, newValuesText) {
-	String(newValuesText)
-	.split(regCommaSpace)
-	.forEach(
-		(rangeText) => {
-		const	range = (
-				String(rangeText)
-				.split(regMultiDot)
-				.map((textPart) => textPart.replace(regTrimNaNorSign, ''))
-				.filter(arrayFilterNonEmptyValues)
-				.map(orzFloat)
-			);
+	for (const rangeText of (
+		String(newValuesText)
+		.split(regCommaSpace)
+	)) {
+	const	range = (
+			String(rangeText)
+			.split(regMultiDot)
+			.map((textPart) => textPart.replace(regTrimNaNorSign, ''))
+			.filter(arrayFilterNonEmptyValues)
+			.map(orzFloat)
+		);
 
-			if (range.length > 0) {
-			const	min = Math.min(...range);
-			const	max = Math.max(...range);
-			const	isCountDown = range.indexOf(min) > range.indexOf(max);
+		if (range.length > 0) {
+		const	min = Math.min(...range);
+		const	max = Math.max(...range);
+		const	isCountDown = range.indexOf(min) > range.indexOf(max);
 
-				if (
-					!values
-				||	!isFunction(values.push)
-				) {
-					values = [];
-				}
-
-				if (isCountDown) {
-					for (let value = max; value >= min; --value) {
-						addToListIfNotYet(values, value);
-					}
-				} else {
-					for (let value = min; value <= max; ++value) {
-						addToListIfNotYet(values, value);
-					}
-				}
-
-		//* don't forget overstepped floats:
-
-				addToListIfNotYet(values, min);
-				addToListIfNotYet(values, max);
+			if (
+				!values
+			||	!isFunction(values.push)
+			) {
+				values = [];
 			}
+
+			if (isCountDown) {
+				for (let value = max; value >= min; --value) {
+					addToListIfNotYet(values, value);
+				}
+			} else {
+				for (let value = min; value <= max; ++value) {
+					addToListIfNotYet(values, value);
+				}
+			}
+
+	//* don't forget overstepped floats:
+
+			addToListIfNotYet(values, min);
+			addToListIfNotYet(values, max);
 		}
-	);
+	}
 
 	return values;
 }
@@ -1645,7 +1644,8 @@ function eventStop(evt, flags) {
 		if (evt.cancelBubble !== null) evt.cancelBubble = true;
 		if (evt.stopPropagation) evt.stopPropagation();
 
-		for (const key in flags) if (
+		for (const key in flags)
+		if (
 			flags[key]
 		&&	isFunction(evt[key])
 		) {
@@ -1951,7 +1951,8 @@ function getOrInitChild(obj, key, ...args) {
 }
 
 function getPropFromAnySource(key, ...sources) {
-	for (const obj of sources) if (
+	for (const obj of sources)
+	if (
 		isNonNullObject(obj)
 	&&	key in obj
 	) {
@@ -2007,28 +2008,25 @@ function getPropBySameNameChain(obj, key) {
 
 function cleanupObjectTree(obj, childKeys, keysToRemove) {
 	if (isNonNullObject(obj)) {
-		Array.from(keysToRemove).forEach(
-			(key) => {
-				if (key in obj) {
-					obj[key] = null;
-					delete obj[key];
-				}
-			}
-		);
 
-		Array.from(childKeys).forEach(
-			(key) => {
-			const	child = obj[key];
+		for (const key of keysToRemove) if (key in obj) {
 
-				if (child) {
-					if (child.forEach) {
-						child.forEach((child) => cleanupObjectTree(child, childKeys, keysToRemove));
-					} else {
-						cleanupObjectTree(child, childKeys, keysToRemove);
-					}
+			obj[key] = null;
+			delete obj[key];
+		}
+
+	let	child;
+
+		for (const key of childKeys) if (child = obj[key]) {
+
+			if (isArray(child)) {
+				for (const item of child) {
+					cleanupObjectTree(item, childKeys, keysToRemove);
 				}
+			} else {
+				cleanupObjectTree(child, childKeys, keysToRemove);
 			}
-		);
+		}
 	}
 
 	return obj;
@@ -2371,15 +2369,17 @@ const	closeTag = '</' + tagName + '>';
 }
 
 function closeAllDropdownMenuTabs(element) {
-	getAllByClass('menu-head', getThisOrParentByClass(element, regClassMenuBar)).forEach(
-		(tabContainer) => {
-		const	header = getAllByTag('header', tabContainer)[0];
 
-			if (header && header !== element) {
-				toggleClass(header, 'show', -1);
-			}
+const	tabBar = getThisOrParentByClass(element, regClassMenuBar);
+const	tabs = getAllByClass('menu-head', tabBar);
+
+	for (const tab of tabs) {
+	const	header = getAllByTag('header', tab)[0];
+
+		if (header && header !== element) {
+			toggleClass(header, 'show', -1);
 		}
-	);
+	}
 
 	START_WITH_OPEN_FIRST_MENU_TAB = false;
 }
@@ -2440,9 +2440,9 @@ const	tagName = header.tagName;
 let	toggledCount = 0;
 
 	if (isActionAll) {
-		getAllByTag('section', header.parentNode).forEach(
-			(section) => toggleAllSections(getAllByTag('header', section)[0])
-		);
+		for (const section of getAllByTag('section', header.parentNode)) {
+			toggleAllSections(getAllByTag('header', section)[0]);
+		}
 
 		if (!toggledCount) {
 			toggleAllSections(header);
@@ -3351,7 +3351,8 @@ let	dir, scripts;
 
 async function loadAllLibsOnDemand(...libs) {
 
-	for (const libName of getFlatArray(libs)) if (! await loadLibOnDemandPromise(libName)) {
+	for (const libName of getFlatArray(libs))
+	if (! await loadLibOnDemandPromise(libName)) {
 		return false;
 	}
 
@@ -3434,7 +3435,8 @@ const	depends = asFlatArray(lib.depends);
 
 			let	scriptSrc;
 
-				while (scripts.length > 0) if (scriptSrc = scripts.shift()) {
+				while (scripts.length > 0)
+				if (scriptSrc = scripts.shift()) {
 					break;
 				}
 
@@ -4004,6 +4006,7 @@ const	buttonsBox = cre('div', container);
 
 	for (const buttonName in group) {
 	const	entry = group[buttonName];
+
 		if (isString(entry)) {
 			addNamedButton(buttonsBox, buttonName, entry);
 		} else
@@ -4490,11 +4493,10 @@ let	project, container;
 
 		if (container) {
 		const	fileId = 'loaded-file: ' + sourceFile.name;
-		const	childKeys = ['layers'];
 
 			cleanupObjectTree(
 				project
-			,	childKeys
+			,	CLEANUP_CHILD_KEYS
 			,	(
 					TESTING
 					? CLEANUP_KEYS_TESTING
@@ -4638,7 +4640,8 @@ let	loadersTried = 0;
 let	project, totalStartTime;
 
 	try_loaders:
-	for (const loader of FILE_TYPE_LOADERS) if (
+	for (const loader of FILE_TYPE_LOADERS)
+	if (
 		loader.dropFileExts.includes(ext)
 	||	loader.inputFileAcceptMimeTypes.includes(mimeType)
 	) for (const func of loader.handlerFuncs) {
@@ -4831,7 +4834,12 @@ async function getProjectViewMenu(project) {
 					addToListIfNotYet(sections, sectionName);
 
 					if (SORT_OPTION_LIST_NAMES) {
-					const	listNamesPresorted = Object.keys(options[sectionName]).sort();
+
+					const	listNamesPresorted = (
+							Object
+							.keys(options[sectionName])
+							.sort()
+						);
 
 						for (const listName of listNamesPresorted) {
 						const	listNames = getOrInitChild(listsBySection, sectionName, Array);
@@ -4842,7 +4850,7 @@ async function getProjectViewMenu(project) {
 						for (const listName in options[sectionName]) {
 						const	listNames = getOrInitChild(listsBySection, sectionName, Array);
 
-							addToListIfNotYet(listNames, sectionName);
+							addToListIfNotYet(listNames, listName);
 						}
 					}
 				}
@@ -4886,7 +4894,9 @@ async function getProjectViewMenu(project) {
 
 			function checkSwitchParams(globalOptionParams) {
 				for (const switchType in SWITCH_NAMES_BY_TYPE)
-				for (const switchName of SWITCH_NAMES_BY_TYPE[switchType]) if (params[switchName]) {
+				for (const switchName of SWITCH_NAMES_BY_TYPE[switchType])
+				if (params[switchName]) {
+
 				const	switchParams = getOrInitChild(project, 'switchParamNames');
 				const	switchParam  = getOrInitChild(switchParams, switchType);
 
@@ -4925,13 +4935,11 @@ async function getProjectViewMenu(project) {
 				checkSwitchParams(optionParams);
 				checkMinMaxParams(params, optionParams, 'multi_select');
 
-				PARAM_KEYWORDS_SET_VALUE_TO_TRUE.forEach(
-					(paramName) => {
-						if (params[paramName]) {
-							optionParams[paramName] = true;
-						}
+				for (const paramName of PARAM_KEYWORDS_SET_VALUE_TO_TRUE) {
+					if (params[paramName]) {
+						optionParams[paramName] = true;
 					}
-				);
+				}
 
 				return optionGroup;
 			}
@@ -4949,13 +4957,11 @@ async function getProjectViewMenu(project) {
 			const	optionItemLayers = getOrInitChild(optionItems, optionName, Array);
 
 				if (optionName !== '') {
-					PARAM_KEYWORDS_SET_VALUE_TO_NAME.forEach(
-						(paramName) => {
-							if (params[paramName]) {
-								optionParams[paramName] = optionName;
-							}
+					for (const paramName of PARAM_KEYWORDS_SET_VALUE_TO_NAME)  {
+						if (params[paramName]) {
+							optionParams[paramName] = optionName;
 						}
-					);
+					}
 
 					optionItemLayers.push(layer);
 				}
@@ -4964,31 +4970,27 @@ async function getProjectViewMenu(project) {
 			function addOptionsFromParam(sectionName, listName) {
 
 				function addOptionsFromParamKeywords(keywordsList, paramList) {
-					paramList.forEach(
-						(optionValue) => {
-						let	optionName = String(optionValue);
+					for (const optionValue of paramList) {
+					let	optionName = String(optionValue);
 
-							if (isRealNumber(optionValue)) {
-								optionItems[optionName] = optionValue;
-							} else {
-								optionName = optionName.replace(regNonAlphaNum, '').toLowerCase();
+						if (isRealNumber(optionValue)) {
+							optionItems[optionName] = optionValue;
+						} else {
+							optionName = optionName.replace(regNonAlphaNum, '').toLowerCase();
 
-								if (PARAM_KEYWORDS_SHORTCUT_FOR_ALL.includes(optionName)) {
-									keywordsList.forEach(
-										(optionName) => {
-											optionItems[optionName] = optionName;
-										}
-									);
-								} else
-								if (keywordsList.includes(optionName)) {
+							if (PARAM_KEYWORDS_SHORTCUT_FOR_ALL.includes(optionName)) {
+								for (const optionName of keywordsList) {
 									optionItems[optionName] = optionName;
-								} else
-								if (getRGBAFromColorCodeOrName(optionValue)) {
-									optionItems[optionValue] = optionValue;
 								}
+							} else
+							if (keywordsList.includes(optionName)) {
+								optionItems[optionName] = optionName;
+							} else
+							if (getRGBAFromColorCodeOrName(optionValue)) {
+								optionItems[optionValue] = optionValue;
 							}
 						}
-					);
+					}
 				}
 
 			const	param = params[sectionName];
@@ -5032,25 +5034,23 @@ async function getProjectViewMenu(project) {
 					const	groupNames = param.groupNames;
 
 						if (isArray(groupNames)) {
-							groupNames.forEach(
-								(optionName) => {
-								let	renderedLayers;
-								let	renderedCount;
+							for (const optionName of groupNames) {
+							let	renderedLayers;
+							let	renderedCount;
 
-									if (
-										layersInside
-									&&	(renderedLayers = layer.layers.filter(isLayerRendered))
-									&&	(renderedCount = renderedLayers.length) > 0
-									&&	getLayerVisibilityChain(layer).every(isLayerRendered)
-									) {
-									const	optionItemLayers = getOrInitChild(optionItems, optionName, Array);
+								if (
+									layersInside
+								&&	(renderedLayers = layer.layers.filter(isLayerRendered))
+								&&	(renderedCount = renderedLayers.length) > 0
+								&&	getLayerVisibilityChain(layer).every(isLayerRendered)
+								) {
+								const	optionItemLayers = getOrInitChild(optionItems, optionName, Array);
 
-										if (addToListIfNotYet(optionItemLayers, layer)) {
-											optionParams.totalCount += renderedCount;
-										}
+									if (addToListIfNotYet(optionItemLayers, layer)) {
+										optionParams.totalCount += renderedCount;
 									}
 								}
-							);
+							}
 						}
 					}
 				} else
@@ -5082,55 +5082,53 @@ async function getProjectViewMenu(project) {
 				const	paddings = params['radius'];
 
 					if (isArray(paddings)) {
-						paddings.forEach(
-							(padding) => {
-								if (isString(padding)) {
-									padding = JSON.parse(padding);
-								}
-
-							const	{ method, threshold, dimensions } = padding;
-							const	isBox = ('x' in dimensions);
-							const	[ openBracket, closeBracket ] = (isBox ? '[]' : '()');
-							const	optionNameParts = [
-									(
-										isBox
-										? [dimensions.x, dimensions.y]
-										: [dimensions.radius]
-									).map(
-										(interval) => (
-											'in' in interval
-											? (
-												openBracket
-											+	interval.in
-											+	'..'
-											+	interval.out
-											+	closeBracket
-											)
-											: interval.out
-										)
-									).join('x') + 'px'
-								,	(
-										!threshold
-										? '' :
-										'a > ' + threshold
-									)
-								,	(
-										!method
-									||	PARAM_KEYWORDS_PADDING_METHODS.indexOf(method) <= 0
-										? '' :
-										method
-									)
-								];
-
-							const	optionName = (
-									optionNameParts
-									.filter(arrayFilterNonEmptyValues)
-									.join(', ')
-								);
-
-								optionItems[optionName] = padding;
+						for (let padding of paddings) {
+							if (isString(padding)) {
+								padding = JSON.parse(padding);
 							}
-						);
+
+						const	{ method, threshold, dimensions } = padding;
+						const	isBox = ('x' in dimensions);
+						const	[ openBracket, closeBracket ] = (isBox ? '[]' : '()');
+						const	optionNameParts = [
+								(
+									isBox
+									? [dimensions.x, dimensions.y]
+									: [dimensions.radius]
+								).map(
+									(interval) => (
+										'in' in interval
+										? (
+											openBracket
+										+	interval.in
+										+	'..'
+										+	interval.out
+										+	closeBracket
+										)
+										: interval.out
+									)
+								).join('x') + 'px'
+							,	(
+									!threshold
+									? '' :
+									'a > ' + threshold
+								)
+							,	(
+									!method
+								||	PARAM_KEYWORDS_PADDING_METHODS.indexOf(method) <= 0
+									? '' :
+									method
+								)
+							];
+
+						const	optionName = (
+								optionNameParts
+								.filter(arrayFilterNonEmptyValues)
+								.join(', ')
+							);
+
+							optionItems[optionName] = padding;
+						}
 					}
 
 					layer.isMaskGenerated = true;
@@ -5143,12 +5141,10 @@ async function getProjectViewMenu(project) {
 						addOptionsFromParamKeywords(PARAM_KEYWORDS_COLLAGE_ALIGN, param[listName]);
 					} else
 					if (isArray(param[listName])) {
-						param[listName].forEach(
-							(optionValue) => {
-							const	optionName = String(optionValue);
-								optionItems[optionName] = optionValue;
-							}
-						);
+						for (const optionValue of param[listName]) {
+						const	optionName = String(optionValue);
+							optionItems[optionName] = optionValue;
+						}
 					}
 				} else
 				if (sectionName === 'zoom' || sectionName === 'opacities') {
@@ -5161,20 +5157,18 @@ async function getProjectViewMenu(project) {
 				const	values = param.values;
 
 					if (isArray(values)) {
-						values.forEach(
-							(optionValue) => {
+						for (const optionValue of values) {
 
 //* pad bare numbers to avoid numeric autosorting in <select>:
 
-							const	optionName = optionValue + '%';
+						const	optionName = optionValue + '%';
 
-								if (sectionName === 'opacities') {
-									optionValue = (orz(optionValue) / 100);
-								}
-
-								optionItems[optionName] = optionValue;
-							}
-						);
+							optionItems[optionName] = (
+								sectionName === 'opacities'
+								? (orz(optionValue) / 100)
+								: optionValue
+							);
+						}
 					}
 				}
 			}
@@ -5234,30 +5228,27 @@ async function getProjectViewMenu(project) {
 						);
 					}
 
-					layerCopyParams[paramType].forEach(
-						(alias) => {
-						const	layersByAlias = getOrInitChild(aliases, alias, Array);
+					for (const alias of layerCopyParams[paramType]) {
+					const	layersByAlias = getOrInitChild(aliases, alias, Array);
 
-							addToListIfNotYet(layersByAlias, layer);
-						}
-					);
+						addToListIfNotYet(layersByAlias, layer);
+					}
 				}
 			}
 
-			PARAM_OPTIONS_GLOBAL.forEach(
-				(sectionName) => addOptionsFromParam(sectionName)
-			);
+			for (const sectionName of PARAM_OPTIONS_GLOBAL) {
+				addOptionsFromParam(sectionName);
+			}
 
-			PARAM_OPTIONS_FOR_EACH_NAME.forEach(
-				(sectionName) => names.forEach(
-					(listName) => addOptionsFromParam(sectionName, listName)
-				)
-			);
+			for (const sectionName of PARAM_OPTIONS_FOR_EACH_NAME)
+			for (const listName of names) {
+				addOptionsFromParam(sectionName, listName);
+			}
 
 			if (layer.isOptionList) {
-				names.forEach(
-					(listName) => addOptionGroup(layer.type, listName)
-				);
+				for (const listName of names) {
+					addOptionGroup(layer.type, listName);
+				}
 			} else {
 			let	parent = getParentLayer(layer);
 
@@ -5281,11 +5272,10 @@ async function getProjectViewMenu(project) {
 				&&	parent.isOptionList
 				&&	(layer.isColor || !layer.isInsideColorList)
 				) {
-					parent.names.forEach(
-						(listName) => names.forEach(
-							(optionName) => addOptionItem(layer, parent.type, listName, optionName)
-						)
-					);
+					for (const listName of parent.names)
+					for (const optionName of names) {
+						addOptionItem(layer, parent.type, listName, optionName);
+					}
 				}
 			}
 
@@ -5369,7 +5359,9 @@ async function getProjectViewMenu(project) {
 
 //* Use dummy layers to process default parameters without adding them to the tree:
 
-			for (const sectionName in PARAM_OPTIONS_ADD_BY_DEFAULT) if (!options[sectionName]) {
+			for (const sectionName in PARAM_OPTIONS_ADD_BY_DEFAULT)
+			if (!options[sectionName]) {
+
 				getProcessedLayerInBranch(
 					getLayerWithParamsFromParamList(
 						PARAM_OPTIONS_ADD_BY_DEFAULT[sectionName]
@@ -5380,6 +5372,7 @@ async function getProjectViewMenu(project) {
 //* Set any undefined batch/layout settings to computed default:
 
 			for (const switchType in SWITCH_NAMES_BY_TYPE) {
+
 			const	switchParams = getOrInitChild(project, 'switchParamNames');
 			const	switchParam  = getOrInitChild(switchParams, switchType);
 
@@ -5396,6 +5389,7 @@ async function getProjectViewMenu(project) {
 				function isContentUnalterable(layers) {
 					return layers.reduce(
 						(isResultUnalterable, layer) => {
+
 						const	isContentAlterable = (
 								isArray(layer.layers)
 								? !isContentUnalterable(layer.layers)
@@ -5435,7 +5429,7 @@ async function getProjectViewMenu(project) {
 			let	colorListNames = [];
 
 				for (const sectionName of PARAM_OPTIONS_LOCAL) if (section = options[sectionName])
-				for (const listName of Object.keys(options[sectionName])) {
+				for (const listName of Object.keys(section)) {
 					addToListIfNotYet(alterableLayerNames, listName);
 
 					if (sectionName === 'colors') {
@@ -5717,6 +5711,7 @@ async function getProjectViewMenu(project) {
 					selectBox.noSwitches = true;
 				} else
 				for (const switchType in SWITCH_NAMES_BY_TYPE) {
+
 				const	implicitName = getPropByNameChain(project, 'switchParamNames', switchType, 'implicit');
 				const	explicitName = getPropByNameChain(project, 'switchParamNames', switchType, 'explicit');
 				const	isImplied = (typeof params[explicitName] === 'undefined');
@@ -5738,6 +5733,7 @@ async function getProjectViewMenu(project) {
 					checkBox.params = params;
 
 					for (const index in switchNames) {
+
 					const	switchName = switchNames[index];
 					const	textKey = 'switch_' + switchType + '_' + switchName;
 					const	button = cre('div', label);
@@ -5848,26 +5844,24 @@ async function getProjectViewMenu(project) {
 							optionLabel = getLocalizedText(sectionName + '_' + optionName);
 						} else
 						if (sectionName === 'colors') {
-							items[optionName].forEach(
-								(layer) => addOptionColor(layer.img)
-							);
+							for (const layer of items[optionName]) {
+								addOptionColor(layer.img);
+							}
 						}
 
 					const	optionItem = addOption(selectBox, optionLabel, optionValue);
 
-						colorStyles.forEach(
-							(colorStyle) => {
+						for (const colorStyle of colorStyles) {
 
-							//* standard only allows minimal styling of options, no nested color boxes:
+						//* standard only allows minimal styling of options, no nested color boxes:
 
-								optionItem.style.backgroundColor = colorStyle;
-								optionItem.style.color = (
-									isColorDark(colorStyle)
-									? 'white'
-									: 'black'
-								);
-							}
-						);
+							optionItem.style.backgroundColor = colorStyle;
+							optionItem.style.color = (
+								isColorDark(colorStyle)
+								? 'white'
+								: 'black'
+							);
+						}
 					}
 				}
 
@@ -5927,17 +5921,13 @@ async function getProjectViewMenu(project) {
 			}
 		}
 
-		getAllByTag('th', table).forEach(
-			(cell) => {
-				cell.colSpan = maxTabCount;
-			}
-		);
+		for (const cell of getAllByTag('th', table)) {
+			cell.colSpan = maxTabCount;
+		}
 
-		getAllByClass('no-switches', table).forEach(
-			(cell) => {
-				cell.colSpan = maxTabCount - getAllByTag('td', cell.parentNode).length + 1;
-			}
-		);
+		for (const cell of getAllByClass('no-switches', table)) {
+			cell.colSpan = maxTabCount - getAllByTag('td', cell.parentNode).length + 1;
+		}
 	}
 
 	return await getProjectOptionsContainer(project);
@@ -5975,69 +5965,67 @@ const	buttonsPanel = cre('div', container);
 	const	fileNamingButtons = cre('div', fileNamingBox);
 		fileNamingButtons.className = 'panel row';
 
-		PROJECT_NAMING_BUTTONS.forEach(
-			(name) => addNamedButton(fileNamingButtons, name)
-		);
+		for (const buttonName of PROJECT_NAMING_BUTTON_NAMES) {
+			addNamedButton(fileNamingButtons, buttonName);
+		}
 
 	const	fileNamingOrderBox = cre('div', fileNamingBox);
 		fileNamingOrderBox.className = 'panel draggable-order';
 
 		addEventListeners(fileNamingOrderBox, PROJECT_NAMING_EVENT_HANDLERS);
 
-		NAME_PARTS_ORDER.forEach(
-			(sectionName) => {
-			const	optionLists = project.options[sectionName];
+		for (const sectionName of NAME_PARTS_ORDER) {
+		const	optionLists = project.options[sectionName];
 
-				if (!isNonNullObject(optionLists)) {
-					return;
-				}
+			if (!isNonNullObject(optionLists)) {
+				continue;
+			}
 
-			const	listNames = Object.keys(optionLists);
-			const	isOnlySectionName = !(
-					listNames.length > 0
-				&&	listNames.some(
-						(listName) => (listName !== sectionName)
-					)
-				);
+		const	listNames = Object.keys(optionLists);
+		const	isOnlySectionName = !(
+				listNames.length > 0
+			&&	listNames.some(
+					(listName) => (listName !== sectionName)
+				)
+			);
 
-			let	fileNamingSection;
+		let	fileNamingSection;
 
-				for (const listName of listNames) {
+			for (const listName of listNames) {
 
-					if (!fileNamingSection) {
-						fileNamingSection = cre('div', fileNamingOrderBox);
-						fileNamingSection.className = 'sub panel row';
-						fileNamingSection.draggable = true;
+				if (!fileNamingSection) {
+					fileNamingSection = cre('div', fileNamingOrderBox);
+					fileNamingSection.className = 'sub panel row';
+					fileNamingSection.draggable = true;
 
-					const	fileNamingSectionName = cre('header', fileNamingSection);
-						fileNamingSectionName.name = sectionName;
-						fileNamingSectionName.textContent = getCapitalizedString(
-							getLocalizedOrEmptyText('option_header_' + sectionName)
-						||	getLocalizedOrEmptyText('option_' + sectionName)
-						||	sectionName
-						);
-
-						if (listNames.length > 1) {
-							fileNamingSection = cre('div', fileNamingSection);
-							fileNamingSection.className = 'panel row wrap';
-						}
-					}
-
-					if (isOnlySectionName) {
-						break;
-					}
-
-				const	fileNamingListName = cre('div', fileNamingSection);
-					fileNamingListName.className = 'sub panel';
-					fileNamingListName.name =
-					fileNamingListName.textContent = listName;
+				const	fileNamingSectionName = cre('header', fileNamingSection);
+					fileNamingSectionName.name = sectionName;
+					fileNamingSectionName.textContent = getCapitalizedString(
+						getLocalizedOrEmptyText('option_header_' + sectionName)
+					||	getLocalizedOrEmptyText('option_' + sectionName)
+					||	sectionName
+					);
 
 					if (listNames.length > 1) {
-						fileNamingListName.draggable = true;
+						fileNamingSection = cre('div', fileNamingSection);
+						fileNamingSection.className = 'panel row wrap';
 					}
 				}
+
+				if (isOnlySectionName) {
+					break;
+				}
+
+			const	fileNamingListName = cre('div', fileNamingSection);
+				fileNamingListName.className = 'sub panel';
+				fileNamingListName.name =
+				fileNamingListName.textContent = listName;
+
+				if (listNames.length > 1) {
+					fileNamingListName.draggable = true;
+				}
 			}
-		);
+		}
 	}
 
 //* show overall project info:
@@ -6314,9 +6302,9 @@ function getLayerWithParamsFromParamList(paramList, layer) {
 		if (args.length > 1) {
 			collection = getOrInitChild(collection, args[0], Array);
 
-			asArray(args[1]).forEach(
-				(value) => addToListIfNotYet(collection, value)
-			);
+			for (const value of asArray(args[1])) {
+				addToListIfNotYet(collection, value);
+			}
 		}
 	}
 
@@ -6357,7 +6345,8 @@ const	params = getOrInitChild(layer, 'params');
 	let	match;
 
 		param_types:
-		for (const paramType in regLayerNameParamType) if (match = param.match(regLayerNameParamType[paramType])) {
+		for (const paramType in regLayerNameParamType)
+		if (match = param.match(regLayerNameParamType[paramType])) {
 
 			if (paramType in SWITCH_NAMES_BY_TYPE) {
 				params[SWITCH_NAMES_BY_TYPE[paramType][match[1] ? 0 : 1]] = true;
@@ -6374,9 +6363,9 @@ const	params = getOrInitChild(layer, 'params');
 			const	collection = params[paramType];
 
 				if (collection) {
-					values.forEach(
-						(value) => addToListIfNotYet(collection.values, value)
-					);
+					for (const value of values) {
+						addToListIfNotYet(collection.values, value);
+					}
 
 					collection.format = format;
 				} else {
@@ -6396,219 +6385,214 @@ const	params = getOrInitChild(layer, 'params');
 					.map((text) => text.toLowerCase())
 				);
 
-				paramTextParts.forEach(
-					(paramTextPart) => {
+				for (const paramTextPart of paramTextParts) {
 
 				//* methods:
 
-						if (PARAM_KEYWORDS_SHORTCUT_FOR_ALL.includes(paramTextPart)) {
-							PARAM_KEYWORDS_PADDING_METHODS.forEach(
-								(keyword) => addToListIfNotYet(methods, keyword)
-							);
-						} else
-						if (PARAM_KEYWORDS_PADDING_METHODS.includes(paramTextPart)) {
-							addToListIfNotYet(methods, paramTextPart);
-						} else
+					if (PARAM_KEYWORDS_SHORTCUT_FOR_ALL.includes(paramTextPart)) {
+						for (const keyword of PARAM_KEYWORDS_PADDING_METHODS) {
+							addToListIfNotYet(methods, keyword);
+						}
+					} else
+					if (PARAM_KEYWORDS_PADDING_METHODS.includes(paramTextPart)) {
+						addToListIfNotYet(methods, paramTextPart);
+					} else
 
 				//* thresholds:
 
-						if (
-							hasPrefix(paramTextPart, 'at')
-						||	(paramTextPart.replace(regNumDots, '') === 'a')
-						) {
-							getRangeValuesFromText(
-								paramTextPart
-								.replace(regTrimParamRadius, '')
-							)
-							.forEach(
-								(value) => (
-									addToListIfNotYet(thresholds, Math.abs(orz(value)))
-								)
-							);
+					if (
+						hasPrefix(paramTextPart, 'at')
+					||	(paramTextPart.replace(regNumDots, '') === 'a')
+					) {
+					const	values = getRangeValuesFromText(
+							paramTextPart
+							.replace(regTrimParamRadius, '')
+						);
 
-						} else
+						for (const value of values) {
+							addToListIfNotYet(thresholds, Math.abs(orz(value)));
+						}
+
+					} else
 
 				//* boundaries:
 
-						if (
-							hasPostfix(paramTextPart, 'px')
-						||	(paramTextPart.replace(regNumDots, '') === '')
-						) {
-						let	isHollow = false;
+					if (
+						hasPostfix(paramTextPart, 'px')
+					||	(paramTextPart.replace(regNumDots, '') === '')
+					) {
+					let	isHollow = false;
 
-						const	dimensions = (
-								paramTextPart
-								.replace(regTrimParamRadius, '')
-								.split('x', 2)
-								.map(
-									(dimensionText) => (
-										!dimensionText.length
-										? null :
-										dimensionText
-										.split(':', 2)
-										.map(
-											(boundaryText) => (
-												!boundaryText.length
-												? null :
-												getRangeValuesFromText(boundaryText)
-											)
+					const	dimensions = (
+							paramTextPart
+							.replace(regTrimParamRadius, '')
+							.split('x', 2)
+							.map(
+								(dimensionText) => (
+									!dimensionText.length
+									? null :
+									dimensionText
+									.split(':', 2)
+									.map(
+										(boundaryText) => (
+											!boundaryText.length
+											? null :
+											getRangeValuesFromText(boundaryText)
 										)
 									)
 								)
-							);
+							)
+						);
 
-						const	explicitDimensions = (
-								dimensions
-								.map(
-									(dimensionBoundaries) => {
-										if (isArray(dimensionBoundaries)) {
-											if (dimensionBoundaries.length > 1) {
-												isHollow = true;
-											}
-
-										const	explicitBoundaries = (
-												dimensionBoundaries
-												.filter(arrayFilterNonEmptyValues)
-											);
-
-											if (explicitBoundaries.length > 0) {
-												return explicitBoundaries;
-											}
+					const	explicitDimensions = (
+							dimensions
+							.map(
+								(dimensionBoundaries) => {
+									if (isArray(dimensionBoundaries)) {
+										if (dimensionBoundaries.length > 1) {
+											isHollow = true;
 										}
 
-										return null;
+									const	explicitBoundaries = (
+											dimensionBoundaries
+											.filter(arrayFilterNonEmptyValues)
+										);
+
+										if (explicitBoundaries.length > 0) {
+											return explicitBoundaries;
+										}
 									}
-								)
-								.filter(arrayFilterNonEmptyValues)
+
+									return null;
+								}
+							)
+							.filter(arrayFilterNonEmptyValues)
+						);
+
+					const	isBox = (explicitDimensions.length > 1);
+					const	isRound = (explicitDimensions.length === 1) && (dimensions.length === 1);
+					const	isSquare = (explicitDimensions.length === 1) && (dimensions.length > 1);
+
+					let	count = 0;
+
+						if (isRound || isSquare) {
+						const	directions = explicitDimensions[0];
+						const	addToBoundaryList = (
+								isRound
+								? (interval) => {
+									count += addToListIfNotYet(
+										boundaries
+									,	{
+											'radius' : interval
+										}
+									);
+								}
+								: (interval) => {
+									count += addToListIfNotYet(
+										boundaries
+									,	{
+											'x' : interval
+										,	'y' : interval
+										}
+									);
+								}
 							);
 
-						const	isBox = (explicitDimensions.length > 1);
-						const	isRound = (explicitDimensions.length === 1) && (dimensions.length === 1);
-						const	isSquare = (explicitDimensions.length === 1) && (dimensions.length > 1);
+							if (directions.length > 1) {
+								forEachSetInCrossProduct(
+									directions
+								,	(...args) => {
+									const	interval = {
+											'in'  : Math.min(...args)
+										,	'out' : Math.max(...args)
+										};
 
-						let	count = 0;
-
-							if (isRound || isSquare) {
-							const	directions = explicitDimensions[0];
-							const	addToBoundaryList = (
-									isRound
-									? (interval) => {
-										count += addToListIfNotYet(
-											boundaries
-										,	{
-												'radius' : interval
-											}
-										);
+										addToBoundaryList(interval);
 									}
-									: (interval) => {
+								);
+							} else {
+								for (const outerRadius of directions[0]) {
+								const	interval = (
+										isHollow
+										? {
+											'in'  : outerRadius
+										,	'out' : outerRadius
+										}
+										: {
+											'out' : outerRadius
+										}
+									);
+
+									addToBoundaryList(interval);
+								}
+							}
+						} else
+						if (isBox) {
+							if (isHollow) {
+								forEachSetInCrossProduct(
+									[
+										dimensions[0][0] || DUMMY_ARRAY
+									,	dimensions[0][1] || DUMMY_ARRAY
+									,	dimensions[1][0] || DUMMY_ARRAY
+									,	dimensions[1][1] || DUMMY_ARRAY
+									]
+								,	(x1, x2, y1, y2) => {
+										if (x1 === null) x1 = x2; else
+										if (x2 === null) x2 = x1;
+										if (y1 === null) y1 = y2; else
+										if (y2 === null) y2 = y1;
+
+										if (
+											x1 === null
+										||	x2 === null
+										||	y1 === null
+										||	y2 === null
+										) {
+											return;
+										}
+
 										count += addToListIfNotYet(
 											boundaries
 										,	{
-												'x' : interval
-											,	'y' : interval
+												'x' : {
+													'in'  : Math.min(x1, x2)
+												,	'out' : Math.max(x1, x2)
+												}
+											,	'y' : {
+													'in'  : Math.min(y1, y2)
+												,	'out' : Math.max(y1, y2)
+												}
 											}
 										);
 									}
 								);
-
-								if (directions.length > 1) {
-									forEachSetInCrossProduct(
-										directions
-									,	(...args) => {
-										const	interval = {
-												'in'  : Math.min(...args)
-											,	'out' : Math.max(...args)
-											};
-
-											addToBoundaryList(interval);
+							} else {
+								forEachSetInCrossProduct(
+									[
+										dimensions[0][0] || dimensions[0][1]
+									,	dimensions[1][0] || dimensions[1][1]
+									]
+								,	(outerX, outerY) => {
+										if (
+											outerX === null
+										||	outerY === null
+										) {
+											return;
 										}
-									);
-								} else {
-									directions[0].forEach(
-										(outerRadius) => {
-										const	interval = (
-												isHollow
-												? {
-													'in'  : outerRadius
-												,	'out' : outerRadius
-												}
-												: {
-													'out' : outerRadius
-												}
-											);
 
-											addToBoundaryList(interval);
-										}
-									);
-								}
-							} else
-							if (isBox) {
-								if (isHollow) {
-									forEachSetInCrossProduct(
-										[
-											dimensions[0][0] || DUMMY_ARRAY
-										,	dimensions[0][1] || DUMMY_ARRAY
-										,	dimensions[1][0] || DUMMY_ARRAY
-										,	dimensions[1][1] || DUMMY_ARRAY
-										]
-									,	(x1, x2, y1, y2) => {
-											if (x1 === null) x1 = x2; else
-											if (x2 === null) x2 = x1;
-											if (y1 === null) y1 = y2; else
-											if (y2 === null) y2 = y1;
-
-											if (
-												x1 === null
-											||	x2 === null
-											||	y1 === null
-											||	y2 === null
-											) {
-												return;
+										count += addToListIfNotYet(
+											boundaries
+										,	{
+												'x' : { 'out' : outerX }
+											,	'y' : { 'out' : outerY }
 											}
-
-											count += addToListIfNotYet(
-												boundaries
-											,	{
-													'x' : {
-														'in'  : Math.min(x1, x2)
-													,	'out' : Math.max(x1, x2)
-													}
-												,	'y' : {
-														'in'  : Math.min(y1, y2)
-													,	'out' : Math.max(y1, y2)
-													}
-												}
-											);
-										}
-									);
-								} else {
-									forEachSetInCrossProduct(
-										[
-											dimensions[0][0] || dimensions[0][1]
-										,	dimensions[1][0] || dimensions[1][1]
-										]
-									,	(outerX, outerY) => {
-											if (
-												outerX === null
-											||	outerY === null
-											) {
-												return;
-											}
-
-											count += addToListIfNotYet(
-												boundaries
-											,	{
-													'x' : { 'out' : outerX }
-												,	'y' : { 'out' : outerY }
-												}
-											);
-										}
-									);
-								}
+										);
+									}
+								);
 							}
 						}
 					}
-				);
+				}
 
 				if (
 					boundaries.length > 0
@@ -6714,54 +6698,55 @@ const	params = getOrInitChild(layer, 'params');
 			} else
 
 			if (paramType === 'collage') {
-				getSlashSeparatedParts(match[2] || DEFAULT_COLLAGE).forEach(
-					(value) => {
-					let	listName = 'background';
-					let	match, values;
+				for (const value of getSlashSeparatedParts(match[2] || DEFAULT_COLLAGE)) {
 
-					const	keyword = value.replace(regNonAlphaNum, '').toLowerCase()
+				let	listName = 'background';
+				let	match, values;
+
+				const	keyword = value.replace(regNonAlphaNum, '').toLowerCase()
+
+					if (
+						PARAM_KEYWORDS_COLLAGE_ALIGN.includes(keyword)
+					||	PARAM_KEYWORDS_SHORTCUT_FOR_ALL.includes(keyword)
+					) {
+						listName = 'align';
+					} else
+					if (match = value.match(regEndsWithNumPx)) {
+						listName = match[1];
 
 						if (
-							PARAM_KEYWORDS_COLLAGE_ALIGN.includes(keyword)
-						||	PARAM_KEYWORDS_SHORTCUT_FOR_ALL.includes(keyword)
+							!listName
+						||	!PARAM_KEYWORDS_COLLAGE_PAD.includes(listName)
 						) {
-							listName = 'align';
-						} else
-						if (match = value.match(regEndsWithNumPx)) {
-							listName = match[1];
-
-							if (
-								!listName
-							||	!PARAM_KEYWORDS_COLLAGE_PAD.includes(listName)
-							) {
-								listName = PARAM_KEYWORDS_COLLAGE_PAD;	//* <- add same value to all lists
-							}
-
-							values = (
-								getRangeValuesFromText(value)
-								.map(
-									(value) => (
-										Math.abs(orz(value)) + 'px'
-									)
-								)
-							);
-
-							if (!values.length) {
-								value = match[2] + 'px';
-							}
+							listName = PARAM_KEYWORDS_COLLAGE_PAD;	//* <- add same value to all lists
 						}
 
-						if (listName) {
-							asArray(listName).forEach(
-								(listName) => addUniqueParamValuesToList(
-									paramType
-								,	listName
-								,	values || value
+						values = (
+							getRangeValuesFromText(value)
+							.map(
+								(value) => (
+									Math.abs(orz(value)) + 'px'
 								)
+							)
+						);
+
+						if (!values.length) {
+							values.push(match[2] + 'px');
+						}
+					}
+
+					if (listName) {
+					const	listNames = asArray(listName);
+
+						for (const listName of listNames) {
+							addUniqueParamValuesToList(
+								paramType
+							,	listName
+							,	values || value
 							);
 						}
 					}
-				);
+				}
 			} else
 
 			if (paramType === 'color_code') {
@@ -6851,7 +6836,8 @@ const	checkVirtualPath = (
 let	isSubLayerFolder = false;
 let	match, separator, subLayer;
 
-	while (match = name.match(regLayerNameParamOrComment)) if (
+	while (match = name.match(regLayerNameParamOrComment))
+	if (
 		checkVirtualPath
 	&&	(separator = match[2])
 	&&	(separator === '/')
@@ -7121,24 +7107,24 @@ let	element;
 }
 
 function setImageGeometryProperties(target, ...sources) {
-	IMAGE_GEOMETRY_KEYS.forEach(
-		(keys) => {
-		const	targetKey = keys[0];
 
-			if (targetKey in target) {
-				return;
-			}
+	sides:
+	for (const keys of IMAGE_GEOMETRY_KEYS) {
+	const	targetKey = keys[0];
 
-			for (const source of sources) if (isNonNullObject(source))
-			for (const key of keys) if (source[key]) {
-				target[targetKey] = orz(source[key]);
-
-				return;
-			}
-
-			// target[targetKey] = 0;
+		if (targetKey in target) {
+			continue sides;
 		}
-	);
+
+		for (const source of sources) if (isNonNullObject(source))
+		for (const key of keys) if (source[key]) {
+			target[targetKey] = orz(source[key]);
+
+			continue sides;
+		}
+
+		// target[targetKey] = 0;
+	}
 }
 
 //* Page-specific functions: internal, loading from file *---------------------
@@ -7714,7 +7700,8 @@ let	newValue = selectBox.value;
 	if (targetPosition === 'init') {
 		newValue = selectBox.initialValue;
 	} else {
-		for (const option of selectBox.options) if (
+		for (const option of selectBox.options)
+		if (
 			'' === option.value
 		||	'' === trim(option.textContent)
 		) {
@@ -7773,15 +7760,14 @@ const	optionItem = getAllByTag('option', selectBox).find(
 
 function setAllSwitches(project, key, value) {
 
-	getAllByType('checkbox', project.container).forEach(
-		(checkBox) => {
-			if (checkBox.getAttribute('data-switch-type') === key) {
-				checkBox.checked = (SWITCH_NAMES_BY_TYPE[key].indexOf(value) > 0);
+	for (const checkBox of getAllByType('checkbox', project.container)) {
 
-				updateCheckBox(checkBox);
-			}
+		if (checkBox.getAttribute('data-switch-type') === key) {
+			checkBox.checked = (SWITCH_NAMES_BY_TYPE[key].indexOf(value) > 0);
+
+			updateCheckBox(checkBox);
 		}
-	);
+	}
 
 	if (key === 'batch') {
 		updateBatchCount(project);
@@ -7790,25 +7776,25 @@ function setAllSwitches(project, key, value) {
 
 async function setAllValues(project, targetPosition) {
 
-	getAllByTag('select', project.container).forEach(
-		(selectBox) => selectValueByPos(selectBox, targetPosition)
-	);
+	for (const selectBox of getAllByTag('select', project.container)) {
+
+		selectValueByPos(selectBox, targetPosition);
+	}
 
 	if (
 		targetPosition === 'init'
 	||	targetPosition === 'empty'
 	) {
-		getAllByType('checkbox', project.container).forEach(
-			(checkBox) => {
-				checkBox.checked = (
-					targetPosition === 'init'
-					? checkBox.initialValue
-					: false
-				);
+		for (const checkBox of getAllByType('checkbox', project.container)) {
 
-				updateCheckBox(checkBox);
-			}
-		);
+			checkBox.checked = (
+				targetPosition === 'init'
+				? checkBox.initialValue
+				: false
+			);
+
+			updateCheckBox(checkBox);
+		}
 	}
 
 	await updateBatchCount(project);
@@ -7818,23 +7804,22 @@ async function setAllValues(project, targetPosition) {
 function getAllMenuValues(project, checkSelectedValue) {
 const	values = {};
 
-	getAllByTag('select', project.container).forEach(
-		(selectBox) => {
-		const	sectionName = selectBox.getAttribute('data-section');
-		const	listName    = selectBox.name;
-		const	optionLists = getOrInitChild(values, sectionName);
+	for (const selectBox of getAllByTag('select', project.container)) {
 
-			optionLists[listName] = (
-				selectBox.noSwitches
-			||	(
-					checkSelectedValue
-				&&	getProjectOptionParam(project, sectionName, listName, 'single')
-				)
-				? [selectBox.value]
-				: getAllByTag('option', selectBox).map((option) => option.value)
-			);
-		}
-	);
+	const	sectionName = selectBox.getAttribute('data-section');
+	const	listName    = selectBox.name;
+	const	optionLists = getOrInitChild(values, sectionName);
+
+		optionLists[listName] = (
+			selectBox.noSwitches
+		||	(
+				checkSelectedValue
+			&&	getProjectOptionParam(project, sectionName, listName, 'single')
+			)
+			? [selectBox.value]
+			: getAllByTag('option', selectBox).map((option) => option.value)
+		);
+	}
 
 	return values;
 }
@@ -8036,80 +8021,77 @@ function getUpdatedMenuValues(project, updatedValues) {
 
 const	values = {};
 
-	getAllByTag('select', project.container).forEach(
-		(selectBox) => {
+	for (const selectBox of getAllByTag('select', project.container)) {
 
 //* 1) check current selected values:
 
-		const	sectionName   = selectBox.getAttribute('data-section');
-		const	listName      = selectBox.name;
-		const	selectedValue = selectBox.value || '';
+	const	sectionName   = selectBox.getAttribute('data-section');
+	const	listName      = selectBox.name;
+	const	selectedValue = selectBox.value || '';
 
-		let	hide = false;
+	let	hide = false;
 
 //* 2) hide irrelevant options:
 
-			if (updatedValues && updatedValues !== true) {
-			let	fallbackValue = '';
-			let	selectedValueHidden = false;
-			let	allHidden = true;
+		if (updatedValues && updatedValues !== true) {
+		let	fallbackValue = '';
+		let	selectedValueHidden = false;
+		let	allHidden = true;
 
-				getAllByTag('option', selectBox).forEach(
-					(option) => {
-					const	optionName = option.value || '';
-					const	hide = !isSelectedOptionRelevant(project, updatedValues, sectionName, listName, optionName);
+			for (const option of selectBox.options) {
 
-						if (hide) {
-							if (optionName === selectedValue) {
-								selectedValueHidden = true;
-							}
-						} else {
-							if (
-								optionName.length > 0
-							&&	fallbackValue.length === 0
-							) {
-								fallbackValue = optionName;
-							}
-						}
-						if (!hide && optionName) {
-							allHidden = false;
-						}
-						if (!option.hidden === hide) {
-							option.hidden = option.disabled = hide;
-						}
+			const	optionName = option.value || '';
+			const	hide = !isSelectedOptionRelevant(project, updatedValues, sectionName, listName, optionName);
+
+				if (hide) {
+					if (optionName === selectedValue) {
+						selectedValueHidden = true;
 					}
-				);
-
-				hide = (allHidden ? 'none' : '');
-
-				selectValue(selectBox, (
-					!hide && selectedValueHidden
-					? fallbackValue
-					: selectedValue
-				));
-
-			const	container = getThisOrParentByClass(selectBox, regClassOption) || selectBox.parentNode;
-			const	style = container.style;
-
-				if (style.display != hide) {
-					style.display = hide;
+				} else {
+					if (
+						optionName.length > 0
+					&&	fallbackValue.length === 0
+					) {
+						fallbackValue = optionName;
+					}
+				}
+				if (!hide && optionName) {
+					allHidden = false;
+				}
+				if (!option.hidden === hide) {
+					option.hidden = option.disabled = hide;
 				}
 			}
 
+			hide = (allHidden ? 'none' : '');
+
+			selectValue(selectBox, (
+				!hide && selectedValueHidden
+				? fallbackValue
+				: selectedValue
+			));
+
+		const	container = getThisOrParentByClass(selectBox, regClassOption) || selectBox.parentNode;
+		const	style = container.style;
+
+			if (style.display != hide) {
+				style.display = hide;
+			}
+		}
+
 //* 3) get new values after update:
 
-		const	section = getOrInitChild(values, sectionName);
-		const	newSelectedValue = selectBox.value;
+	const	section = getOrInitChild(values, sectionName);
+	const	newSelectedValue = selectBox.value;
 
-			section[listName] = (
-				!hide
-			&&	trim(listName).length > 0
-			&&	trim(newSelectedValue).length > 0
-				? newSelectedValue
-				: ''
-			);
-		}
-	);
+		section[listName] = (
+			!hide
+		&&	trim(listName).length > 0
+		&&	trim(newSelectedValue).length > 0
+			? newSelectedValue
+			: ''
+		);
+	}
 
 	setRenderRootByValues(project, null);
 
@@ -8830,7 +8812,8 @@ const	selectedColors = project.rendering.colors;
 		const	optionalColors = getSelectedOptionValue(project, values, 'colors', listName);
 
 			if (optionalColors) {
-				for (const layer of optionalColors) if (
+				for (const layer of optionalColors)
+				if (
 					layer.isColor
 				&&	getLayerPathVisibilityByValues(project, layer, values, listName)
 				) {
@@ -9000,12 +8983,20 @@ function getLayerVisibilityByValues(project, layer, values, listName) {
 	}
 
 	function getOpacityByAnyName() {
-	const	listNames = (listName ? [listName] : layer.names);
 	let	maxOpacity = -1;
 	let	unselectable = false;
 
-		for (const anyListName of listNames) {
-		const	opacity = getSelectedOptionValue(project, values, 'opacities', anyListName);
+		if (listName) {
+		const	opacity = getSelectedOptionValue(project, values, 'opacities', listName);
+
+			if (opacity === null) {
+				unselectable = true;
+			} else {
+				maxOpacity = opacity;
+			}
+		} else
+		for (const listName of layer.names) {
+		const	opacity = getSelectedOptionValue(project, values, 'opacities', listName);
 
 			if (opacity === null) {
 				unselectable = true;
@@ -9242,63 +9233,61 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 		let	addCopyPaste = false;
 
 			if (skipCopyPaste !== layer) {
-				PARAM_KEYWORDS_PASTE.forEach(
-					(pasteType) => {
-					const	aliasesToPaste = getPropByNameChain(params, 'copypaste', pasteType);
+				for (const pasteType of PARAM_KEYWORDS_PASTE) {
 
-						if (isNonEmptyArray(aliasesToPaste)) {
-							addCopyPaste = true;
+				const	aliasesToPaste = getPropByNameChain(params, 'copypaste', pasteType);
 
-							layers = (
-								isArray(layers)
-								? layers.slice()
-								: [layer]
-							);
+					if (isNonEmptyArray(aliasesToPaste)) {
+						addCopyPaste = true;
 
-						const	oldLayersCount = layers.length;
+						layers = (
+							isArray(layers)
+							? layers.slice()
+							: [layer]
+						);
 
-							aliasesToPaste.forEach(
-								(alias) => (
-									getPropByNameChain(project, 'layersCopyPasteSourcesByAlias', alias) || []
-								).forEach(
-									(linkedLayer) => {
-										if (
-											!linkedLayer.copyPastedTo
-										&&	addToListIfNotYet(layers, linkedLayer)
-										) {
-											linkedLayer.copyPastedTo = layer;
-										}
-									}
-								)
-							);
+					const	oldLayersCount = layers.length;
 
-						const	addedLayersCount = layers.length - oldLayersCount;
+						for (const alias of aliasesToPaste) {
+						const	linkedLayers = getPropByNameChain(project, 'layersCopyPasteSourcesByAlias', alias);
+
+							if (isNonEmptyArray(linkedLayers))
+							for (const linkedLayer of linkedLayers) {
+								if (
+									!linkedLayer.copyPastedTo
+								&&	addToListIfNotYet(layers, linkedLayer)
+								) {
+									linkedLayer.copyPastedTo = layer;
+								}
+							}
+						}
+
+					const	addedLayersCount = layers.length - oldLayersCount;
 
 //* put copypasted layers atop own content:
 
-							if (
-								oldLayersCount > 0
-							&&	addedLayersCount > 0
-							&&	!pasteType.includes('below')
-							) {
-								layers = (
-									layers.slice(oldLayersCount)
-								).concat(
-									layers.slice(0, oldLayersCount)
-								);
-							}
-
-							if (TESTING > 9) console.log(
-								'layers after copypaste:', [
-									layers,
-									'was:', oldLayersCount,
-									'added:', addedLayersCount,
-									'total:', layers.length,
-								]
+						if (
+							oldLayersCount > 0
+						&&	addedLayersCount > 0
+						&&	!pasteType.includes('below')
+						) {
+							layers = (
+								layers.slice(oldLayersCount)
+							).concat(
+								layers.slice(0, oldLayersCount)
 							);
 						}
+
+						if (TESTING > 9) console.log(
+							'layers after copypaste:', [
+								layers,
+								'was:', oldLayersCount,
+								'added:', addedLayersCount,
+								'total:', layers.length,
+							]
+						);
 					}
-				);
+				}
 			}
 
 			if (isArray(layers)) {
@@ -9407,13 +9396,11 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 				}
 
 				if (addCopyPaste) {
-					layers.forEach(
-						(renderedLayer) => {
-							if (renderedLayer.copyPastedTo === layer) {
-								renderedLayer.copyPastedTo = null;
-							}
+					for (const renderedLayer of layers) {
+						if (renderedLayer.copyPastedTo === layer) {
+							renderedLayer.copyPastedTo = null;
 						}
-					)
+					}
 				}
 			} else {
 
@@ -9433,10 +9420,13 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 //* get mask of neighbour content, rendered before or after this layer:
 
 				if (layer.isMaskGenerated) {
-				const	paddings = names.map(
-						(listName) => getSelectedOptionValue(project, values, 'paddings', listName)
-					)
-					.filter(arrayFilterNonEmptyValues);
+				const	paddings = (
+						names
+						.map(
+							(listName) => getSelectedOptionValue(project, values, 'paddings', listName)
+						)
+						.filter(arrayFilterNonEmptyValues)
+					);
 
 					if (paddings.length > 0) {
 						mask = await getRenderByValues(
@@ -9451,9 +9441,9 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 //* apply padding to generated mask:
 
 						if (mask) {
-							paddings.forEach(
-								(padding) => padCanvas(mask, padding)
-							);
+							for (const padding of paddings) {
+								padCanvas(mask, padding);
+							}
 
 							if (TESTING_RENDER) addDebugImage(project, mask, 'padCanvas: mask');
 						}
@@ -9495,11 +9485,9 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 				&&	!ignoreColors
 				&&	!layer.isColorList	//* <- already got selected color fill
 				) {
-					names.forEach(
-						(listName) => {
-							img = getCanvasColored(project, values, listName, img);
-						}
-					);
+					for (const listName of names) {
+						img = getCanvasColored(project, values, listName, img);
+					}
 				}
 
 //* flip:
@@ -10972,17 +10960,15 @@ const	orderBox = (
 		orderBox.hidden = isClosing;
 	}
 
-	PROJECT_NAMING_BUTTONS.forEach(
-		(name, index) => getAllByName(name, project.container).forEach(
-			(button) => {
-				if (index > 0) {
-					button.hidden = isClosing;
-				} else {
-					button.disabled = !isClosing;
-				}
-			}
-		)
-	);
+	for (const name of PROJECT_NAMING_BUTTON_NAMES)
+	for (const button of getAllByName(name, project.container)) {
+
+		if (name.includes('change')) {
+			button.disabled = !isClosing;
+		} else {
+			button.hidden = isClosing;
+		}
+	}
 }
 
 function updateCheckBox(checkBox, params) {
@@ -10998,15 +10984,13 @@ function updateCheckBox(checkBox, params) {
 
 function updateMenuBatchCount(project, ...args) {
 	if (ADD_BATCH_COUNT_ON_BUTTON) {
-		PROJECT_SAVE_ALL_BUTTON_NAMES.forEach(
-			(name) => getAllByName(name, project.container).forEach(
-				(button) => {
-				const	label = button.lastElementChild || cre('span', button);
-					label.className = 'count-label';
-					label.textContent = args.join(' / ');
-				}
-			)
-		);
+		for (const name of PROJECT_SAVE_ALL_BUTTON_NAMES)
+		for (const button of getAllByName(name, project.container)) {
+
+		const	label = button.lastElementChild || cre('span', button);
+			label.className = 'count-label';
+			label.textContent = args.join(' / ');
+		}
 	} else {
 	let	label = project.renderBatchCountMenuLabel;
 
@@ -11136,18 +11120,16 @@ function setWIPstate(isWIP, project) {
 		project.isStopRequested = false;
 		project.isBatchWIP = isWIP;
 
-		PROJECT_CONTROL_TAGNAMES.forEach(
-			(tagName) => getAllByTag(tagName, project.container).forEach(
-				(element) => {
-					element.disabled = (
-						tagName === 'button'
-					&&	element.name === 'stop'
-						? !isWIP
-						: isWIP
-					);
-				}
-			)
-		);
+		for (const tagName of PROJECT_CONTROL_TAGNAMES)
+		for (const element of getAllByTag(tagName, project.container)) {
+
+			element.disabled = (
+				tagName === 'button'
+			&&	element.name === 'stop'
+				? !isWIP
+				: isWIP
+			);
+		}
 
 		if (isWIP) {
 			if (PRELOAD_LAYER_IMAGES || project.isLoaded) {
@@ -11160,17 +11142,16 @@ function setWIPstate(isWIP, project) {
 		isStopRequested = false;
 		isBatchWIP = isWIP;
 
-		getAllByTag('button', getAllByClass('menu-bar')[0]).forEach(
-			(element) => {
-				if (element.name !== 'download_all') {
-					element.disabled = (
-						element.name === 'stop'
-						? !isWIP
-						: isWIP
-					);
-				}
+		for (const element of getAllByTag('button', getAllByClass('menu-bar')[0])) {
+
+			if (element.name !== 'download_all') {
+				element.disabled = (
+					element.name === 'stop'
+					? !isWIP
+					: isWIP
+				);
 			}
-		);
+		}
 	}
 
 	return isWIP;
@@ -11178,14 +11159,23 @@ function setWIPstate(isWIP, project) {
 
 //* Page-specific functions: UI-side *-----------------------------------------
 
-function addEventListeners(e, funcByEventName) {
-	for (var i in funcByEventName) {
+function addEventListeners(element, funcByEventName) {
+	for (const eventName in funcByEventName) {
 		try {
-			e.addEventListener(i, funcByEventName[i], { capture : true, passive : false });
+			element.addEventListener(
+				eventName
+			,	funcByEventName[eventName]
+			,	FLAG_EVENT_LISTENER_CAPTURE
+			);
+
 		} catch (error) {
 			console.error(error);
 
-			e.addEventListener(i, funcByEventName[i], true);
+			element.addEventListener(
+				eventName
+			,	funcByEventName[eventName]
+			,	true
+			);
 		}
 	}
 }
@@ -11229,9 +11219,9 @@ const	style = document.documentElement.style;
 function updateDropdownMenuPositions(evt) {
 	eventStop(evt, FLAG_EVENT_STOP_IMMEDIATE);
 
-	getAllByClass('menu-hid').forEach(
-		(menuPanel) => putInView(menuPanel, 0,0, true)
-	);
+	for (const menuPanel of getAllByClass('menu-hid')) {
+		putInView(menuPanel, 0,0, true);
+	}
 }
 
 function onPageKeyDown(evt) {
@@ -11253,25 +11243,22 @@ function onPageKeyDown(evt) {
 		||	evt.key === 'Escape'
 		)
 	) {
-		pendingJobs.forEach(
-			(job) => {
-				job.isStopRequested = true;
+		for (const job of pendingJobs) {
+			job.isStopRequested = true;
+		}
+
+		for (const button of getAllByName('stop')) {
+			button.click();
+		}
+
+		for (const button of getAllByClass('loading', getOneById('loaded-files-selection'))) {
+
+			button.isStopRequested = true;
+
+			if (button.project) {
+				button.project.isStopRequested = true;
 			}
-		);
-
-		getAllByName('stop').forEach(
-			(button) => button.click()
-		);
-
-		getAllByClass('loading', getOneById('loaded-files-selection')).forEach(
-			(button) => {
-				button.isStopRequested = true;
-
-				if (button.project) {
-					button.project.isStopRequested = true;
-				}
-			}
-		);
+		}
 	}
 }
 
@@ -11600,7 +11587,8 @@ let	files, name, ext;
 	) {
 		if (TESTING > 1) console.log(batch);
 
-		for (const file of files) if (
+		for (const file of files)
+		if (
 			file
 		&&	(name = file.name).length > 0
 		&&	(ext = getFileExt(name)).length > 0
@@ -11819,9 +11807,9 @@ function selectProject(buttonTab, autoSelected) {
 		while (otherButtonTab) {
 		const	selectedState = (otherButtonTab === buttonTab ? 1 : -1);
 
-			getAllById(otherButtonTab.id).forEach(
-				(element) => toggleClass(element, 'show', selectedState)
-			);
+			for (const element of getAllById(otherButtonTab.id)) {
+				toggleClass(element, 'show', selectedState);
+			}
 
 			otherButtonTab = otherButtonTab.nextElementSibling;
 		}
@@ -11908,11 +11896,9 @@ const	configVarNames = [
 		'ZOOM_STEP_MAX_FACTOR',
 	];
 
-	configVarNames.forEach(
-		(varName) => {
-			configVarDefaults[varName] = window[varName];
-		}
-	);
+	for (const varName of configVarNames) {
+		configVarDefaults[varName] = window[varName];
+	}
 
 //* load redefined config:
 
@@ -11925,18 +11911,17 @@ const	configVarNames = [
 
 //* restore invalid config values to default:
 
-	configVarNames.forEach(
-		(varName) => {
-		const	configuredValue = orz(window[varName]);
-		const	invalidBottom = (varName.includes('FACTOR') ? 1 : 0);
+	for (const varName of configVarNames) {
 
-			window[varName] = (
-				configuredValue > invalidBottom
-				? configuredValue
-				: configVarDefaults[varName]
-			);
-		}
-	);
+	const	configuredValue = orz(window[varName]);
+	const	invalidBottom = (varName.includes('FACTOR') ? 1 : 0);
+
+		window[varName] = (
+			configuredValue > invalidBottom
+			? configuredValue
+			: configVarDefaults[varName]
+		);
+	}
 
 //* finalize config values format:
 
@@ -12004,31 +11989,31 @@ const	todoHTML = '<p>' + getLocalizedHTML('todo') + '</p>';
 const	fileTypesByKeys = {};
 const	inputFileAcceptTypes = [];
 
-	FILE_TYPE_LOADERS.forEach(
-		(loader) => {
-		const	exts = loader.dropFileExts || [];
-		const	mimeTypes = loader.inputFileAcceptMimeTypes || [];
-		const	lowerCaseExts = exts.map((ext) => ext.toLowerCase());
-		const	upperCaseExts = exts.map((ext) => ext.toUpperCase());
-		const	key = upperCaseExts.shift();
-		const	otherTypesByKey = getOrInitChild(fileTypesByKeys, key, Array);
+	for (const loader of FILE_TYPE_LOADERS) {
 
-			upperCaseExts.forEach(
-				(ext) => addToListIfNotYet(otherTypesByKey, ext)
-			);
+	const	exts = loader.dropFileExts || [];
+	const	mimeTypes = loader.inputFileAcceptMimeTypes || [];
+	const	lowerCaseExts = exts.map((ext) => ext.toLowerCase());
+	const	upperCaseExts = exts.map((ext) => ext.toUpperCase());
+	const	key = upperCaseExts.shift();
+	const	otherTypesByKey = getOrInitChild(fileTypesByKeys, key, Array);
 
-			lowerCaseExts.forEach(
-				(ext) => addToListIfNotYet(inputFileAcceptTypes, '.' + ext)
-			);
-
-			mimeTypes.forEach(
-				(mimeType) => addToListIfNotYet(inputFileAcceptTypes, mimeType.toLowerCase())
-			);
+		for (const ext of upperCaseExts) {
+			addToListIfNotYet(otherTypesByKey, ext);
 		}
-	);
+
+		for (const ext of lowerCaseExts) {
+			addToListIfNotYet(inputFileAcceptTypes, '.' + ext);
+		}
+
+		for (const mimeType of mimeTypes) {
+			addToListIfNotYet(inputFileAcceptTypes, mimeType.toLowerCase());
+		}
+	}
 
 const	supportedFileTypesText = (
-		Object.keys(fileTypesByKeys)
+		Object
+		.keys(fileTypesByKeys)
 		.sort()
 		.map(
 			(key) => {
@@ -12495,19 +12480,17 @@ const	wrapperClassNames = [
 		'variant',
 	];
 
-	wrapperClassNames.forEach(
-		(className) => {
-		const	key = className.split(regNonAlphaNum)[0];
+	for (const className of wrapperClassNames) {
+	const	key = className.split(regNonAlphaNum)[0];
 
-			for (const tagName in wrap) {
-				wrap[tagName][key] = (...values) => (
-					'<' + tagName + ' class="' + className + '">'
-				+		values.join('')
-				+	'</' + tagName + '>'
-				);
-			}
+		for (const tagName in wrap) {
+			wrap[tagName][key] = (...values) => (
+				'<' + tagName + ' class="' + className + '">'
+			+		values.join('')
+			+	'</' + tagName + '>'
+			);
 		}
-	);
+	}
 
 const	helpSections = {
 		'autocrop' : [
@@ -13521,13 +13504,12 @@ const	toggleTextSizeHTML = (
 		toggleClass(document.body, 'no-gap', 1);
 	}
 
-	getAllByClass('thumbnail').forEach(
-		(element) => {
-			if (!element.firstElementChild) {
-				setImageSrc(element);
-			}
+	for (const element of getAllByClass('thumbnail')) {
+
+		if (!element.firstElementChild) {
+			setImageSrc(element);
 		}
-	);
+	}
 
 const	linkTooltips = [
 		['section-link', 'help_section_link'],
@@ -13535,17 +13517,14 @@ const	linkTooltips = [
 		['external-link', 'external_link'],
 	];
 
-	linkTooltips.forEach(
-		([ className, textKey ]) => getAllByClass(className).forEach(
-			(element) => {
-			const	url = element.getAttribute('href');
+	for (const [ className, textKey ] of linkTooltips)
+	for (const element of getAllByClass(className)) {
 
-				if (url) {
-					element.setAttribute('title', decodeURI(getLocalizedText(textKey, url)));
-				}
-			}
-		)
-	);
+	const	url = element.getAttribute('href');
+	const	title = decodeURI(getLocalizedText(textKey, url));
+
+		element.setAttribute('title', title);
+	}
 
 	console.timeEnd(logLabel);
 
