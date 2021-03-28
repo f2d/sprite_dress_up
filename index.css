@@ -581,6 +581,7 @@ label:hover {
 	margin: 0;
 	padding: 0;
 	border-collapse: collapse;
+	white-space: nowrap;
 }
 .loaded-file img {
 	padding: 0.5em;
@@ -689,6 +690,9 @@ label:hover {
 }
 .project-options > table {
 	max-width: 20em;
+}
+.project-render {
+	white-space: normal;
 }
 .filename {
 	font-weight: bold;

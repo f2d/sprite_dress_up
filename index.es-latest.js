@@ -6114,10 +6114,10 @@ const	summaryTextParts = [
 		renderingPanel.className = 'panel row';
 
 	const	renderingOptions = cre('div', renderingPanel);
-		renderingOptions.className = 'panel project-options';
+		renderingOptions.className = 'project-options';
 
 	const	renderedImages = cre('div', renderingPanel);
-		renderedImages.className = 'panel project-render';
+		renderedImages.className = 'project-render';
 	}
 
 	container.addEventListener('click', onProjectButtonClick, false);
