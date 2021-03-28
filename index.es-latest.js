@@ -366,6 +366,13 @@ const	SPLIT_SEC = 60
 ,	FLAG_TIME_LOG_FORMAT = { 'logFormat' : true }
 ,	FLAG_TIME_FILENAME_FORMAT = { 'fileNameFormat' : true }
 
+,	DUMMY_EMPTY_ARRAY = Object.freeze( [] )		//* <- immutable, for skipping iteration on non-collectable results
+,	DUMMY_NULL_ARRAY = Object.freeze( [null] )	//* <- immutable, for cross-product combinations
+,	DUMMY_TEXT_ARRAY = Object.freeze( [''] )
+
+,	DEFAULT_COLOR_VALUE_ARRAY = Object.freeze( [0,0,0,255] )
+,	TRANSPARENT_COLOR_VALUE_ARRAY = Object.freeze( [0,0,0,0] )
+
 ,	DUMMY_OPTION_PARAMS = Object.freeze({
 		'noOptionSwitches' : true,
 		'skipInFileNames' : true,
@@ -381,13 +388,8 @@ const	SPLIT_SEC = 60
 
 ,	DUMMY_LAYER = Object.freeze({
 		'name' : 'dummy',
-		'names' : [],
+		'names' : DUMMY_TEXT_ARRAY,
 	})
-
-,	DUMMY_ARRAY = Object.freeze( [null] )	//* <- immutable, for cross-product combinations
-
-,	DEFAULT_COLOR_VALUE_ARRAY = [0,0,0,255]
-,	TRANSPARENT_COLOR_VALUE_ARRAY = [0,0,0,0]
 
 ,	FALSY_STRINGS = [
 		'0'
@@ -863,7 +865,7 @@ const	zlibPakoFileName = (
 				'zip-fs.js',
 			].concat(
 				USE_WORKERS_IF_CAN
-				? []
+				? DUMMY_EMPTY_ARRAY
 				:
 
 //* CORS workaround: when not using Workers, include scripts here.
@@ -883,7 +885,7 @@ const	zlibPakoFileName = (
 				USE_WORKERS_IF_CAN
 			||	USE_ONE_FILE_ZIP_WORKER
 			||	!USE_ZLIB_CODECS
-				? []
+				? DUMMY_EMPTY_ARRAY
 				: zlibCodecZIP
 			)
 		},
@@ -1847,9 +1849,7 @@ const	rgba = getRGBAFromColorCodeOrArray(color);
 	&&	isArray(rgba)
 	&&	!(
 			rgba.length === 3
-		||	rgba.some(
-				(channelValue) => (channelValue > 0)
-			)
+		||	rgba.some((channelValue) => (channelValue > 0))
 		)
 	);
 }
@@ -2057,7 +2057,7 @@ function getElementsArray(by, text, parent) {
 			isFunction(parent[by])
 			? parent[by](text)
 			: parent.querySelectorAll(QUERY_SELECTOR[by].join(text))
-		) || [];
+		) || DUMMY_EMPTY_ARRAY;
 
 		return Array.prototype.slice.call(results);
 
@@ -2065,7 +2065,7 @@ function getElementsArray(by, text, parent) {
 		logError(error, arguments);
 	}
 
-	return [];
+	return DUMMY_EMPTY_ARRAY;
 }
 
 function getAllByClass	(text, parent) { return getElementsArray('getElementsByClassName', text, parent); }
@@ -2849,12 +2849,12 @@ function logError(error, args, context) {
 	,	[
 			error,
 		].concat(
-			typeof args === 'undefined' ? [] : [
+			typeof args === 'undefined' ? DUMMY_EMPTY_ARRAY : [
 				// 'In function:', args.callee.name,	//* <- not available in strict mode
 				'With arguments:', args,
 			]
 		).concat(
-			typeof context === 'undefined' ? [] : [
+			typeof context === 'undefined' ? DUMMY_EMPTY_ARRAY : [
 				'Context:', context
 			]
 		)
@@ -4127,7 +4127,7 @@ function getLayerVisibilityChain(layer) { return getLayerChain(layer, getLayerVi
 
 function getLayerPathNamesChain(layer, flags) {
 	if (!layer) {
-		return [];
+		return DUMMY_EMPTY_ARRAY;
 	}
 
 	if (!isNonNullObject(flags)) {
@@ -4152,7 +4152,7 @@ function getLayerPathText(layer) {
 }
 
 function getLayersTopSeparated(layers) {
-let	layersToRender = [];
+let	layersToRender = DUMMY_EMPTY_ARRAY;
 
 	while (isNonEmptyArray(layers)) {
 		layersToRender = layers.filter(isLayerRendered);
@@ -4197,10 +4197,10 @@ function isLayerSkipped(layer) {
 function hasImageToLoad(layer) {
 	return (
 		layer.params.color_code
-	||	IMAGE_DATA_KEYS_TO_LOAD.some((key) => key in layer)
+	||	IMAGE_DATA_KEYS_TO_LOAD.some((key) => (key in layer))
 	||	(
 			layer.mask
-		&&	IMAGE_DATA_KEYS_TO_LOAD.some((key) => key in layer.mask)
+		&&	IMAGE_DATA_KEYS_TO_LOAD.some((key) => (key in layer.mask))
 		)
 	||	(
 			!layer.layers
@@ -4572,7 +4572,7 @@ let	project, container;
 	,	...asArray(
 			getPropByNameChain(project, 'loading', 'errorParams')
 		||	getPropByNameChain(projectButtons, 'errorParams')
-		||	[]
+		||	DUMMY_EMPTY_ARRAY
 		)
 	);
 
@@ -5217,12 +5217,10 @@ async function getProjectViewMenu(project) {
 									,	'copy'
 									);
 
-									if (
+									return (
 										isArray(aliasesToCopy)
 									&&	aliasesToCopy.includes(alias)
-									) {
-										return true;
-									}
+									);
 								}
 							)
 						);
@@ -5408,10 +5406,7 @@ async function getProjectViewMenu(project) {
 
 							layer.isUnalterable = !(
 								isLayerAlterable
-							||	(
-									layer.isPassThrough
-								// &&	!layer.names.some((name) => colorListNames.includes(name))
-								)
+							||	layer.isPassThrough
 							);
 
 							return (
@@ -5984,9 +5979,7 @@ const	buttonsPanel = cre('div', container);
 		const	listNames = Object.keys(optionLists);
 		const	isOnlySectionName = !(
 				listNames.length > 0
-			&&	listNames.some(
-					(listName) => (listName !== sectionName)
-				)
+			&&	listNames.some((listName) => (listName !== sectionName))
 			);
 
 		let	fileNamingSection;
@@ -6531,10 +6524,10 @@ const	params = getOrInitChild(layer, 'params');
 							if (isHollow) {
 								forEachSetInCrossProduct(
 									[
-										dimensions[0][0] || DUMMY_ARRAY
-									,	dimensions[0][1] || DUMMY_ARRAY
-									,	dimensions[1][0] || DUMMY_ARRAY
-									,	dimensions[1][1] || DUMMY_ARRAY
+										dimensions[0][0] || DUMMY_NULL_ARRAY
+									,	dimensions[0][1] || DUMMY_NULL_ARRAY
+									,	dimensions[1][0] || DUMMY_NULL_ARRAY
+									,	dimensions[1][1] || DUMMY_NULL_ARRAY
 									]
 								,	(x1, x2, y1, y2) => {
 										if (x1 === null) x1 = x2; else
@@ -7592,7 +7585,6 @@ const	optionName = values[sectionName][listName];
 		REQUIRE_NON_EMPTY_SELECTION
 	&&	!optionName
 	&&	getProjectOptionParam(project, sectionName, listName, 'required')
-	// &&	getProjectOptionParam(project, sectionName, listName, 'multi_select', 'min') > 0
 	) {
 		return false;
 	}
@@ -8879,7 +8871,8 @@ function isLayerVisibleByCopyPaste(project, layer, values, listName) {
 			isArray(aliases)
 		&&	aliases.some(
 				(alias) => (
-					getPropByNameChain(project, 'layersCopyPasteTargetsByAlias', alias) || []
+					getPropByNameChain(project, 'layersCopyPasteTargetsByAlias', alias)
+				||	DUMMY_EMPTY_ARRAY
 				).some(
 					(targetLayer) => getLayerPathVisibilityByValues(project, targetLayer, values, listName)
 				)
@@ -11991,8 +11984,8 @@ const	inputFileAcceptTypes = [];
 
 	for (const loader of FILE_TYPE_LOADERS) {
 
-	const	exts = loader.dropFileExts || [];
-	const	mimeTypes = loader.inputFileAcceptMimeTypes || [];
+	const	exts = loader.dropFileExts || DUMMY_EMPTY_ARRAY;
+	const	mimeTypes = loader.inputFileAcceptMimeTypes || DUMMY_EMPTY_ARRAY;
 	const	lowerCaseExts = exts.map((ext) => ext.toLowerCase());
 	const	upperCaseExts = exts.map((ext) => ext.toUpperCase());
 	const	key = upperCaseExts.shift();
