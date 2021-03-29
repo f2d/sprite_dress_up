@@ -305,8 +305,6 @@ const	CONFIG_FILE_PATH = 'config.js'			//* <- declarations-only file to redefine
 ,	regClassShow		= getClassReg('show')
 ,	regClassRow		= getClassReg('row')
 ,	regClassSub		= getClassReg('sub')
-,	regClassDragging	= getClassReg('dragging-order', 'dragging')
-,	regClassDraggable	= getClassReg('draggable-order', 'draggable')
 
 ,	regJSONstringify = {
 		'asFlatLine'	: /^(data)$/i
@@ -322,6 +320,9 @@ const	SPLIT_SEC = 60
 ,	MAX_OPACITY = 255
 ,	MAX_BATCH_PRECOUNT = 9999
 
+,	FLAG_FLIP_HORIZONTAL = 1
+,	FLAG_FLIP_VERTICAL = 2
+
 ,	FLAG_EVENT_LISTENER_CAPTURE = {
 		'capture' : true,
 		'passive' : false,
@@ -333,9 +334,6 @@ const	SPLIT_SEC = 60
 		'preventDefault' : true,
 		'stopImmediatePropagation' : true,
 	}
-
-,	FLAG_FLIP_HORIZONTAL = 1
-,	FLAG_FLIP_VERTICAL = 2
 
 ,	FLAG_FILENAME_AS_KEY = { 'isForStorageKey' : true }
 ,	FLAG_FILENAME_TO_SAVE = {
@@ -407,6 +405,7 @@ const	SPLIT_SEC = 60
 ,	DATA_PREFIX = 'data:'
 ,	TYPE_TEXT = 'text/plain'
 ,	TITLE_LINE_BREAK = ' \r\n'
+,	DOUBLE_LINE_BREAK = ' \r\n\r\n'
 ,	WIP_TEXT_ROLL = '\\|/-'
 
 ,	TIME_PARTS_YMD = ['FullYear', 'Month', 'Date']
@@ -556,6 +555,17 @@ const	SPLIT_SEC = 60
 ,	PARAM_OPTIONS_ADD_BY_DEFAULT = {
 		'collage'  : ['no-batch', 'last', 'optional', 'collage']
 	,	'autocrop' : ['no-batch', 'last', 'optional', 'autocrop']
+	}
+
+,	SWITCH_LABEL_BY_CLASS = {
+		'batch-batched'  : '[\u2E2C]'
+	,	'batch-single'   : '[\u2E30]'
+	,	'layout-inline'  : '[\u22EF]'
+	,	'layout-newline' : '[\u22EE]'
+	,	'option-omitable'   : '[\u2212]'
+	,	'option-unomitable' : '[+]'
+	,	'prefix-prefixed'   : '[=]'
+	,	'prefix-unprefixed' : '[o]'
 	}
 
 ,	SWITCH_CLASS_BY_INDEX = ['unchecked', 'checked']
@@ -3279,7 +3289,11 @@ const	baseName = (
 		: fileName
 	);
 
-	fileName = baseName + (ext ? '.' + ext : '');
+	fileName = baseName;
+
+	if (ext && !hasPostfix(fileName, ext = '.' + ext)) {
+		fileName += ext;
+	}
 
 	logTime(
 		'saving "' + fileName + '", '
@@ -4520,6 +4534,7 @@ let	project, container;
 					await updateBatchCount(project);
 
 					updateFileNamingPanel(project);
+					updateFileNaming(project);
 
 					buttonTab.className = 'button loaded with-options';
 				}
@@ -5727,22 +5742,27 @@ async function getProjectViewMenu(project) {
 					checkBox.checked = checkBox.initialValue = !params[SWITCH_NAMES_BY_TYPE[switchType][0]];
 					checkBox.params = params;
 
+				const	hintTextParts = [];
+
 					for (const index in switchNames) {
 
 					const	switchName = switchNames[index];
+					const	switchClass = switchType + '-' + switchName;
 					const	textKey = 'switch_' + switchType + '_' + switchName;
 					const	button = cre('div', label);
+						button.className = switchClass + ' ' + SWITCH_CLASS_BY_INDEX[index];
 
-						button.className = switchType + '-' + switchName + ' ' + SWITCH_CLASS_BY_INDEX[index];
-						button.title = (
-							'['
+						hintTextParts.push(
+							SWITCH_LABEL_BY_CLASS[switchClass]
+						+	' '
 						+	getLocalizedText(textKey)
-						+	']'
-						+	TITLE_LINE_BREAK
+						+	':'
 						+	TITLE_LINE_BREAK
 						+	getLocalizedText('hint_' + textKey)
 						);
 					}
+
+					label.title = hintTextParts.join(DOUBLE_LINE_BREAK)
 				}
 
 //* list item = each part:
@@ -5946,10 +5966,9 @@ const	buttonsPanel = cre('div', container);
 		fileSaveNamePretext.className = 'pretext';
 		fileSaveNamePretext.textContent = getLocalizedText('saved_file_naming_preview') + ':';
 
-	const	fileSaveNamePreview = cre('div', fileSaveTitle);
+	const	fileSaveNamePreview = project.currentFileNamePreview = cre('div', fileSaveTitle);
 		fileSaveNamePreview.className = 'filename';
-		fileSaveNamePreview.id = 'saved_file_naming_preview';
-		fileSaveNamePreview.textContent = project.fileName + '[test].png';
+		fileSaveNamePreview.textContent = project.baseName + '.png';
 
 	const	fileNaming = cre('div', container);
 		fileNaming.className = 'panel row';
@@ -5964,7 +5983,7 @@ const	buttonsPanel = cre('div', container);
 			addNamedButton(fileNamingButtons, buttonName);
 		}
 
-	const	fileNamingOrderBox = cre('div', fileNamingBox);
+	const	fileNamingOrderBox = project.fileNamingOrderBox = cre('div', fileNamingBox);
 		fileNamingOrderBox.className = 'panel draggable-order';
 
 		addEventListeners(fileNamingOrderBox, PROJECT_NAMING_EVENT_HANDLERS);
@@ -5988,11 +6007,11 @@ const	buttonsPanel = cre('div', container);
 
 				if (!fileNamingSection) {
 					fileNamingSection = cre('div', fileNamingOrderBox);
-					fileNamingSection.className = 'sub panel row';
+					fileNamingSection.className = 'sub panel row section';
+					fileNamingSection.setAttribute('data-section', sectionName);
 					fileNamingSection.draggable = true;
 
 				const	fileNamingSectionName = cre('header', fileNamingSection);
-					fileNamingSectionName.name = sectionName;
 					fileNamingSectionName.textContent = getCapitalizedString(
 						getLocalizedOrEmptyText('option_header_' + sectionName)
 					||	getLocalizedOrEmptyText('option_' + sectionName)
@@ -6010,8 +6029,8 @@ const	buttonsPanel = cre('div', container);
 				}
 
 			const	fileNamingListName = cre('div', fileNamingSection);
-				fileNamingListName.className = 'sub panel';
-				fileNamingListName.name =
+				fileNamingListName.className = 'sub panel list-name';
+				fileNamingListName.setAttribute('data-list-name', listName);
 				fileNamingListName.textContent = listName;
 
 				if (listNames.length > 1) {
@@ -6373,10 +6392,7 @@ const	params = getOrInitChild(layer, 'params');
 			let	thresholds = [];
 			let	boundaries = [];
 
-			const	paramTextParts = (
-					getSlashSeparatedParts(param)
-					.map((text) => text.toLowerCase())
-				);
+			const	paramTextParts = getSlashSeparatedParts(param.toLowerCase());
 
 				for (const paramTextPart of paramTextParts) {
 
@@ -7761,6 +7777,10 @@ function setAllSwitches(project, key, value) {
 		}
 	}
 
+	if (key !== 'layout') {
+		updateFileNaming(project);
+	}
+
 	if (key === 'batch') {
 		updateBatchCount(project);
 	}
@@ -7790,7 +7810,36 @@ async function setAllValues(project, targetPosition) {
 	}
 
 	await updateBatchCount(project);
-	await showImg(project);
+	await updateMenuAndShowImg(project);
+
+	updateFileNaming(project);
+}
+
+function getSelectedMenuValues(project) {
+
+let	values = project.selectedMenuValues;
+
+	if (values) {
+		return values;
+	}
+
+	values = getUpdatedMenuValues(project);
+
+	for (const selectBox of getAllByTag('select', project.container)) {
+
+	const	selectValue = selectBox.value;
+	const	sectionName = selectBox.getAttribute('data-section');
+	const	listName    = selectBox.name;
+
+		values[sectionName][listName] = (
+			selectBox.hidden
+		||	getPropByNameChain(selectBox, 'options', selectValue, 'hidden')
+			? ''
+			: selectValue
+		);
+	}
+
+	return project.selectedMenuValues = values;
 }
 
 function getAllMenuValues(project, checkSelectedValue) {
@@ -8069,6 +8118,8 @@ const	values = {};
 			if (style.display != hide) {
 				style.display = hide;
 			}
+
+			selectBox.hidden = allHidden;
 		}
 
 //* 3) get new values after update:
@@ -8900,7 +8951,9 @@ const	renderingRootLayer = project.renderingRootLayer;
 
 			if (checkFromIndex) {
 				layers = layers.slice(checkFromIndex);
-	//* TODO?
+
+	//* TODO? or maybe remove this 'up' branch.
+
 			// } else {
 				// return false;
 			}
@@ -8934,7 +8987,7 @@ const	renderingRootLayer = project.renderingRootLayer;
 			}
 		} while (layer = getLayerVisibilityParent(layer));
 
-	//* TODO:
+	//* TODO: make this work with [no-render] colors and logic-only empty options.
 
 		// if (renderingRootLayer) {
 			// return false;
@@ -9681,6 +9734,27 @@ let	canvas, ctx, mask, clippingMask;
 	return canvas;
 }
 
+function isOptionSingle(params) {
+	return (
+		params.single
+	||	!(params.batched || params.batch)
+	);
+}
+
+function isOptionOmitable(params) {
+	return (
+		params.omitable
+	||	!(params.unomitable || params.no_single)
+	);
+}
+
+function isOptionPrefixed(params) {
+	return (
+		params.prefixed
+	||	!(params.unprefixed || params.no_prefix)
+	);
+}
+
 function getFileNameByValues(project, values, flags) {
 
 	function getProcessedSectionName(sectionName) {
@@ -9713,14 +9787,8 @@ function getFileNameByValues(project, values, flags) {
 				if (
 					FILE_NAME_OMIT_SINGLE_OPTIONS
 				&&	flags.checkSelectedValue
-				&&	(
-						params.omitable
-					||	!(params.unomitable || params.no_single)
-					)
-				&&	(
-						params.single
-					||	!(params.batched || params.batch)
-					)
+				&&	isOptionOmitable(params)
+				&&	isOptionSingle(params)
 				) {
 					return;
 				}
@@ -9755,7 +9823,11 @@ function getFileNameByValues(project, values, flags) {
 				const	optionItem = getProjectOptionValue(project, sectionName, listName, optionName);
 
 					if (isNonNullObject(optionItem)) {
-					const	newName = (optionItem.group ? optionItem.group + '=' : '') + optionItem.layer.name;
+					const	newName = (
+							optionItem.group
+							? optionItem.group + '='
+							: ''
+						) + optionItem.layer.name;
 
 						if (newName) {
 							optionName = newName;
@@ -9765,10 +9837,7 @@ function getFileNameByValues(project, values, flags) {
 
 				if (
 					FILE_NAME_ADD_PARAM_KEY
-				&&	(
-						params.prefixed
-					||	!(params.unprefixed || params.no_prefix)
-					)
+				&&	isOptionPrefixed(params)
 				) {
 					return listName + '=' + optionName;
 				}
@@ -9815,7 +9884,11 @@ function getFileNameByValuesToSave(project, values, flags) {
 	return (
 		[
 			project.baseName
-		,	getFileNameByValues(project, values, flags)
+		,	getFileNameByValues(
+				project
+			,	values
+			,	flags || FLAG_FILENAME_TO_SAVE
+			)
 		]
 		.filter(arrayFilterNonEmptyValues)
 		.join(NAME_PARTS_SEPARATOR)
@@ -9836,7 +9909,7 @@ async function getOrCreateRender(project, render) {
 		render = {};
 	}
 
-const	values    = render.values    || (render.values    = getUpdatedMenuValues(project));
+const	values    = render.values    || (render.values = getUpdatedMenuValues(project));
 const	refValues = render.refValues || (
 		render.refValues = getPatchedObject(
 			values
@@ -9850,6 +9923,18 @@ const	refValues = render.refValues || (
 const	refName   = render.refName   || (render.refName   = getKeyForValueSet(project, refValues));
 const	fileName  = render.fileName  || (render.fileName  = getKeyForValueSet(project, values));
 const	img       = render.img       || (render.img       = await getOrCreateRenderedImg(project, render));
+
+	if (img) {
+		img.fileNameToSave =
+		render.fileNameToSave = (
+			getFileNameByValuesToSave(project, values)
+			+ '.'
+			+ (img.type || 'png')
+		);
+
+		img.alt =
+		img.title = img.fileNameToSave + img.subtitle;
+	}
 
 	return render;
 }
@@ -9866,10 +9951,8 @@ async function getOrCreateRenderedImg(project, render) {
 			const	msec = canvas.renderingTime;
 
 				img.name = fileName + '.' + (img.type || 'png');
-				img.alt =
-				img.title = (
-					img.name
-				+	TITLE_LINE_BREAK
+				img.subtitle = (
+					TITLE_LINE_BREAK
 				+	'('
 				+		img.width + 'x' + img.height
 				+		(
@@ -9879,6 +9962,9 @@ async function getOrCreateRenderedImg(project, render) {
 						)
 				+	')'
 				);
+
+				img.alt =
+				img.title = img.name + img.subtitle;
 
 				prerenders[fileName] = img;
 
@@ -9971,7 +10057,7 @@ let	autocrop, crop;
 		&&	crop.height > 0
 		) {
 		const	cropValues = getPatchedObject(values, replaceJSONpartsForCropRef);
-		const	cropRefName = getFileNameByValuesToSave(project, cropValues);
+		const	cropRefName = getKeyForValueSet(project, cropValues);
 
 		const	cropId = [
 				'x=' + crop.left
@@ -9982,7 +10068,7 @@ let	autocrop, crop;
 
 			cropValues.autocrop = { 'autocrop' : cropId };
 
-		const	cropName = getFileNameByValuesToSave(project, cropValues);
+		const	cropName = getKeyForValueSet(project, cropValues);
 		const	fullSize = getImageContentSize(img);
 
 			if (cropName in prerenders) {
@@ -10180,14 +10266,6 @@ let	batchContainer, subContainer;
 			}
 
 			if (img) {
-				if (flags.saveToZipFile) {
-					img.nameToSave = getFileNameByValuesToSave(
-						project
-					,	values
-					,	FLAG_FILENAME_TO_SAVE
-					) + '.' + (img.type || 'png');
-				}
-
 				if (
 					addToListIfNotYet(renderedImages, img)
 				&&	flags.asOneJoinedImage
@@ -10198,15 +10276,7 @@ let	batchContainer, subContainer;
 			}
 		} else
 		if (flags.saveToFile) {
-			img = await saveImg(
-				project
-			,	render
-			,	getFileNameByValuesToSave(
-					project
-				,	values
-				,	FLAG_FILENAME_TO_SAVE
-				)
-			);
+			img = await saveImg(project, render);
 		}
 
 	const	endTime = getTimeNow();
@@ -10290,7 +10360,7 @@ let	batchContainer, subContainer;
 			);
 
 			if (content) {
-			const	imgFileName = img.nameToSave || img.name;
+			const	imgFileName = img.fileNameToSave || img.name;
 			const	methodName = (
 					isBlob(content)
 					? 'addBlob'
@@ -10563,7 +10633,7 @@ let	img;
 		if (img) {
 			saveDL(
 				img.src
-			,	fileName || render.fileName
+			,	fileName || render.fileNameToSave || render.fileName
 			,	img.type || 'png'
 			);
 		}
@@ -10939,29 +11009,92 @@ async function updateMenuAndShowImg(project) {
 		return;
 	}
 
+	project.selectedMenuValues = null;
+
 	return await showImg(project);
 }
 
 function updateFileNamingPanel(project, action) {
-const	isClosing = !action;
-const	orderBox = (
-		project.fileNamingOrderBox
-	||	(project.fileNamingOrderBox = getAllByClass('draggable-order', project.container)[0])
-	);
+
+const	isActionClose = !action;
+const	isActionReset = (!isActionClose && action.includes('reset'));
+const	orderBox = project.fileNamingOrderBox;
 
 	if (orderBox) {
-		orderBox.hidden = isClosing;
+		orderBox.hidden = isActionClose;
 	}
 
-	for (const name of PROJECT_NAMING_BUTTON_NAMES)
-	for (const button of getAllByName(name, project.container)) {
+	if (isActionReset) {
 
-		if (name.includes('change')) {
-			button.disabled = !isClosing;
-		} else {
-			button.hidden = isClosing;
+		//* TODO: reset order.
+
+		updateFileNaming(project);
+	} else {
+		for (const name of PROJECT_NAMING_BUTTON_NAMES)
+		for (const button of getAllByName(name, project.container)) {
+
+			if (name.includes('change')) {
+				button.disabled = !isActionClose;
+			} else {
+				button.hidden = isActionClose;
+			}
 		}
 	}
+}
+
+function updateFileNaming(project, values) {
+
+	function isOptionListRelevant(project, values, sectionName, listName) {
+
+	const	value = getPropByNameChain(values, sectionName, listName);
+	const	params = getProjectOptionParam(project, sectionName, listName);
+
+		return (
+			isOptionSingle(params)
+			? (value && !isOptionOmitable(params))
+			: true
+		);
+	}
+
+const	orderBox = project.fileNamingOrderBox;
+
+	if (orderBox) {
+		if (!values) {
+			values = getSelectedMenuValues(project);
+		}
+
+	const	sectionBoxes = getAllByClass('section', orderBox);
+
+		for (const sectionBox of sectionBoxes) {
+		const	sectionName = sectionBox.getAttribute('data-section');
+
+			if (sectionName) {
+			const	listNameBoxes = getAllByClass('list-name', sectionBox);
+
+			let	isSectionRelevant = (
+					listNameBoxes.length > 0
+					? false
+					: isOptionListRelevant(project, values, sectionName, sectionName)
+				);
+
+				for (const listNameBox of listNameBoxes) {
+				const	listName = listNameBox.getAttribute('data-list-name');
+
+					if (isOptionListRelevant(project, values, sectionName, listName)) {
+						isSectionRelevant = true;
+
+						toggleClass(listNameBox, 'relevant', 1);
+					} else {
+						toggleClass(listNameBox, 'relevant', -1);
+					}
+				}
+
+				toggleClass(sectionBox, 'relevant', (isSectionRelevant ? 1 : -1));
+			}
+		}
+	}
+
+	updateSaveFileName(project);
 }
 
 function updateCheckBox(checkBox, params) {
@@ -11116,12 +11249,15 @@ function setWIPstate(isWIP, project) {
 		for (const tagName of PROJECT_CONTROL_TAGNAMES)
 		for (const element of getAllByTag(tagName, project.container)) {
 
-			element.disabled = (
-				tagName === 'button'
-			&&	element.name === 'stop'
-				? !isWIP
-				: isWIP
-			);
+			if (!PROJECT_NAMING_BUTTON_NAMES.includes(element.name)) {
+
+				element.disabled = (
+					tagName === 'button'
+				&&	element.name === 'stop'
+					? !isWIP
+					: isWIP
+				);
+			}
 		}
 
 		if (isWIP) {
@@ -11151,6 +11287,8 @@ function setWIPstate(isWIP, project) {
 }
 
 //* Page-specific functions: UI-side *-----------------------------------------
+
+function getProjectFromEvent(evt) { return getProjectContainer(evt.target).project; }
 
 function addEventListeners(element, funcByEventName) {
 	for (const eventName in funcByEventName) {
@@ -11366,19 +11504,26 @@ let	element = evt;
 
 	eventStop(evt, FLAG_EVENT_STOP_IMMEDIATE);
 
-	if (element.type === 'checkbox') {
-		updateCheckBox(element);
-
-		if (element.getAttribute('data-switch-type') !== 'batch') {
-			return;
-		}
-	}
-
-const	isSelect = isSelectElement(element);
 const	container = getProjectContainer(element);
 const	project = container.project;
 
-	if (isSelect) {
+	if (element.type === 'checkbox') {
+		updateCheckBox(element);
+
+	const	key = element.getAttribute('data-switch-type');
+
+		if (key !== 'layout') {
+			updateFileNaming(project);
+		}
+
+		if (key === 'batch') {
+			updateBatchCount(project);
+		}
+
+		return;
+	}
+
+	if (isSelectElement(element)) {
 		updateSelectStyle(element);
 
 	const	sectionName = element.getAttribute('data-section');
@@ -11394,15 +11539,21 @@ const	project = container.project;
 		) {
 		const	batchOptions = project.renderBatchSelectedOptions;
 		const	batchSets = project.renderBatchSelectedSets;
+		const	menuValues = project.selectedMenuValues;
+		const	selectValue = element.value;
 
 			try {
+				if (menuValues) {
+					menuValues.separate.naming = selectValue;
+				}
+
 				if (batchOptions) {
-					batchOptions.separate.naming[0] = element.value;
+					batchOptions.separate.naming[0] = selectValue;
 				}
 
 				if (batchSets) {
 					for (const fileName in batchSets) {
-						batchSets[fileName].separate.naming = element.value;
+						batchSets[fileName].separate.naming = selectValue;
 					}
 				}
 
@@ -11412,34 +11563,41 @@ const	project = container.project;
 				if (TESTING) console.log('onProjectMenuUpdate:', [
 					sectionName,
 					listName,
-					element.value,
+					selectValue,
 					batchOptions,
 					batchSets,
 				]);
 
 				project.renderBatchSelectedOptions = null;
 				project.renderBatchSelectedSets = null;
+				project.selectedMenuValues = null;
 			}
+
+			updateSaveFileName(project);
 
 			return;
 		}
-	}
 
-	await updateBatchCount(project);
-
-	if (isSelect) {
+		await updateBatchCount(project);
 		await updateMenuAndShowImg(project);
+
+		updateFileNaming(project);
 	}
 }
 
-function updateSaveFileName(evt) {
-const	element = evt.target;
-const	container = getProjectContainer(element);
-const	project = container.project;
+function updateSaveFileName(project) {
 
-	//* TODO:
+const	values = getSelectedMenuValues(project);
+const	element = project.currentFileNamePreview;
+const	fileName = project.currentFileName = getFileNameByValuesToSave(
+		project
+	,	values
+	,	FLAG_FILENAME_TO_SAVE
+	) + '.png';
 
-	// if (TESTING) console.log('updateSaveFileName:', project.fileName, [element, project]);
+	if (element) {
+		element.textContent = fileName;
+	}
 }
 
 function updateDraggedElement(evt) {
@@ -11519,10 +11677,11 @@ const	targetElement = evt.target;
 				: targetElement.nextSibling
 			)
 		);
+
+		updateSaveFileName(getProjectFromEvent(evt));
 	}
 
 	updateDraggedElement(evt);
-	updateSaveFileName(evt);
 }
 
 function onPageDragOver(evt) {
@@ -12957,6 +13116,7 @@ const	helpSections = {
 					'1:2px',
 					'((0,1,2...5):(5...10))px',
 				),
+				'text_key' : 'inner_radius',
 				'text_replace_values' : wrap.code.param(':'),
 			}, {
 				'code_sample' : getCodeColoredParamOutline('1x2px'),

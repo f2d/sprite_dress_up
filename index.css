@@ -64,20 +64,11 @@ big,
 .larger-text .larger-text-button:hover {
 	background-color: #bdf;
 }
+.panel {
+	display: flex;
+}
 .panel:empty {
 	display: none;
-}
-.panel:not(:empty) {
-	display: flex;
-	gap: 0.5em;
-}
-.panel.sub .panel,
-.panel.sub {
-	gap: 0.5em 1em;
-}
-.draggable-order .panel.sub .panel,
-.draggable-order .panel.sub {
-	gap: 0.5em;
 }
 .panel:not(.row),
 .panel.column {
@@ -99,25 +90,11 @@ big,
 	padding: 1em 1.5em;
 	background-color: #f5f5f5;
 }
-.panel header.filename {
-	padding: 0 1em 1em 0;
-}
-.draggable-order header {
-	padding: 0.5em 0;
-}
-.no-gap .draggable-order header,
-.panel[draggable] .panel.sub,
-.panel.sub {
+.panel header {
 	padding: 0.5em 1em;
 }
-.no-gap .panel button,
-.no-gap .panel.main > *,
-.no-gap .panel.sub > *,
-.no-gap .panel[draggable] {
-	margin: 0.25em;	/* <- for browsers without "gap" support, e.g. Firefox 56 */
-}
-.no-gap .panel.sub {
-	padding: 0;
+.panel header.filename {
+	padding: 0 1em 1em 0;
 }
 .panel.sub button,
 .panel.sub header,
@@ -126,11 +103,6 @@ big,
 }
 .panel.sub {
 	background-color: rgba(0,0,0, 0.1);
-}
-.panel header {
-	align-items: center;
-	align-self: center;
-	padding: 0.5em 1em;
 }
 .panel[draggable] {
 	cursor: resize;
@@ -141,18 +113,61 @@ big,
 	cursor: row-resize;
 	cursor: n-resize;
 }
+.panel[draggable] .panel.sub,
+.panel.sub {
+	padding: 0.5em 1em;
+}
+.draggable-order header {
+	padding: 0.5em 0;
+	/* align-self: center; */
+}
+.draggable-order .panel,
+.draggable-order header {
+	align-items: center;
+}
+.draggable-order .panel.sub .panel,
+.draggable-order .panel.sub,
+.panel {
+	gap: 0.5em;
+}
+.panel.sub .panel,
+.panel.sub {
+	gap: 0.5em 1em;
+}
+/* For browsers without "gap" support, e.g. Firefox 56: */
+.no-gap .panel button,
+.no-gap .panel.main > *,
+.no-gap .panel.sub > *,
+.no-gap .panel[draggable] {
+	margin: 0.25em;
+}
+.no-gap .section > .list-name {
+	margin: 0.5em;
+}
+.no-gap .panel.sub {
+	padding: 0;
+}
+.no-gap .draggable-order header {
+	padding: 0.5em 1em;
+}
 /*
-Trying to set up "user-friendly" web-API-based drag-n-drop visual style gives broken result everywhere,
-from Firefox 56 to latest Vivaldi (chrome-based browser),
-one way or another to a various degree of being annoying or unusable.
-Let's keep it simple and at least not totally wrong for now.
+:active, :hover or toggled classname selectors behave variously bad with drag-n-drop,
+everywhere from Firefox 56 to latest Vivaldi (chrome-based browser).
 */
-/* .dragging-order .dragged, */
-.draggable-order [draggable]:hover {		background-color: #eee;}
+.draggable-order [draggable].dragged,
 .draggable-order [draggable]:active {		background-color: #f5f5f5;}
-/* .dragging-order .dragged.row, */
-.draggable-order [draggable].row:hover {	background-color: #ace;}
+.draggable-order [draggable]:hover {		background-color: #eee;}
+.draggable-order [draggable].row.dragged,
 .draggable-order [draggable].row:active {	background-color: #bdf;}
+.draggable-order [draggable].row:hover {	background-color: #ace;}
+.draggable-order .relevant[draggable].dragged,
+.draggable-order .relevant[draggable]:active,
+.draggable-order .relevant[draggable]:hover {		background-color: #feb;}
+.draggable-order .relevant {				background-color: #eda;}
+.draggable-order .relevant[draggable].row.dragged,
+.draggable-order .relevant[draggable].row:active,
+.draggable-order .relevant[draggable].row:hover {	background-color: #dfc;}
+.draggable-order .relevant.row {			background-color: #cea;}
 a {
 	color: gray;
 }
@@ -644,14 +659,6 @@ label:hover {
 .project-options .layout-newline {		background-color: #cea;}
 .project-options .layout-newline:hover {	background-color: #dfc;}
 
-.project-options .prefix-unprefixed::before {	content: "[o]"; font-family: monospace;}
-.project-options .prefix-unprefixed {		background-color: #bbb;}
-.project-options .prefix-unprefixed:hover {	background-color: #ccc;}
-
-.project-options .prefix-prefixed::before {	content: "[=]"; font-family: monospace;}
-.project-options .prefix-prefixed {		background-color: #ace;}
-.project-options .prefix-prefixed:hover {	background-color: #bdf;}
-
 .project-options .option-omitable::before {	content: "[-]"; font-family: monospace;}
 .project-options .option-omitable {		background-color: #ace;}
 .project-options .option-omitable:hover {	background-color: #bdf;}
@@ -659,6 +666,14 @@ label:hover {
 .project-options .option-unomitable::before {	content: "[+]"; font-family: monospace;}
 .project-options .option-unomitable {		background-color: #8cd;}
 .project-options .option-unomitable:hover {	background-color: #9df;}
+
+.project-options .prefix-prefixed::before {	content: "[=]"; font-family: monospace;}
+.project-options .prefix-prefixed {		background-color: #ace;}
+.project-options .prefix-prefixed:hover {	background-color: #bdf;}
+
+.project-options .prefix-unprefixed::before {	content: "[o]"; font-family: monospace;}
+.project-options .prefix-unprefixed {		background-color: #bbb;}
+.project-options .prefix-unprefixed:hover {	background-color: #ccc;}
 
 .project-options label input:disabled ~ :not(input):hover,
 .project-options label input:disabled ~ :not(input) {
