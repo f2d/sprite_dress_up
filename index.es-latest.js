@@ -7,11 +7,9 @@
 //* TODO: find zoom/scale of the screen/page before regenerating thumbnails.
 //* TODO: options menu: add/remove/copy/edit colors and outlines, or all list(s), maybe in textarea.
 //* TODO: options menu: buttons to show all or only relevant select boxes, global and per type header (parts, colors, etc).
-//* TODO: options menu: switches for selected keys/values in saved PNG filenames.
 //* TODO: <select multiple> <optgroup> <option>?</option> </optgroup> </select>.
 //* TODO: batch: store (in)validated combination in a Map by filename as key, and combinations to render (each wrapped in object as pointer to Map element and the filename) in a Set. Or make the checking algorithm faster somehow, without bruteforcing cross-product of all combos.
 //* TODO: batch: remember already calculated batch counts and valid lists per project; dict key = joined list of all options and checkboxes.
-//* TODO: export: configurable order of options (autosorted by default) and option groups (kept as found in project file) in filename.
 
 //* TODO ---------------------- params: ---------------------------------------
 //* TODO: keep all layer-name parameters single-word if possible.
@@ -265,6 +263,7 @@ const	CONFIG_FILE_PATH = 'config.js'			//* <- declarations-only file to redefine
 	,	'prefix'	: /^(?:(prefix|prefixed)|(unprefixed|no-prefix))?$/i
 	,	'option'	: /^(?:(omitable|(?:omit|no)-single(?:-name)?)|(unomitable|(?:add-|)single(?:-name)?))$/i
 
+	,	'naming_order'	: /^((?:file-?)(?:name|naming)(?:-order))(?:\W(.*))?$/i
 	,	'multi_select'	: /^(optional|required|x(\d[\d+-]*))$/i
 	,	'preselect'	: /^(preselect|initial|(last))$/i
 	}
@@ -305,6 +304,7 @@ const	CONFIG_FILE_PATH = 'config.js'			//* <- declarations-only file to redefine
 ,	regClassShow		= getClassReg('show')
 ,	regClassRow		= getClassReg('row')
 ,	regClassSub		= getClassReg('sub')
+,	regClassSection		= getClassReg('section')
 
 ,	regJSONstringify = {
 		'asFlatLine'	: /^(data)$/i
@@ -550,6 +550,7 @@ const	SPLIT_SEC = 60
 ,	NAME_PARTS_PERCENTAGES = ['zoom', 'opacities']
 ,	NAME_PARTS_FOLDERS = ['parts', 'colors']
 ,	NAME_PARTS_ORDER = ['separate', 'side', 'parts', 'colors', 'paddings', 'opacities', 'zoom', 'autocrop']
+,	NAME_PARTS_ORDER_PARAMS = ['default', 'given', 'sort'].concat(NAME_PARTS_ORDER)
 ,	NAME_PARTS_SEPARATOR = ''
 
 ,	PARAM_OPTIONS_ADD_BY_DEFAULT = {
@@ -701,8 +702,9 @@ const	SPLIT_SEC = 60
 
 ,	PROJECT_NAMING_BUTTON_NAMES = [
 		'saved_file_naming_change',
-		// 'saved_file_naming_reset_to_initial',
-		// 'saved_file_naming_reset_to_default',
+		'saved_file_naming_sort',
+		'saved_file_naming_reset_to_initial',
+		'saved_file_naming_reset_to_default',
 		'saved_file_naming_close',
 	]
 
@@ -980,6 +982,17 @@ const	zlibPakoFileName = (
 function asArray(value) { return ( isArray(value) ? value : [value] ); }
 function asFlatArray(value) { return getFlatArray(asArray(value || [])); }
 function arrayFromObjectEntriesSortByKey(a, b) { return ( a[0] > b[0] ? 1 : a[0] < b[0] ? -1 : 0 ); }
+
+//* Source: https://stackoverflow.com/a/6470794
+function arrayMoveItem(array, fromIndex, toIndex) { return array.splice(toIndex, 0, array.splice(fromIndex, 1)[0]); }
+
+function arrayAssignValues(toArray, fromArray) {
+	Array.from(fromArray).forEach(
+		(value, index) => {
+			toArray[index] = value;
+		}
+	);
+}
 
 const toggleClass = (
 	typeof document.documentElement.classList === 'undefined'
@@ -1743,27 +1756,23 @@ const	rgba = DEFAULT_COLOR_VALUE_ARRAY.slice();
 //* split RGB(A):
 
 	if (match[1]) {
-		getNumbersArray(match[4], 4).forEach(
-			(channelValue, index) => (rgba[index] = channelValue)
-		);
+		arrayAssignValues(rgba, getNumbersArray(match[4], 4));
 	} else
 
 //* split hex:
 
 	if (match[2]) {
-		getNumbersArray(match[4], 4, regNonHex,
-			(channelValue) => parseInt(channelValue.substr(0, 2), 16)
-		).forEach(
-			(channelValue, index) => (rgba[index] = channelValue)
+		arrayAssignValues(rgba,
+			getNumbersArray(match[4], 4, regNonHex,
+				(channelValue) => parseInt(channelValue.substr(0, 2), 16)
+			)
 		);
 	} else
 
 //* solid hex:
 
 	if (match[3]) {
-		getRGBAFromHex(match[4]).forEach(
-			(channelValue, index) => (rgba[index] = channelValue)
-		);
+		arrayAssignValues(rgba, getRGBAFromHex(match[4]));
 	}
 
 	return getNormalizedRGBA(rgba);
@@ -4842,33 +4851,54 @@ async function getProjectViewMenu(project) {
 				project.options = options;
 				project.layersTopSeparated = getLayersTopSeparated(project.layers);
 
-			const	sections = project.optionsOrderOfSections = [];
-			const	listsBySection = project.optionsOrderOfListsBySection = {};
+			const	sectionNames = [];
+			const	listNamesBySection = {};
+			const	listNamesBySectionInitial = {};
+			const	orderParams = project.namePartsOrderParams || {};
+			const	isAutoSorting = (
+					SORT_OPTION_LIST_NAMES
+				||	orderParams.sort
+				);
 
-				for (const sectionName in options) {
-					addToListIfNotYet(sections, sectionName);
+				for (const sectionName in options)
+				if (NAME_PARTS_ORDER.includes(sectionName)) {
 
-					if (SORT_OPTION_LIST_NAMES) {
+					addToListIfNotYet(sectionNames, sectionName);
 
-					const	listNamesPresorted = (
-							Object
-							.keys(options[sectionName])
-							.sort()
-						);
+				const	listNames = listNamesBySection[sectionName] = [];
+				const	listNamesOrdered = Object.keys(options[sectionName]);
 
-						for (const listName of listNamesPresorted) {
-						const	listNames = getOrInitChild(listsBySection, sectionName, Array);
-
-							addToListIfNotYet(listNames, listName);
-						}
-					} else {
-						for (const listName in options[sectionName]) {
-						const	listNames = getOrInitChild(listsBySection, sectionName, Array);
-
-							addToListIfNotYet(listNames, listName);
-						}
+					if (isAutoSorting) {
+						listNamesOrdered.sort();
 					}
+
+					for (const listName of listNamesOrdered) {
+						addToListIfNotYet(listNames, listName);
+					}
+
+					listNamesBySectionInitial[sectionName] = listNames.slice();
 				}
+
+			const	sectionNamesDefault = NAME_PARTS_ORDER.filter(
+					(sectionName) => sectionNames.includes(sectionName)
+				);
+
+				if (
+					orderParams.default
+				||	!orderParams.given
+				) {
+					arrayAssignValues(sectionNames, sectionNamesDefault);
+				}
+
+			const	sectionNamesInitial = sectionNames.slice();
+
+				project.namePartsOrder = {
+					sectionNames,
+					sectionNamesDefault,
+					sectionNamesInitial,
+					listNamesBySection,
+					listNamesBySectionInitial,
+				};
 
 //* render default set when everything is ready:
 
@@ -5202,6 +5232,15 @@ async function getProjectViewMenu(project) {
 
 		const	layersInside = layer.layers;
 		const	layerCopyParams = params.copypaste;
+		const	fileNamingParts = params.naming_order;
+
+			if (isNonNullObject(fileNamingParts)) {
+			const	orderParams = getOrInitChild(project, 'namePartsOrderParams', Array);
+
+				for (const namePart of fileNamingParts) {
+					addToListIfNotYet(orderParams, namePart);
+				}
+			}
 
 			if (isNonNullObject(layerCopyParams)) {
 			const	layerParents = getLayerNestingChain(layer);
@@ -5677,7 +5716,7 @@ async function getProjectViewMenu(project) {
 
 				optionList.items = separatedLayers;
 
-				if (TESTING) console.log(sectionName + ' options:', section);
+				if (TESTING > 1) console.log(sectionName + ' options:', section);
 			}
 
 //* list box = set of parts:
@@ -5694,10 +5733,7 @@ async function getProjectViewMenu(project) {
 			let	addEmpty = !(
 					sectionName === 'side'
 				||	'' in items
-				) && (
-					params.optional
-				// ||	(params.multi_select &&	params.multi_select.min <= 0)
-				);
+				) && isOptionOptional(params);
 
 			const	tr = cre('tr', table);
 				tr.className = 'project-option';
@@ -5958,7 +5994,7 @@ const	projectTitle = cre('header', container);
 const	buttonsPanel = cre('div', container);
 	buttonsPanel.className = 'panel row wrap';
 
-	if (TESTING && project.options) {
+	if (project.options) {
 	const	fileSaveTitle = cre('header', container);
 		fileSaveTitle.className = 'panel row';
 
@@ -6699,6 +6735,23 @@ const	params = getOrInitChild(layer, 'params');
 				}
 			} else
 
+			if (paramType === 'naming_order') {
+				if (match[2]) {
+				const	paramParts = getSlashSeparatedParts(match[2]).filter(arrayFilterNonEmptyValues);
+
+					next_param_part:
+					for (const paramPart of paramParts)
+					for (const validPart of NAME_PARTS_ORDER_PARAMS) {
+
+						if (hasPrefix(validPart, paramPart)) {
+							addUniqueParamValuesToList(paramType, validPart);
+
+							continue next_param_part;
+						}
+					}
+				}
+			} else
+
 			if (paramType === 'autocrop') {
 				addUniqueParamValuesToList(
 					paramType
@@ -6707,7 +6760,9 @@ const	params = getOrInitChild(layer, 'params');
 			} else
 
 			if (paramType === 'collage') {
-				for (const value of getSlashSeparatedParts(match[2] || DEFAULT_COLLAGE)) {
+			const	paramParts = getSlashSeparatedParts(match[2] || DEFAULT_COLLAGE);
+
+				for (const value of paramParts) {
 
 				let	listName = 'background';
 				let	match, values;
@@ -6777,7 +6832,6 @@ const	params = getOrInitChild(layer, 'params');
 
 			if (TESTING > 9) console.log('Known param type:', [paramType, param, getWIPLayerPathText()]);
 
-			// break param_types;
 			continue param_list;
 		}
 
@@ -9755,6 +9809,13 @@ function isOptionPrefixed(params) {
 	);
 }
 
+function isOptionOptional(params) {
+	return (
+		(params.optional && !params.required)
+	// ||	(params.multi_select &&	params.multi_select.min <= 0)
+	);
+}
+
 function getFileNameByValues(project, values, flags) {
 
 	function getProcessedSectionName(sectionName) {
@@ -9769,7 +9830,7 @@ function getFileNameByValues(project, values, flags) {
 				return;
 			}
 
-		let	optionName = section[listName];
+		let	optionName = section[listName] || '';
 
 			if (flags.isForStorageKey) {
 				return listName + '=' + optionName;
@@ -9816,8 +9877,6 @@ function getFileNameByValues(project, values, flags) {
 
 				if (
 					sectionName === 'separate'
-				&&	listName !== 'naming'
-				&&	listName !== 'group'
 				&&	values.separate.naming === 'equal'
 				) {
 				const	optionItem = getProjectOptionValue(project, sectionName, listName, optionName);
@@ -9853,10 +9912,7 @@ function getFileNameByValues(project, values, flags) {
 		}
 
 		return (
-			Object
-			.keys(section)
-			.filter(arrayFilterNonEmptyValues)
-			.sort()
+			listNamesBySection[sectionName]
 			.map(getProcessedListName)
 			.filter(arrayFilterNonEmptyValues)
 			.map(getFormattedFileNamePart)
@@ -9872,8 +9928,13 @@ function getFileNameByValues(project, values, flags) {
 		values = getUpdatedMenuValues(project);
 	}
 
+const	{
+		sectionNames,
+		listNamesBySection,
+	} = project.namePartsOrder;
+
 	return (
-		NAME_PARTS_ORDER
+		sectionNames
 		.map(getProcessedSectionName)
 		.filter(arrayFilterNonEmptyValues)
 		.join(NAME_PARTS_SEPARATOR)
@@ -11017,19 +11078,18 @@ async function updateMenuAndShowImg(project) {
 function updateFileNamingPanel(project, action) {
 
 const	isActionClose = !action;
-const	isActionReset = (!isActionClose && action.includes('reset'));
+const	isActionSort = (action && action.includes('sort'));
+const	isActionChange = (action && action.includes('change'));
+const	isActionInitial = (action && action.includes('initial'));
+const	isActionDefault = (action && action.includes('default'));
+const	isActionReset = (isActionInitial || isActionDefault);
 const	orderBox = project.fileNamingOrderBox;
 
 	if (orderBox) {
 		orderBox.hidden = isActionClose;
 	}
 
-	if (isActionReset) {
-
-		//* TODO: reset order.
-
-		updateFileNaming(project);
-	} else {
+	if (isActionChange || isActionClose) {
 		for (const name of PROJECT_NAMING_BUTTON_NAMES)
 		for (const button of getAllByName(name, project.container)) {
 
@@ -11040,6 +11100,113 @@ const	orderBox = project.fileNamingOrderBox;
 			}
 		}
 	}
+
+	if (isActionSort || isActionReset) {
+	const	namePartsOrder = project.namePartsOrder;
+	const	{ sectionNames, listNamesBySection } = namePartsOrder;
+
+//* Sort in-place:
+
+		if (isActionSort) {
+			sectionNames.sort();
+
+			for (const sectionName in listNamesBySection) {
+				listNamesBySection[sectionName].sort();
+			}
+		} else {
+
+//* Reassign in-place, using default or file-defined initial order:
+
+		const	sectionNamesOrdered = namePartsOrder[
+				isActionDefault
+				? 'sectionNamesDefault'
+				: 'sectionNamesInitial'
+			];
+
+			arrayAssignValues(
+				sectionNames
+			,	sectionNamesOrdered
+			);
+
+		const	{ listNamesBySectionInitial } = namePartsOrder;
+
+			for (const sectionName in listNamesBySection) {
+				arrayAssignValues(
+					listNamesBySection[sectionName]
+				,	listNamesBySectionInitial[sectionName]
+				);
+			}
+		}
+
+		if (orderBox) {
+		const	sectionBoxesByName = {};
+		const	sectionBoxes = getAllByClass('section', orderBox);
+
+			for (const sectionBox of sectionBoxes) {
+			const	sectionName = sectionBox.getAttribute('data-section');
+
+				if (sectionName) {
+					sectionBoxesByName[sectionName] = sectionBox;
+
+				const	listNameBoxesByName = {};
+				const	listNameBoxes = getAllByClass('list-name', sectionBox);
+
+					for (const listNameBox of listNameBoxes) {
+					const	listName = listNameBox.getAttribute('data-list-name');
+
+						if (listName) {
+							listNameBoxesByName[listName] = listNameBox;
+						}
+					}
+
+					for (const listName of listNamesBySection[sectionName]) {
+					const	listNameBox = listNameBoxesByName[listName];
+
+						if (listNameBox) {
+							listNameBox.parentNode.appendChild(listNameBox);
+						}
+					}
+				}
+			}
+
+			for (const sectionName of sectionNames) {
+			const	sectionBox = sectionBoxesByName[sectionName];
+
+				if (sectionBox) {
+					sectionBox.parentNode.appendChild(sectionBox);
+				}
+			}
+		}
+
+		updateSaveFileName(project);
+	}
+}
+
+function updateFileNamingOrder(project, draggedElement, displacedElement) {
+let	sectionName, listName, displacedName;
+let	sectionNames, listNames, fromIndex, toIndex;
+
+const	namePartsOrder = project.namePartsOrder;
+
+	if (sectionName = draggedElement.getAttribute('data-section')) {
+		displacedName = displacedElement.getAttribute('data-section');
+		sectionNames = namePartsOrder.sectionNames;
+		fromIndex = sectionNames.indexOf(sectionName);
+		toIndex = sectionNames.indexOf(displacedName);
+
+		arrayMoveItem(sectionNames, fromIndex, toIndex);
+	} else
+	if (listName = draggedElement.getAttribute('data-list-name')) {
+		displacedName = displacedElement.getAttribute('data-list-name');
+		sectionName = getThisOrParentByClass(draggedElement, regClassSection).getAttribute('data-section');
+		listNames = namePartsOrder.listNamesBySection[sectionName];
+		fromIndex = listNames.indexOf(listName);
+		toIndex = listNames.indexOf(displacedName);
+
+		arrayMoveItem(listNames, fromIndex, toIndex);
+	}
+
+	updateSaveFileName(project);
 }
 
 function updateFileNaming(project, values) {
@@ -11434,6 +11601,7 @@ const	actionWords = action.split(regNonAlphaNum);
 			if (actionWords.includes('initial')) updateFileNamingPanel(project, 'initial');
 			else updateFileNamingPanel(project, 'default');
 		} else
+		if (actionWords.includes('sort')) updateFileNamingPanel(project, 'sort'); else
 		if (actionWords.includes('change')) updateFileNamingPanel(project, 'change');
 		else updateFileNamingPanel(project);
 	} else
@@ -11616,6 +11784,8 @@ function updateDraggedElement(evt) {
 	) {
 		return draggedElement = null;
 	}
+
+	return draggedElement;
 }
 
 function onPanelDragStart(evt) {
@@ -11678,7 +11848,7 @@ const	targetElement = evt.target;
 			)
 		);
 
-		updateSaveFileName(getProjectFromEvent(evt));
+		updateFileNamingOrder(getProjectFromEvent(evt), draggedElement, targetElement);
 	}
 
 	updateDraggedElement(evt);
