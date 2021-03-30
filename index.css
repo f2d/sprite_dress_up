@@ -712,6 +712,9 @@ label:hover {
 .filename {
 	font-weight: bold;
 }
+.filename .selected-parts {	color: #b184b1;}	/* <- random picked around violet */
+.filename .list-name {		color: #5b97b0;}	/* <- random picked around skyblue */
+.filename .option-name {	color: #33c833;}	/* <- random picked around limegreen */
 p.warning {
 	text-align: center;
 }

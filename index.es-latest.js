@@ -340,6 +340,10 @@ const	SPLIT_SEC = 60
 		'checkSelectedValue' : true,
 		'skipDefaultPercent' : true,
 	}
+,	FLAG_FILENAME_TO_SAVE_HTML = Object.assign(
+		{ 'addColorsWithHTML' : true }
+	,	FLAG_FILENAME_TO_SAVE
+	)
 
 ,	FLAG_JOIN_TEXT_FILTER = { 'filter' : true }
 
@@ -547,6 +551,7 @@ const	SPLIT_SEC = 60
 ,	SEPARATE_PARAM_NAMES_DEFAULT = ['separate', 'split']
 ,	SEPARATE_GROUP_NAME_DEFAULT = ''
 
+,	NAME_PARTS_COLORED_CLASSES = ['selected-parts', 'list-name', 'option-name']
 ,	NAME_PARTS_PERCENTAGES = ['zoom', 'opacities']
 ,	NAME_PARTS_FOLDERS = ['parts', 'colors']
 ,	NAME_PARTS_ORDER = ['separate', 'side', 'parts', 'colors', 'paddings', 'opacities', 'zoom', 'autocrop']
@@ -9818,6 +9823,25 @@ function isOptionOptional(params) {
 
 function getFileNameByValues(project, values, flags) {
 
+	function getColoredHTMLOrPlainText(content, colorIndex) {
+		return (
+			flags.addColorsWithHTML
+		&&	content.length > 0
+			? (
+				'<span class="'
+				+	NAME_PARTS_COLORED_CLASSES[orz(colorIndex)]
+				+ '">'
+				+ (
+					colorIndex
+					? content.replace(regSanitizeFileName, '_')
+					: content
+				)
+				+ '</span>'
+			)
+			: content
+		);
+	}
+
 	function getProcessedSectionName(sectionName) {
 
 		function getProcessedListName(listName) {
@@ -9898,11 +9922,15 @@ function getFileNameByValues(project, values, flags) {
 					FILE_NAME_ADD_PARAM_KEY
 				&&	isOptionPrefixed(params)
 				) {
-					return listName + '=' + optionName;
+					return (
+						getColoredHTMLOrPlainText(listName, 1)
+					+	'='
+					+	getColoredHTMLOrPlainText(optionName, 2)
+					);
 				}
 			}
 
-			return optionName;
+			return getColoredHTMLOrPlainText(optionName, 2);
 		}
 
 	const	section = values[sectionName];
@@ -9928,12 +9956,9 @@ function getFileNameByValues(project, values, flags) {
 		values = getUpdatedMenuValues(project);
 	}
 
-const	{
-		sectionNames,
-		listNamesBySection,
-	} = project.namePartsOrder;
+const	{ sectionNames, listNamesBySection } = project.namePartsOrder;
 
-	return (
+	return getColoredHTMLOrPlainText(
 		sectionNames
 		.map(getProcessedSectionName)
 		.filter(arrayFilterNonEmptyValues)
@@ -9942,7 +9967,8 @@ const	{
 }
 
 function getFileNameByValuesToSave(project, values, flags) {
-	return (
+
+const	joinedPartsText = (
 		[
 			project.baseName
 		,	getFileNameByValues(
@@ -9953,7 +9979,12 @@ function getFileNameByValuesToSave(project, values, flags) {
 		]
 		.filter(arrayFilterNonEmptyValues)
 		.join(NAME_PARTS_SEPARATOR)
-		.replace(regSanitizeFileName, '_')
+	);
+
+	return (
+		flags && flags.addColorsWithHTML
+		? joinedPartsText
+		: joinedPartsText.replace(regSanitizeFileName, '_')
 	);
 }
 
@@ -11760,11 +11791,11 @@ const	element = project.currentFileNamePreview;
 const	fileName = project.currentFileName = getFileNameByValuesToSave(
 		project
 	,	values
-	,	FLAG_FILENAME_TO_SAVE
+	,	FLAG_FILENAME_TO_SAVE_HTML
 	) + '.png';
 
 	if (element) {
-		element.textContent = fileName;
+		element.innerHTML = fileName;
 	}
 }
 
