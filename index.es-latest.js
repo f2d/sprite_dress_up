@@ -165,11 +165,11 @@ var	exampleRootDir = ''
 const getFlatArray = (
 	typeof Array.prototype.flat === 'function'
 
-//* modern way:
+//* Modern way:
 
 	? (array, maxDepth) => Array.prototype.flat.call(array, isRealNumber(maxDepth) ? maxDepth : Infinity)
 
-//* legacy way:
+//* Legacy way:
 
 	: (array, maxDepth) => {
 		if (!isRealNumber(maxDepth)) {
@@ -1002,7 +1002,7 @@ function arrayAssignValues(toArray, fromArray) {
 const toggleClass = (
 	typeof document.documentElement.classList === 'undefined'
 
-//* legacy way:
+//* Legacy way:
 
 	? (element, className, keep) => {
 	const	oldText = element.className || element.getAttribute('class') || '';
@@ -1027,7 +1027,7 @@ const toggleClass = (
 		return classNames.includes(className);
 	}
 
-//* modern way:
+//* Modern way:
 
 	: (element, className, keep) => {
 		if (keep > 0) {
@@ -1419,7 +1419,7 @@ function addRangeToList(values, newValuesText) {
 				}
 			}
 
-	//* don't forget overstepped floats:
+//* Don't forget overstepped floats:
 
 			addToListIfNotYet(values, min);
 			addToListIfNotYet(values, max);
@@ -1721,7 +1721,7 @@ function getRGBACutOrPadded(rgbaSource, rgbaDefault) {
 
 function getRGBAFromHex(text) {
 
-//* extend shortcut notation:
+//* Extend shortcut notation:
 
 	text = String(text).replace(regNonHex, '');
 
@@ -1738,7 +1738,7 @@ const	charsNum = text.length;
 		);
 	}
 
-//* parse string into array of up to 4 numbers, taking up to 2 chars from left at each step:
+//* Parse string into array of up to 4 numbers, taking up to 2 chars from left at each step:
 
 const	rgba = DEFAULT_COLOR_VALUE_ARRAY.slice();
 
@@ -1758,13 +1758,13 @@ const	rgba = DEFAULT_COLOR_VALUE_ARRAY.slice();
 function getRGBAFromColorCodeMatch(match) {
 const	rgba = DEFAULT_COLOR_VALUE_ARRAY.slice();
 
-//* split RGB(A):
+//* Split RGB(A):
 
 	if (match[1]) {
 		arrayAssignValues(rgba, getNumbersArray(match[4], 4));
 	} else
 
-//* split hex:
+//* Split hex:
 
 	if (match[2]) {
 		arrayAssignValues(rgba,
@@ -1774,7 +1774,7 @@ const	rgba = DEFAULT_COLOR_VALUE_ARRAY.slice();
 		);
 	} else
 
-//* solid hex:
+//* Solid hex:
 
 	if (match[3]) {
 		arrayAssignValues(rgba, getRGBAFromHex(match[4]));
@@ -1798,7 +1798,7 @@ let	rgba = getRGBAFromColorCodeText(color);
 		return rgba;
 	}
 
-//* ask browser built-in API what a color word means:
+//* Ask browser built-in API what a color word means:
 
 const	canvas = cre('canvas');
 const	ctx = canvas.getContext('2d');
@@ -1850,9 +1850,9 @@ function getRGBAFromColorCodeOrArray(color, maxCount) {
 function isColorDark(color) {
 const	[ r,g,b ] = getRGBAFromColorCodeOrArray(color, 3);
 
-//* sources:
-//* https://awik.io/determine-color-bright-dark-using-javascript/
-//* http://alienryderflex.com/hsp.html
+//* Sources:
+//*	https://awik.io/determine-color-bright-dark-using-javascript/
+//*	http://alienryderflex.com/hsp.html
 
 	return Math.sqrt(
 		0.299 * r * r
@@ -2727,7 +2727,7 @@ function getFormattedTime() {
 		return leftPadNum(num);
 	}
 
-//* check arguments out of order:
+//* Check arguments out of order:
 
 const	flags = {};
 let	arg, argDate, argNum, argText, date, YMD, HMS;
@@ -2760,7 +2760,7 @@ let	arg, argDate, argNum, argText, date, YMD, HMS;
 		date = new Date(date);
 	}
 
-//* get date text parts:
+//* Get date text parts:
 
 const	textParts = [];
 
@@ -2800,7 +2800,7 @@ const	textParts = [];
 		textParts.push(HMS);
 	}
 
-//* get date text:
+//* Get date text:
 
 	if (
 		flags.logFormat
@@ -2815,7 +2815,7 @@ const	textParts = [];
 		);
 	} else {
 
-//* get date HTML:
+//* Get date HTML:
 
 		return (
 			'<time datetime="'
@@ -3190,7 +3190,7 @@ async function getImageDataFromURL(url) {
 	}
 }
 
-//* legacy copypasted code to get things working, don't bother with readability, redo later:
+//* Legacy copypasted code to get things working, don't bother with readability, redo later:
 
 function getBlobURLFromByteArray(data, type) {
 	if (isArray(data)) {
@@ -3420,7 +3420,7 @@ const	depends = asFlatArray(lib.depends);
 
 			function addNextScript(evt) {
 
-//* some var init, no better place for this:
+//* Some var init, no better place for this:
 
 				if (varName && window[varName]) {
 					if (varName === 'zip') {
@@ -3459,7 +3459,7 @@ const	depends = asFlatArray(lib.depends);
 					window[varName] = require('psd');
 				}
 
-//* add scripts one by one, skip empty values:
+//* Add scripts one by one, skip empty values:
 
 			let	scriptSrc;
 
@@ -3476,7 +3476,7 @@ const	depends = asFlatArray(lib.depends);
 					script.src = dir + scriptSrc;
 				} else
 
-//* then check whether the required object is present:
+//* Then check whether the required object is present:
 
 				if (!varName || window[varName]) {
 					logTime('"' + libName + '" library finished loading');
@@ -3484,7 +3484,7 @@ const	depends = asFlatArray(lib.depends);
 					resolve(true);
 				} else {
 
-//* otherwise, cleanup and report fail:
+//* Otherwise, cleanup and report fail:
 
 					del(
 						getAllByTag('script', document.head)
@@ -3524,7 +3524,7 @@ function replaceJSONpartsForZoomRef(key, value) {
 
 	if (key === 'zoom') {
 
-//* remove invalid values, reassure the percent sign:
+//* Remove invalid values, reassure the percent sign:
 
 		if (isString(value)) {
 		const	targetRefZoom = orz(value);
@@ -3533,7 +3533,7 @@ function replaceJSONpartsForZoomRef(key, value) {
 				return;
 			}
 
-//* zoom in steps, downscale by no more than x2, starting from 100 to nearest-sized reference:
+//* Zoom in steps, downscale by no more than x2, starting from 100 to nearest-sized reference:
 
 		let	nearestRefZoom = 100;
 
@@ -3557,7 +3557,7 @@ function replaceJSONpartsForZoomRef(key, value) {
 			return String(nearestRefZoom) + '%';
 		} else
 
-//* keep as is the same-key object parent, throw away anything else:
+//* Keep as is the same-key object parent, throw away anything else:
 
 		if (!isNonNullObject(value)) {
 			return;
@@ -3669,14 +3669,14 @@ const	zoomFactor = TAB_ZOOM_STEP_MAX_FACTOR || ZOOM_STEP_MAX_FACTOR;
 	||	heightRatio > zoomFactor
 	) {
 
-//* caclulate nearest scale factor top down:
+//* Caclulate nearest scale factor top down:
 
 		if (DOWNSCALE_BY_MAX_FACTOR_FIRST) {
 			canvas.width  = widthTo  = Math.round(widthFrom  / zoomFactor);
 			canvas.height = heightTo = Math.round(heightFrom / zoomFactor);
 		} else {
 
-//* caclulate nearest scale factor bottom up - more complex, but result is not better:
+//* Caclulate nearest scale factor bottom up - more complex, but result is not better:
 
 			if (widthRatio < heightRatio) {
 				widthTo = Math.round(widthFrom / heightRatio);
@@ -3872,7 +3872,7 @@ let	foundTop = -1;
 		: TRANSPARENT_COLOR_VALUE_ARRAY
 	);
 
-//* find fully transparent areas:
+//* Find fully transparent areas:
 
 	if (bgRGBA[3] === 0) {
 
@@ -3885,13 +3885,13 @@ let	foundTop = -1;
 			}
 		}
 
-	//* found no content:
+	//* Found no content:
 
 		if (foundTop < 0) {
 			return;
 		}
 
-	//* found something:
+	//* Found something:
 
 		find_bottom:
 		for (let index = totalBytes - 1; index >= 0; index -= 4) {
@@ -3902,7 +3902,7 @@ let	foundTop = -1;
 			}
 		}
 
-	//* reduce field of search:
+	//* Reduce field of search:
 
 	const	foundTopIndex = (foundTop * horizontalBytes) + 3;
 	const	foundBottomIndex = (foundBottom * horizontalBytes) + 3;
@@ -3928,7 +3928,7 @@ let	foundTop = -1;
 		}
 	} else {
 
-//* find same RGBA filled areas:
+//* Find same RGBA filled areas:
 
 	let	index = totalBytes;
 
@@ -3941,13 +3941,13 @@ let	foundTop = -1;
 			}
 		}
 
-	//* found no content:
+	//* Found no content:
 
 		if (foundBottom < 0) {
 			return;
 		}
 
-	//* found something:
+	//* Found something:
 
 		find_top:
 		for (let index = 0; index < totalBytes; ++index) {
@@ -3958,7 +3958,7 @@ let	foundTop = -1;
 			}
 		}
 
-	//* reduce field of search:
+	//* Reduce field of search:
 
 	const	foundTopIndex = (foundTop * horizontalBytes);
 	const	foundBottomIndex = (foundBottom * horizontalBytes);
@@ -4238,7 +4238,7 @@ function hasImageToLoad(layer) {
 	);
 }
 
-//* pile of hacks and glue to get things working:
+//* Pile of hacks and glue to get things working:
 
 async function getOrLoadImage(project, layer) {
 
@@ -4275,7 +4275,7 @@ async function getOrLoadImage(project, layer) {
 
 	let	pixelData, img;
 
-	//* try converting raw pixel data:
+//* Try converting raw pixel data:
 
 		if (pixelData = getPropByAnyOfNamesChain(node, 'imgData', 'maskData', 'pixelData')) {
 		const	imgData = {
@@ -4289,7 +4289,7 @@ async function getOrLoadImage(project, layer) {
 			}
 		}
 
-	//* try library-provided methods, which internally may use canvas API and possibly premultiply alpha, trading precision for speed:
+//* Try library-provided methods, which internally may use canvas API and possibly premultiply alpha, trading precision for speed:
 
 		for (
 			const methodName
@@ -4451,7 +4451,7 @@ async function addProjectViewTab(sourceFile, startTime) {
 		sourceFile.ext = getFileExt(sourceFile.name);
 	}
 
-//* prepare detached branch of DOM:
+//* Prepare detached branch of DOM:
 
 const	buttonTab = cre('div', getOneById('loaded-files-selection'));
 	buttonTab.className = 'button loading';
@@ -4554,7 +4554,7 @@ let	project, container;
 				}
 			}
 
-//* attach prepared DOM branch to visible document:
+//* Attach prepared DOM branch to visible document:
 
 			if (result && !isStopRequestedAnywhere(project, projectButtons)) {
 				project.isLoaded = true;
@@ -4578,7 +4578,7 @@ let	project, container;
 			}
 		}
 
-//* cleanup on errors or cancel:
+//* Cleanup on errors or cancel:
 
 	} catch (error) {
 		logError(error, arguments);
@@ -4786,7 +4786,7 @@ async function getProjectViewMenu(project) {
 
 		logTime('"' + fileName + '" started ' + actionLabel);
 
-//* try loading one by one to avoid flood of errors:
+//* Try loading one by one to avoid flood of errors:
 
 	const	startTime = getTimeNow();
 
@@ -4905,7 +4905,7 @@ async function getProjectViewMenu(project) {
 					listNamesBySectionInitial,
 				};
 
-//* render default set when everything is ready:
+//* Render default set when everything is ready:
 
 			const	container = createProjectView(project);
 				createOptionsMenu(project, getAllByClass('project-options', container)[0] || container);
@@ -5209,7 +5209,7 @@ async function getProjectViewMenu(project) {
 					if (isArray(values)) {
 						for (const optionValue of values) {
 
-//* pad bare numbers to avoid numeric autosorting in <select>:
+//* Pad bare numbers to avoid numeric autosorting in <select>:
 
 						const	optionName = optionValue + '%';
 
@@ -5265,7 +5265,7 @@ async function getProjectViewMenu(project) {
 					} else {
 						layer.isPasteTarget = true;
 
-//* prevent recursive copypaste, ignore pasting aliases inside any parent labeled as source of that alias:
+//* Prevent recursive copypaste, ignore pasting aliases inside any parent labeled as source of that alias:
 
 						layerCopyParams[paramType] = layerCopyParams[paramType].filter(
 							(alias) => !layerParents.some(
@@ -5368,11 +5368,24 @@ async function getProjectViewMenu(project) {
 		function getUnskippedProcessedLayers(layers, isInsideColorList) {
 		let	clippingLayer;
 
-//* https://stackoverflow.com/questions/30610523/reverse-array-in-javascript-without-mutating-original-array#comment100151603_30610528
-//* Compare array cloning methods: https://jsben.ch/lO6C5
-//* Top results for Vivaldi (Chrome-based): 1. slice(), 2. [...spread], 3. Array.from()
+			for (
+			let	layerIndex = layers.length;
+				layerIndex--;
+			) {
+			const	layer = layers[layerIndex];
 
-			for (const layer of layers.slice().reverse()) {
+//* Source:
+//*	https://stackoverflow.com/questions/30610523/reverse-array-in-javascript-without-mutating-original-array#comment100151603_30610528
+//*
+//* Compare array cloning methods:
+//*	https://jsben.ch/lO6C5
+//*
+//* Top results for Vivaldi (Chrome-based):
+//*	1. slice()
+//*	2. [...spread]
+//*	3. Array.from()
+
+			// for (const layer of layers.slice().reverse()) {
 				if (layer.isClipped) {
 					layer.clippingLayer = clippingLayer;
 				} else {
@@ -5638,7 +5651,7 @@ async function getProjectViewMenu(project) {
 				return text;
 			}
 
-//* section = type of use (fill colors, draw parts, etc):
+//* Section = type of use (fill colors, draw parts, etc):
 
 		const	isZeroSameAsEmpty = (
 				ZERO_PERCENT_EQUALS_EMPTY
@@ -5724,7 +5737,7 @@ async function getProjectViewMenu(project) {
 				if (TESTING > 1) console.log(sectionName + ' options:', section);
 			}
 
-//* list box = set of parts:
+//* List box = set of parts:
 
 			for (const listName in optionLists) if (optionList = section[listName]) {
 
@@ -5810,7 +5823,7 @@ async function getProjectViewMenu(project) {
 
 				for (const optionName in items) {
 
-//* skip empty to add it last:
+//* Skip empty to add it last:
 
 					if (
 						optionName === ''
@@ -5909,7 +5922,7 @@ async function getProjectViewMenu(project) {
 
 						for (const colorStyle of colorStyles) {
 
-						//* standard only allows minimal styling of options, no nested color boxes:
+//* Standard only allows minimal styling of options, no nested color boxes:
 
 							optionItem.style.backgroundColor = colorStyle;
 							optionItem.style.color = (
@@ -6081,7 +6094,7 @@ const	buttonsPanel = cre('div', container);
 		}
 	}
 
-//* show overall project info:
+//* Show overall project info:
 
 const	summary = cre('div', buttonsPanel);
 	summary.className = 'sub panel';
@@ -6134,7 +6147,7 @@ const	summaryTextParts = [
 		addNamedButton(summaryFooter, buttonName);
 	}
 
-//* add batch controls:
+//* Add batch controls:
 
 	if (project.options) {
 		for (const controlGroup of PROJECT_VIEW_CONTROLS) {
@@ -6149,7 +6162,7 @@ const	summaryTextParts = [
 
 		container.addEventListener('change', onProjectMenuUpdate, false);
 
-//* add place for options menu and results:
+//* Add place for options menu and results:
 
 	const	renderingPanel = cre('div', container);
 		renderingPanel.className = 'panel row';
@@ -6307,7 +6320,7 @@ function isParamInLayerName(name) {
 	) {
 	const	paramStart = name.indexOf('[');
 
-//* no "[param]", nothing else to see:
+//* No "[param]", nothing else to see:
 
 		if (paramStart < 0) {
 			return false;
@@ -6315,13 +6328,13 @@ function isParamInLayerName(name) {
 
 	const	commentStart = name.indexOf('(');
 
-//* has "[param]" and no "(comment)":
+//* Has "[param]" and no "(comment)":
 
 		if (commentStart < 0) {
 			return true;
 		}
 
-//* has "[param]" before "(comment)":
+//* Has "[param]" before "(comment)":
 
 		if (paramStart < commentStart) {
 			return true;
@@ -6329,13 +6342,13 @@ function isParamInLayerName(name) {
 
 	const	commentEnd = name.indexOf(')', commentStart);
 
-//* the rest is unclosed "(comment...", nothing else to see:
+//* The rest is unclosed "(comment...", nothing else to see:
 
 		if (commentEnd < 0) {
 			return false;
 		}
 
-//* continue looking after "(comment)":
+//* Continue looking after "(comment)":
 
 		name = name.substr(commentEnd + 1);
 	}
@@ -6437,7 +6450,7 @@ const	params = getOrInitChild(layer, 'params');
 
 				for (const paramTextPart of paramTextParts) {
 
-				//* methods:
+				//* Methods:
 
 					if (PARAM_KEYWORDS_SHORTCUT_FOR_ALL.includes(paramTextPart)) {
 						for (const keyword of PARAM_KEYWORDS_PADDING_METHODS) {
@@ -6448,7 +6461,7 @@ const	params = getOrInitChild(layer, 'params');
 						addToListIfNotYet(methods, paramTextPart);
 					} else
 
-				//* thresholds:
+				//* Thresholds:
 
 					if (
 						hasPrefix(paramTextPart, 'at')
@@ -6465,7 +6478,7 @@ const	params = getOrInitChild(layer, 'params');
 
 					} else
 
-				//* boundaries:
+				//* Boundaries:
 
 					if (
 						hasPostfix(paramTextPart, 'px')
@@ -6712,7 +6725,7 @@ const	params = getOrInitChild(layer, 'params');
 
 			if (paramType === 'separate') {
 
-//* designated root separation into a named group:
+//* Designated root separation into a named group:
 
 				if (
 					!SEPARATE_PARAM_NAMES_DEFAULT.includes(match[1])
@@ -6732,7 +6745,7 @@ const	params = getOrInitChild(layer, 'params');
 					params[paramType].naming = (match[2] && !match[3] ? 'numbered' : 'equal');
 				} else {
 
-//* use automatic root separation:
+//* Use automatic root separation:
 
 					getOrInitChild(params, paramType).useAutoRoot = true;
 
@@ -6879,7 +6892,7 @@ const	checkVirtualPath = (
 	||	isParamInLayerName(name)
 	);
 
-//* common sense and generalization fixes:
+//* Common sense and generalization fixes:
 
 	if (layer.blendMode === BLEND_MODE_CLIP) {
 		layer.blendMode = BLEND_MODE_NORMAL;
@@ -6899,7 +6912,7 @@ const	checkVirtualPath = (
 		}
 	}
 
-//* make virtual subfolder from layer name:
+//* Make virtual subfolder from layer name:
 
 let	isSubLayerFolder = false;
 let	match, separator, subLayer;
@@ -6941,7 +6954,7 @@ let	match, separator, subLayer;
 		break;
 	} else {
 
-//* gather "[params]", remove "(comments)":
+//* Gather "[params]", remove "(comments)":
 
 	const	paramGroupText = match[3];
 
@@ -6959,7 +6972,7 @@ let	match, separator, subLayer;
 		);
 	}
 
-//* process params:
+//* Process params:
 
 	layer.name = name;
 	layer.names = (
@@ -7004,7 +7017,7 @@ let	match, separator, subLayer;
 		}
 	}
 
-//* place the layer into custom generic tree structure:
+//* Place the layer into custom generic tree structure:
 
 	parentGroup.push(layer);
 
@@ -7022,7 +7035,7 @@ const	paramName = 'check_order';
 		parentGroup = layer.layers = [];
 		parentGroup.parent = layer;
 
-//* add content to virtual subfolder:
+//* Add content to virtual subfolder:
 
 		if (subLayer) {
 			parentGroup = await getNextParentAfterAddingLayerToTree(
@@ -7305,7 +7318,7 @@ async function loadORA(project) {
 			project.width	= sourceData.width;
 			project.height	= sourceData.height;
 
-//* fix for original ora.js:
+//* Fix for original ora.js:
 
 		let	rootLayers;
 
@@ -7319,14 +7332,14 @@ async function loadORA(project) {
 				rootLayers = sourceData.layers;
 			}
 
-//* gather layers into a tree object:
+//* Gather layers into a tree object:
 
 			async function addLayerToTree(layer, parentGroup) {
 
 				function setImageLoadOrCountIfLoaded(imageHolder, newHolder) {
 				const	img = getPropByAnyOfNamesChain(imageHolder, 'img', 'image');
 
-				//* already loaded img element:
+				//* Already loaded img element:
 
 					if (img && img !== imageHolder) {
 						newHolder.img = img;
@@ -7336,7 +7349,7 @@ async function loadORA(project) {
 						++project.imagesCount;
 					} else
 
-				//* deferred loading, only when needed:
+				//* Deferred loading, only when needed:
 
 					if (imageHolder.loadImage) {
 						newHolder.loadImage = (onDone, onError) => {
@@ -7489,7 +7502,7 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 				: projectMode
 			);
 
-//* gather layers into a tree object:
+//* Gather layers into a tree object:
 
 			function isFolderNode(node) {
 				return (
@@ -8261,7 +8274,7 @@ const	canvas = ctx.canvas;
 					console.time(logLabel);
 				}
 
-//* get pixels of layer below (B):
+//* Get pixels of layer below (B):
 
 				ctx.globalAlpha = 1;
 				ctx.globalCompositeOperation = BLEND_MODE_NORMAL;
@@ -8274,7 +8287,7 @@ const	canvas = ctx.canvas;
 			const	dataBelow = ctx.getImageData(0,0, w,h);
 			const	rgbaBelow = dataBelow.data;
 
-//* get pixels of layer above (A):
+//* Get pixels of layer above (A):
 
 				ctx.clearRect(0,0, w,h);
 				ctx.globalAlpha = (isTransition ? 1 : opacity);
@@ -8288,7 +8301,7 @@ const	canvas = ctx.canvas;
 			const	dataAbove = ctx.getImageData(0,0, w,h);
 			const	rgbaAbove = dataAbove.data;
 
-//* get pixels of transition mask (M):
+//* Get pixels of transition mask (M):
 
 			let	rgbaMask;
 
@@ -8306,7 +8319,7 @@ const	canvas = ctx.canvas;
 					rgbaMask = maskData.data;
 				}
 
-//* compute resulting pixels linearly into dataAbove, and save result back onto canvas:
+//* Compute resulting pixels linearly into dataAbove, and save result back onto canvas:
 
 				if (TESTING_RENDER) {
 					console.timeEnd(logLabel);
@@ -8361,7 +8374,7 @@ const	canvas = ctx.canvas;
 				}
 			}
 
-//* try computing in asm.js:
+//* Try computing in asm.js:
 
 		const	funcName = blendMode.replace(/\W+/g, '_').toLowerCase();
 
@@ -8380,7 +8393,7 @@ const	canvas = ctx.canvas;
 	const	ctxBlendMode = ctx.globalCompositeOperation;
 	const	isTransition = !!(mask || blendMode === BLEND_MODE_TRANSIT);
 
-//* use native JS blending if available, or emulation fails/unavailable:
+//* Use native JS blending if available, or emulation fails/unavailable:
 
 		if (
 			ctxBlendMode === blendMode
@@ -8824,7 +8837,7 @@ const	ctx = canvas.getContext('2d');
 
 	ctx.save();
 
-//* flip: https://stackoverflow.com/a/3129152
+//* Flip: https://stackoverflow.com/a/3129152
 
 	if (flipSide & FLAG_FLIP_HORIZONTAL) {
 		ctx.translate(canvas.width, 0);
@@ -8838,7 +8851,7 @@ const	ctx = canvas.getContext('2d');
 
 	ctx.drawImage(img, 0,0);
 
-//* restore: https://stackoverflow.com/a/42856420
+//* Restore: https://stackoverflow.com/a/42856420
 
 	ctx.restore();
 
@@ -9011,14 +9024,14 @@ const	renderingRootLayer = project.renderingRootLayer;
 			if (checkFromIndex) {
 				layers = layers.slice(checkFromIndex);
 
-	//* TODO? or maybe remove this 'up' branch.
+//* TODO? Or maybe remove this 'up' branch.
 
 			// } else {
 				// return false;
 			}
 		}
 
-	//* up? not really:
+//* Up? Not really:
 
 		if (layers.slice().reverse().some(
 			(layer) => isLayerVisibleByCopyPaste(project, layer, values, listName)
@@ -9046,7 +9059,7 @@ const	renderingRootLayer = project.renderingRootLayer;
 			}
 		} while (layer = getLayerVisibilityParent(layer));
 
-	//* TODO: make this work with [no-render] colors and logic-only empty options.
+//* TODO: make this work with [no-render] colors and logic-only empty options.
 
 		// if (renderingRootLayer) {
 			// return false;
@@ -9118,13 +9131,13 @@ function getLayerVisibilityByValues(project, layer, values, listName) {
 		);
 	}
 
-//* skip by explicit name or param:
+//* Skip by explicit name or param:
 
 	if (isLayerSkipped(layer)) {
 		return 0;
 	}
 
-//* skip not selected parts:
+//* Skip not selected parts:
 
 const	isRenderingRoot = (layer === project.renderingRootLayer);
 let	isVisible = !!(
@@ -9172,7 +9185,7 @@ const	parent = layer.optionParent;
 		}
 	}
 
-//* skip fully transparent:
+//* Skip fully transparent:
 
 	return getOpacityByAnyName();
 }
@@ -9234,7 +9247,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 	let	clippingGroupResult = false;
 	let	clippingGroupLayers;
 
-//* step over clipping group to render or skip at once:
+//* Step over clipping group to render or skip at once:
 
 		if (
 			!clippingGroupWIP
@@ -9265,7 +9278,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 			}
 		}
 
-//* skip not visible, not selected, etc:
+//* Skip not visible, not selected, etc:
 
 	let	opacity = 0;
 
@@ -9276,7 +9289,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 			return await onOneLayerDone();
 		}
 
-//* skip unrelated to alpha composition when getting mask for padding:
+//* Skip unrelated to alpha composition when getting mask for padding:
 
 	let	blendMode = layer.blendMode;
 
@@ -9301,7 +9314,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 			}
 		}
 
-//* start rendering:
+//* Start rendering:
 
 	let	img, canvasCopy;
 
@@ -9314,7 +9327,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 			if (TESTING_RENDER) addDebugImage(project, canvas, 'renderParams.baseCanvas', 'green');
 		}
 
-//* render clipping group as separate batch:
+//* Render clipping group as separate batch:
 
 		if (clippingGroupResult) {
 			img = await getRenderByValues(
@@ -9333,7 +9346,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 		let	layers = layer.layers || null;
 
-//* append copypasted layers to subqueue:
+//* Append copypasted layers to subqueue:
 
 		let	addCopyPaste = false;
 
@@ -9369,7 +9382,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 					const	addedLayersCount = layers.length - oldLayersCount;
 
-//* put copypasted layers atop own content:
+//* Put copypasted layers atop own content:
 
 						if (
 							oldLayersCount > 0
@@ -9397,7 +9410,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 			if (isArray(layers)) {
 
-//* get a flat color fill, using the first non-empty value found in associated lists:
+//* Get a flat color fill, using the first non-empty value found in associated lists:
 
 				if (
 					!skipRecoloring
@@ -9410,27 +9423,20 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 					);
 				} else
 
-//* get layer/folder/batch as flat image:
+//* Get layer/folder/batch as flat image:
 
 				if (layers.length > 0) {
 					if (backward) {
 						layers = layers.slice().reverse();
 					}
 
-//* passthrough mode:
-
-//* if folder is to be recolored,
-//* ignore passthrough and any color blending inside.
-
-//* if nothing was rendered below,
-//* ignore passthrough, render normally.
-
-//* in trivial cases,
-//* simply render the folder content in its parent's context.
-
-//* in complicated cases, interpolate render state
-//* between before and after trivial-case rendering
-//* using mask x opacity as transition value map.
+//* Passthrough mode:
+//*	If folder is to be recolored, ignore passthrough and any color blending inside.
+//*	If nothing was rendered below, ignore passthrough, render normally.
+//*	In trivial cases, simply render the folder content in its parent's context.
+//*	In complicated cases,
+//*		interpolate render state between before and after trivial-case rendering
+//*		using mask x opacity as transition value map.
 
 				const	isToRecolor = (
 						ignoreColors
@@ -9469,7 +9475,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 						}
 					}
 
-//* render folder contents, isolated or based on result before passthrough:
+//* Render folder contents, isolated or based on result before passthrough:
 
 					if (
 						canSaveMergedImage
@@ -9509,7 +9515,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 				}
 			} else {
 
-//* not a folder, not a stack of copypaste:
+//* Not a folder, not a stack of copypaste:
 
 				img = layer.img || await getOrLoadImage(project, layer);
 			}
@@ -9522,7 +9528,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 				opacity = 1;
 			} else {
 
-//* get mask of neighbour content, rendered before or after this layer:
+//* Get mask of neighbour content, rendered before or after this layer:
 
 				if (layer.isMaskGenerated) {
 				const	paddings = (
@@ -9543,7 +9549,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 						if (TESTING_RENDER) addDebugImage(project, mask, 'mask = getRenderByValues');
 
-//* apply padding to generated mask:
+//* Apply padding to generated mask:
 
 						if (mask) {
 							for (const padding of paddings) {
@@ -9555,7 +9561,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 					}
 				} else
 
-//* get mask defined in the document:
+//* Get mask defined in the document:
 
 				if (mask = layer.mask) {
 				const	fillColor = orz(mask.defaultColor);
@@ -9565,7 +9571,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 					if (TESTING_RENDER) addDebugImage(project, mask, 'mask = getCanvasFilledOutsideOfImage: ' + fillColor);
 				}
 
-//* apply mask:
+//* Apply mask:
 
 				if (mask) {
 					if (canvasCopy) {
@@ -9583,7 +9589,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 					}
 				}
 
-//* apply color:
+//* Apply color:
 
 				if (
 					!skipRecoloring
@@ -9595,7 +9601,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 					}
 				}
 
-//* flip:
+//* Flip:
 
 				if (flipSide) {
 					img = getCanvasFlipped(project, img, flipSide);
@@ -9604,7 +9610,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 				}
 			}
 
-//* add content to current buffer canvas:
+//* Add content to current buffer canvas:
 
 			if (!ctx) {
 				canvas = getNewCanvasForProject(project);
@@ -9630,7 +9636,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 			++project.rendering.layersApplyCount;
 
-//* store the mask of the clipping group:
+//* Store the mask of the clipping group:
 
 			if (
 				clippingGroupWIP
@@ -9719,7 +9725,7 @@ let	canvas, ctx, mask, clippingMask;
 		await pause(1);
 	}
 
-//* start rendering layer batch:
+//* Start rendering layer batch:
 
 	if (layersToRenderOne) {
 		indexToStop = layersToRenderOne.indexOf(layer);
@@ -9741,11 +9747,11 @@ let	canvas, ctx, mask, clippingMask;
 		await renderOneLayer(layer);
 	}
 
-//* end of layer batch.
+//* End of layer batch.
 
 	if (canvas && ctx) {
 
-//* apply stored mask to the blended clipping group content:
+//* Apply stored mask to the blended clipping group content:
 
 		if (mask = clippingMask) {
 			drawImageOrColor(project, ctx, mask, BLEND_MODE_MASK);
@@ -9756,7 +9762,7 @@ let	canvas, ctx, mask, clippingMask;
 		}
 	}
 
-//* end of layer tree:
+//* End of layer tree:
 
 	if (!nestedLayersBatch) {
 	const	PR = project.rendering;
@@ -10082,7 +10088,7 @@ const	fileName = render.fileName;
 		return prerenders[fileName];
 	}
 
-//* let UI update before creating new image:
+//* Let UI update before creating new image:
 
 	await pause(1);
 
@@ -10678,7 +10684,7 @@ let	img;
 
 	try {
 
-//* cleanup before showing rendering steps:
+//* Cleanup before showing rendering steps:
 
 	let	imgContainer;
 
@@ -10687,7 +10693,7 @@ let	img;
 			img = await getOrCreateRenderedImg(project, render);
 		} else {
 
-//* prepare image before container cleanup to avoid flicker:
+//* Prepare image before container cleanup to avoid flicker:
 
 			img = await getOrCreateRenderedImg(project, render);
 			imgContainer = container || getEmptyRenderContainer(project);
@@ -10697,7 +10703,7 @@ let	img;
 			makeElementFitOnClick(img);
 			imgContainer.appendChild(img);
 
-//* resize img to thumbnail on button:
+//* Resize img to thumbnail on button:
 
 			if (!container) {
 				setProjectThumbnail(project, img);
@@ -11401,17 +11407,17 @@ let	count = (
 	if (!count) {
 		count = await getAllValueSetsCount(project, values, startTime);
 
-//* if stopped by user or another count:
+//* If stopped by user or another count:
 
 		if (typeof count === 'undefined') {
 
-//* if another count was started, don't update anything here:
+//* If another count was started, don't update anything here:
 
 			if (startTime !== project.renderBatchCountStartTime) {
 				return;
 			}
 
-//* otherwise report something, at least "over 9000" or just "too much":
+//* Otherwise report something, at least "over 9000" or just "too much":
 
 		} else {
 			if (
@@ -11925,7 +11931,7 @@ function onPageDrop(evt) {
 const	filesToLoad = [];
 let	files, name, ext;
 
-//* get list of files to process:
+//* Get list of files to process:
 
 	for (const batch of [
 		evt.dataTransfer
@@ -11950,7 +11956,7 @@ let	files, name, ext;
 		}
 	}
 
-//* process files:
+//* Process files:
 
 	loadFromFileList(filesToLoad, evt);
 }
@@ -12121,7 +12127,7 @@ let	isProjectLoaded = false;
 	} else
 	if (url = getButtonURL(button)) {
 
-//* show loading status:
+//* Show loading status:
 
 	const	className = 'loading';
 	const	fileRow = getThisOrParentByClass(button, regClassExampleFile);
@@ -12134,11 +12140,11 @@ let	isProjectLoaded = false;
 			}
 		}
 
-//* process the file:
+//* Process the file:
 
 		isProjectLoaded = await loadFromURL(url, startTime);
 
-//* remove loading status:
+//* Remove loading status:
 
 		if (fileRow && fileRow.className) {
 			toggleClass(fileRow, className, -1);
@@ -12226,7 +12232,7 @@ let	logLabel = `Init localization "${LANG}"`;
 
 	console.timeEnd(logLabel);
 
-//* remember config defaults:
+//* Remember config defaults:
 
 const	configVarDefaults = {};
 const	configVarNames = [
@@ -12253,7 +12259,7 @@ const	configVarNames = [
 		configVarDefaults[varName] = window[varName];
 	}
 
-//* load redefined config:
+//* Load redefined config:
 
 	logLabel = 'Init external config';
 	console.time(logLabel);
@@ -12262,7 +12268,7 @@ const	configVarNames = [
 
 	console.timeEnd(logLabel);
 
-//* restore invalid config values to default:
+//* Restore invalid config values to default:
 
 	for (const varName of configVarNames) {
 
@@ -12276,7 +12282,7 @@ const	configVarNames = [
 		);
 	}
 
-//* finalize config values format:
+//* Finalize config values format:
 
 	initLibParams();
 
@@ -12305,7 +12311,7 @@ const	configVarNames = [
 	||	PRELOAD_USED_LAYER_IMAGES
 	);
 
-//* check loading local files:
+//* Check loading local files:
 
 let	canLoadLocalFiles = true;
 
@@ -12319,7 +12325,7 @@ let	canLoadLocalFiles = true;
 		logTime('Init: running from disk, cannot load local files.');
 	}
 
-//* load libraries not specific to file formats:
+//* Load libraries not specific to file formats:
 
 	logLabel = 'Init libraries';
 	console.time(logLabel);
@@ -12332,7 +12338,7 @@ let	canLoadLocalFiles = true;
 
 	console.timeEnd(logLabel);
 
-//* create main menu:
+//* Create main menu:
 
 	logLabel = 'Init menu: file types';
 	console.time(logLabel);
@@ -13882,11 +13888,11 @@ const	linkTooltips = [
 
 	console.timeEnd(logLabel);
 
-//* enable/disable main menu buttons:
+//* Enable/disable main menu buttons:
 
 	setWIPstate(false);
 
-//* add global on-page events:
+//* Add global on-page events:
 //* Notes:
 //*	"drop" may not work without "dragover".
 //*	"keypress" ignores Esc key in some modern browsers.
@@ -13902,7 +13908,7 @@ const	linkTooltips = [
 		}
 	);
 
-//* open or restore state of UI parts:
+//* Open or restore state of UI parts:
 
 let	oldSetting;
 
@@ -13928,7 +13934,7 @@ let	oldSetting;
 		updateDropdownMenuPositions();
 	}
 
-//* ready for user input:
+//* Ready for user input:
 
 	toggleClass(document.body, 'loading', -1);
 	toggleClass(document.body, 'ready', 1);
