@@ -991,6 +991,28 @@ function arrayFromObjectEntriesSortByKey(a, b) { return ( a[0] > b[0] ? 1 : a[0]
 //* Source: https://stackoverflow.com/a/6470794
 function arrayMoveItem(array, fromIndex, toIndex) { return array.splice(toIndex, 0, array.splice(fromIndex, 1)[0]); }
 
+//* Source: https://stackoverflow.com/a/21071454
+function arrayMoveValue(array, fromIndex, toIndex) {
+	if( toIndex === fromIndex ) {
+		return array;
+	}
+
+const	target = array[fromIndex];
+const	increment = (toIndex < fromIndex ? -1 : 1);
+
+	for (
+	let	k = fromIndex;
+		k !== toIndex;
+		k += increment
+	) {
+		array[k] = array[k + increment];
+	}
+
+	array[toIndex] = target;
+
+	return array;
+}
+
 function arrayAssignValues(toArray, fromArray) {
 	Array.from(fromArray).forEach(
 		(value, index) => {
@@ -1643,6 +1665,14 @@ function getLocalizedText(key, ...replacements) {
 
 function getLocalizedHTML() {
 	return replaceAll(getLocalizedText(...arguments), '\n', '<br>');
+}
+
+function getLocalizedSectionName(sectionName) {
+	return getCapitalizedString(
+		getLocalizedOrEmptyText('option_header_' + sectionName)
+	||	getLocalizedOrEmptyText('option_' + sectionName)
+	||	sectionName
+	);
 }
 
 function trim(text) {
@@ -4859,10 +4889,10 @@ async function getProjectViewMenu(project) {
 			const	sectionNames = [];
 			const	listNamesBySection = {};
 			const	listNamesBySectionInitial = {};
-			const	orderParams = project.namePartsOrderParams || {};
+			const	orderParams = project.namePartsOrderParams || [];
 			const	isAutoSorting = (
 					SORT_OPTION_LIST_NAMES
-				||	orderParams.sort
+				||	orderParams.includes('sort')
 				);
 
 				for (const sectionName in options)
@@ -4888,12 +4918,30 @@ async function getProjectViewMenu(project) {
 					(sectionName) => sectionNames.includes(sectionName)
 				);
 
+//* Forget initial order from the file, rewrite to the page-default:
+
 				if (
-					orderParams.default
-				||	!orderParams.given
+					orderParams.includes('default')
+				||	!orderParams.includes('given')
 				) {
 					arrayAssignValues(sectionNames, sectionNamesDefault);
 				}
+
+//* Move names to front, in reversed order from given params:
+
+				for (
+				let	paramIndex = orderParams.length;
+					paramIndex--;
+				) {
+				const	sectionName = orderParams[paramIndex];
+				const	orderIndex = sectionNames.indexOf(sectionName);
+
+					if (orderIndex > 0) {
+						arrayMoveValue(sectionNames, orderIndex, 0);
+					}
+				}
+
+//* Remember resulting order as initial for reset:
 
 			const	sectionNamesInitial = sectionNames.slice();
 
@@ -6066,11 +6114,7 @@ const	buttonsPanel = cre('div', container);
 					fileNamingSection.draggable = true;
 
 				const	fileNamingSectionName = cre('header', fileNamingSection);
-					fileNamingSectionName.textContent = getCapitalizedString(
-						getLocalizedOrEmptyText('option_header_' + sectionName)
-					||	getLocalizedOrEmptyText('option_' + sectionName)
-					||	sectionName
-					);
+					fileNamingSectionName.textContent = getLocalizedSectionName(sectionName);
 
 					if (listNames.length > 1) {
 						fileNamingSection = cre('div', fileNamingSection);
@@ -11231,7 +11275,7 @@ const	namePartsOrder = project.namePartsOrder;
 		fromIndex = sectionNames.indexOf(sectionName);
 		toIndex = sectionNames.indexOf(displacedName);
 
-		arrayMoveItem(sectionNames, fromIndex, toIndex);
+		arrayMoveValue(sectionNames, fromIndex, toIndex);
 	} else
 	if (listName = draggedElement.getAttribute('data-list-name')) {
 		displacedName = displacedElement.getAttribute('data-list-name');
@@ -11240,7 +11284,7 @@ const	namePartsOrder = project.namePartsOrder;
 		fromIndex = listNames.indexOf(listName);
 		toIndex = listNames.indexOf(displacedName);
 
-		arrayMoveItem(listNames, fromIndex, toIndex);
+		arrayMoveValue(listNames, fromIndex, toIndex);
 	}
 
 	updateSaveFileName(project);
@@ -13254,6 +13298,61 @@ const	helpSections = {
 				],
 			},
 		],
+		'naming_order' : [
+			{
+				'text_key' : 'notes',
+				'text_replace_values' : [
+					wrap.code.param('/'),
+					wrap.code.param('[naming-order=' + wrap.span.sample('sort/given/parts/colors') + ']'),
+				],
+			}, {
+				'code_sample' : [
+					'naming',
+					'naming-order',
+					'filename-order',
+				].map(
+					(prefix) => '[' + prefix + '=' + wrap.span.sample('sort') + ']'
+				),
+				'text_key' : 'sort',
+				'text_replace_values' : [
+					wrap.code.param('[no-render]'),
+					getHelpSectionLinkHTML('help_other'),
+				],
+			}, {
+				'code_sample' : '[naming-order=' + wrap.span.sample('given') + ']',
+				'text_key' : 'given',
+			}, {
+				'code_sample' : '[naming-order=' + wrap.span.sample('default') + ']',
+				'text_key' : 'default',
+				'text_replace_values' : [
+					wrap.code.param('[naming=' + wrap.span.sample('given') + ']'),
+				],
+			}, {
+				'code_sample' : '[naming-order='
+					+ wrap.span.custom('{help_code_section_name}1/{help_code_section_name}2/({help_code_more_values})')
+					+ ']',
+				'text_key' : 'names',
+				'text_replace_values' : [
+					wrap.code.param('[naming=' + wrap.span.sample('default') + ']'),
+					wrap.code.param('[naming=' + wrap.span.sample('given') + ']'),
+					getCodeTableHTML(
+						{
+							'cell_tag_name' : 'th',
+							'cells' : [
+								'{help_naming_order_table_section_title}',
+								'{help_naming_order_table_section_name}',
+							],
+						},
+						...NAME_PARTS_ORDER.map(
+							(sectionName) => [
+								getLocalizedSectionName(sectionName),
+								wrap.code.param(sectionName),
+							]
+						)
+					),
+				],
+			},
+		],
 		'other' : [
 			{
 				'code_sample' : getCodeColoredParamWithListName(
@@ -13691,6 +13790,7 @@ const	menuHTMLpartsOrder = [
 		'virtual_path',
 		'path_logic',
 		'color_value',
+		'naming_order',
 		'other',
 	];
 
