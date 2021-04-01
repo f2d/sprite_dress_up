@@ -4972,6 +4972,9 @@ async function getProjectViewMenu(project) {
 
 				if (autoSortSectionNames) {
 					sectionNames.sort();
+				} else
+				if (!isSectionOrderKeptAsGiven) {
+					arrayAssignValues(sectionNames, sectionNamesDefault);
 				}
 
 //* Move names to front, in reversed order from given params:
@@ -6137,14 +6140,29 @@ const	buttonsPanel = cre('div', container);
 
 		addEventListeners(fileNamingOrderBox, PROJECT_NAMING_EVENT_HANDLERS);
 
-		for (const sectionName of NAME_PARTS_ORDER) {
-		const	optionLists = project.options[sectionName];
+	const	sectionNames = (
+			project.namePartsOrder.sectionNames
+		||	NAME_PARTS_ORDER
+		);
+
+	const	listNamesBySection = (
+			project.namePartsOrder.listNamesBySection
+		||	project.options
+		);
+
+		for (const sectionName of sectionNames) {
+		const	optionLists = listNamesBySection[sectionName];
 
 			if (!isNonNullObject(optionLists)) {
 				continue;
 			}
 
-		const	listNames = Object.keys(optionLists);
+		const	listNames = (
+				isArray(optionLists)
+				? optionLists
+				: Object.keys(optionLists)
+			);
+
 		const	isOnlySectionName = !(
 				listNames.length > 0
 			&&	listNames.some((listName) => (listName !== sectionName))
