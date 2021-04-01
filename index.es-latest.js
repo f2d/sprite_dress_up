@@ -10055,7 +10055,16 @@ function getFileNameByValues(project, values, flags) {
 		}
 
 		return (
-			listNamesBySection[sectionName]
+			(
+				flags.isForStorageKey
+				? (
+					Object
+					.keys(section)
+					.filter(arrayFilterNonEmptyValues)
+					.sort()
+				)
+				: listNamesBySection[sectionName]
+			)
 			.map(getProcessedListName)
 			.filter(arrayFilterNonEmptyValues)
 			.map(getFormattedFileNamePart)
@@ -10074,7 +10083,11 @@ function getFileNameByValues(project, values, flags) {
 const	{ sectionNames, listNamesBySection } = project.namePartsOrder;
 
 	return getColoredHTMLOrPlainText(
-		sectionNames
+		(
+			flags.isForStorageKey
+			? NAME_PARTS_ORDER
+			: sectionNames
+		)
 		.map(getProcessedSectionName)
 		.filter(arrayFilterNonEmptyValues)
 		.join(NAME_PARTS_SEPARATOR)
@@ -10104,6 +10117,7 @@ const	joinedPartsText = (
 }
 
 function getKeyForValueSet(project, values) {
+
 	return getFileNameByValuesToSave(
 		project
 	,	values
@@ -11493,6 +11507,7 @@ async function updateBatchCount(project, values, precounted) {
 	if (!precounted) {
 		project.renderBatchSelectedOptions = null;
 		project.renderBatchSelectedSets = null;
+		project.selectedMenuValues = null;
 	}
 
 const	startTime = project.renderBatchCountStartTime = getTimeNow();
@@ -11504,7 +11519,7 @@ const	key = project.renderBatchCountSelectedKey = (
 			.join('')
 		)
 	+	'_'
-	+	getKeyForValueSet(project, values)
+	+	getKeyForValueSet(project, getSelectedMenuValues(project))
 	);
 
 let	count = (
