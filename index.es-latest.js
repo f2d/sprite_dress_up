@@ -8,8 +8,6 @@
 //* TODO: options menu: add/remove/copy/edit colors and outlines, or all list(s), maybe in textarea.
 //* TODO: options menu: buttons to show all or only relevant select boxes, global and per type header (parts, colors, etc).
 //* TODO: <select multiple> <optgroup> <option>?</option> </optgroup> </select>.
-//* TODO: batch: store (in)validated combination in a Map by filename as key, and combinations to render (each wrapped in object as pointer to Map element and the filename) in a Set. Or make the checking algorithm faster somehow, without bruteforcing cross-product of all combos.
-//* TODO: batch: remember already calculated batch counts and valid lists per project; dict key = joined list of all options and checkboxes.
 
 //* TODO ---------------------- params: ---------------------------------------
 //* TODO: keep all layer-name parameters single-word if possible.
@@ -32,6 +30,7 @@
 //* TODO: compose: for files without merged image data - render ignoring options, but respecting layer visibility properties. Or buttons to show embedded and/or rendered image regardless of options. Or add this as top-most option for any project, with or without options.
 //* TODO: revoke collage blob urls when cleaning view container?
 //* TODO: revoke any image blob urls right after image element's loading, without ever tracking/listing them?
+//* TODO: batch: to avoid bruteforcing global cross-products, build a tree-graph of selectable option dependency forks when loading a project. Make a graph from each separated root, but include unconditional [no-render] paths into each tree for color collections, etc.
 
 //* TODO ---------------------- export: ---------------------------------------
 //* TODO: save opened project as restructured ORA/PSD. Try https://github.com/Agamnentzar/ag-psd
@@ -107,7 +106,8 @@ var	exampleRootDir = ''
 ,	READ_FILE_CONTENT_TO_GET_TYPE	= false	//* <- this relies on the browser or the OS to magically determine file type.
 ,	REQUIRE_NON_EMPTY_SELECTION	= false	//* <- buggy
 ,	SAVE_COLOR_AS_ONE_PIXEL_IMAGE	= false	//* <- may be stretched back by layers attributes, but not yet standard.
-,	SORT_OPTION_LIST_NAMES		= false
+,	SORT_OPTION_SECTION_NAMES	= false
+,	SORT_OPTION_LIST_NAMES		= true
 ,	START_WITH_BIG_TEXT		= false
 ,	START_WITH_FIXED_TAB_WIDTH	= true
 ,	START_WITH_OPEN_FIRST_MENU_TAB	= true
@@ -551,12 +551,23 @@ const	SPLIT_SEC = 60
 ,	SEPARATE_PARAM_NAMES_DEFAULT = ['separate', 'split']
 ,	SEPARATE_GROUP_NAME_DEFAULT = ''
 
+,	NAME_PARTS_SEPARATOR = ''
 ,	NAME_PARTS_COLORED_CLASSES = ['selected-parts', 'list-name', 'option-name']
 ,	NAME_PARTS_PERCENTAGES = ['zoom', 'opacities']
 ,	NAME_PARTS_FOLDERS = ['parts', 'colors']
 ,	NAME_PARTS_ORDER = ['separate', 'side', 'parts', 'colors', 'paddings', 'opacities', 'zoom', 'autocrop']
-,	NAME_PARTS_ORDER_PARAMS = ['default', 'given', 'sort'].concat(NAME_PARTS_ORDER)
-,	NAME_PARTS_SEPARATOR = ''
+,	NAME_PARTS_ORDER_PARAMS = [
+		'given',
+		'given-lists',
+		'given-options',
+		'given-sections',
+		'given-types',
+		'sort',
+		'sort-lists',
+		'sort-options',
+		'sort-sections',
+		'sort-types',
+	].concat(NAME_PARTS_ORDER)
 
 ,	PARAM_OPTIONS_ADD_BY_DEFAULT = {
 		'collage'  : ['no-batch', 'last', 'optional', 'collage']
@@ -4890,9 +4901,48 @@ async function getProjectViewMenu(project) {
 			const	listNamesBySection = {};
 			const	listNamesBySectionInitial = {};
 			const	orderParams = project.namePartsOrderParams || [];
-			const	isAutoSorting = (
-					SORT_OPTION_LIST_NAMES
-				||	orderParams.includes('sort')
+
+			const	isAllOrderAutoSorted = orderParams.includes('sort');
+			const	isAllOrderKeptAsGiven = orderParams.includes('given');
+
+			const	isSectionOrderKeptAsGiven = (
+					isAllOrderKeptAsGiven
+				||	orderParams.includes('given-types')
+				||	orderParams.includes('given-sections')
+				);
+
+			const	isListOrderKeptAsGiven = (
+					isAllOrderKeptAsGiven
+				||	orderParams.includes('given-lists')
+				||	orderParams.includes('given-options')
+				);
+
+			const	isSectionOrderAutoSorted = (
+					isAllOrderAutoSorted
+				||	orderParams.includes('sort-types')
+				||	orderParams.includes('sort-sections')
+				);
+
+			const	isListOrderAutoSorted = (
+					isAllOrderAutoSorted
+				||	orderParams.includes('sort-lists')
+				||	orderParams.includes('sort-options')
+				);
+
+			const	autoSortSectionNames = (
+					!isSectionOrderKeptAsGiven
+				&&	(
+						isSectionOrderAutoSorted
+					||	SORT_OPTION_SECTION_NAMES
+					)
+				);
+
+			const	autoSortListNames = (
+					!isListOrderKeptAsGiven
+				&&	(
+						isListOrderAutoSorted
+					||	SORT_OPTION_LIST_NAMES
+					)
 				);
 
 				for (const sectionName in options)
@@ -4903,7 +4953,7 @@ async function getProjectViewMenu(project) {
 				const	listNames = listNamesBySection[sectionName] = [];
 				const	listNamesOrdered = Object.keys(options[sectionName]);
 
-					if (isAutoSorting) {
+					if (autoSortListNames) {
 						listNamesOrdered.sort();
 					}
 
@@ -4918,13 +4968,10 @@ async function getProjectViewMenu(project) {
 					(sectionName) => sectionNames.includes(sectionName)
 				);
 
-//* Forget initial order from the file, rewrite to the page-default:
+//* Forget initial order from the file:
 
-				if (
-					orderParams.includes('default')
-				||	!orderParams.includes('given')
-				) {
-					arrayAssignValues(sectionNames, sectionNamesDefault);
+				if (autoSortSectionNames) {
+					sectionNames.sort();
 				}
 
 //* Move names to front, in reversed order from given params:
@@ -13304,6 +13351,7 @@ const	helpSections = {
 				'text_replace_values' : [
 					wrap.code.param('/'),
 					wrap.code.param('[naming-order=' + wrap.span.sample('sort/given/parts/colors') + ']'),
+					wrap.code.param('[naming-order=' + wrap.span.sample('sort-t/sep/sid/pad/op/p/c/z') + ']'),
 				],
 			}, {
 				'code_sample' : [
@@ -13314,43 +13362,57 @@ const	helpSections = {
 					(prefix) => '[' + prefix + '=' + wrap.span.sample('sort') + ']'
 				),
 				'text_key' : 'sort',
+			}, {
+				'code_sample' : [
+					'[naming-order=' + wrap.span.sample('sort-types') + ']',
+					'[naming-order=' + wrap.span.sample('sort-sections') + ']',
+				],
+				'text_key' : 'sort_sections',
+			}, {
+				'code_sample' : [
+					'[naming-order=' + wrap.span.sample('sort-lists') + ']',
+					'[naming-order=' + wrap.span.sample('sort-options') + ']',
+				],
+				'text_key' : 'sort_options',
+			}, {
+				'code_sample' : '[naming-order=' + wrap.span.sample('given') + ']',
+				'text_key' : 'given',
 				'text_replace_values' : [
 					wrap.code.param('[no-render]'),
 					getHelpSectionLinkHTML('help_other'),
 				],
 			}, {
-				'code_sample' : '[naming-order=' + wrap.span.sample('given') + ']',
-				'text_key' : 'given',
-			}, {
-				'code_sample' : '[naming-order=' + wrap.span.sample('default') + ']',
-				'text_key' : 'default',
-				'text_replace_values' : [
-					wrap.code.param('[naming=' + wrap.span.sample('given') + ']'),
+				'code_sample' : [
+					'[naming-order=' + wrap.span.sample('given-types') + ']',
+					'[naming-order=' + wrap.span.sample('given-sections') + ']',
 				],
+				'text_key' : 'given_sections',
+			}, {
+				'code_sample' : [
+					'[naming-order=' + wrap.span.sample('given-lists') + ']',
+					'[naming-order=' + wrap.span.sample('given-options') + ']',
+				],
+				'text_key' : 'given_options',
 			}, {
 				'code_sample' : '[naming-order='
 					+ wrap.span.custom('{help_code_section_name}1/{help_code_section_name}2/({help_code_more_values})')
 					+ ']',
 				'text_key' : 'names',
-				'text_replace_values' : [
-					wrap.code.param('[naming=' + wrap.span.sample('default') + ']'),
-					wrap.code.param('[naming=' + wrap.span.sample('given') + ']'),
-					getCodeTableHTML(
-						{
-							'cell_tag_name' : 'th',
-							'cells' : [
-								'{help_naming_order_table_section_title}',
-								'{help_naming_order_table_section_name}',
-							],
-						},
-						...NAME_PARTS_ORDER.map(
-							(sectionName) => [
-								getLocalizedSectionName(sectionName),
-								wrap.code.param(sectionName),
-							]
-						)
+				'text_replace_values' : getCodeTableHTML(
+					{
+						'cell_tag_name' : 'th',
+						'cells' : [
+							'{help_naming_order_table_section_title}',
+							'{help_naming_order_table_section_name}',
+						],
+					},
+					...NAME_PARTS_ORDER.map(
+						(sectionName) => [
+							getLocalizedSectionName(sectionName),
+							wrap.code.param(sectionName),
+						]
 					),
-				],
+				),
 			},
 		],
 		'other' : [
