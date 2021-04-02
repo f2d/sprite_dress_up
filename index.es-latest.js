@@ -12816,6 +12816,15 @@ const	batchButtonsHTML = (
 		);
 	}
 
+	function getCodeWithListNamePrefix(...values) {
+		return values.map(
+			(value) => (
+				wrap.span.name('{help_code_list_name}')
+				+ '[' + value + ']'
+			)
+		);
+	}
+
 	function getCodeListNameAndOrPrefix(...values) {
 		return values.map(
 			(value) => (
@@ -13031,85 +13040,29 @@ const	helpSections = {
 					),
 				],
 			}, {
-				'code_sample' : [
-					wrap.span.name('{help_code_list_name}') + '[batch]',
-					wrap.span.name('{help_code_list_name}') + '[batched]',
-				],
+				'code_sample' : getCodeWithListNamePrefix(
+					'batch',
+					'batched',
+				),
 				'text_key' : 'all',
 			}, {
-				'code_sample' : [
-					wrap.span.name('{help_code_list_name}') + '[no-batch]',
-					wrap.span.name('{help_code_list_name}') + '[single]',
-				],
+				'code_sample' : getCodeWithListNamePrefix(
+					'no-batch',
+					'single',
+				),
 				'text_key' : 'single',
 			}, {
-				'code_sample' : [
-					wrap.span.name('{help_code_list_name}') + '[omitable]',
-					wrap.span.name('{help_code_list_name}') + '[omit-single]',
-					wrap.span.name('{help_code_list_name}') + '[no-single-name]',
-				],
-				'text_key' : 'omitable',
-			}, {
-				'code_sample' : [
-					wrap.span.name('{help_code_list_name}') + '[unomitable]',
-					wrap.span.name('{help_code_list_name}') + '[add-single]',
-					wrap.span.name('{help_code_list_name}') + '[single-name]',
-				],
-				'text_key' : 'unomitable',
-			}, {
-				'code_sample' : [
-					wrap.span.name('{help_code_list_name}') + '[inline]',
-					wrap.span.name('{help_code_list_name}') + '[columns]',
-				],
+				'code_sample' : getCodeWithListNamePrefix(
+					'inline',
+					'columns',
+				),
 				'text_key' : 'inline',
 			}, {
-				'code_sample' : [
-					wrap.span.name('{help_code_list_name}') + '[newline]',
-					wrap.span.name('{help_code_list_name}') + '[rows]',
-				],
+				'code_sample' : getCodeWithListNamePrefix(
+					'newline',
+					'rows',
+				),
 				'text_key' : 'newline',
-			},
-		],
-		'clone' : [
-			{
-				'text_key' : 'notes',
-			}, {
-				'code_sample' : getCodeColoredParamAlias('copy='),
-				'text_key' : 'copy',
-				'text_replace_values' : '{help_code_alias}',
-			}, {
-				'code_sample' : getCodeColoredParamAlias('paste='),
-				'text_key' : 'paste',
-				'text_replace_values' : '{help_code_alias}',
-			}, {
-				'code_sample' : '[paste-above=' + wrap.span.sample('A') + ']',
-				'text_key' : 'paste_above',
-				'text_replace_values' : wrap.code.param('[paste]'),
-			}, {
-				'code_sample' : '[paste-below=' + wrap.span.sample('B') + ']',
-				'text_key' : 'paste_below',
-				'text_replace_values' : [
-					wrap.code.param('[paste]'),
-					wrap.code.param('[paste-above]'),
-				],
-			}, {
-				'code_sample' : [
-					wrap.span.name('{help_code_name} 1, 2') + '[copy]',
-					wrap.span.name('{help_code_name} 1, 2') + '[paste]',
-				],
-				'text_key' : 'layer_names',
-			}, {
-				'code_sample' : [
-					'[copy=]',
-					'[paste=]',
-				],
-				'text_key' : 'empty_id',
-			}, {
-				'code_sample' : '[copy=' + wrap.span.custom('A') + ' copy=' + wrap.span.sample('B') + ']',
-				'text_key' : 'multi_copy',
-			}, {
-				'code_sample' : '[paste=' + wrap.span.custom('A') + ' paste=' + wrap.span.sample('B') + ']',
-				'text_key' : 'multi_paste',
 			},
 		],
 		'collage' : [
@@ -13243,7 +13196,7 @@ const	helpSections = {
 				'text_key' : 'notes',
 				'text_replace_values' : [
 					wrap.code.param('[no-render]'),
-					getHelpSectionLinkHTML('help_other'),
+					getHelpSectionLinkHTML('help_skip_layers'),
 					getTableHTML(
 						[
 							'{help_code_list_folder}:',
@@ -13363,23 +13316,49 @@ const	helpSections = {
 				],
 			},
 		],
-		'opacity' : [
+		'copy_layers' : [
 			{
 				'text_key' : 'notes',
 			}, {
-				'code_sample' : getCodeColoredParamPercentages(
-					['{help_code_list_name_opacity}', 'opacity='],
-					['{help_code_list_name_opacity} 1, 2', ''],
-				),
-				'text_key' : 'set',
+				'code_sample' : getCodeColoredParamAlias('copy='),
+				'text_key' : 'copy',
+				'text_replace_values' : '{help_code_alias}',
+			}, {
+				'code_sample' : getCodeColoredParamAlias('paste='),
+				'text_key' : 'paste',
+				'text_replace_values' : '{help_code_alias}',
+			}, {
+				'code_sample' : '[paste-above=' + wrap.span.sample('A') + ']',
+				'text_key' : 'paste_above',
+				'text_replace_values' : wrap.code.param('[paste]'),
+			}, {
+				'code_sample' : '[paste-below=' + wrap.span.sample('B') + ']',
+				'text_key' : 'paste_below',
 				'text_replace_values' : [
-					wrap.code.param('[optional]'),
-					getHelpSectionLinkHTML('help_other'),
+					wrap.code.param('[paste]'),
+					wrap.code.param('[paste-above]'),
 				],
+			}, {
+				'code_sample' : [
+					wrap.span.name('{help_code_name} 1, 2') + '[copy]',
+					wrap.span.name('{help_code_name} 1, 2') + '[paste]',
+				],
+				'text_key' : 'layer_names',
+			}, {
+				'code_sample' : [
+					'[copy=]',
+					'[paste=]',
+				],
+				'text_key' : 'empty_id',
+			}, {
+				'code_sample' : '[copy=' + wrap.span.custom('A') + ' copy=' + wrap.span.sample('B') + ']',
+				'text_key' : 'multi_copy',
+			}, {
+				'code_sample' : '[paste=' + wrap.span.custom('A') + ' paste=' + wrap.span.sample('B') + ']',
+				'text_key' : 'multi_paste',
 			},
 		],
-		'naming_order' : [
-			{
+		'naming_order' : [ {
 				'text_key' : 'notes',
 				'text_replace_values' : [
 					wrap.code.param('/'),
@@ -13412,7 +13391,7 @@ const	helpSections = {
 				'text_key' : 'given',
 				'text_replace_values' : [
 					wrap.code.param('[no-render]'),
-					getHelpSectionLinkHTML('help_other'),
+					getHelpSectionLinkHTML('help_skip_layers'),
 				],
 			}, {
 				'code_sample' : [
@@ -13448,58 +13427,53 @@ const	helpSections = {
 				),
 			},
 		],
-		'other' : [
+		'naming_parts' : [
 			{
-				'code_sample' : getCodeColoredParamWithListName(
-					['optional ', 'parts', ''],
-					['optional ', 'colors', ''],
-					['optional ', 'zoom=25/50%'],
-				),
-				'text_key' : 'optional',
+				'text_key' : 'notes',
+				'text_replace_values' : getHelpSectionLinkHTML('help_separate'),
 			}, {
-				'code_sample' : getCodeColoredParamWithListName(
-					['last ', 'parts', ''],
-					['last ', 'colors', ''],
-					['last ', 'zoom=25/50%'],
-				),
-				'text_key' : 'last',
-			}, {
-				'code_sample' : [
-					[
-						'[initial]',
-						wrap.span.name('{help_code_option_name}'),
-					], [
-						'[preselect]',
-						wrap.span.name('{help_code_option_name}'),
-					], [
-						wrap.span.sample('[parts]'),
-						wrap.span.name('{help_code_list_name}'),
-						wrap.span.path('/'),
-						wrap.span.name('{help_code_option_name}'),
-						'[preselect]',
-					],
-				],
-				'text_key' : 'preselect',
-			}, {
-				'code_sample' : getCodeColoredParamWithListName(
+				'code_sample' : getCodeWithListNamePrefix(
 					'prefix',
 					'prefixed',
 				),
 				'text_key' : 'prefix',
 				'text_replace_values' : getSaveFileNamingExample('"{filename_option_group}"'),
 			}, {
-				'code_sample' : getCodeColoredParamWithListName(
+				'code_sample' : getCodeWithListNamePrefix(
 					'no-prefix',
 					'unprefixed',
 				),
 				'text_key' : 'no_prefix',
 				'text_replace_values' : getSaveFileNamingExample('"{filename_option}"'),
 			}, {
-				'code_sample' : '[no-render]',
-				'text_key' : 'no_render',
+				'code_sample' : getCodeWithListNamePrefix(
+					'omitable',
+					'omit-single',
+					'no-single-name',
+				),
+				'text_key' : 'omitable',
 			}, {
-				'code_sample' : '[skip]',
-				'text_key' : 'skip',
+				'code_sample' : getCodeWithListNamePrefix(
+					'unomitable',
+					'add-single',
+					'single-name',
+				),
+				'text_key' : 'unomitable',
+			},
+		],
+		'opacity' : [
+			{
+				'text_key' : 'notes',
+			}, {
+				'code_sample' : getCodeColoredParamPercentages(
+					['{help_code_list_name_opacity}', 'opacity='],
+					['{help_code_list_name_opacity} 1, 2', ''],
+				),
+				'text_key' : 'set',
+				'text_replace_values' : [
+					wrap.code.param('[optional]'),
+					getHelpSectionLinkHTML('help_selection'),
+				],
 			},
 		],
 		'padding' : [
@@ -13708,6 +13682,40 @@ const	helpSections = {
 				'text_key' : 'none',
 			},
 		],
+		'selection' : [
+			{
+				'code_sample' : getCodeColoredParamWithListName(
+					['optional ', 'parts', ''],
+					['optional ', 'colors', ''],
+					['optional ', 'zoom=25/50%'],
+				),
+				'text_key' : 'optional',
+			}, {
+				'code_sample' : getCodeColoredParamWithListName(
+					['last ', 'parts', ''],
+					['last ', 'colors', ''],
+					['last ', 'zoom=25/50%'],
+				),
+				'text_key' : 'last',
+			}, {
+				'code_sample' : [
+					[
+						'[initial]',
+						wrap.span.name('{help_code_option_name}'),
+					], [
+						'[preselect]',
+						wrap.span.name('{help_code_option_name}'),
+					], [
+						wrap.span.sample('[parts]'),
+						wrap.span.name('{help_code_list_name}'),
+						wrap.span.path('/'),
+						wrap.span.name('{help_code_option_name}'),
+						'[preselect]',
+					],
+				],
+				'text_key' : 'preselect',
+			},
+		],
 		'separate' : [
 			{
 				'text_key' : 'notes',
@@ -13772,6 +13780,15 @@ const	helpSections = {
 				'text_replace_values' : wrap.code.param('reverse'),
 			},
 		],
+		'skip_layers' : [
+			{
+				'code_sample' : '[no-render]',
+				'text_key' : 'no_render',
+			}, {
+				'code_sample' : '[skip]',
+				'text_key' : 'skip',
+			},
+		],
 		'virtual_path' : [
 			{
 				'text_key' : 'notes',
@@ -13809,7 +13826,7 @@ const	helpSections = {
 							],
 						],
 					),
-					getHelpSectionLinkHTML('help_clone'),
+					getHelpSectionLinkHTML('help_copy_layers'),
 				],
 			},
 		],
@@ -13822,7 +13839,7 @@ const	helpSections = {
 				'text_key' : 'notes',
 				'text_replace_values' : [
 					wrap.code.param('[optional]'),
-					getHelpSectionLinkHTML('help_other'),
+					getHelpSectionLinkHTML('help_selection'),
 				],
 			},
 		],
@@ -13841,7 +13858,7 @@ const	helpSections = {
 			+	'">'
 			+		getTableHTML(content)
 					.replace('<tr', '<tr class="left-arrow right-arrow"')
-					.replace('<td', '<td class="section-link"')
+					.replace('<td', '<td class="help-section-header"')
 			+	'</header>'
 			);
 		} else {
@@ -13877,16 +13894,18 @@ const	menuHTMLpartsOrder = [
 		'padding',
 		'side',
 		'zoom',
-		'separate',
 		'autocrop',
 		'collage',
 		'batch',
-		'clone',
+		'separate',
+		'skip_layers',
+		'copy_layers',
 		'virtual_path',
 		'path_logic',
 		'color_value',
+		'naming_parts',
 		'naming_order',
-		'other',
+		'selection',
 	];
 
 	menuHTMLparts.help = getNestedFilteredArrayJoinedText([

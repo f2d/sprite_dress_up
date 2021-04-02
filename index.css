@@ -736,22 +736,22 @@ p.warning {
 .nested-layer::before {
 	content: "\21B3";
 }
+.help-section-header::before,
 .section-link::before {
 	content: "\A7";
-}
-.section-link::before {
 	padding-right: 0.25em;
 }
 .external-link::after {
 	/* padding-left: 0.25em; */
 	content: "⎘";
 }
+.help-section-header::before,
 .external-link::after,
 .section-link::before {
 	display: inline-block;	/* <- to remove underline, https://stackoverflow.com/a/15688237 */
 	/* text-decoration: none; */
 }
-header:not(:hover) .section-link:not(a)::before {
+header:not(:hover) .help-section-header::before {
 	visibility: hidden;
 }
 header.show [name="open_section"],
