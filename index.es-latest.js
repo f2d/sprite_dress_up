@@ -1862,7 +1862,7 @@ let	rgbaFromCanvas;
 		ctx.fillRect(0,0, 1,1);
 
 		maxCount = orzClamp(maxCount || 4, 3,4);
-		rgba = Array.from(ctx.getImageData(0,0, 1,1).data.slice(0, maxCount));
+		rgba = Array.from(ctx.getImageData(0,0, 1,1).data.subarray(0, maxCount));
 
 		return getNormalizedRGBA(rgba);
 	} else {
@@ -1934,16 +1934,16 @@ function getNormalizedRGBA(rgba) {
 }
 
 function getColorTextFromArray(rgba, maxCount) {
-	if (
-		rgba
-	&&	rgba.slice
-	&&	!isString(rgba)
-	) {
-		rgba = rgba.slice(0, orzClamp(maxCount || 4, 1,4)).map(
-			(channelValue, index) => (
-				index === 3
-				? getNormalizedOpacity(channelValue).toFixed(3)
-				: orz(channelValue)
+	if (isSlicableNotString(rgba)) {
+		rgba = (
+			rgba
+			.slice(0, orzClamp(maxCount || 4, 1,4))
+			.map(
+				(channelValue, index) => (
+					index === 3
+					? getNormalizedOpacity(channelValue).toFixed(3)
+					: orz(channelValue)
+				)
 			)
 		);
 
@@ -2200,7 +2200,12 @@ function encodeTagAttr(text) {
 	);
 }
 
-function getCapitalizedString(text) { return text.slice(0,1).toUpperCase() + text.slice(1).toLowerCase(); }
+function getCapitalizedString(text) {
+	return (
+		text.slice(0,1).toUpperCase()
+	+	text.slice(1).toLowerCase()
+	);
+}
 
 //* propNameForIE:
 function dashedToCamelCase(text) {
@@ -3895,23 +3900,21 @@ let	foundTop = -1;
 		if (bgPixelIndex >= 0) {
 		const	bgByteIndex = bgPixelIndex << 2;
 
-			bgRGBA = data.slice(bgByteIndex, bgByteIndex + 4);
+			bgRGBA = data.subarray(bgByteIndex, bgByteIndex + 4);
 		} else {
-			if (bgToCheck.match) {
+			if (isString(bgToCheck)) {
 				bgToCheck = getRGBAFromColorCodeOrName(bgToCheck);
 			}
 
-			if (bgToCheck.concat) {
+			if (isArray(bgToCheck)) {
 				bgRGBA = getRGBACutOrPadded(bgToCheck, DEFAULT_COLOR_VALUE_ARRAY);
 			}
 		}
 	}
 
-	bgRGBA = (
-		bgRGBA
-		? Array.from(bgRGBA)
-		: TRANSPARENT_COLOR_VALUE_ARRAY
-	);
+	if (!isArray(bgRGBA)) {
+		bgRGBA = TRANSPARENT_COLOR_VALUE_ARRAY;
+	}
 
 //* Find fully transparent areas:
 
@@ -8498,7 +8501,7 @@ const	canvas = ctx.canvas;
 					}
 
 					compute[funcName](arrayLength);
-					rgbaAbove.set(uint8array.slice(0, arrayLength));
+					rgbaAbove.set(uint8array.subarray(0, arrayLength));
 
 					return true;
 
@@ -9692,7 +9695,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 							project
 						,	values
 						,	layersToRender.slice(0, indexToRender)	//* <- content after/above this layer
-						,	FLAG_RENDER_IGNORE_COLORS			//* <- only care about alpha channel
+						,	FLAG_RENDER_IGNORE_COLORS		//* <- only care about alpha channel
 						);
 
 						if (TESTING_RENDER) addDebugImage(project, mask, 'mask = getRenderByValues');
