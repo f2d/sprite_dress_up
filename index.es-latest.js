@@ -4151,17 +4151,19 @@ let	replaced;
 	);
 }
 
-function getParentLayer(layer, propName, isTrue) {
+function getParentLayer(layer, stopConditionCallback) {
 	if (!layer) {
 		return null;
 	}
 
+const	isStopConditionDefined = isFunction(stopConditionCallback);
+
 	while (layer = layer.parent) {
 		if (
-			layer.params
+			layer.params	//* <- skip arrays, stop on actual layer objects
 		&&	(
-				!propName
-			||	(!layer[propName] === !isTrue)
+				!isStopConditionDefined
+			||	stopConditionCallback(layer)	//* <- optionally look deeper for something else
 			)
 		) {
 			break;
@@ -4241,7 +4243,7 @@ let	layersToRender = DUMMY_EMPTY_ARRAY;
 
 function isLayerRendered(layer) {
 	if (TESTING && !(isNonNullObject(layer) && layer.params)) {
-		console.error('No params, maybe not a layer:', [layer, getLayerPathText(layer)]);
+		console.error('isLayerRendered: No params, maybe not a layer:', [layer, getLayerPathText(layer)]);
 	}
 
 	return !(
@@ -4253,7 +4255,7 @@ function isLayerRendered(layer) {
 
 function isLayerSkipped(layer) {
 	if (TESTING && !(isNonNullObject(layer) && layer.params)) {
-		console.error('No params, maybe not a layer:', [layer, getLayerPathText(layer)]);
+		console.error('isLayerSkipped: No params, maybe not a layer:', [layer, getLayerPathText(layer)]);
 	}
 
 	return !!(
@@ -5419,7 +5421,7 @@ async function getProjectViewMenu(project) {
 				&&	!layersInside
 				) {
 					layer.isColor = true;
-					parent = getParentLayer(layer, 'isInsideColorList', false);
+					parent = getParentLayer(layer, (layer) => !layer.isInsideColorList);
 				}
 
 				if (
@@ -5440,7 +5442,7 @@ async function getProjectViewMenu(project) {
 			) {
 				layer.optionParent = (
 					layer.isColor
-					? getParentLayer(layer, 'isInsideColorList', false)
+					? getParentLayer(layer, (layer) => !layer.isInsideColorList)
 					: getParentLayer(layer)
 				);
 			}
@@ -5780,6 +5782,7 @@ async function getProjectViewMenu(project) {
 			const	groups = section.group.items;
 			const	namings = section.naming.items;
 			const	separatedLayers = {};
+			const	allSeparatedLayers = project.allSeparatedLayers = [];
 
 				for (const namingType of SEPARATE_NAMING_TYPES) {
 					namings[namingType] = 1;
@@ -5812,6 +5815,7 @@ async function getProjectViewMenu(project) {
 					.filter(isLayerRendered)
 					.forEach(
 						(layer, index) => {
+							allSeparatedLayers.push(layer);
 
 						const	partNum = index + 1;
 						const	groupName = section.group.items[optionName];
@@ -5833,6 +5837,26 @@ async function getProjectViewMenu(project) {
 				optionList.items = separatedLayers;
 
 				if (TESTING > 1) console.log(sectionName + ' options:', section);
+
+				function markGlobalNotRenderedLayers(layers) {
+					layers.forEach(
+						(layer) => {
+							if (allSeparatedLayers.includes(layer)) {
+								return;
+							}
+
+							if (layer.params.skip_render) {
+								layer.isGlobalNoRender = true;
+							}
+
+							if (layer.layers) {
+								markGlobalNotRenderedLayers(layer.layers);
+							}
+						}
+					);
+				}
+
+				markGlobalNotRenderedLayers(project.layers);
 			}
 
 //* List box = set of parts:
@@ -9118,11 +9142,14 @@ function isLayerVisibleByCopyPaste(project, layer, values, listName) {
 }
 
 function getLayerPathVisibilityByValues(project, layer, values, listName) {
-	if (TESTING && !layer.params) {
-		console.error('No params:', [project, layer, values, listName]);
+	if (TESTING && !(isNonNullObject(layer) && layer.params)) {
+		console.error('getLayerPathVisibilityByValues: No params, maybe not a layer:', [project, layer, values, listName]);
 	}
 
 const	renderingRootLayer = project.renderingRootLayer;
+const	renderingRootGroup = project.renderingRootGroup;
+
+//* Experimental branch (pretty useless), checking layers in backward order (not really):
 
 	if (layer.params.check_order === 'up') {
 	let	layers = getLayerVisibilityChain(layer);
@@ -9132,20 +9159,30 @@ const	renderingRootLayer = project.renderingRootLayer;
 
 			if (checkFromIndex) {
 				layers = layers.slice(checkFromIndex);
+			} else {
+			const	noRenderRoot = layers.find((layer) => layer.isGlobalNoRender);
 
-//* TODO? Or maybe remove this 'up' branch.
+				if (noRenderRoot) {
+				const	noRenderIndex = layers.indexOf(noRenderRoot) + 1;
 
-			// } else {
-				// return false;
+					if (noRenderIndex) {
+						layers = layers.slice(noRenderIndex);
+					}
+				} else {
+					return false;
+				}
 			}
 		}
 
-//* Up? Not really:
+		for (
+		let	layerIndex = layers.length;
+			layerIndex--;
+		) {
+		const	layer = layers[layerIndex];
 
-		if (layers.slice().reverse().some(
-			(layer) => isLayerVisibleByCopyPaste(project, layer, values, listName)
-		)) {
-			return true;
+			if (isLayerVisibleByCopyPaste(project, layer, values, listName)) {
+				return true;
+			}
 		}
 
 		if (layers.some(
@@ -9155,7 +9192,11 @@ const	renderingRootLayer = project.renderingRootLayer;
 		}
 	} else {
 		do {
-			if (layer === renderingRootLayer) {
+			if (
+				layer.isGlobalNoRender
+			||	renderingRootLayer === layer
+			||	renderingRootGroup === getParentLayer(layer)
+			) {
 				return true;
 			}
 
@@ -9168,11 +9209,9 @@ const	renderingRootLayer = project.renderingRootLayer;
 			}
 		} while (layer = getLayerVisibilityParent(layer));
 
-//* TODO: make this work with [no-render] colors and logic-only empty options.
-
-		// if (renderingRootLayer) {
-			// return false;
-		// }
+		if (renderingRootLayer) {
+			return false;
+		}
 	}
 
 	return true;
@@ -9792,7 +9831,7 @@ let	layer, layersToRenderOne;
 		}
 	} else {
 		if (layer = setRenderRootByValues(project, values)) {
-			layersToRenderOne = (getParentLayer(layer) || project).layers;
+			layersToRenderOne = (project.renderingRootGroup || project).layers;
 
 			if (!layersToRenderOne.includes(layer)) {
 				logTime('getRenderByValues - skipped before starting: separate layer not found.');
@@ -11561,8 +11600,9 @@ let	count = (
 
 function setRenderRootByValues(project, values) {
 
-const	optionItem = project.renderingRoot = getSelectedOptionValue(project, values, 'separate', 'separate');
-const	layer = project.renderingRootLayer = (optionItem ? optionItem.layer : null);
+const	option = project.renderingRootOption = getSelectedOptionValue(project, values, 'separate', 'separate');
+const	layer = project.renderingRootLayer = (option ? option.layer : null);
+	project.renderingRootGroup = (layer ? getParentLayer(layer) : null);
 
 	return layer;
 }
