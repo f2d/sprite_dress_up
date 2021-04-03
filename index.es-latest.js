@@ -340,10 +340,10 @@ const	SPLIT_SEC = 60
 		'checkSelectedValue' : true,
 		'skipDefaultPercent' : true,
 	}
-,	FLAG_FILENAME_TO_SAVE_HTML = Object.assign(
-		{ 'addColorsWithHTML' : true }
-	,	FLAG_FILENAME_TO_SAVE
-	)
+,	FLAG_FILENAME_TO_SAVE_HTML = {
+		'addColorsWithHTML' : true,
+		...FLAG_FILENAME_TO_SAVE,
+	}
 
 ,	FLAG_JOIN_TEXT_FILTER = { 'filter' : true }
 
@@ -381,12 +381,10 @@ const	SPLIT_SEC = 60
 		'preselect' : 'last',
 	})
 
-,	DUMMY_OPTIONAL_PARAMS = Object.freeze(
-		Object.assign(
-			{ 'optional' : true }
-		,	DUMMY_OPTION_PARAMS
-		)
-	)
+,	DUMMY_OPTIONAL_PARAMS = Object.freeze({
+		'optional' : true,
+		...DUMMY_OPTION_PARAMS,
+	})
 
 ,	DUMMY_LAYER = Object.freeze({
 		'name' : 'dummy',
@@ -1935,9 +1933,10 @@ function getNormalizedRGBA(rgba) {
 
 function getColorTextFromArray(rgba, maxCount) {
 	if (isSlicableNotString(rgba)) {
+		maxCount = orzClamp(maxCount || 4, 3,4);
 		rgba = (
 			rgba
-			.slice(0, orzClamp(maxCount || 4, 1,4))
+			.slice(0, maxCount)
 			.map(
 				(channelValue, index) => (
 					index === 3
@@ -5772,7 +5771,7 @@ async function getProjectViewMenu(project) {
 			) {
 				section.naming = {
 					'items' : {}
-				,	'params' : Object.assign({ 'skipInStorageKeys' : true }, DUMMY_OPTION_PARAMS)
+				,	'params' : { 'skipInStorageKeys' : true, ...DUMMY_OPTION_PARAMS }
 				};
 
 				section.group = {
@@ -6531,7 +6530,7 @@ function getLayerWithParamsFromParamList(paramList, layer) {
 	}
 
 	if (!layer) {
-		layer = Object.assign({}, DUMMY_LAYER);
+		layer = { ...DUMMY_LAYER };
 	}
 
 const	params = getOrInitChild(layer, 'params');
