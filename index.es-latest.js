@@ -33,7 +33,8 @@
 //* TODO: batch: to avoid bruteforcing global cross-products, build a tree-graph of selectable option dependency forks when loading a project. Make a graph from each separated root, but include unconditional [no-render] paths into each tree for color collections, etc.
 
 //* TODO ---------------------- export: ---------------------------------------
-//* TODO: save opened project as restructured ORA/PSD. Try https://github.com/Agamnentzar/ag-psd
+//* TODO: save opened project as ORA with all unused layers and other data included, full precision for opacity, etc.
+//* TODO: save opened project as PSD. Try https://github.com/Agamnentzar/ag-psd
 //* TODO: save rendered image as WebP. https://bugs.chromium.org/p/chromium/issues/detail?id=170565#c77 - toDataURL/toBlob quality 1.0 = lossless.
 //* TODO: make exported project files identically reproducible?
 
@@ -106,8 +107,9 @@ var	exampleRootDir = ''
 ,	READ_FILE_CONTENT_TO_GET_TYPE	= false	//* <- this relies on the browser or the OS to magically determine file type.
 ,	REQUIRE_NON_EMPTY_SELECTION	= false	//* <- buggy
 ,	SAVE_COLOR_AS_ONE_PIXEL_IMAGE	= false	//* <- may be stretched back by layers attributes, but not yet standard.
-,	SORT_OPTION_SECTION_NAMES	= false
+,	SAVE_OPACITY_ROUNDED		= true
 ,	SORT_OPTION_LIST_NAMES		= true
+,	SORT_OPTION_SECTION_NAMES	= false
 ,	START_WITH_BIG_TEXT		= false
 ,	START_WITH_FIXED_TAB_WIDTH	= true
 ,	START_WITH_OPEN_FIRST_MENU_TAB	= true
@@ -11022,8 +11024,18 @@ async function saveProject(project) {
 
 			oraNode.x = x;
 			oraNode.y = y;
-			oraNode.opacity = orzFloat(layer.opacity);
-			oraNode.visibility = (layer.isVisible ? 'visible' : 'hidden');
+
+			oraNode.opacity = orzFloat(
+				SAVE_OPACITY_ROUNDED
+				? layer.opacity.toFixed(2)
+				: layer.opacity
+			);
+
+			oraNode.visibility = (
+				layer.isVisible
+				? 'visible'
+				: 'hidden'
+			);
 
 		const	blendMode = layer.blendMode;
 		const	oraBlendMode = getNormalizedBlendMode(
