@@ -2,11 +2,11 @@
 	margin-left: 0;
 	margin-right: calc(100% - 100vw);
 /*	^
-Prevent page elements from jumping due to page width changing when vertical scrollbar appears.
+	Prevent page elements from jumping due to page width changing when vertical scrollbar appears.
 
-Source:
-https://css-tricks.com/elegant-fix-jumping-scrollbar-issue/
-https://aykevl.nl/2014/09/fix-jumping-scrollbar
+	Source:
+	https://css-tricks.com/elegant-fix-jumping-scrollbar-issue/
+	https://aykevl.nl/2014/09/fix-jumping-scrollbar
 */
 	color: black;
 	background-color: #ddd;
@@ -63,6 +63,65 @@ big,
 .fixed-tab-width .fixed-tab-width-button:hover,
 .larger-text .larger-text-button:hover {
 	background-color: #bdf;
+}
+.top-buttons button::-moz-focus-inner,
+.menu-list summary::-moz-focus-inner,
+.main.panel.row .button::-moz-focus-inner,
+.main.panel.row .button > *::-moz-focus-inner {
+	border: none;	/* <- https://stackoverflow.com/a/199319 */
+}
+.top-buttons button:focus,
+.menu-list summary:focus,
+.main.panel.row .button:focus,
+.main.panel.row .button > *:focus {
+	outline: none;	/* <- https://stackoverflow.com/a/47002717 */
+}
+/*	^
+	Outlines should only be modified using :focus.
+	The universal selector (*) is known to be slow.
+	Unqualified attribute selectors are known to be slow.
+	Don't use IDs in selectors.
+
+	Source:
+	http://csslint.net/
+*/
+a {
+	color: gray;
+}
+a:hover {
+	color: black;
+}
+hr {
+	border: none;
+	border-top: 0.0625em solid gray;
+}
+label:hover {
+	background-color: #eee;
+}
+[onclick],
+button,
+label,
+select,
+summary,
+input[type="file"] {
+	cursor: pointer;
+}
+[onclick]:disabled,
+button:disabled,
+label:disabled,
+select:disabled,
+input[type="file"]:disabled {
+	cursor: not-allowed;
+}
+.size-full[onclick] {
+	cursor: zoom-out;
+}
+.size-fit[onclick] {
+	cursor: zoom-in;
+}
+.size-fit {
+	max-width: 100%;
+	height: auto;	/* <- keep image from growing too wide and keep proportions */
 }
 .panel {
 	display: flex;
@@ -134,7 +193,9 @@ big,
 .panel.sub {
 	gap: 0.5em 1em;
 }
-/* For browsers without "gap" support, e.g. Firefox 56: */
+/*
+	For browsers without "gap" support, e.g. Firefox 56:
+*/
 .no-gap .panel button,
 .no-gap .panel.main > *,
 .no-gap .panel.sub > *,
@@ -150,10 +211,6 @@ big,
 .no-gap .draggable-order header {
 	padding: 0.5em 1em;
 }
-/*
-:active, :hover or toggled classname selectors behave variously bad with drag-n-drop,
-everywhere from Firefox 56 to latest Vivaldi (chrome-based browser).
-*/
 .draggable-order [draggable].dragged,
 .draggable-order [draggable]:active {		background-color: #f5f5f5;}
 .draggable-order [draggable]:hover {		background-color: #eee;}
@@ -168,63 +225,10 @@ everywhere from Firefox 56 to latest Vivaldi (chrome-based browser).
 .draggable-order .relevant[draggable].row:active,
 .draggable-order .relevant[draggable].row:hover {	background-color: #dfc;}
 .draggable-order .relevant.row {			background-color: #cea;}
-a {
-	color: gray;
-}
-a:hover {
-	color: black;
-}
-[onclick],
-button,
-select,
-label,
-input[type="file"] {
-	cursor: pointer;
-}
-[onclick]:disabled,
-button:disabled,
-select:disabled,
-label:disabled,
-input[type="file"]:disabled {
-	cursor: not-allowed;
-}
-.size-full[onclick] {
-	cursor: zoom-out;
-}
-.size-fit[onclick] {
-	cursor: zoom-in;
-}
-.size-fit {
-	max-width: 100%;
-	height: auto;	/* <- keep image from growing too wide and keep proportions */
-}
-.menu-bar > button {
-	margin: 0 0.5em;
-	padding: 0.25em 0.5em;
-	vertical-align: top;
-}
-p > button + button {
-	margin-left: 1em;
-}
-hr {
-	border: none;
-	border-top: 0.0625em solid gray;
-}
-canvas {
-	position: relative;
-}
-#loaded-files-view img,
-canvas {
-	border: 0.0625em solid #ddd;
-	box-shadow: 0.1875em 0.1875em rgba(0,0,0, 0.1);
-}
-#loaded-files-view img[onclick]:hover,
-canvas:hover {
-	border-color: gray;
-}
-label:hover {
-	background-color: #eee;
-}
+/*	^
+	:active, :hover or toggled classname selectors behave variously bad with drag-n-drop,
+	everywhere from Firefox 56 to latest Vivaldi (chrome-based browser).
+*/
 .menu-head {
 	display: inline-block;
 	position: relative;
@@ -236,6 +240,9 @@ label:hover {
 	background-color: #f5f5f5;
 }
 .menu-head > .button::before {
+	content: "\25BF\A0";
+}
+.menu-head > .button.show::before {
 	content: "\25BE\A0";
 }
 .menu-head:hover > .button {
@@ -264,19 +271,119 @@ label:hover {
 }
 .menu-list {
 	display: block;
-	padding: 0 1em;
 	border: 0.0625em solid gray;
 	background-color: #f5f5f5;
 	text-align: left;
 	white-space: nowrap;
+	line-height: 1.5;
 }
-.r .menu-list {
-	text-align: right;
+.menu-list button + button {
+	margin-left: auto;
 }
-.r .menu-head > :first-child::before,
-.r .menu-hid {
-	left: inherit;
-	right: 0;
+.menu-list > details:not(:first-child),
+.menu-list > section:not(:first-child) {
+	border-top: 0.0625em solid gray;
+}
+.menu-list > section {
+	padding: 0 1em;
+}
+.menu-list > header {
+	display: flex;
+	margin: 1em;
+}
+.menu-list > details > summary {
+}
+.menu-list > details > summary {
+	padding: 1em;
+	background-color: rgba(0,0,0, 0.05);
+}
+.menu-list > details > summary:hover {
+	background-color: white;
+}
+.menu-list > details[open] > summary {
+	background-color: #ace;
+}
+.menu-list > details[open] > summary:hover {
+	background-color: #bdf;
+}
+.menu-list > details > div {
+	padding: 1em;
+	transition: background-color 0.7s ease-in;
+	background-color: transparent;
+}
+.menu-list > details.opening > div {
+	transition: none;
+	background-color: #bdf;
+}
+.menu-list > details table,
+.menu-list > details tr,
+.menu-list > details td {
+	margin: 0;
+	padding: 0;
+	border-collapse: collapse;
+}
+.menu-list > details th {
+	padding: 0.5em;
+}
+.menu-list > details th:first-child {
+	padding-left: 0;
+}
+.menu-list > details td {
+	padding-left: 0.5em;
+	vertical-align: top;
+}
+.menu-list > details td:first-child {
+	width: 0;
+	padding-left: 0;
+}
+.menu-list > details tr:hover td {
+	background-color: white;
+}
+.menu-list > details tr:hover td code {
+	opacity: 0.7;		/* <- hack to avoid redefining all bg colors */
+}
+.menu-list > details pre {
+	/* display: flex; */
+}
+.menu-list > details code,
+.menu-list > details code span,
+.menu-list > details pre span,
+.menu-list > details .list,
+.menu-list > details .button-text {
+	display: inline-flex;	/* <- (TODO) does not fill parent table-cell height */
+}
+.menu-list > details pre > :not(.value),
+.menu-list > details code > :not(.value),
+.menu-list > details code[class],
+.menu-list > details .button-text {
+	padding-left: 0.5em;
+	padding-right: 0.5em;
+}
+.menu-list > details pre:first-child {
+	margin-top: 0.5em;
+}
+.menu-list > details pre {
+	margin-top: 2.5em;
+	margin-bottom: 0.5em;
+	padding: 0.5em;
+}
+.menu-list > details pre br {
+	margin-bottom: 0.5em;
+}
+.menu-list > details code,
+.menu-list > details pre,
+.menu-list > details .button-text,
+.menu-list > details .ignore {	background-color: #e2e2e2;}
+.menu-list > details .comment {	background-color: #f3d7d7;}
+.menu-list > details .name {	background-color: #d7d7f3;}
+.menu-list > details .param {	background-color: #d7f3d7;}
+.menu-list > details .path {	background-color: #f3f300;}
+.menu-list > details .value {	color: #1e90ff;}
+.menu-list > details .custom {	color: red;}	/* cadetblue = #5f9ea0, dodgerblue = #1e90ff */
+.menu-list > details .ignore {
+	min-width: 2em;
+	text-align: center;
+	display: inline-block;
 }
 .example-files {
 	border-collapse: collapse;
@@ -286,10 +393,12 @@ label:hover {
 }
 .example-files td:first-child {
 	text-align: right;
-	padding-left: 0;
 }
-.example-files td:last-child {
-	padding-right: 0;
+.example-files tr > *:first-child {
+	padding-left: 1em;
+}
+.example-files tr > *:last-child {
+	padding-right: 1em;
 }
 .example-file-type,
 .example-file-type header {
@@ -306,7 +415,7 @@ label:hover {
 .example-file.loading td:last-child::after {
 	position: absolute;
 	top: 0;
-	left: 100%;
+	right: 0;
 	width: 1em;
 	text-align: center;
 	content: "⌛";
@@ -409,183 +518,34 @@ label:hover {
 	background-position: center;
 	background-repeat: no-repeat;
 }
-.menu-list > header {
-	margin: 1em 0;
-}
-#top-menu-help table,
-#top-menu-help table tr,
-#top-menu-help table td {
-	margin: 0;
-	padding: 0;
-	border-collapse: collapse;
-}
-#top-menu-help header > button {
-	float: right;
-}
-#top-menu-help header > table td:first-child {
-	width: 100%;
-}
-#top-menu-help header > table td:not(:first-child) button {
-	margin-left: 0.25em;
-}
-#top-menu-help section {
-	margin: 0.5em -1em;
-	border-width: 0 1em;
-	border-style: solid;
-	border-color: transparent;
-}
-#top-menu-help section:hover {
-	border-color: #bdf;
-}
-#top-menu-help section header {
-	padding: 0.5em;
-	/* text-align: center; */
-	background-color: rgba(0,0,0, 0.1);
-}
-#top-menu-help section header:hover {
-	background-color: white;
-}
-#top-menu-help section header.show {
-	background-color: #ace;
-}
-#top-menu-help section header.show:hover {
-	background-color: #bdf;
-}
-#top-menu-help section > div {
-	padding: 1em 0.5em;
-	margin-bottom: 1em;
-	transition: background-color 0.7s ease-in;
-	background-color: transparent;
-}
-#top-menu-help section > div.open-up {
-	transition: none;
-	background-color: #bdf;
-}
-#top-menu-help section > div > table th {
-	padding: 0.5em;
-}
-#top-menu-help section > div > table th:first-child {
-	padding-left: 0;
-}
-#top-menu-help section > div > table td {
-	padding-left: 0.5em;
-	vertical-align: top;
-}
-#top-menu-help section > div > table td:first-child {
-	width: 0;
-	padding-left: 0;
-}
-#top-menu-help section > div > table tr:hover td {
-	background-color: white;
-}
-#top-menu-help section > div > table tr:hover td code {
-	opacity: 0.6;
-}
-#top-menu-help .left-arrow::before,
-#top-menu-help .right-arrow::after {
-	display: inline-block;
-	vertical-align: bottom;
-	border: 1em solid transparent;
-	width: 0;
-	height: 0;
-	content: "";
-}
-#top-menu-help .left-arrow::before {
-	border-left-color: rgba(0,0,0, 0.1);
-	margin-right: 0.5em;
-}
-#top-menu-help .right-arrow::after {
-	border-right-color: rgba(0,0,0, 0.1);
-	margin-left: 0.5em;
-}
-#top-menu-help .show .left-arrow::before,
-#top-menu-help .show .right-arrow::after {
-	border-color: transparent;
-	border-top-color: rgba(0,0,0, 0.1);
-	border-bottom-width: 0.5em;
-	margin-top: 0.5em;
-}
-/* #top-menu-help pre > :not(.ignore):not(.value), */
-/* #top-menu-help code > :not(.ignore):not(.value), */
-/* #top-menu-help code, */
-#top-menu-help .list,
-#top-menu-help .button-text {
-	display: inline-flex;	/* <- (TODO) does not fill parent table-cell height */
-}
-#top-menu-help pre > :not(.value),
-#top-menu-help code > :not(.value),
-#top-menu-help code[class],
-#top-menu-help .button-text {
-	padding-left: 0.5em;
-	padding-right: 0.5em;
-}
-#top-menu-help pre:first-child {
-	margin-top: 0.5em;
-}
-#top-menu-help pre {
-	margin-top: 2.5em;
-	margin-bottom: 0.5em;
-	padding: 0.5em;
-}
-#top-menu-help pre br {
-	margin-bottom: 0.5em;
-}
-#top-menu-help code,
-#top-menu-help pre,
-#top-menu-help .button-text,
-#top-menu-help .ignore {	background-color: #e2e2e2;}
-#top-menu-help .comment {	background-color: #f3d7d7;}
-#top-menu-help .name {		background-color: #d7d7f3;}
-#top-menu-help .param {		background-color: #d7f3d7;}
-#top-menu-help .path {		background-color: #f3f300;}
-#top-menu-help .variant {	color: #5f9ea0;}
-#top-menu-help .value {		color: #1e90ff;}
-#top-menu-help .custom {	color: red;}	/* cadetblue = #5f9ea0, dodgerblue = #1e90ff */
-#top-menu-help .ignore {
-	min-width: 2em;
-	text-align: center;
-	display: inline-block;
-}
-.fixed-tab-width #loaded-files-selection .button-text {
+.fixed-tab-width .main.panel.row .button-text {
 	width: 8em;			/* <- "em" is bad with different font-sizes on different lines, so set only here */
 }
 .count-line,
-.fixed-tab-width #loaded-files-selection .button-text,
-.fixed-tab-width #loaded-files-selection .button-text * {
+.fixed-tab-width .main.panel.row .button-text,
+.fixed-tab-width .main.panel.row .button-text * {
 	overflow: hidden;
 	text-overflow: ellipsis;	/* <- requires max-width */
 	white-space: nowrap;
 }
-#loaded-files-selection .button-text {
+.main.panel.row .button-text {
 	text-align: left;
 	margin: 0.25em 0.5em;
 }
-#loaded-files-selection .button-name {
+.main.panel.row .button-name {
 	font-size: 80%;
 	font-weight: bold;
 }
-#loaded-files-selection .button-status {
+.main.panel.row .button-status {
 	font-size: 70%;
 	opacity: 0.35;
 }
-#loaded-files-selection .button-select,
-#loaded-files-selection .button-close,
-#loaded-files-selection .button {
+.main.panel.row .button-select,
+.main.panel.row .button-close,
+.main.panel.row .button {
 	display: inline-flex;	/* <- vertically fill container row height */
 }
-.top-buttons button::-moz-focus-inner,
-#loaded-files-selection .button::-moz-focus-inner,
-#loaded-files-selection .button > *::-moz-focus-inner {
-	border: none;	/* <- https://stackoverflow.com/a/199319 */
-}
-.top-buttons button,
-#loaded-files-selection .button,
-#loaded-files-selection .button > * {
-	outline: none;	/* <- https://stackoverflow.com/a/47002717 */
-}
-#loaded-files-selection:empty,
-#loaded-files-view:empty,
-#loaded-files-view > :not(.show),
+.loaded-file:not(.show),
 .loaded-file:empty {
 	display: none;
 }
@@ -601,6 +561,11 @@ label:hover {
 .loaded-file img {
 	padding: 0.5em;
 	margin: 0.5em;
+	border: 0.0625em solid #ddd;
+	box-shadow: 0.1875em 0.1875em rgba(0,0,0, 0.1);
+}
+.loaded-file img[onclick]:hover {
+	border-color: gray;
 }
 .project-options header {
 	background-color: rgba(0,0,0, 0.1);
@@ -712,9 +677,9 @@ label:hover {
 .filename {
 	font-weight: bold;
 }
-.filename .selected-parts {	color: #b184b1;}	/* <- random picked around violet */
-.filename .list-name {		color: #5b97b0;}	/* <- random picked around skyblue */
-.filename .option-name {	color: #33c833;}	/* <- random picked around limegreen */
+.filename .selected-parts {	color: #b184b1;}
+.filename .list-name {		color: #1e90ff;}
+.filename .option-name {	color: #5f9ea0;}
 p.warning {
 	text-align: center;
 }
@@ -751,14 +716,8 @@ p.warning {
 	display: inline-block;	/* <- to remove underline, https://stackoverflow.com/a/15688237 */
 	/* text-decoration: none; */
 }
-header:not(:hover) .help-section-header::before {
+.help-section-header:not(:hover)::before {
 	visibility: hidden;
-}
-header.show [name="open_section"],
-header:not(.show) [name="close_section"],
-[hidden],
-.hidden {
-	display: none !important;
 }
 .fade-out {
 	transition: opacity 0.7s ease-in;
@@ -768,6 +727,10 @@ header:not(.show) [name="close_section"],
 	display: inline-flex;
 	align-self: center;
 	align-content: center;
-	content: attr(data-wip);
+	content: attr(data-wip);	/* <- animated text */
 	width: 1em;
+}
+[hidden],
+.hidden {
+	display: none !important;
 }

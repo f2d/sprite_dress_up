@@ -2331,11 +2331,12 @@ const	regClassName = getClassReg(className);
 	return element;
 }
 
-function getThisOrParentByTagName(element, tagName) {
-	tagName = tagName.toLowerCase();
-
+function getThisOrParentByTagName(element, ...tagNames) {
 	while (element) {
-		if (element.tagName && element.tagName.toLowerCase() === tagName) {
+		if (
+			element.tagName
+		&&	tagNames.includes(element.tagName.toLowerCase())
+		) {
 			break;
 		}
 
@@ -2462,64 +2463,32 @@ function toggleDropdownMenu(element) {
 
 function toggleSection(element, action) {
 
-	function toggleSectionClass(header, element) {
-	const	wasOpen = regClassShow.test(header.className);
+	function toggleOneSection(section) {
+		if (section) {
+			if (isActionOpen) {
+				if (!isActionAll || !section.open) {
+					toggleClass(section, 'opening', 1);
 
-		toggleClass(header,  'show',   isActionOpen ?  1 : isActionClose ? -1 : 0);
-		toggleClass(element, 'hidden', isActionOpen ? -1 : isActionClose ?  1 : 0);
+					setTimeout(() => toggleClass(section, 'opening', -1), 300);
+				}
 
-	const	justOpened = !wasOpen && regClassShow.test(header.className);
-
-		if (
-			isActionAll
-			? justOpened
-			: (isActionOpen || justOpened)
-		) {
-			toggleClass(element, 'open-up', 1);
-
-			setTimeout(() => toggleClass(element, 'open-up', -1), 300);
-		}
-	}
-
-	function toggleAllSections(element) {
-	let	header;
-
-		while (element) {
-			if (header) {
-				toggleSectionClass(header, element);
-
-				++toggledCount;
+				section.open = true;
+			} else
+			if (isActionClose) {
+				section.open = false;
 			}
-
-			header = (element.tagName === tagName ? element : null);
-			element = element.nextElementSibling;
 		}
 	}
 
-const	header = getThisOrParentByTagName(element, 'header');
-
-	if (!header) {
-		return;
-	}
-
-const	actionWords = (action || element.name || '').split('_');
+const	actionWords = String(action || element.name).split('_');
 const	isActionAll = actionWords.includes('all');
 const	isActionOpen = actionWords.includes('open');
 const	isActionClose = actionWords.includes('close');
-const	tagName = header.tagName;
-
-let	toggledCount = 0;
 
 	if (isActionAll) {
-		for (const section of getAllByTag('section', header.parentNode)) {
-			toggleAllSections(getAllByTag('header', section)[0]);
-		}
-
-		if (!toggledCount) {
-			toggleAllSections(header);
-		}
+		getAllByTag('details', getOneById('top-menu-help')).forEach(toggleOneSection);
 	} else {
-		toggleSectionClass(header, header.nextElementSibling);
+		toggleOneSection(getThisOrParentByTagName(element, 'details', 'section'));
 	}
 
 	updateDropdownMenuPositions();
@@ -2533,8 +2502,8 @@ const	header = getOneById('top-menu-' + sectionName);
 
 		if (source) {
 		const	sourceElement = (isString(source) ? getOneById('top-menu-' + source) : source);
-		const	toSection = getThisOrParentByTagName(header, 'section');
-		let	fromSection = getThisOrParentByTagName(sourceElement, 'section');
+		const	toSection = getThisOrParentByTagName(header, 'details', 'section');
+		let	fromSection = getThisOrParentByTagName(sourceElement, 'details', 'section');
 		let	alignWithTop = true;
 
 			while (fromSection && toSection) {
@@ -2547,7 +2516,9 @@ const	header = getOneById('top-menu-' + sectionName);
 				}
 			}
 
-			toSection.scrollIntoView(alignWithTop);
+			if (toSection) {
+				toSection.scrollIntoView(alignWithTop);
+			}
 		} else {
 			header.scrollIntoView();
 		}
@@ -12518,6 +12489,10 @@ let	canLoadLocalFiles = true;
 
 //* Create main menu:
 
+	function replaceBRsToNewParagraph(content) {
+		return content.replace(/(\s*\<br\>){2,}/gi, '</p><p>');
+	}
+
 	logLabel = 'Init menu: file types';
 	console.time(logLabel);
 
@@ -12570,24 +12545,27 @@ const	supportedFileTypesText = (
 ,	openingNotesHTML = getLocalizedHTML('file_notes')
 ,	menuHTMLparts = {};
 
-	menuHTMLparts.file = (
-		'<p>'
-	+		getLocalizedHTML('file_select_project')
-	+		':'
-	+	'</p>'
-	+	'<input type="file" onchange="onPageDrop(this)" multiple accept="'
-	+		encodeTagAttr(inputFileAcceptTypesText)
-	+	'">'
-	+	'<p>'
-	+		getLocalizedHTML('file_formats')
-	+		':\n'
-	+		supportedFileTypesText
-	+		'.'
-	+	'</p>'
-	+	'<hr>'
-	+	'<p>'
-	+		openingNotesHTML
-	+	'</p>'
+	menuHTMLparts.file = replaceBRsToNewParagraph(
+		'<section>'
+	+		'<p>'
+	+			getLocalizedHTML('file_select_project')
+	+			':'
+	+		'</p>'
+	+		'<input type="file" onchange="onPageDrop(this)" multiple accept="'
+	+			encodeTagAttr(inputFileAcceptTypesText)
+	+		'">'
+	+		'<p>'
+	+			getLocalizedHTML('file_formats')
+	+			':\n'
+	+			supportedFileTypesText
+	+			'.'
+	+		'</p>'
+	+	'</section>'
+	+	'<section>'
+	+		'<p>'
+	+			openingNotesHTML
+	+		'</p>'
+	+	'</section>'
 	);
 
 	console.timeEnd(logLabel);
@@ -12862,7 +12840,7 @@ const	batchButtonsHTML = (
 
 	function getArrayCodeReplaceSlashToNewLine(...values) {
 		return values.map(
-			(value) => wrap.code.list(
+			(value) => wrap.code.listing(
 				isFunction(value.split)
 				? value.split('/').join('\n')
 				: value
@@ -12994,10 +12972,15 @@ const	batchButtonsHTML = (
 			+ ' → '
 			+ wrap.span.filename(
 				getLocalizedText(name).replace(
-					/(\[)([^\[\].]+)(\])/g
-				,	(match, open, inside, close) => (
+					/(\[)([^\[\].=]*=)?([^\[\].]+)(\])/g
+				,	(match, open, listName, optionName, close) => (
 						open
-						+ wrap.span.variant(inside)
+						+ (
+							listName
+							? wrap.span.list(listName)
+							: ''
+						)
+						+ wrap.span.option(optionName)
 						+ close
 					)
 				)
@@ -13017,13 +13000,14 @@ const	wrapperClassNames = [
 		'filename',
 		'folder ignore',
 		'ignore',
-		'list param',
+		'list-name',
+		'listing param',
 		'name',
 		'nested-layer ignore',
+		'option-name',
 		'param',
 		'path',
 		'sample param value',
-		'variant',
 	];
 
 	for (const className of wrapperClassNames) {
@@ -13899,21 +13883,16 @@ const	helpSections = {
 		],
 	};
 
-	function getHeaderWithToggleButtons(toggleName, sectionName) {
+	function getHelpSectionHTML(toggleName, sectionName, sectionContent) {
 	let	content;
 
-		if (
-			sectionName
-		&&	(content = getLocalizedText(sectionName))
-		) {
-			return (
-				'<header onclick="toggleSection(this)" id="'
+		if (sectionName) {
+			content = (
+				'<summary class="help-section-header" id="'
 			+		encodeTagAttr('top-menu-' + sectionName)
 			+	'">'
-			+		getTableHTML(content)
-					.replace('<tr', '<tr class="left-arrow right-arrow"')
-					.replace('<td', '<td class="help-section-header"')
-			+	'</header>'
+			+		getLocalizedText(sectionName)
+			+	'</summary>'
 			);
 		} else {
 			content = OPEN_CLOSE.map(
@@ -13923,21 +13902,32 @@ const	helpSections = {
 					return (
 						'<button onclick="return toggleSection(this)" name="'
 					+		encodeTagAttr(buttonName)
-					+	'" id="'
-					+		encodeTagAttr('top-menu-' + sectionName)
 					+	'">'
 					+		getLocalizedText(buttonName)
 					+	'</button>'
 					);
 				}
-			).join('</td><td>')
+			).join('');
+		}
 
-			return (
+		if (sectionContent) {
+			content = (
+				'<details ontoggle="updateDropdownMenuPositions()">'
+			+		content
+			+		'<div>'
+			+			sectionContent
+			+		'</div>'
+			+	'</details>'
+			);
+		} else {
+			content = (
 				'<header>'
-			+		getTableHTML(content)
+			+		content
 			+	'</header>'
 			);
 		}
+
+		return content;
 	}
 
 const	menuHTMLpartsOrder = [
@@ -13963,7 +13953,7 @@ const	menuHTMLpartsOrder = [
 	];
 
 	menuHTMLparts.help = getNestedFilteredArrayJoinedText([
-		getHeaderWithToggleButtons('all_sections')
+		getHelpSectionHTML('all_sections')
 	,	menuHTMLpartsOrder.map(
 			(sectionName) => {
 			const	content = helpSections[sectionName];
@@ -14001,14 +13991,7 @@ const	menuHTMLpartsOrder = [
 					)
 				);
 
-				return (
-					'<section>'
-				+		getHeaderWithToggleButtons('section', 'help_' + sectionName)
-				+		'<div class="hidden">'
-				+			sectionContentHTML
-				+		'</div>'
-				+	'</section>'
-				);
+				return getHelpSectionHTML('section', 'help_' + sectionName, sectionContentHTML);
 			}
 		)
 	]);
@@ -14020,18 +14003,16 @@ const	menuHTMLpartsOrder = [
 
 const	aboutLinks = [
 		{
-			'content' : getLocalizedHTML('about_notes')
-		}
-	,	{
-			'pretext' : '<hr>'
-		,	'header' : getLocalizedHTML('about_source')
-		,	'links' : [
-				['https://github.com/f2d/sprite_dress_up', 'GitHub']
-			]
-		}
-	,	{
-			'header' : getLocalizedHTML('about_lang')
-		,	'links' : (
+			'content' : getLocalizedHTML('about_notes'),
+		}, {
+			// 'pretext' : '<hr>',
+			'header' : getLocalizedHTML('about_source'),
+			'links' : [
+				['https://github.com/f2d/sprite_dress_up', 'GitHub'],
+			],
+		}, {
+			'header' : getLocalizedHTML('about_lang'),
+			'links' : (
 				getAllByTag('link')
 				.filter(
 					(element) => (
@@ -14045,15 +14026,16 @@ const	aboutLinks = [
 					,	element.getAttribute('hreflang').toUpperCase()
 					]
 				)
-			)
-		}
+			),
+		},
 	];
 
 	menuHTMLparts.about = getNestedFilteredArrayJoinedText(
 		aboutLinks.map(
-			(entry) => (
+			(entry) => replaceBRsToNewParagraph(
 				(entry.pretext || '')
-			+	'<p>'
+			+	'<section>'
+			+		'<p>'
 			+	(!entry.header ? '' : entry.header + ':<br>')
 			+	(!entry.lines ? '' : entry.lines.join('<br>'))
 			+	getNestedFilteredArrayJoinedText(
@@ -14074,7 +14056,8 @@ const	aboutLinks = [
 				,	', '
 				)
 			+	(entry.content || '')
-			+	'</p>'
+			+		'</p>'
+			+	'</section>'
 			)
 		)
 	);
