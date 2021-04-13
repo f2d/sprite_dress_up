@@ -2238,6 +2238,20 @@ let	helperObject;
 	return null;
 }
 
+function isStyleIncluded(element, prop) {
+let	helperObject;
+
+	if (helperObject = element.currentStyle) {
+		return (dashedToCamelCase(prop) in helperObject);
+	}
+
+	if (helperObject = window.getComputedStyle) {
+		return (prop in helperObject(element));
+	}
+
+	return false;
+}
+
 function getChildByAttr(element, attrName, attrValue) {
 	if (element) {
 		element = element.firstElementChild;
@@ -7423,8 +7437,8 @@ async function loadORA(project) {
 			project.layersCount	= orz(sourceData.layersCount);
 			project.nodesCount	= sourceData.layers.length;
 
-			project.width	= sourceData.width;
-			project.height	= sourceData.height;
+			project.width	= orz(sourceData.width);
+			project.height	= orz(sourceData.height);
 
 //* Fix for original ora.js:
 
@@ -12375,6 +12389,7 @@ const	logLabelWrap = 'Init';
 let	logLabel = `Init localization "${LANG}"`;
 	console.time(logLabel);
 
+	toggleClass(document.body, 'stub', -1);
 	toggleClass(document.body, 'loading', 1);
 	await loadLibPromise(LIB_LANG_DIR + 'localization.' + LANG + '.js');
 	document.body.innerHTML = getLocalizedHTML('loading');
@@ -14111,7 +14126,7 @@ const	toggleTextSizeHTML = (
 	+	'</div>'
 	);
 
-	if (!getStyleValue(getAllByClass('panel')[0], 'gap')) {
+	if (!isStyleIncluded(getAllByClass('panel')[0], 'gap')) {
 		toggleClass(document.body, 'no-gap', 1);
 	}
 
