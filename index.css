@@ -11,10 +11,16 @@
 	color: black;
 	background-color: #ddd;
 	font-family: sans-serif;
+	line-height: 1.5;
+	text-align: center;
 }
 body {
 	margin: 1em auto;
-	text-align: center;
+}
+.stub {
+	background-color: #f5f5f5;
+	display: inline-block;
+	padding: 1em;
 }
 small {
 	font-size: smaller;
@@ -275,7 +281,6 @@ input[type="file"]:disabled {
 	background-color: #f5f5f5;
 	text-align: left;
 	white-space: nowrap;
-	line-height: 1.5;
 }
 .menu-list button + button {
 	margin-left: auto;
