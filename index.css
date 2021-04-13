@@ -22,6 +22,9 @@ body {
 	display: inline-block;
 	padding: 1em;
 }
+.text {
+	line-height: 1.5;
+}
 small {
 	font-size: smaller;
 }
@@ -154,12 +157,7 @@ input[type="file"]:disabled {
 	margin: 1em;
 	padding: 1em 1.5em;
 	background-color: #f5f5f5;
-}
-.panel header {
-	padding: 0.5em 1em;
-}
-.panel header.filename {
-	padding: 0 1em 1em 0;
+	line-height: normal;
 }
 .panel.sub button,
 .panel.sub header,
@@ -554,6 +552,12 @@ input[type="file"]:disabled {
 .loaded-file:empty {
 	display: none;
 }
+.loaded-file > header {
+	padding: 0.5em 1em;
+}
+.loaded-file > header.filename {
+	padding: 0 1em 1em 0;
+}
 .loaded-file .project-render :not(img),
 .loaded-file table,
 .loaded-file tr,
@@ -573,6 +577,7 @@ input[type="file"]:disabled {
 	border-color: gray;
 }
 .project-options header {
+	padding: 0.5em 1em;
 	background-color: rgba(0,0,0, 0.1);
 }
 .project-options select {

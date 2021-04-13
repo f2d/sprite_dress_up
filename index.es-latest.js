@@ -719,8 +719,8 @@ const	SPLIT_SEC = 60
 ,	PROJECT_NAMING_BUTTON_NAMES = [
 		'saved_file_naming_change',
 		'saved_file_naming_sort',
-		'saved_file_naming_reset_to_initial',
 		'saved_file_naming_reset_to_default',
+		'saved_file_naming_reset_to_initial',
 		'saved_file_naming_close',
 	]
 
@@ -6121,7 +6121,7 @@ const	projectTitle = cre('header', container);
 	projectTitle.textContent = project.fileName;
 
 const	buttonsPanel = cre('div', container);
-	buttonsPanel.className = 'panel row wrap';
+	buttonsPanel.className = 'panel row text wrap';
 
 	if (project.options) {
 	const	fileSaveTitle = cre('header', container);
