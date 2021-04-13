@@ -134,6 +134,9 @@ input[type="file"]:disabled {
 }
 .panel {
 	display: flex;
+	text-align: left;
+	vertical-align: top;
+	white-space: nowrap;
 }
 .panel:empty {
 	display: none;
@@ -147,11 +150,6 @@ input[type="file"]:disabled {
 }
 .panel.wrap {
 	flex-wrap: wrap;
-}
-.panel {
-	text-align: left;
-	vertical-align: top;
-	white-space: nowrap;
 }
 .panel.main {
 	margin: 1em;
@@ -295,8 +293,6 @@ input[type="file"]:disabled {
 	margin: 1em;
 }
 .menu-list > details > summary {
-}
-.menu-list > details > summary {
 	padding: 1em;
 	background-color: rgba(0,0,0, 0.05);
 }
@@ -345,9 +341,6 @@ input[type="file"]:disabled {
 .menu-list > details tr:hover td code {
 	opacity: 0.7;		/* <- hack to avoid redefining all bg colors */
 }
-.menu-list > details pre {
-	/* display: flex; */
-}
 .menu-list > details code,
 .menu-list > details code span,
 .menu-list > details pre span,
@@ -366,6 +359,7 @@ input[type="file"]:disabled {
 	margin-top: 0.5em;
 }
 .menu-list > details pre {
+	/* display: flex; */
 	margin-top: 2.5em;
 	margin-bottom: 0.5em;
 	padding: 0.5em;
@@ -580,16 +574,14 @@ input[type="file"]:disabled {
 	padding: 0.5em 1em;
 	background-color: rgba(0,0,0, 0.1);
 }
-.project-options select {
-	display: block;
-	width: 100%;
-	min-width: 8em;
-}
 .project-options .option-select {
 	max-width: 10em;
 }
 .project-options select {
+	display: block;
 	border-width: 0.0625em;
+	width: 100%;
+	min-width: 8em;
 }
 .project-options select,
 .project-options option {

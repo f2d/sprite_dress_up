@@ -113,7 +113,7 @@ arg_preview_size   = get_cmd_arg_after_arg(['z', 'zoom_size', 'preview_size'], n
 
 converter_exe_path = 'magick'
 
-converter_filters = None			# <- get automatically once for each run
+converter_filters = []				# <- get automatically once for each run
 
 merged_layer_suffix = '[0]'			# <- to use pre-merged layer
 
@@ -252,7 +252,7 @@ def print_with_colored_title(title=None, content=None, title_color=None, content
 			print(content)
 
 def is_type_str(v):
-	return isinstance(v, s_type) or isinstance(v, u_type)
+	return isinstance(v, (s_type, u_type))
 
 def get_str_from_bytes(v):
 	return v if is_type_str(v) else v.decode()
@@ -346,7 +346,7 @@ def read_file(path, mode='r'):
 	if not os.path.isfile(path):
 		return ''
 
-	if not 'b' in mode:
+	if 'b' not in mode:
 		file = io.open(path, mode, encoding=file_encoding)
 	else:
 		file = open(path, mode)
@@ -359,7 +359,7 @@ def read_file(path, mode='r'):
 def write_file(path, content, mode='a'):
 	result = None
 
-	if not 'b' in mode and isinstance(content, u_type):
+	if 'b' not in mode and isinstance(content, u_type):
 		file = io.open(path, mode, encoding=file_encoding)
 	else:
 		file = open(path, mode)
@@ -499,9 +499,8 @@ def get_cmd_result(cmd_args):
 	return ''
 
 def get_converter_filters():
-	global converter_filters
+	if not len(converter_filters):
 
-	if not converter_filters:
 		for cmd_args in get_image_cmd_versions(cmd_args_to_get_filters):
 			cmd_result = get_cmd_result(cmd_args)
 
@@ -510,7 +509,8 @@ def get_converter_filters():
 				a = [line.strip() for line in a]
 				a = filter(None, a)
 				a = sorted(list(set(a)))
-				converter_filters = a
+
+				converter_filters.extend(a)
 
 				break
 
@@ -910,8 +910,6 @@ if old_content:
 	]
 
 	def replace_var(match):
-		global replacements
-
 		if match.group('Comment'):
 			return match.group(0)
 
