@@ -22,11 +22,11 @@
 //* TODO: collage: fix stuck rendering of oversized collage.
 //* TODO: collage: arrange joined images without using DOM, to avoid currently visible images moving to hidden container when saving collage.
 //* TODO: clipping: fix hiding of clipping group with skipped/invisible/empty base layer.
-//* TODO: copypaste: properly check visibility of (possibly nested) pasted layer; keep track of its current root while rendering; push/pop in pasted layer's prop[]?
+//* TODO: clipping: disambiguate PSD/SAI clipping mode (which groups implicitly) from ORA/SVG src-atop (which does not group and leaks via passthrough/isolation=auto) by wrapping the group (clipped layers and the base) into additional folder to make resulting files look as intended in MyPaint. Assign base layer name/blendmode/opacity/mask to wrapper, rename wrapped base to "(comment-only sanitized placeholder name)" to keep it working as intended in dress-up. This will break path/name relationship of clipping group with its former parent folder. Maybe it would be better to make this "implicit virtal subfolder" behaviour official?
 //* TODO: blending: arithmetic emulation of all operations, not native to JS.
 //* TODO: blending: arithmetic emulation of all operations in 16/32-bit (float?) until final result; optional with checkbox/selectbox.
 //* TODO: blending: keep layer images as PNGs, create arrays for high-precision blending on demand, discard arrays when HQ mode is disabled.
-//* TODO: encode: set RGB of zero-alpha pixels to average of all non-zero-alpha neighbour RGB values ignoring alpha.
+//* TODO: encode: set RGB of zero-alpha pixels to average of all non-zero-alpha neighbour RGB values, ignoring alpha.
 //* TODO: compose: for files without merged image data - render ignoring options, but respecting layer visibility properties. Or buttons to show embedded and/or rendered image regardless of options. Or add this as top-most option for any project, with or without options.
 //* TODO: revoke collage blob urls when cleaning view container?
 //* TODO: revoke any image blob urls right after image element's loading, without ever tracking/listing them?
@@ -11678,6 +11678,23 @@ function addEventListeners(element, funcByEventName) {
 	}
 }
 
+function addDebugTextToPage(textId, text) {
+let	element = getOneById(textId);
+
+	if (!element) {
+		element = cre('p', getAllByClass('top-buttons')[0]);
+		element.id = element.title = textId;
+	}
+
+	element.textContent = text;
+}
+
+function preventLoadingProjectAutoselect() {
+	lastTimeProjectTabSelectedByUser = getTimeNow();
+
+	if (TESTING > 1) (TESTING > 9 ? addDebugTextToPage : console.log)('lastTimeProjectTabSelectedByUser:', lastTimeProjectTabSelectedByUser);
+}
+
 function onBeforeUnload(evt) {
 	evt = eventStop(evt, FLAG_EVENT_STOP_IMMEDIATE);
 
@@ -11783,6 +11800,7 @@ let	button = evt;
 	}
 
 	eventStop(evt, FLAG_EVENT_STOP_IMMEDIATE);
+	preventLoadingProjectAutoselect();
 
 	if (button.disabled) {
 		return;
@@ -11871,6 +11889,7 @@ let	element = evt;
 	}
 
 	eventStop(evt, FLAG_EVENT_STOP_IMMEDIATE);
+	preventLoadingProjectAutoselect();
 
 const	container = getProjectContainer(element);
 const	project = container.project;
@@ -12337,7 +12356,7 @@ function selectProject(buttonTab, autoSelected) {
 		}
 
 		if (!autoSelected) {
-			lastTimeProjectTabSelectedByUser = getTimeNow();
+			preventLoadingProjectAutoselect();
 		}
 	}
 }
@@ -14173,6 +14192,8 @@ const	linkTooltips = [
 		,	'resize' :	onResize
 		}
 	);
+
+	getOneById('loaded-files-view').addEventListener('click', preventLoadingProjectAutoselect, true);
 
 //* Open or restore state of UI parts:
 
