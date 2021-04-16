@@ -28,8 +28,9 @@
 //* TODO: blending: keep layer images as PNGs, create arrays for high-precision blending on demand, discard arrays when HQ mode is disabled.
 //* TODO: encode: set RGB of zero-alpha pixels to average of all non-zero-alpha neighbour RGB values, ignoring alpha.
 //* TODO: compose: for files without merged image data - render ignoring options, but respecting layer visibility properties. Or buttons to show embedded and/or rendered image regardless of options. Or add this as top-most option for any project, with or without options.
-//* TODO: revoke collage blob urls when cleaning view container?
-//* TODO: revoke any image blob urls right after image element's loading, without ever tracking/listing them?
+//* TODO: image blobs: revoke collage blob urls when cleaning view container?
+//* TODO: image blobs: revoke any image blob urls right after image element's loading, without ever tracking/listing them?
+//* TODO: image blobs: deduplicate rendered images per project. Deduplicate <img> elements too?
 //* TODO: batch: to avoid bruteforcing global cross-products, build a tree-graph of selectable option dependency forks when loading a project. Make a graph from each separated root, but include unconditional [no-render] paths into each tree for color collections, etc.
 
 //* TODO ---------------------- export: ---------------------------------------
@@ -10485,6 +10486,7 @@ let	batchContainer, subContainer;
 				project
 			,	render
 			,	subContainer
+			,	batchContainer
 			);
 		}
 
@@ -10501,6 +10503,7 @@ let	batchContainer, subContainer;
 					addToListIfNotYet(renderedImages, img)
 				&&	flags.asOneJoinedImage
 				&&	!flags.showOnPage
+				&&	!batchContainer.contains(img)
 				) {
 					subContainer.appendChild(img);
 				}
@@ -10808,7 +10811,7 @@ function saveZip(project) { renderAll(project, FLAG_SAVE_ZIP); }
 function saveJoin(project) { renderAll(project, FLAG_SAVE_JOIN); }
 function showJoin(project) { renderAll(project, FLAG_SHOW_JOIN); }
 
-async function showImg(project, render, container) {
+async function showImg(project, render, container, batchContainer) {
 const	isSingleWIP = (render ? false : setWIPstate(true, project));
 let	img;
 
@@ -10831,7 +10834,10 @@ let	img;
 
 		if (img) {
 			makeElementFitOnClick(img);
-			imgContainer.appendChild(img);
+
+			if (!(batchContainer || imgContainer).contains(img)) {
+				imgContainer.appendChild(img);
+			}
 
 //* Resize img to thumbnail on button:
 
