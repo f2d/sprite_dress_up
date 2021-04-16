@@ -123,6 +123,7 @@ var	exampleRootDir = ''
 ,	TESTING_PNG			= false	//* <- dump a PNG onto the page after converting from pixel data.
 ,	TESTING_RENDER			= false	//* <- dump a PNG onto the page after each rendering operation.
 ,	USE_CONSOLE_LOG_GROUPING	= false	//* <- becomes a mess with concurrent operations.
+,	USE_CRITERIA_ARRAY		= true
 ,	USE_MINIFIED_JS			= true	//* <- currently only pako.
 ,	USE_ONE_FILE_ZIP_WORKER		= false	//* <- concatenated bundle, which is not included in distribution by default.
 ,	USE_UPNG			= true
@@ -294,19 +295,16 @@ const	CONFIG_FILE_PATH = 'config.js'			//* <- declarations-only file to redefine
 ,	regTrimNaNorSign	= getTrimReg('^\\d\\.+-')
 ,	regTrimNewLine		= /[^\S\r\n]*(\r\n|\r|\n)/g
 ,	regTrimTailBrTags	= /(\<br\/\>\s*)+$/gi
-,	regClassOption		= getClassReg('project-option', 'option')
-,	regClassExampleFiles	= getClassReg('example-file-type', 'example-files', 'files')
-,	regClassExampleFile	= getClassReg('example-file', 'file')
-,	regClassLoadedFile	= getClassReg('loaded-file', 'file')
-,	regClassMenuBar		= getClassReg('menu-bar')
-,	regClassButton		= getClassReg('button')
-,	regClassFailed		= getClassReg('failed')
-,	regClassLoaded		= getClassReg('loaded')
-,	regClassLoading		= getClassReg('loading')
-,	regClassShow		= getClassReg('show')
-,	regClassRow		= getClassReg('row')
-,	regClassSub		= getClassReg('sub')
-,	regClassSection		= getClassReg('section')
+
+,	matchClassButton	= getCriteria('button')
+,	matchClassExampleFile	= getCriteria('example-file', 'file')
+,	matchClassExampleFiles	= getCriteria('example-file-type', 'example-files', 'files')
+,	matchClassLoaded	= getCriteria('loaded')
+,	matchClassLoadedFile	= getCriteria('loaded-file', 'file')
+,	matchClassMenuBar	= getCriteria('menu-bar')
+,	matchClassOption	= getCriteria('project-option', 'option')
+,	matchClassSection	= getCriteria('section')
+,	matchClassSub		= getCriteria('sub')
 
 ,	regJSONstringify = {
 		'asFlatLine'	: /^(data)$/i
@@ -1032,50 +1030,6 @@ function arrayAssignValues(toArray, fromArray) {
 	);
 }
 
-const toggleClass = (
-	typeof document.documentElement.classList === 'undefined'
-
-//* Legacy way:
-
-	? (element, className, keep) => {
-	const	oldText = element.className || element.getAttribute('class') || '';
-	const	classNames = oldText.split(regSpace).filter(arrayFilterNonEmptyValues);
-	const	index = classNames.indexOf(className);
-
-		if (index < 0) {
-			if (keep >= 0) classNames.push(className);
-		} else {
-			if (keep <= 0) classNames.splice(index, 1);
-		}
-
-		if (classNames.length > 0) {
-		const	newText = classNames.join(' ');
-			if (oldText !== newText) element.className = newText;
-		} else
-		if (oldText) {
-			element.className = '';
-			element.removeAttribute('class');
-		}
-
-		return classNames.includes(className);
-	}
-
-//* Modern way:
-
-	: (element, className, keep) => {
-		if (keep > 0) {
-			element.classList.add(className);
-		} else
-		if (keep < 0) {
-			element.classList.remove(className);
-		} else {
-			element.classList.toggle(className);
-		}
-
-		return element.classList.contains(className);
-	}
-);
-
 function isNonEmptyArray(value) {
 	return (
 		isArray(value)
@@ -1139,11 +1093,18 @@ function getTrimReg(chars) {
 	return new RegExp('^[' + chars + ']+|[' + chars + ']+$', 'gi');
 }
 
-function getClassReg(...words) {
+function getCriteria(...args) {
 	return (
-		isRegExp(arguments[0])
-		? arguments[0]
-		: new RegExp('(^|\\s)(' + getFlatArray(words).join('|') + ')($|\\s)', 'i')
+		USE_CRITERIA_ARRAY
+		? (
+			args.length === 1
+			? args[0]
+			: getFlatArray(args)
+		) : (
+			isRegExp(args[0])
+			? args[0]
+			: new RegExp('(^|\\s)(' + getFlatArray(args).join('|') + ')($|\\s)', 'i')
+		)
 	);
 }
 
@@ -2253,16 +2214,13 @@ let	helperObject;
 }
 
 function getChildByAttr(element, attrName, attrValue) {
-	if (element) {
-		element = element.firstElementChild;
+	if (element && element.children) {
+		for (const child of element.children) {
+			if (child.getAttribute(attrName) === attrValue) {
+				return child;
+			}
+		}
 	}
-
-	while (element) {
-		if (element.getAttribute(attrName) === attrValue) break;
-		element = element.nextElementSibling;
-	}
-
-	return element;
 }
 
 function getDraggableElementOrParent(element) {
@@ -2297,6 +2255,30 @@ function isElementAfterSibling(element, sibling) {
 	return false;
 }
 
+function hasAnyClassNames(element, ...args) {
+	if (element && args && args.length) {
+		for (const arg of args) {
+			if (isString(arg)) {
+				if (element.classList && element.classList.contains(arg)) {
+					return true;
+				}
+			} else
+			if (isRegExp(arg)) {
+				if (element.className && arg.test(element.className)) {
+					return true;
+				}
+			} else
+			if (isArray(arg)) {
+				if (hasAnyClassNames(element, ...arg)) {
+					return true;
+				}
+			}
+		}
+	}
+
+	return false;
+}
+
 function isElementBeforeSibling(element, sibling) {
 	while (element && (element = element.nextSibling)) {
 		if (element === sibling) {
@@ -2308,10 +2290,9 @@ function isElementBeforeSibling(element, sibling) {
 }
 
 function getPreviousSiblingByClass(element, className) {
-const	regClassName = getClassReg(className);
 
 	while (element && (element = element.previousElementSibling)) {
-		if (element.className && regClassName.test(element.className)) {
+		if (hasAnyClassNames(element, className)) {
 			break;
 		}
 	}
@@ -2320,10 +2301,9 @@ const	regClassName = getClassReg(className);
 }
 
 function getNextSiblingByClass(element, className) {
-const	regClassName = getClassReg(className);
 
 	while (element && (element = element.nextElementSibling)) {
-		if (element.className && regClassName.test(element.className)) {
+		if (hasAnyClassNames(element, className)) {
 			break;
 		}
 	}
@@ -2332,10 +2312,9 @@ const	regClassName = getClassReg(className);
 }
 
 function getThisOrParentByClass(element, className) {
-const	regClassName = getClassReg(className);
 
 	while (element) {
-		if (element.className && regClassName.test(element.className)) {
+		if (hasAnyClassNames(element, className)) {
 			break;
 		}
 
@@ -2456,14 +2435,17 @@ const	closeTag = '</' + tagName + '>';
 
 function closeAllDropdownMenuTabs(element) {
 
-const	tabBar = getThisOrParentByClass(element, regClassMenuBar);
+const	tabBar = getThisOrParentByClass(element, matchClassMenuBar);
 const	tabs = getAllByClass('menu-head', tabBar);
 
 	for (const tab of tabs) {
 	const	header = getAllByTag('header', tab)[0];
 
-		if (header && header !== element) {
-			toggleClass(header, 'show', -1);
+		if (
+			header
+		&&	header !== element
+		) {
+			header.classList.remove('show');
 		}
 	}
 
@@ -2472,7 +2454,7 @@ const	tabs = getAllByClass('menu-head', tabBar);
 
 function toggleDropdownMenu(element) {
 	closeAllDropdownMenuTabs(element);
-	toggleClass(element, 'show');
+	element.classList.toggle('show');
 }
 
 function toggleSection(element, action) {
@@ -2480,10 +2462,13 @@ function toggleSection(element, action) {
 	function toggleOneSection(section) {
 		if (section) {
 			if (isActionOpen) {
-				if (!isActionAll || !section.open) {
-					toggleClass(section, 'opening', 1);
+				if (
+					!isActionAll
+				||	!section.open
+				) {
+					section.classList.add('opening');
 
-					setTimeout(() => toggleClass(section, 'opening', -1), 300);
+					setTimeout(() => section.classList.remove('opening'), 300);
 				}
 
 				section.open = true;
@@ -2540,7 +2525,7 @@ const	header = getOneById('top-menu-' + sectionName);
 }
 
 function toggleFixedTabWidth() {
-const	isFixedTabWidthEnabled = toggleClass(document.body, 'fixed-tab-width');
+const	isFixedTabWidthEnabled = document.body.classList.toggle('fixed-tab-width');
 
 	if (LS) {
 		LS[LS_KEY_FIXED_TAB_WIDTH] = isFixedTabWidthEnabled;
@@ -2548,7 +2533,7 @@ const	isFixedTabWidthEnabled = toggleClass(document.body, 'fixed-tab-width');
 }
 
 function toggleTextSize() {
-const	isBigTextEnabled = toggleClass(document.body, 'larger-text');
+const	isBigTextEnabled = document.body.classList.toggle('larger-text');
 
 	updateDropdownMenuPositions();
 
@@ -2562,7 +2547,7 @@ function makeElementFitOnClick(element, initialState) {
 //* Not listeners, because need attributes for style:
 
 	element.className = initialState || 'size-fit';
-	element.setAttribute('onclick', `toggleClass(this, 'size-fit'), toggleClass(this, 'size-full')`);
+	element.setAttribute('onclick', `this.classList.toggle('size-fit'), this.classList.toggle('size-full')`);
 }
 
 function getOffsetXY(element) {
@@ -3538,8 +3523,8 @@ const	depends = asFlatArray(lib.depends);
 
 //* Page-specific functions: internal, utility *-------------------------------
 
-function getProjectContainer(element) { return getTargetParentByClass(element, regClassLoadedFile); }
-function getProjectButton(element) { return getTargetParentByClass(element, regClassButton); }
+function getProjectContainer(element) { return getTargetParentByClass(element, matchClassLoadedFile); }
+function getProjectButton(element) { return getTargetParentByClass(element, matchClassButton); }
 
 function replaceJSONpartsForCropRef(key, value) {
 	if (key === 'autocrop') {
@@ -4070,10 +4055,7 @@ const	buttonsBox = cre('div', container);
 		} else
 		if (isNonNullObject(entry)) {
 		const	nestedBox = addButtonGroup(buttonsBox, entry);
-
-			if (!regClassRow.test(buttonsBox.className)) {
-				toggleClass(nestedBox, 'row', 1);
-			}
+			nestedBox.classList.add('row');
 		}
 	}
 
@@ -6066,8 +6048,8 @@ async function getProjectViewMenu(project) {
 		}
 
 		function addHeader(text) {
-		const	th = cre('header', cre('th', cre('tr', table)));
-			th.textContent = getLocalizedText(text) + ':';
+		const	header = cre('header', cre('th', cre('tr', table)));
+			header.textContent = getLocalizedText(text) + ':';
 		}
 
 	const	options = project.options;
@@ -6335,7 +6317,7 @@ function setProjectThumbnail(project, img, onLoad, onError) {
 
 				if (!preview) {
 				const	container = project.thumbnail.parentNode;
-					toggleClass(container, 'thumbnail-hover', 1);
+					container.classList.add('thumbnail-hover');
 
 					preview = cre('img', container);
 					preview.className = 'thumbnail larger';
@@ -7290,11 +7272,11 @@ let	element;
 
 			if (ADD_WIP_TEXT_ROLL) {
 				if (operation.includes('project_status_ready')) {
-					toggleClass(element, 'wip', -1);
+					element.classList.remove('wip');
 				} else {
 				const	i = WIP_TEXT_ROLL.indexOf(element.getAttribute('data-wip')) + 1;
 					element.setAttribute('data-wip', WIP_TEXT_ROLL[i % WIP_TEXT_ROLL.length]);
-					toggleClass(element, 'wip', 1);
+					element.classList.add('wip');
 				}
 			}
 		}
@@ -8306,7 +8288,7 @@ const	values = {};
 				: selectedValue
 			));
 
-		const	container = getThisOrParentByClass(selectBox, regClassOption) || selectBox.parentNode;
+		const	container = getThisOrParentByClass(selectBox, matchClassOption) || selectBox.parentNode;
 		const	style = container.style;
 
 			if (style.display != hide) {
@@ -10684,9 +10666,8 @@ let	batchContainer, subContainer;
 		let	y = 0;
 		let	width  = 0;
 		let	height = 0;
-		let	element = rootContainer.firstElementChild;
 
-			while (element) {
+			for (const element of rootContainer.children) {
 				if (isImageElement(element)) {
 				const	size = getImageContentSize(element);
 
@@ -10708,8 +10689,6 @@ let	batchContainer, subContainer;
 
 					y = height + joinedPadding;
 				}
-
-				element = element.nextElementSibling;
 			}
 
 			return { width, height };
@@ -11396,7 +11375,7 @@ const	namePartsOrder = project.namePartsOrder;
 	} else
 	if (listName = draggedElement.getAttribute('data-list-name')) {
 		displacedName = displacedElement.getAttribute('data-list-name');
-		sectionName = getThisOrParentByClass(draggedElement, regClassSection).getAttribute('data-section');
+		sectionName = getThisOrParentByClass(draggedElement, matchClassSection).getAttribute('data-section');
 		listNames = namePartsOrder.listNamesBySection[sectionName];
 		fromIndex = listNames.indexOf(listName);
 		toIndex = listNames.indexOf(displacedName);
@@ -11448,13 +11427,13 @@ const	orderBox = project.fileNamingOrderBox;
 					if (isOptionListRelevant(project, values, sectionName, listName)) {
 						isSectionRelevant = true;
 
-						toggleClass(listNameBox, 'relevant', 1);
+						listNameBox.classList.add('relevant');
 					} else {
-						toggleClass(listNameBox, 'relevant', -1);
+						listNameBox.classList.remove('relevant');
 					}
 				}
 
-				toggleClass(sectionBox, 'relevant', (isSectionRelevant ? 1 : -1));
+				sectionBox.classList.toggle('relevant', isSectionRelevant);
 			}
 		}
 	}
@@ -11491,14 +11470,14 @@ function updateMenuBatchCount(project, ...args) {
 
 			if (!label) {
 			let	container = getAllByName('show_all', project.container)[0] || project.container;
-				container = getThisOrParentByClass(container, regClassSub);
+				container = getThisOrParentByClass(container, matchClassSub);
 
 				if (ADD_BATCH_COUNT_ON_NEW_LINE) {
 					label = project.renderBatchCountMenuLabel = cre('header', container, container.lastElementChild);
 					label.className = labelClass;
 				} else {
 					label = getAllByTag('header', container)[0];
-					toggleClass(label, labelClass, 1);
+					label.classList.add(labelClass);
 				}
 			}
 		}
@@ -12231,7 +12210,7 @@ async function loadFromButton(button, startTime, inBatch) {
 
 		if (
 			!url
-		&&	(container = getThisOrParentByClass(button, regClassExampleFile))
+		&&	(container = getThisOrParentByClass(button, matchClassExampleFile))
 		&&	(link = getAllByTag('a', container)[0])
 		) {
 			url = link.href;
@@ -12258,7 +12237,7 @@ let	url;
 let	isProjectLoaded = false;
 
 	if (action) {
-	const	filesTable = getThisOrParentByClass(button, regClassExampleFiles);
+	const	filesTable = getThisOrParentByClass(button, matchClassExampleFiles);
 
 		if (action === 'stop') {
 			isStopRequested = true;
@@ -12312,13 +12291,13 @@ let	isProjectLoaded = false;
 //* Show loading status:
 
 	const	className = 'loading';
-	const	fileRow = getThisOrParentByClass(button, regClassExampleFile);
+	const	fileRow = getThisOrParentByClass(button, matchClassExampleFile);
 
-		if (fileRow && fileRow.className) {
+		if (fileRow) {
 			if (fileRow.classList.contains(className)) {
 				return;
 			} else {
-				toggleClass(fileRow, className, 1);
+				fileRow.classList.add(className);
 			}
 		}
 
@@ -12328,8 +12307,8 @@ let	isProjectLoaded = false;
 
 //* Remove loading status:
 
-		if (fileRow && fileRow.className) {
-			toggleClass(fileRow, className, -1);
+		if (fileRow) {
+			fileRow.classList.remove(className);
 		}
 
 	}
@@ -12343,16 +12322,13 @@ let	isProjectLoaded = false;
 
 function selectProject(buttonTab, autoSelected) {
 	if (buttonTab = getProjectButton(buttonTab)) {
-	let	otherButtonTab = buttonTab.parentNode.firstElementChild;
 
-		while (otherButtonTab) {
-		const	selectedState = (otherButtonTab === buttonTab ? 1 : -1);
+		for (const otherButtonTab of buttonTab.parentNode.children) {
+		const	selectedState = (otherButtonTab === buttonTab);
 
 			for (const element of getAllById(otherButtonTab.id)) {
-				toggleClass(element, 'show', selectedState);
+				element.classList.toggle('show', selectedState);
 			}
-
-			otherButtonTab = otherButtonTab.nextElementSibling;
 		}
 
 		if (!autoSelected) {
@@ -12363,21 +12339,20 @@ function selectProject(buttonTab, autoSelected) {
 
 function closeProject(buttonTab) {
 	if (buttonTab = getProjectButton(buttonTab)) {
-	const	buttonClass = buttonTab.className || '';
 	const	fileId = buttonTab.id;
 	const	project = buttonTab.project;
 
-		if (regClassShow.test(buttonClass)) {
+		if (buttonTab.classList.contains('show')) {
 			selectProject(
-				getNextSiblingByClass(buttonTab, regClassLoaded)
-			||	getPreviousSiblingByClass(buttonTab, regClassLoaded)
+				getNextSiblingByClass(buttonTab, matchClassLoaded)
+			||	getPreviousSiblingByClass(buttonTab, matchClassLoaded)
 			);
 		}
 
 //* Note: if loading did not complete, the loader function will do cleanup.
 
-		if (regClassLoading.test(buttonClass)) {
-			toggleClass(buttonTab, 'failed', 1);
+		if (buttonTab.classList.contains('loading')) {
+			buttonTab.classList.add('failed');
 
 			buttonTab.isStopRequested = true;
 
@@ -12386,7 +12361,7 @@ function closeProject(buttonTab) {
 			}
 		}
 
-		if (regClassLoaded.test(buttonClass)) {
+		if (buttonTab.classList.contains('loaded')) {
 			removeProjectView(fileId);
 		}
 
@@ -12408,9 +12383,11 @@ const	logLabelWrap = 'Init';
 let	logLabel = `Init localization "${LANG}"`;
 	console.time(logLabel);
 
-	toggleClass(document.body, 'stub', -1);
-	toggleClass(document.body, 'loading', 1);
+	document.body.classList.remove('stub');
+	document.body.classList.add('loading');
+
 	await loadLibPromise(LIB_LANG_DIR + 'localization.' + LANG + '.js');
+
 	document.body.innerHTML = getLocalizedHTML('loading');
 
 	console.timeEnd(logLabel);
@@ -14146,7 +14123,7 @@ const	toggleTextSizeHTML = (
 	);
 
 	if (!isStyleIncluded(getAllByClass('panel')[0], 'gap')) {
-		toggleClass(document.body, 'no-gap', 1);
+		document.body.classList.add('no-gap');
 	}
 
 	for (const element of getAllByClass('thumbnail')) {
@@ -14216,15 +14193,15 @@ let	oldSetting;
 	}
 
 	if (START_WITH_OPEN_FIRST_MENU_TAB) {
-		toggleClass(getAllByTag('header')[0], 'show', 1);
+		getAllByTag('header')[0].classList.add('show');
 
 		updateDropdownMenuPositions();
 	}
 
 //* Ready for user input:
 
-	toggleClass(document.body, 'loading', -1);
-	toggleClass(document.body, 'ready', 1);
+	document.body.classList.remove('loading');
+	document.body.classList.add('ready');
 
 	if (USE_CONSOLE_LOG_GROUPING) console.groupEnd(logLabelWrap);
 	console.timeEnd(logLabelWrap);
