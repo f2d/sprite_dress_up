@@ -87,6 +87,8 @@ var	exampleRootDir = ''
 ,	TAB_THUMBNAIL_SIZE = 0
 ,	TAB_ZOOM_STEP_MAX_FACTOR = 0	//* <- scaling in one step is blocky, stepping by factor of 2 is blurry, 4 may be okay for 20px and less.
 
+//* Any truthy/falsy value should work:
+
 ,	ADD_BATCH_COUNT_ON_BUTTON	= false	//* <- if not, add separate text element.
 ,	ADD_BATCH_COUNT_ON_NEW_LINE	= false
 ,	ADD_PAUSE_AT_INTERVALS		= true	//* <- let UI update when loading files, rendering images, counting batch combinations, etc.
@@ -96,6 +98,7 @@ var	exampleRootDir = ''
 ,	ASK_BEFORE_EXIT_IF_OPENED_FILES	= true	//* <- this is annoying and would not be needed if big files could load fast.
 ,	CACHE_UNALTERABLE_FOLDERS_MERGED	= true	//* <- not much opportunity if almost everything is recolored or passthrough.
 ,	CACHE_UNALTERABLE_IMAGES_TRIMMED	= false	//* <- images are compressed faster by canvas API, when stored as PNG.
+,	DEDUPLICATE_LOADED_IMAGES	= false
 ,	DOWNSCALE_BY_MAX_FACTOR_FIRST	= true	//* <- other way (starting with partial factor) is not better, probably worse.
 ,	EXAMPLE_NOTICE			= false	//* <- show the warning near the list of files.
 ,	FILE_NAME_ADD_PARAM_KEY		= true
@@ -134,6 +137,12 @@ var	exampleRootDir = ''
 ,	VERIFY_PARAM_COLOR_VS_LAYER_CONTENT	= false
 ,	ZERO_PERCENT_EQUALS_EMPTY		= false
 ,	ZIP_SKIP_DUPLICATE_FILENAMES		= true
+
+//* Array/Map/Set/Object containers all work fine.
+//* Set is the fastest in this case, tested in Firefox 56 and Vivaldi 3.7.2218.55 (64-bit).
+//* Map is 2nd fastest, but almost same as Array/Object.
+
+,	PROJECT_BLOBS_CONTAINER_TYPE = Set
 	;
 
 //* ---------------------------------------------------------------------------
@@ -153,6 +162,7 @@ var	exampleRootDir = ''
 	'Promise',
 	'RegExp',
 	'SelectElement',
+	'Set',
 	'String',
 ].forEach(
 	function (typeName) {
@@ -3150,7 +3160,7 @@ async function getImagePromiseFromCanvasToBlob(canvas, trackList, mimeType, qual
 			url = URL.createObjectURL(blob);
 
 			if (trackList) {
-				addURLToTrackList({ blob, url, img }, trackList);
+				await addURLToTrackList({ blob, url, img }, trackList);
 			}
 		}
 
@@ -3192,22 +3202,36 @@ async function getImagePromiseFromCanvasToBlob(canvas, trackList, mimeType, qual
 
 //* Note: cannot save image by revoked url, so better keep it and revoke later.
 
-function addURLToTrackList(data, holder) {
+async function addURLToTrackList(data, holder) {
 	if (isNonNullObject(holder)) {
 
 	const	trackList = (
 			!holder.fileName
 			? holder
 			:
-			getOrInitChild(holder, 'blobsByURL', Map)
-			// getOrInitChild(holder, 'blobsByURL')	//* <- this works too; TODO: test what container is better
-			// getOrInitChild(holder, 'blobURLs', Array)
+			(PROJECT_BLOBS_CONTAINER_TYPE === Array)
+			? getOrInitChild(holder, 'blobsAndURLs', Array)
+			:
+			(PROJECT_BLOBS_CONTAINER_TYPE === Set)
+			? getOrInitChild(holder, 'blobsAndURLs', Set)
+			:
+			(PROJECT_BLOBS_CONTAINER_TYPE === Map)
+			? getOrInitChild(holder, 'blobsByURL', Map)
+			: getOrInitChild(holder, 'blobsByURL')
 		);
 
 	let	key = data;
 
 		if (isNonNullObject(data)) {
-		const	{ blob, url, img } = data;
+		let	{ blob, url, img } = data;
+
+			if (img && !url) {
+				url = data.url = img.src;
+			}
+
+			if (url && !blob) {
+				blob = data.blob = await getFilePromiseFromURL(url, 'blob');
+			}
 
 			if (img && !img.type) {
 				img.type = blob.type.split('/').pop();
@@ -3216,8 +3240,11 @@ function addURLToTrackList(data, holder) {
 			key = url;
 		}
 
+		if (isSet(trackList)) {
+			trackList.add(data);
+		} else
 		if (isArray(trackList)) {
-			addToListIfNotYet(trackList, key);
+			addToListIfNotYet(trackList, data);
 		} else
 		if (isMap(trackList)) {
 			if (!isNonNullObject(trackList.get(key))) {
@@ -3239,7 +3266,10 @@ function revokeBlobsFromTrackList(data, key) {
 let	count = 0;
 
 	if (data) {
-		if (isString(key = key || data.url || data)) {
+		if (
+			isString(key)
+		||	isString(key = data.url || data)
+		) {
 			URL.revokeObjectURL(key);
 
 			++count;
@@ -3248,6 +3278,7 @@ let	count = 0;
 			if (
 				isArray(data)
 			||	isMap(data)
+			||	isSet(data)
 			) {
 				data.forEach(
 					(data, key) => {
@@ -3269,7 +3300,12 @@ function getTrackListFromProject(holder) {
 	if (isNonNullObject(holder)) {
 
 		if (holder.fileName) {
-			return holder.blobs || holder.blobsByURL || holder.blobURLs;
+			return (
+				holder.blobs
+			||	holder.blobsAndURLs
+			||	holder.blobsByURL
+			||	holder.blobURLs
+			);
 		}
 
 		return holder;
@@ -3368,7 +3404,6 @@ async function getImageDataFromURL(url) {
 async function getImageBlobAndURLFromDataOrList(data, type, trackList) {
 	if (isArray(data)) {
 		data = Uint8Array.from(data, (v) => v.charCodeAt(0)).buffer;
-
 	}
 
 const	blob = (
@@ -3380,33 +3415,39 @@ const	blob = (
 //* Reuse old blob:
 
 	if (trackList = getTrackListFromProject(trackList)) {
+	let	entry;
 
-		if (isArray(trackList)) {
-			for (const entry of trackList) {
+		async function getImageBlobAndURLFromList(entry, key) {
+			if (
+				entry
+			&&	entry.blob
+			&&	await isIdenticalData(entry.blob, blob)
+			) {
+				if (TESTING > 1) console.log('getImageBlobAndURLFromDataOrList: reused image', [key, entry, blob, trackList]);
 
-				if (await isIdenticalData(entry.blob, blob)) {
-					if (TESTING > 1) console.log('getImageBlobAndURLFromDataOrList: reused image', [key, entry, blob, trackList]);
+				return entry;
+			}
+		}
 
+		if (
+			isSet(trackList)
+		||	isArray(trackList)
+		) {
+			for (const item of trackList) {
+				if (entry = await getImageBlobAndURLFromList(item)) {
 					return entry;
 				}
 			}
 		} else
 		if (isMap(trackList)) {
-			for (const [key, entry] of trackList) {
-
-				if (await isIdenticalData(entry.blob, blob)) {
-					if (TESTING > 1) console.log('getImageBlobAndURLFromDataOrList: reused image', [key, entry, blob, trackList]);
-
+			for (const [key, item] of trackList) {
+				if (entry = await getImageBlobAndURLFromList(item, key)) {
 					return entry;
 				}
 			}
 		} else {
 			for (const key in trackList) {
-			const	entry = trackList[key];
-
-				if (await isIdenticalData(entry.blob, blob)) {
-					if (TESTING > 1) console.log('getImageBlobAndURLFromDataOrList: reused image', [key, entry, blob, trackList]);
-
+				if (entry = await getImageBlobAndURLFromList(trackList[key], key)) {
 					return entry;
 				}
 			}
@@ -3419,7 +3460,7 @@ const	url = URL.createObjectURL(blob);
 const	entry = { url, blob };
 
 	if (trackList) {
-		addURLToTrackList(entry, trackList);
+		await addURLToTrackList(entry, trackList);
 	}
 
 	return entry;
@@ -3506,7 +3547,7 @@ let	mustRevokeURL = false;
 			}
 
 			if (!ext) {
-				ext = type.split('/').slice(-1)[0];
+				ext = type.split('/').pop();
 			}
 		}
 	}
@@ -4587,11 +4628,17 @@ async function getOrLoadImage(project, layer) {
 					img.title = img.alt = layer.name;
 				}
 
-				if (hasPrefix(img.src, BLOB_PREFIX)) {
-				const	url = img.src;
-				const	blob = await getFilePromiseFromURL(url, 'blob');
+			const	url = img.src;
 
-					addURLToTrackList({ blob, url, img }, project);
+				if (hasPrefix(url, BLOB_PREFIX)) {
+					await addURLToTrackList(
+						(
+							DEDUPLICATE_LOADED_IMAGES
+							? { url, img }
+							: url
+						)
+					,	project
+					);
 				}
 			}
 
