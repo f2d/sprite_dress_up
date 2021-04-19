@@ -10,7 +10,7 @@
 //* TODO: <select multiple> <optgroup> <option>?</option> </optgroup> </select>.
 
 //* TODO ---------------------- params: ---------------------------------------
-//* TODO: keep all layer-name parameters single-word if possible.
+//* TODO: keep all layer-name parameters single-word, if possible.
 //* TODO: zoom format in filenames: [x1, x1.00, x100%].
 //* TODO: outline: more methods.
 //* TODO: wireframe rendering.
@@ -19,6 +19,7 @@
 //* TODO: colors: add "name1,2,3,etc[gradient-map=N/N%=rgb-N-N-N/N%=next+rgb-N-N-N/avg|max|min|rgb]" to interpolate between selected given color values in given name order using given source RGB (or avg/max/min of them). If too many gradient points (number of names > 2 + number points), ignore leftover points. If too many names, distribute undefined points evenly in the last (top?) stretch of gradient. Autosort points by %value. Color value after percent may be used to insert given color value or calculate value dependent on next/previous point (cycle in passes until all are defined). 0/100% may be used for defining colors; use names for omitted. If no usable color names, do nothing.
 
 //* TODO ---------------------- rendering: ------------------------------------
+//* TODO: copypaste: fix stuck visibility with "[parts] list_1 / default / [if parts] list_2 / part_2 (empty folder) [paste=another_part_1]".
 //* TODO: collage: fix stuck rendering of oversized collage.
 //* TODO: collage: arrange joined images without using DOM, to avoid currently visible images moving to hidden container when saving collage.
 //* TODO: clipping: fix hiding of clipping group with skipped/invisible/empty base layer.
@@ -28,18 +29,16 @@
 //* TODO: blending: keep layer images as PNGs, create arrays for high-precision blending on demand, discard arrays when HQ mode is disabled.
 //* TODO: encode: set RGB of zero-alpha pixels to average of all non-zero-alpha neighbour RGB values, ignoring alpha.
 //* TODO: compose: for files without merged image data - render ignoring options, but respecting layer visibility properties. Or buttons to show embedded and/or rendered image regardless of options. Or add this as top-most option for any project, with or without options.
-//* TODO: image blobs: revoke collage blob urls when cleaning view container?
-//* TODO: image blobs: revoke any image blob urls right after image element's loading, without ever tracking/listing them?
-//* TODO: image blobs: deduplicate rendered images per project. Deduplicate <img> elements too?
 //* TODO: batch: to avoid bruteforcing global cross-products, build a tree-graph of selectable option dependency forks when loading a project. Make a graph from each separated root, but include unconditional [no-render] paths into each tree for color collections, etc.
 
 //* TODO ---------------------- export: ---------------------------------------
 //* TODO: save opened project as ORA with all unused layers and other data included, full precision for opacity, etc.
 //* TODO: save opened project as PSD. Try https://github.com/Agamnentzar/ag-psd
-//* TODO: save rendered image as WebP. https://bugs.chromium.org/p/chromium/issues/detail?id=170565#c77 - toDataURL/toBlob quality 1.0 = lossless.
+//* TODO: save images: WebP, JPEG XL. https://bugs.chromium.org/p/chromium/issues/detail?id=170565#c77 - toDataURL/toBlob quality 1.0 = lossless.
 //* TODO: make exported project files identically reproducible?
 
 //* TODO ---------------------- other: ----------------------------------------
+//* TODO: don't add custom properties to objects of built-in types, if possible.
 //* TODO: global job list for WIP cancelling instead of spaghetti-coded flag checks.
 //* TODO: split JS files in a way that lets older browsers to use parts they can parse and execute (only show menu, or only load ORA, etc.).
 //* TODO: split JS functionality into modules to reuse with drawpad, etc.
@@ -142,12 +141,14 @@ var	exampleRootDir = ''
 //* Source: https://stackoverflow.com/a/17772086
 [
 	'Array',	//* <- matches anything with 'Array' at the end, e.g. 'Uint8Array'
+	'ArrayBuffer',
 	'Blob',
 	'CanvasElement',
 	'Date',
 	'Function',	//* <- matches anything with 'Function' at the end, e.g. 'AsyncFunction'
 	'ImageData',
 	'ImageElement',	//* <- matches anything with 'ImageElement' at the end, e.g. 'HTMLImageElement'
+	'Map',
 	'Number',
 	'Promise',
 	'RegExp',
@@ -407,6 +408,7 @@ const	SPLIT_SEC = 60
 ,	BLOB_PREFIX = 'blob:'
 ,	DATA_PREFIX = 'data:'
 ,	TYPE_TEXT = 'text/plain'
+,	TYPE_IMAGE_PNG = 'image/png'
 ,	TITLE_LINE_BREAK = ' \r\n'
 ,	DOUBLE_LINE_BREAK = ' \r\n\r\n'
 ,	WIP_TEXT_ROLL = '\\|/-'
@@ -998,10 +1000,16 @@ function asArray(value) { return ( isArray(value) ? value : [value] ); }
 function asFlatArray(value) { return getFlatArray(asArray(value || [])); }
 function arrayFromObjectEntriesSortByKey(a, b) { return ( a[0] > b[0] ? 1 : a[0] < b[0] ? -1 : 0 ); }
 
+//* Reassemble items to new array:
 //* Source: https://stackoverflow.com/a/6470794
-function arrayMoveItem(array, fromIndex, toIndex) { return array.splice(toIndex, 0, array.splice(fromIndex, 1)[0]); }
 
+function arrayMoveItem(array, fromIndex, toIndex) {
+	return array.splice(toIndex, 0, array.splice(fromIndex, 1)[0]);
+}
+
+//* Reassign items to old array:
 //* Source: https://stackoverflow.com/a/21071454
+
 function arrayMoveValue(array, fromIndex, toIndex) {
 	if( toIndex === fromIndex ) {
 		return array;
@@ -1077,7 +1085,9 @@ const	protocol = (
 	return (protocol === 'file');
 }
 
+//* Check format support by creating minimal image:
 //* Source: https://stackoverflow.com/a/55896125
+
 function isImageTypeExportSupported(type) {
 const	canvas = cre('canvas');
 	canvas.width = 1;
@@ -1117,6 +1127,7 @@ function getCriteria(...args) {
 //*	var combos = getCrossProductArray( array, array, ... );
 //*	var combo = combos[123];
 //*	var count = combos.length;
+
 function getCrossProductArray() {
 	return Array.prototype.reduce.call(
 		arguments
@@ -1135,6 +1146,7 @@ function getCrossProductArray() {
 }
 
 //* Shorter version, Source: https://stackoverflow.com/a/43053803
+
 const getCrossProductSub = (a, b) => [].concat(...a.map(d => b.map(e => [].concat(d, e))));
 const getCrossProductArr = (a, b, ...c) => (b ? getCrossProductArr(getCrossProductSub(a, b), ...c) : a);
 
@@ -1145,6 +1157,7 @@ const getCrossProductArr = (a, b, ...c) => (b ? getCrossProductArr(getCrossProdu
 //*	var combos = new CrossProductIterator( array, array, ... );
 //*	var combo = combos.item(123);
 //*	var count = combos.length;
+
 function CrossProductIterator() {
 const	dimensions = [];
 let	totalCount = 1;
@@ -1185,6 +1198,7 @@ let	totalCount = 1;
 //*	Returns true if it was stopped.
 //* Usage example:
 //*	forEachSetInCrossProductUntilStopped( [array, array, ...], (combo) => combo.includes('stop') );
+
 function forEachSetInCrossProductUntilStopped(arrays, callback, thisContext) {
 
 	function goDeeper(arrayIndex) {
@@ -1236,6 +1250,7 @@ const	counts = [];
 //*	Combination array becomes arguments for callback.
 //* Usage example:
 //*	forEachSetInCrossProduct( [array, array, ...], console.log );
+
 function forEachSetInCrossProduct(arrays, callback, thisContext) {
 
 	function goDeeper(arrayIndex) {
@@ -1337,6 +1352,70 @@ function isSlicableNotString(value) {
 		!isString(value)
 	&&	value
 	&&	isFunction(value.slice)
+	);
+}
+
+function isSameDataURL(a, b) {
+	return (
+		isString(a)
+	&&	isString(b)
+	&&	a.length === b.length
+	&&	a === b
+	);
+}
+
+//* Test for equality in ArrayBuffer or TypedArray:
+//* Source: https://stackoverflow.com/a/52181275
+
+async function isIdenticalBlob(a, b) {
+
+	function isAlignedToBytes(a, bytesInElenment) {
+		return (
+			(a.byteOffset % bytesInElenment === 0)
+		&&	(a.byteLength % bytesInElenment === 0)
+		);
+	}
+
+	function isIdentical(a, b, bytesInElenment, typeConstructor) {
+
+		if (bytesInElenment && typeConstructor) {
+			return isIdentical(
+				new typeConstructor(a.buffer, a.byteOffset, a.byteLength / bytesInElenment)
+			,	new typeConstructor(b.buffer, b.byteOffset, b.byteLength / bytesInElenment)
+			);
+		}
+
+	var	index = a.length;
+
+		while (index--) if (a[index] !== b[index]) {
+			return false;
+		}
+
+		return true;
+	}
+
+	if (
+		isBlob(a)
+	&&	isBlob(b)
+	&&	a.size === b.size
+	&&	a.type === b.type
+	&&	(a = new Uint8Array(a.buffer || (a.buffer = await getFilePromise(a))))	//* <- keep the buffers for faster comparisons
+	&&	(b = new Uint8Array(b.buffer || (b.buffer = await getFilePromise(b))))
+	&&	a.byteLength === b.byteLength
+	) {
+		if (isAlignedToBytes(a, 4) && isAlignedToBytes(b, 4)) return isIdentical(a, b, 4, Uint32Array);
+		if (isAlignedToBytes(a, 2) && isAlignedToBytes(b, 2)) return isIdentical(a, b, 2, Uint16Array);
+
+		return isIdentical(a, b);
+	}
+
+	return false;
+}
+
+async function isIdenticalData(a, b) {
+	return (
+		isSameDataURL(a, b)
+	||	await isIdenticalBlob(a, b)
 	);
 }
 
@@ -1925,12 +2004,16 @@ function getColorTextFromArray(rgba, maxCount) {
 	return String(rgba);
 }
 
+//* Clone given object with optional recursive modifications:
 //* Source: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/assign#Deep_Clone
+
 function getPatchedObject(obj, jsonReplacerFunc) {
 	return JSON.parse(JSON.stringify(obj, jsonReplacerFunc || null));
 }
 
+//* Get text representation of given object with reproducible order of keys:
 //* Source: https://stackoverflow.com/a/53593328
+
 function orderedJSONstringify(obj, space) {
 const	allKeys = [];
 
@@ -2060,7 +2143,9 @@ function cleanupObjectTree(obj, childKeys, keysToRemove) {
 	return obj;
 }
 
+//* Get memory block of minimal allowed size for asm.js:
 //* Source: https://gist.github.com/wellcaffeinated/5399067#gistcomment-1364265
+
 function nextValidHeapSize(realSize) {
 const	SIZE_64_KB = 65536;	// 0x10000
 const	SIZE_64_MB = 67108864;	// 0x4000000
@@ -2074,7 +2159,8 @@ const	SIZE_64_MB = 67108864;	// 0x4000000
 	}
 }
 
-//* This function must work even in older browsers, so extra care is taken:
+//* Get array of elements by some criteria (tagname, class, etc), should work even in older browsers:
+
 function getElementsArray(by, text, parent) {
 	if (!parent) {
 		parent = document;
@@ -2171,6 +2257,7 @@ function getCapitalizedString(text) {
 }
 
 //* propNameForIE:
+
 function dashedToCamelCase(text) {
 	return (
 		String(text)
@@ -3033,19 +3120,38 @@ function getFilePromiseFromURL(url, responseType, context) {
 	).catch(catchPromiseError);
 }
 
-function getImagePromiseFromCanvasToBlob(canvas, trackList, mimeType, quality, img) {
+async function getImagePromiseFromCanvasToBlob(canvas, trackList, mimeType, quality, img) {
 
-	function getImagePromiseFromBlob(blob) {
+	async function getImagePromiseFromBlob(blob) {
 		if (!blob) {
 			throw 'Canvas to blob: got empty or no blob.';
 		}
 
-	const	url = URL.createObjectURL(blob);
-
-		trackList = addURLToTrackList(url, trackList);
-
 		if (!img) {
 			img = cre('img');
+		}
+
+	let	url;
+
+		if (trackList) {
+		const	entry = await getImageBlobAndURLFromDataOrList(blob, blob.type, trackList);
+
+			if (entry) {
+				if (entry.img) {
+					return entry.img;
+				}
+
+				entry.img = img;
+				url = entry.url;
+			}
+		}
+
+		if (!url) {
+			url = URL.createObjectURL(blob);
+
+			if (trackList) {
+				addURLToTrackList({ blob, url, img }, trackList);
+			}
 		}
 
 		return new Promise(
@@ -3077,7 +3183,7 @@ function getImagePromiseFromCanvasToBlob(canvas, trackList, mimeType, quality, i
 
 	return (
 		new Promise(
-			(resolve, reject) => canvas.toBlob(resolve, mimeType || '', quality || 1)
+			(resolve, reject) => canvas.toBlob(resolve, mimeType || TYPE_IMAGE_PNG, quality || 1)
 		)
 		.then(getImagePromiseFromBlob)
 		.catch(catchPromiseError)
@@ -3085,13 +3191,43 @@ function getImagePromiseFromCanvasToBlob(canvas, trackList, mimeType, quality, i
 }
 
 //* Note: cannot save image by revoked url, so better keep it and revoke later.
-function addURLToTrackList(url, trackList) {
-	if (isNonNullObject(trackList)) {
-		if (!isFunction(trackList.push)) {
-			trackList = getOrInitChild(trackList, 'blobs', Array);
+
+function addURLToTrackList(data, holder) {
+	if (isNonNullObject(holder)) {
+
+	const	trackList = (
+			!holder.fileName
+			? holder
+			:
+			getOrInitChild(holder, 'blobsByURL', Map)
+			// getOrInitChild(holder, 'blobsByURL')	//* <- this works too; TODO: test what container is better
+			// getOrInitChild(holder, 'blobURLs', Array)
+		);
+
+	let	key = data;
+
+		if (isNonNullObject(data)) {
+		const	{ blob, url, img } = data;
+
+			if (img && !img.type) {
+				img.type = blob.type.split('/').pop();
+			}
+
+			key = url;
 		}
 
-		addToListIfNotYet(trackList, url);
+		if (isArray(trackList)) {
+			addToListIfNotYet(trackList, key);
+		} else
+		if (isMap(trackList)) {
+			if (!isNonNullObject(trackList.get(key))) {
+				trackList.set(key, data);
+			}
+		} else {
+			if (!isNonNullObject(trackList[key])) {
+				trackList[key] = data;
+			}
+		}
 
 		return trackList;
 	} else {
@@ -3099,30 +3235,45 @@ function addURLToTrackList(url, trackList) {
 	}
 }
 
-function revokeBlobsFromTrackList(trackList) {
+function revokeBlobsFromTrackList(data, key) {
 let	count = 0;
 
-	if (isNonNullObject(trackList)) {
+	if (data) {
+		if (isString(key = key || data.url || data)) {
+			URL.revokeObjectURL(key);
 
-		if (isFunction(trackList.push)) {
-			for (const blob of trackList) if (blob) {
-				URL.revokeObjectURL(blob.url || blob);
-
-				++count;
-			}
+			++count;
 		} else
-		if (isNonNullObject(trackList = trackList.blobs)) {
-
-			if (isFunction(trackList.push)) {
-				count += revokeBlobsFromTrackList(trackList);
-			} else
-			for (const listName in trackList) {
-				count += revokeBlobsFromTrackList(trackList[listName]);
+		if (isNonNullObject(data = getTrackListFromProject(data))) {
+			if (
+				isArray(data)
+			||	isMap(data)
+			) {
+				data.forEach(
+					(data, key) => {
+						count += revokeBlobsFromTrackList(data, key);
+					}
+				);
+			} else {
+				for (const key in data) {
+					count += revokeBlobsFromTrackList(data[key], key);
+				}
 			}
 		}
 	}
 
 	return count;
+}
+
+function getTrackListFromProject(holder) {
+	if (isNonNullObject(holder)) {
+
+		if (holder.fileName) {
+			return holder.blobs || holder.blobsByURL || holder.blobURLs;
+		}
+
+		return holder;
+	}
 }
 
 function getImageDataFromData(imageData) {
@@ -3153,15 +3304,21 @@ async function getImageElementFromData(imageData, project, colorsCount) {
 			,	orz(colorsCount)	//* <- does not make color-fill PNGs smaller
 			);
 
-		const	url = getBlobURLFromByteArray(arrayBuffer, 'image/png');
-		const	img = cre('img', (TESTING_PNG ? document.body : null));
-			img.src = url;
+		const	entry = await getImageBlobAndURLFromDataOrList(arrayBuffer, TYPE_IMAGE_PNG, project);
+		let	{ img, url } = entry;
 
-			if (TESTING_PNG) console.log('getImageElementFromData:', [imageData, arrayBuffer, url, img]);
+			if (img) {
+				return img;
+			} else {
+			const	img = entry.img = cre('img', (TESTING_PNG ? document.body : null));
+				img.src = url;
 
-			return new Promise(
-				(resolve, reject) => resolvePromiseOnImgLoad(img, resolve, reject)
-			).catch(catchPromiseError);
+				if (TESTING_PNG) console.log('getImageElementFromData:', [imageData, arrayBuffer, url, img]);
+
+				return new Promise(
+					(resolve, reject) => resolvePromiseOnImgLoad(img, resolve, reject)
+				).catch(catchPromiseError);
+			}
 		}
 
 	let	canvas, img;
@@ -3208,17 +3365,67 @@ async function getImageDataFromURL(url) {
 	}
 }
 
-//* Legacy copypasted code to get things working, don't bother with readability, redo later:
-
-function getBlobURLFromByteArray(data, type) {
+async function getImageBlobAndURLFromDataOrList(data, type, trackList) {
 	if (isArray(data)) {
 		data = Uint8Array.from(data, (v) => v.charCodeAt(0)).buffer;
+
 	}
 
-	return URL.createObjectURL(new Blob( [data], { type } ));
+const	blob = (
+		isBlob(data)
+		? data
+		: new Blob( [data], { type } )
+	);
+
+//* Reuse old blob:
+
+	if (trackList = getTrackListFromProject(trackList)) {
+
+		if (isArray(trackList)) {
+			for (const entry of trackList) {
+
+				if (await isIdenticalData(entry.blob, blob)) {
+					if (TESTING > 1) console.log('getImageBlobAndURLFromDataOrList: reused image', [key, entry, blob, trackList]);
+
+					return entry;
+				}
+			}
+		} else
+		if (isMap(trackList)) {
+			for (const [key, entry] of trackList) {
+
+				if (await isIdenticalData(entry.blob, blob)) {
+					if (TESTING > 1) console.log('getImageBlobAndURLFromDataOrList: reused image', [key, entry, blob, trackList]);
+
+					return entry;
+				}
+			}
+		} else {
+			for (const key in trackList) {
+			const	entry = trackList[key];
+
+				if (await isIdenticalData(entry.blob, blob)) {
+					if (TESTING > 1) console.log('getImageBlobAndURLFromDataOrList: reused image', [key, entry, blob, trackList]);
+
+					return entry;
+				}
+			}
+		}
+	}
+
+//* Use new blob:
+
+const	url = URL.createObjectURL(blob);
+const	entry = { url, blob };
+
+	if (trackList) {
+		addURLToTrackList(entry, trackList);
+	}
+
+	return entry;
 }
 
-function dataToBlob(data, trackList) {
+async function getImageBlobAndURLFromData(data, trackList) {
 	if (URL && URL.createObjectURL) {
 	let	type = TYPE_TEXT;
 
@@ -3239,34 +3446,32 @@ function dataToBlob(data, trackList) {
 		}
 
 	const	size = data.length;
-	const	url = getBlobURLFromByteArray(data, type);
+	const	{ url, blob } = await getImageBlobAndURLFromDataOrList(data, type, trackList);
 
 		if (url) {
-			addURLToTrackList(url, trackList);
-
-			return { size, type, url };
+			return { blob, size, type, url };
 		}
 	}
 }
 
-function saveDL(data, fileName, ext, addTime, jsonReplacerFunc) {
+async function saveDL(data, fileName, ext, addTime, jsonReplacerFunc) {
 
 	function cleanUpAfterDL() {
 		if (a) del(a);
-		if (revokeURL) URL.revokeObjectURL(url);
+		if (mustRevokeURL) URL.revokeObjectURL(url);
 	}
 
 	if (TESTING > 1) console.log(fileName, ext, data);
 
 let	blob, size, type, url;
-let	revokeURL = false;
+let	mustRevokeURL = false;
 
 	if (isBlob(data)) {
 		blob = data;
 		size = blob.size;
 		type = blob.type;
 		url = URL.createObjectURL(blob);
-		revokeURL = true;
+		mustRevokeURL = true;
 	} else {
 		type = TYPE_TEXT;
 		data = (
@@ -3290,11 +3495,11 @@ let	revokeURL = false;
 				url = DATA_PREFIX + type + ',' + encodeURIComponent(data);
 			}
 
-			if (blob = dataToBlob(data)) {
+			if (blob = await getImageBlobAndURLFromData(data)) {
 				size = blob.size;
 				type = blob.type;
 				url = blob.url;
-				revokeURL = true;
+				mustRevokeURL = true;
 			} else {
 				size = url.length;
 				type = url.split(';', 1)[0].split(':', 2)[1];
@@ -3348,7 +3553,12 @@ const	a = cre('a', document.body);
 		logTime('opened file to save');
 	}
 
-	if (a) setTimeout(cleanUpAfterDL, Math.max(Math.ceil(size / 1000), 12345));
+	if (a) {
+	const	msec = Math.max(Math.ceil(size / 1000), 12345);
+
+		a.setAttribute('data-self-remove-pause', msec);
+		setTimeout(cleanUpAfterDL, msec);
+	}
 
 	return size;
 }
@@ -4370,15 +4580,18 @@ async function getOrLoadImage(project, layer) {
 			}
 
 			if (project) {
-				if (
-					layer
-				&&	!project.imagesLoaded.includes(img)
-				) {
-					project.imagesLoaded.push(img);
+				if (!layer) {
+					img.title = img.alt = project.fileName;
+				} else
+				if (addToListIfNotYet(project.imagesLoaded, img)) {
+					img.title = img.alt = layer.name;
 				}
 
 				if (hasPrefix(img.src, BLOB_PREFIX)) {
-					addURLToTrackList(img.src, project);
+				const	url = img.src;
+				const	blob = await getFilePromiseFromURL(url, 'blob');
+
+					addURLToTrackList({ blob, url, img }, project);
 				}
 			}
 
@@ -9546,8 +9759,13 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 //* Get layer/folder/batch as flat image:
 
 				if (layers.length > 0) {
+
 					if (backward) {
-						layers = layers.slice().reverse();
+						if (layers === layer.layers) {
+							layers = layers.slice();
+						}
+
+						layers.reverse();
 					}
 
 //* Passthrough mode:
@@ -10560,6 +10778,14 @@ let	batchContainer, subContainer;
 		return;
 	}
 
+	if (batchContainer) {
+		for (const subContainer of getAllByTag('div', batchContainer)) {
+			if (!getAllByTag('img', subContainer).length) {
+				del(subContainer);
+			}
+		}
+	}
+
 	if (flags.saveToZipFile) {
 	const	zipFile = new zip.fs.FS();
 		zipFile.compressionLevel = 0;
@@ -10647,8 +10873,7 @@ let	batchContainer, subContainer;
 			(resolve, reject) => zipFile.exportBlob(
 				(blob) => {
 					try {
-						saveDL(blob, project.fileName + '_' + imagesDone, 'zip', 1);
-						resolve(true);
+						resolve(saveDL(blob, project.fileName + '_' + imagesDone, 'zip', 1));
 
 					} catch (error) {
 						reject(error);
@@ -10792,7 +11017,7 @@ let	batchContainer, subContainer;
 					}
 
 					if (flags.saveToFile) {
-						saveDL(
+						await saveDL(
 							img.src
 						,	project.fileName + '_' + renderedImages.length
 						,	img.type || 'png'
@@ -10865,7 +11090,7 @@ let	img;
 		img = render.img;
 
 		if (img) {
-			saveDL(
+			await saveDL(
 				img.src
 			,	fileName || render.fileNameToSave || render.fileName
 			,	img.type || 'png'
@@ -11183,8 +11408,7 @@ let	oraLayers, img, randomOtherImg, failed, timeNow;
 			(resolve, reject) => oraFile.save(
 				(blob) => {
 					try {
-						saveDL(blob, project.baseName, 'ora', 1);
-						resolve(true);
+						resolve(saveDL(blob, project.baseName, 'ora', 1));
 
 					} catch (error) {
 						reject(error);
@@ -12374,7 +12598,8 @@ function closeProject(buttonTab) {
 	const	revokedBlobsCount = revokeBlobsFromTrackList(project);
 
 		if (revokedBlobsCount) {
-			if (TESTING > 1) console.log('Closed project:', [project, 'revoked blobs:', revokedBlobsCount]);
+			if (TESTING > 1) console.log('Closed project:', [project.fileName, project, 'revoked blobs:', revokedBlobsCount]); else
+			if (TESTING) logTime('"' + project.fileName + '" closed, revoked ' + revokedBlobsCount + ' blobs.');
 		}
 	}
 }
