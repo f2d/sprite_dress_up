@@ -105,6 +105,9 @@ var	exampleRootDir = ''
 ,	FILE_NAME_OMIT_SINGLE_OPTIONS	= true
 ,	GET_LAYER_IMAGE_FROM_BITMAP	= true
 ,	LOCALIZED_CASE_BY_CROSS_COUNT	= false	//* <- determine word case by product of all numbers in args; if not, then by the last number.
+,	LOG_ACTIONS			= false
+,	LOG_GROUPING			= false	//* <- becomes a mess with concurrent operations.
+,	LOG_TIMERS			= false
 ,	PRELOAD_ALL_LAYER_IMAGES	= false
 ,	PRELOAD_USED_LAYER_IMAGES	= false
 ,	READ_FILE_CONTENT_TO_GET_TYPE	= false	//* <- this relies on the browser or the OS to magically determine file type.
@@ -125,7 +128,6 @@ var	exampleRootDir = ''
 ,	TESTING				= false	//* <- dump more info into the console; several levels are possible.
 ,	TESTING_PNG			= false	//* <- dump a PNG onto the page after converting from pixel data.
 ,	TESTING_RENDER			= false	//* <- dump a PNG onto the page after each rendering operation.
-,	USE_CONSOLE_LOG_GROUPING	= false	//* <- becomes a mess with concurrent operations.
 ,	USE_CRITERIA_ARRAY		= true
 ,	USE_MINIFIED_JS			= true	//* <- currently only pako.
 ,	USE_ONE_FILE_ZIP_WORKER		= false	//* <- concatenated bundle, which is not included in distribution by default.
@@ -139,8 +141,8 @@ var	exampleRootDir = ''
 ,	ZIP_SKIP_DUPLICATE_FILENAMES		= true
 
 //* Array/Map/Set/Object containers all work fine.
-//* Set is the fastest in this case, tested in Firefox 56 and Vivaldi 3.7.2218.55 (64-bit).
-//* Map is 2nd fastest, but almost same as Array/Object.
+//* Set is the fastest in this case, tested in Firefox 56, Basilisk 2021.03.17 (Firefox 56-based) and Vivaldi 3.7.2218.55 (latest Chrome-based).
+//* Map is 2nd fastest, but almost the same as Array/Object.
 
 ,	PROJECT_BLOBS_CONTAINER_TYPE = Set
 	;
@@ -3573,7 +3575,7 @@ const	baseName = (
 		fileName += ext;
 	}
 
-	logTime(
+	if (LOG_ACTIONS) logTime(
 		'saving "' + fileName + '", '
 		+ (
 			blob
@@ -3591,7 +3593,7 @@ const	a = cre('a', document.body);
 	} else {
 		window.open(url, '_blank');
 
-		logTime('opened file to save');
+		if (LOG_ACTIONS) logTime('opened file to save');
 	}
 
 	if (a) {
@@ -3748,7 +3750,7 @@ const	depends = asFlatArray(lib.depends);
 //* Then check whether the required object is present:
 
 				if (!varName || window[varName]) {
-					logTime('"' + libName + '" library finished loading');
+					if (LOG_ACTIONS) logTime('"' + libName + '" library finished loading');
 
 					resolve(true);
 				} else {
@@ -3762,7 +3764,7 @@ const	depends = asFlatArray(lib.depends);
 						)
 					);
 
-					logTime('"' + libName + '" library failed loading');
+					if (LOG_ACTIONS) logTime('"' + libName + '" library failed loading');
 
 					resolve(false);
 				}
@@ -4693,7 +4695,7 @@ const	countDeleted = getAllById(fileId).reduce(
 	,	0
 	);
 
-	if (countDeleted) {
+	if (countDeleted && LOG_ACTIONS) {
 		logTime('"' + fileId + '" closed, ' + countDeleted + ' element(s) removed');
 	}
 }
@@ -4957,7 +4959,7 @@ let	project, totalStartTime;
 		if (!loadersTried++) {
 			totalStartTime = startTime;
 
-			logTime('"' + fileName + '" started ' + actionLabel);
+			if (LOG_ACTIONS) logTime('"' + fileName + '" started ' + actionLabel);
 		}
 
 		project = {
@@ -5006,7 +5008,7 @@ let	project, totalStartTime;
 	if (loadersTried > 0) {
 	const	tookTime = getTimeNow() - totalStartTime;
 
-		logTime(
+		if (LOG_ACTIONS) logTime(
 			'"' + fileName + '"'
 		+	(
 				project
@@ -5059,7 +5061,7 @@ async function getProjectViewMenu(project) {
 			: 'checking colors of ' + imagesCount + ' layers'
 		);
 
-		logTime('"' + fileName + '" started ' + actionLabel);
+		if (LOG_ACTIONS) logTime('"' + fileName + '" started ' + actionLabel);
 
 //* Try loading one by one to avoid flood of errors:
 
@@ -5097,7 +5099,7 @@ async function getProjectViewMenu(project) {
 			)
 		);
 
-		logTime(
+		if (LOG_ACTIONS) logTime(
 			'"' + fileName + '"'
 		+	(
 				result
@@ -5123,7 +5125,7 @@ async function getProjectViewMenu(project) {
 		const	options = getProjectOptions(project);
 
 			if (!options) {
-				logTime('"' + project.fileName + '" has no options.');
+				if (LOG_ACTIONS) logTime('"' + project.fileName + '" has no options.');
 			} else
 			if (await preloadProjectImages(project)) {
 
@@ -7587,7 +7589,7 @@ async function loadCommonWrapper(project, libName, getFileParserPromise, treeCon
 let	sourceData;
 const	actionLabel = 'processing document with ' + libName;
 
-	logTime('"' + project.fileName + '" started ' + actionLabel);
+	if (LOG_ACTIONS) logTime('"' + project.fileName + '" started ' + actionLabel);
 
 	project.loading.errorPossible = 'project_status_error_loading_file';
 	project.loading.errorParams = project.fileName;
@@ -7603,7 +7605,7 @@ const	actionLabel = 'processing document with ' + libName;
 		logError(error, arguments);
 	}
 
-	logTime(
+	if (LOG_ACTIONS) logTime(
 		'"' + project.fileName + '"'
 	+	(
 			sourceData
@@ -8631,12 +8633,19 @@ const	canvas = ctx.canvas;
 				if (TESTING_RENDER) {
 					console.log('blendMode:', [blendMode, 'opacity:', opacity, mask ? 'callback with mask' : 'callback']);
 
-					logLabelWrap = blendMode + ': ' + project.rendering.nestedLayers.map((layer) => layer.name).join(' / ');
-					console.time(logLabelWrap);
-					if (USE_CONSOLE_LOG_GROUPING) console.group(logLabelWrap);
+					if (LOG_TIMERS) {
+						logLabelWrap = (
+							blendMode
+						+	': '
+						+	project.rendering.nestedLayers.map(
+								(layer) => layer.name
+							).join(' / ')
+						);
 
-					logLabel = blendMode + ': loading image data';
-					console.time(logLabel);
+						console.time(logLabelWrap);
+						if (LOG_GROUPING) console.group(logLabelWrap);
+						console.time(logLabel = blendMode + ': loading image data');
+					}
 				}
 
 //* Get pixels of layer below (B):
@@ -8686,28 +8695,23 @@ const	canvas = ctx.canvas;
 
 //* Compute resulting pixels linearly into dataAbove, and save result back onto canvas:
 
-				if (TESTING_RENDER) {
+				if (TESTING_RENDER && LOG_TIMERS) {
 					console.timeEnd(logLabel);
-
-					logLabel = blendMode + ': running calculation';
-					console.time(logLabel);
+					console.time(logLabel = blendMode + ': running calculation');
 				}
 
 			const	isDone = callback(rgbaAbove, rgbaBelow, rgbaMask);
 
-				if (TESTING_RENDER) {
+				if (TESTING_RENDER && LOG_TIMERS) {
 					console.timeEnd(logLabel);
-
-					logLabel = blendMode + ': saving result to canvas';
-					console.time(logLabel);
+					console.time(logLabel = blendMode + ': saving result to canvas');
 				}
 
 				ctx.putImageData(isDone ? dataAbove : dataBelow, 0,0);
 
-				if (TESTING_RENDER) {
+				if (TESTING_RENDER && LOG_TIMERS) {
 					console.timeEnd(logLabel);
-
-					if (USE_CONSOLE_LOG_GROUPING) console.groupEnd(logLabelWrap);
+					if (LOG_GROUPING) console.groupEnd(logLabelWrap);
 					console.timeEnd(logLabelWrap);
 				}
 
@@ -10047,7 +10051,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 	}
 
 	if (project.loading) {
-		logTime('getRenderByValues - skipped while loading project.');
+		if (LOG_ACTIONS) logTime('getRenderByValues - skipped while loading project.');
 
 		return;
 	}
@@ -10062,7 +10066,7 @@ let	layer, layersToRenderOne;
 		if (nestedLayersBatch) {
 			++project.rendering.layersBatchCount;
 		} else {
-			logTime('getRenderByValues - skipped while rendering: no layers in sub-batch.');
+			if (LOG_ACTIONS) logTime('getRenderByValues - skipped while rendering: no layers in sub-batch.');
 
 			return;
 		}
@@ -10071,7 +10075,7 @@ let	layer, layersToRenderOne;
 			layersToRenderOne = (project.renderingRootGroup || project).layers;
 
 			if (!layersToRenderOne.includes(layer)) {
-				logTime('getRenderByValues - skipped before starting: separate layer not found.');
+				if (LOG_ACTIONS) logTime('getRenderByValues - skipped before starting: separate layer not found.');
 
 				setRenderRootByValues(project, null);
 
@@ -10157,12 +10161,17 @@ let	canvas, ctx, mask, clippingMask;
 		if (isStopRequestedAnywhere(project)) {
 			canvas = ctx = null;
 
-			logTime('getRenderByValues - stopped by request after ' + (renderingTime / 1000) + ' seconds spent.', renderName);
+			if (LOG_ACTIONS) logTime(
+				'getRenderByValues - stopped by request after '
+			+	(renderingTime / 1000)
+			+	' seconds spent.'
+			,	renderName
+			);
 		} else
 		if (canvas) {
 			canvas.renderingTime = renderingTime;
 
-			logTime(
+			if (LOG_ACTIONS) logTime(
 				'"' + project.fileName + '" rendered in '
 			+	[	PR.layersBatchCount + ' canvas elements'
 				,	PR.layersApplyCount + ' blending steps'
@@ -10173,7 +10182,10 @@ let	canvas, ctx, mask, clippingMask;
 			,	renderName
 			);
 		} else {
-			logTime('getRenderByValues - visible layers not found.', renderName);
+			if (LOG_ACTIONS) logTime(
+				'getRenderByValues - visible layers not found.'
+			,	renderName
+			);
 		}
 
 		updateProjectLoadedImagesCount(project);
@@ -10673,8 +10685,8 @@ async function renderAll(project, flags) {
 	project.renderBatchCountStartTime = null;
 
 const	logLabel = 'Render all: ' + project.fileName;
-	console.time(logLabel);
-	if (USE_CONSOLE_LOG_GROUPING) console.group(logLabel);
+	if (LOG_TIMERS) console.time(logLabel);
+	if (LOG_GROUPING) console.group(logLabel);
 
 const	startTime = getTimeNow();
 const	values = project.renderBatchSelectedOptions || (project.renderBatchSelectedOptions = getAllMenuValues(project, true));
@@ -10687,8 +10699,10 @@ const	valueSets = project.renderBatchSelectedSets || (project.renderBatchSelecte
 		await renderBatch(project, flags, startTime, values, valueSets);
 	}
 
-	if (USE_CONSOLE_LOG_GROUPING) console.groupEnd(logLabel);
-	console.timeEnd(logLabel);
+	if (LOG_GROUPING) console.groupEnd(logLabel);
+	if (LOG_TIMERS) console.timeEnd(logLabel);
+
+	if (TESTING > 1) console.log('trackList:', [getTrackListFromProject(project), project]);
 
 	setWIPstate(false, project);
 }
@@ -10724,7 +10738,7 @@ let	batchContainer, subContainer;
 	if (flags.showOnPage) batchContainer = getEmptyRenderContainer(project); else
 	if (flags.asOneJoinedImage) batchContainer = cre('div');
 
-	logTime(
+	if (LOG_ACTIONS) logTime(
 		'"' + project.fileName + '"'
 	+	' started rendering ' + setsCountTotal
 	+	' sets (listing took ' + (lastPauseTime - startTime)
@@ -10813,7 +10827,7 @@ let	batchContainer, subContainer;
 		}
 	}
 
-	logTime(
+	if (LOG_ACTIONS) logTime(
 		'"' + project.fileName + '"'
 	+	' finished rendering ' + setsCount
 	+	' / ' + setsCountTotal
@@ -11380,7 +11394,8 @@ async function saveProject(project) {
 
 const	isSingleWIP = setWIPstate(true, project);
 const	actionLabel = 'exporting to ORA file';
-	logTime('"' + project.fileName + '" started ' + actionLabel);
+
+	if (LOG_ACTIONS) logTime('"' + project.fileName + '" started ' + actionLabel);
 
 const	thisJob = { project, 'lastPauseTime' : getTimeNow() };
 	pendingJobs.add(thisJob);
@@ -11476,7 +11491,7 @@ let	oraLayers, img, randomOtherImg, failed, timeNow;
 
 	pendingJobs.delete(thisJob);
 
-	logTime('"' + project.fileName + '" ' + (
+	if (LOG_ACTIONS) logTime('"' + project.fileName + '" ' + (
 		failed
 		? 'failed'
 		: oraLayers === null
@@ -11517,9 +11532,11 @@ async function updateMenuAndShowImg(project) {
 	||	project.rendering
 	||	project.isBatchWIP
 	) {
-		if (project.loading) logTime('updateMenuAndRender - skipped while loading project.');
-		if (project.rendering) logTime('updateMenuAndRender - skipped while already rendering.');
-		if (project.isBatchWIP) logTime('updateMenuAndRender - skipped while batch work is in progress.');
+		if (LOG_ACTIONS) {
+			if (project.loading) logTime('updateMenuAndRender - skipped while loading project.');
+			if (project.rendering) logTime('updateMenuAndRender - skipped while already rendering.');
+			if (project.isBatchWIP) logTime('updateMenuAndRender - skipped while batch work is in progress.');
+		}
 
 		return;
 	}
@@ -12435,8 +12452,8 @@ const	thisJob = { startTime, files, evt };
 			)
 		].join(' ');
 
-		console.time(logLabel);
-		if (USE_CONSOLE_LOG_GROUPING) console.group(logLabel);
+		if (LOG_TIMERS) console.time(logLabel);
+		if (LOG_GROUPING) console.group(logLabel);
 
 		for (const file of files) {
 			if (await addProjectViewTab(file, startTime)) {
@@ -12448,8 +12465,8 @@ const	thisJob = { startTime, files, evt };
 			}
 		}
 
-		if (USE_CONSOLE_LOG_GROUPING) console.groupEnd(logLabel);
-		console.timeEnd(logLabel);
+		if (LOG_GROUPING) console.groupEnd(logLabel);
+		if (LOG_TIMERS) console.timeEnd(logLabel);
 
 		console.log('Loaded ' + loadedProjectsCount + ' of ' + files.length + ' project files.');
 	} else if (TESTING) {
@@ -12468,13 +12485,13 @@ async function loadFromURL(url, startTime) {
 
 const	logLabel = 'Load project from url: ' + url;
 
-	console.time(logLabel);
-	if (USE_CONSOLE_LOG_GROUPING) console.group(logLabel);
+	if (LOG_TIMERS) console.time(logLabel);
+	if (LOG_GROUPING) console.group(logLabel);
 
 const	isProjectLoaded = await addProjectViewTab({ url }, startTime);
 
-	if (USE_CONSOLE_LOG_GROUPING) console.groupEnd(logLabel);
-	console.timeEnd(logLabel);
+	if (LOG_GROUPING) console.groupEnd(logLabel);
+	if (LOG_TIMERS) console.timeEnd(logLabel);
 
 	return isProjectLoaded;
 }
@@ -12645,8 +12662,8 @@ function closeProject(buttonTab) {
 	const	revokedBlobsCount = revokeBlobsFromTrackList(project);
 
 		if (revokedBlobsCount) {
-			if (TESTING > 1) console.log('Closed project:', [project.fileName, project, 'revoked blobs:', revokedBlobsCount]); else
-			if (TESTING) logTime('"' + project.fileName + '" closed, revoked ' + revokedBlobsCount + ' blobs.');
+			if (LOG_ACTIONS) logTime('"' + project.fileName + '" closed, revoked ' + revokedBlobsCount + ' blobs.');
+			if (TESTING > 2) console.log(project);
 		}
 	}
 }
@@ -12654,12 +12671,11 @@ function closeProject(buttonTab) {
 //* Runtime: prepare UI *------------------------------------------------------
 
 async function initUI() {
-const	logLabelWrap = 'Init';
-	console.time(logLabelWrap);
-	if (USE_CONSOLE_LOG_GROUPING) console.group(logLabelWrap);
+let	logLabel, logLabelWrap;
 
-let	logLabel = `Init localization "${LANG}"`;
-	console.time(logLabel);
+	if (LOG_TIMERS) console.time(logLabelWrap = 'Init');
+	if (LOG_GROUPING) console.group(logLabelWrap);
+	if (LOG_TIMERS) console.time(logLabel = `Init localization "${LANG}"`);
 
 	document.body.classList.remove('stub');
 	document.body.classList.add('loading');
@@ -12668,7 +12684,7 @@ let	logLabel = `Init localization "${LANG}"`;
 
 	document.body.innerHTML = getLocalizedHTML('loading');
 
-	console.timeEnd(logLabel);
+	if (LOG_TIMERS) console.timeEnd(logLabel);
 
 //* Remember config defaults:
 
@@ -12699,12 +12715,11 @@ const	configVarNames = [
 
 //* Load redefined config:
 
-	logLabel = 'Init external config';
-	console.time(logLabel);
+	if (LOG_TIMERS) console.time(logLabel = 'Init external config');
 
 	await loadLibPromise(CONFIG_FILE_PATH);
 
-	console.timeEnd(logLabel);
+	if (LOG_TIMERS) console.timeEnd(logLabel);
 
 //* Restore invalid config values to default:
 
@@ -12754,19 +12769,18 @@ const	configVarNames = [
 let	canLoadLocalFiles = true;
 
 	if (RUNNING_FROM_DISK) {
-		logTime('Init: try loading local file.');
+		if (LOG_ACTIONS) logTime('Init: try loading local file.');
 
 		canLoadLocalFiles = !! await getFilePromiseFromURL(FETCH_TEST_FILE_PATH).catch(catchPromiseError);
 	}
 
 	if (!canLoadLocalFiles) {
-		logTime('Init: running from disk, cannot load local files.');
+		if (LOG_ACTIONS) logTime('Init: running from disk, cannot load local files.');
 	}
 
 //* Load libraries not specific to file formats:
 
-	logLabel = 'Init libraries';
-	console.time(logLabel);
+	if (LOG_TIMERS) console.time(logLabel = 'Init libraries');
 
 	await loadLibPromise(LIB_UTIL_DIR + 'composition.asm.js');
 
@@ -12774,7 +12788,7 @@ let	canLoadLocalFiles = true;
 		CompositionFuncList = Object.keys(CompositionModule(window, null, new ArrayBuffer(nextValidHeapSize(0))));
 	}
 
-	console.timeEnd(logLabel);
+	if (LOG_TIMERS) console.timeEnd(logLabel);
 
 //* Create main menu:
 
@@ -12782,8 +12796,7 @@ let	canLoadLocalFiles = true;
 		return content.replace(/(\s*\<br\>){2,}/gi, '</p><p>');
 	}
 
-	logLabel = 'Init menu: file types';
-	console.time(logLabel);
+	if (LOG_TIMERS) console.time(logLabel = 'Init menu: file types');
 
 const	todoText = getLocalizedText('todo');
 const	todoHTML = '<p>' + getLocalizedHTML('todo') + '</p>';
@@ -12857,10 +12870,10 @@ const	supportedFileTypesText = (
 	+	'</section>'
 	);
 
-	console.timeEnd(logLabel);
-
-	logLabel = 'Init menu: example files';
-	console.time(logLabel);
+	if (LOG_TIMERS) {
+		console.timeEnd(logLabel);
+		console.time(logLabel = 'Init menu: example files');
+	}
 
 	function getExampleHeaderRow(content, rowLength) {
 		return (
@@ -13081,10 +13094,10 @@ const	batchButtonsHTML = (
 	+	'</table>'
 	);
 
-	console.timeEnd(logLabel);
-
-	logLabel = 'Init menu: help';
-	console.time(logLabel);
+	if (LOG_TIMERS) {
+		console.timeEnd(logLabel);
+		console.time(logLabel = 'Init menu: help');
+	}
 
 	function getHelpSectionLinkAwayHTML(linkName) {
 	const	url = getLocalizedOrEmptyText(linkName);
@@ -14285,10 +14298,10 @@ const	menuHTMLpartsOrder = [
 		)
 	]);
 
-	console.timeEnd(logLabel);
-
-	logLabel = 'Init menu: about';
-	console.time(logLabel);
+	if (LOG_TIMERS) {
+		console.timeEnd(logLabel);
+		console.time(logLabel = 'Init menu: about');
+	}
 
 const	aboutLinks = [
 		{
@@ -14351,10 +14364,10 @@ const	aboutLinks = [
 		)
 	);
 
-	console.timeEnd(logLabel);
-
-	logLabel = 'Init GUI content';
-	console.time(logLabel);
+	if (LOG_TIMERS) {
+		console.timeEnd(logLabel);
+		console.time(logLabel = 'Init GUI content');
+	}
 
 const	menuHTML = getNestedFilteredArrayJoinedText(
 		Object.entries(menuHTMLparts).map(
@@ -14426,7 +14439,7 @@ const	linkTooltips = [
 		element.setAttribute('title', title);
 	}
 
-	console.timeEnd(logLabel);
+	if (LOG_TIMERS) console.timeEnd(logLabel);
 
 //* Enable/disable main menu buttons:
 
@@ -14481,10 +14494,9 @@ let	oldSetting;
 	document.body.classList.remove('loading');
 	document.body.classList.add('ready');
 
-	if (USE_CONSOLE_LOG_GROUPING) console.groupEnd(logLabelWrap);
-	console.timeEnd(logLabelWrap);
-
-	logTime('Init: ready to work.');
+	if (LOG_GROUPING) console.groupEnd(logLabelWrap);
+	if (LOG_TIMERS) console.timeEnd(logLabelWrap);
+	if (LOG_ACTIONS) logTime('Init: ready to work.');
 }
 
 //* Runtime *------------------------------------------------------------------
