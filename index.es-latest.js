@@ -158,12 +158,10 @@ var	exampleRootDir = ''
 	'Function',	//* <- matches anything with 'Function' at the end, e.g. 'AsyncFunction'
 	'ImageData',
 	'ImageElement',	//* <- matches anything with 'ImageElement' at the end, e.g. 'HTMLImageElement'
-	'Map',
 	'Number',
 	'Promise',
 	'RegExp',
 	'SelectElement',
-	'Set',
 	'String',
 ].forEach(
 	function (typeName) {
@@ -1361,7 +1359,7 @@ function isNotEmptyString(value) {
 function isSlicableNotString(value) {
 	return (
 		!isString(value)
-	&&	value
+	&&	isNonNullObject(value)
 	&&	isFunction(value.slice)
 	);
 }
@@ -3206,21 +3204,7 @@ async function getImagePromiseFromCanvasToBlob(canvas, trackList, mimeType, qual
 async function addURLToTrackList(data, holder) {
 	if (isNonNullObject(holder)) {
 
-	const	trackList = (
-			!holder.fileName
-			? holder
-			:
-			(PROJECT_BLOBS_CONTAINER_TYPE === Array)
-			? getOrInitChild(holder, 'blobsAndURLs', Array)
-			:
-			(PROJECT_BLOBS_CONTAINER_TYPE === Set)
-			? getOrInitChild(holder, 'blobsAndURLs', Set)
-			:
-			(PROJECT_BLOBS_CONTAINER_TYPE === Map)
-			? getOrInitChild(holder, 'blobsByURL', Map)
-			: getOrInitChild(holder, 'blobsByURL')
-		);
-
+	const	trackList = getTrackListFromProject(holder);
 	let	key = data;
 
 		if (isNonNullObject(data)) {
@@ -3241,13 +3225,13 @@ async function addURLToTrackList(data, holder) {
 			key = url;
 		}
 
-		if (isSet(trackList)) {
+		if (trackList instanceof Set) {
 			trackList.add(data);
 		} else
-		if (isArray(trackList)) {
+		if (trackList instanceof Array) {
 			addToListIfNotYet(trackList, data);
 		} else
-		if (isMap(trackList)) {
+		if (trackList instanceof Map) {
 			if (!isNonNullObject(trackList.get(key))) {
 				trackList.set(key, data);
 			}
@@ -3277,9 +3261,9 @@ let	count = 0;
 		} else
 		if (isNonNullObject(data = getTrackListFromProject(data))) {
 			if (
-				isArray(data)
-			||	isMap(data)
-			||	isSet(data)
+				(data instanceof Array)
+			||	(data instanceof Map)
+			||	(data instanceof Set)
 			) {
 				data.forEach(
 					(data, key) => {
@@ -3306,6 +3290,17 @@ function getTrackListFromProject(holder) {
 			||	holder.blobsAndURLs
 			||	holder.blobsByURL
 			||	holder.blobURLs
+			||	(
+					(PROJECT_BLOBS_CONTAINER_TYPE === Array)
+					? getOrInitChild(holder, 'blobsAndURLs', Array)
+					:
+					(PROJECT_BLOBS_CONTAINER_TYPE === Set)
+					? getOrInitChild(holder, 'blobsAndURLs', Set)
+					:
+					(PROJECT_BLOBS_CONTAINER_TYPE === Map)
+					? getOrInitChild(holder, 'blobsByURL', Map)
+					: getOrInitChild(holder, 'blobsByURL')
+				)
 			);
 		}
 
@@ -3431,8 +3426,8 @@ const	blob = (
 		}
 
 		if (
-			isSet(trackList)
-		||	isArray(trackList)
+			(trackList instanceof Array)
+		||	(trackList instanceof Set)
 		) {
 			for (const item of trackList) {
 				if (entry = await getImageBlobAndURLFromList(item)) {
@@ -3440,7 +3435,7 @@ const	blob = (
 				}
 			}
 		} else
-		if (isMap(trackList)) {
+		if (trackList instanceof Map) {
 			for (const [key, item] of trackList) {
 				if (entry = await getImageBlobAndURLFromList(item, key)) {
 					return entry;
@@ -3619,7 +3614,7 @@ let	dir, scripts;
 				) {
 				const	src = scripts.shift();
 
-					if (isString(src)) {
+					if (isNotEmptyString(src)) {
 					const	script = cre('script', document.head);
 						script.onload = addNextScript;
 						script.onerror = (evt) => getErrorFromEvent(evt, 'Script loading failed.', reject);
@@ -8404,13 +8399,15 @@ async function getAllValueSets(project, values, startTime, flags) {
 		return isGoingDeeper;
 	}
 
+	if (!isNonNullObject(flags)) {
+		flags = {};
+	}
+
 const	{
 		getOnlyNames,
 		stopAtMaxCount,
 		checkSelectedValue,
-	} = (
-		isNonNullObject(flags) ? flags : {}
-	);
+	} = flags;
 
 	if (!isNonNullObject(values)) {
 		values = getAllMenuValues(project, checkSelectedValue);
@@ -9378,7 +9375,7 @@ function isLayerVisibleByCopyPaste(project, layer, values, listName) {
 	const	aliases = layer.params.copypaste.copy;
 
 		if (
-			isArray(aliases)
+			isNonEmptyArray(aliases)
 		&&	aliases.some(
 				(alias) => (
 					getPropByNameChain(project, 'layersCopyPasteTargetsByAlias', alias)
@@ -9600,7 +9597,7 @@ const	key = 'copyPastedTo';
 
 		if (pasteTargets) {
 
-			if (TESTING) console.log(
+			if (TESTING > 1 || TESTING_RENDER) console.log(
 				'layers rendered, cleanup copypaste:', [
 					'layer:', layer,
 					'pasted to:', pasteTargets,
@@ -14297,12 +14294,8 @@ const	menuHTMLpartsOrder = [
 			(sectionName) => {
 			const	content = helpSections[sectionName];
 			const	sectionContentHTML = getNestedFilteredArrayJoinedText(
-					!isArray(content)
-					? (
-						content
-					||	getLocalizedHTML('help_' + sectionName + '_content')
-					)
-					: content.map(
+					isArray(content)
+					? content.map(
 						(entry) => [
 							(
 								!entry.code_sample
@@ -14327,6 +14320,10 @@ const	menuHTMLpartsOrder = [
 								)
 							)
 						]
+					)
+					: (
+						content
+					||	getLocalizedHTML('help_' + sectionName + '_content')
 					)
 				);
 
