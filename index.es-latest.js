@@ -19,7 +19,6 @@
 //* TODO: colors: add "name1,2,3,etc[gradient-map=N/N%=rgb-N-N-N/N%=next+rgb-N-N-N/avg|max|min|rgb]" to interpolate between selected given color values in given name order using given source RGB (or avg/max/min of them). If too many gradient points (number of names > 2 + number points), ignore leftover points. If too many names, distribute undefined points evenly in the last (top?) stretch of gradient. Autosort points by %value. Color value after percent may be used to insert given color value or calculate value dependent on next/previous point (cycle in passes until all are defined). 0/100% may be used for defining colors; use names for omitted. If no usable color names, do nothing.
 
 //* TODO ---------------------- rendering: ------------------------------------
-//* TODO: copypaste: fix stuck visibility with "[parts] list_1 / default / [if parts] list_2 / part_2 (empty folder) [paste=another_part_1]".
 //* TODO: collage: fix stuck rendering of oversized collage.
 //* TODO: collage: arrange joined images without using DOM, to avoid currently visible images moving to hidden container when saving collage.
 //* TODO: clipping: fix hiding of clipping group with skipped/invisible/empty base layer.
@@ -3371,7 +3370,7 @@ async function getImageElementFromData(imageData, project, colorsCount) {
 }
 
 //* Not used yet: *------------------------------------------------------------
-
+/*
 function getImageDataFromArrayBuffer(arrayBuffer) {
 const	img = UPNG.decode(arrayBuffer);
 const	rgbaArray = UPNG.toRGBA8(img)[0];	//* <- UPNG.toRGBA8 returns array of frames, size = width * height * 4 bytes.
@@ -3402,7 +3401,7 @@ async function getImageDataFromURL(url) {
 		}
 	}
 }
-
+*/
 async function getImageBlobAndURLFromDataOrList(data, type, trackList) {
 	if (isArray(data)) {
 		data = Uint8Array.from(data, (v) => v.charCodeAt(0)).buffer;
@@ -4624,10 +4623,12 @@ async function getOrLoadImage(project, layer) {
 
 			if (project) {
 				if (!layer) {
-					img.title = img.alt = project.fileName;
+					img.alt =
+					img.title = project.fileName;
 				} else
 				if (addToListIfNotYet(project.imagesLoaded, img)) {
-					img.title = img.alt = layer.name;
+					img.alt =
+					img.title = layer.name;
 				}
 
 			const	url = img.src;
@@ -7735,7 +7736,10 @@ async function loadORA(project) {
 			const	modeColor = layer.composite_color || mode || '';//* <- non-standard, for testing
 			const	mask = layer.mask || null;			//* <- non-standard, for testing
 			const	layers = layer.layers || null;
-			const	isLayerFolder = (isNonNullObject(layers) && isRealNumber(layers.length));
+			const	isLayerFolder = (
+					(isNonNullObject(layers) && isRealNumber(layers.length))
+				||	(layer instanceof ora.OraStack)
+				);
 
 			const	alphaMode = getNormalizedBlendMode(modeAlpha);
 			const	colorMode = getNormalizedBlendMode(modeColor);
@@ -9035,14 +9039,32 @@ async function addDebugImage(project, canvas, comment, highLightColor) {
 	&&	canvas
 	&&	canvas.toDataURL
 	) {
-	const	img = cre('img', project.renderContainer);
+	const	img = cre('img', (project ? project.renderContainer : document.body));
+
+		if (await getImagePromiseFromCanvasToBlob(canvas, null, null, null, img)) {
+			// URL.revokeObjectURL(img.src);
+			// setTimeout(() => URL.revokeObjectURL(img.src), 12345);
+		} else {
+			try {
+				img.src = canvas.toDataURL();
+
+			} catch (error) {
+				console.error(error);
+			}
+		}
+
+		if (!img.src) {
+			img.src = getImageSrcPlaceholder();
+		}
+
+		img.alt = comment;
 
 		if (project) {
-		const	PR = project.rendering || {};
-		const	layers = PR.nestedLayers;
-		const	layer = layers[layers.length - 1];
+		const	PR = project.rendering || DUMMY_EMPTY_ARRAY;
+		const	layers = PR.nestedLayers || DUMMY_EMPTY_ARRAY;
+		const	layer = layers[layers.length - 1] || DUMMY_EMPTY_ARRAY;
 
-			img.alt = img.title = [
+			img.title = [
 				'render name: ' + PR.fileName
 			,	'render nesting level: ' + layers.length
 			,	'render nesting path: ' + layers.map((v) => v.name).join(' / ')
@@ -9051,16 +9073,12 @@ async function addDebugImage(project, canvas, comment, highLightColor) {
 			,	'comment: ' + comment
 			].join(TITLE_LINE_BREAK);
 		} else {
-			img.alt = img.title = comment;
+			img.title = comment;
 		}
 
 		if (highLightColor) {
 			img.style.borderColor = highLightColor;
 			img.style.boxShadow = '3px 3px ' + highLightColor;
-		}
-
-		if (! await getImagePromiseFromCanvasToBlob(canvas, project, 0, 0, img)) {
-			img.src = canvas.toDataURL();
 		}
 	}
 }
@@ -9574,6 +9592,28 @@ const	parent = layer.optionParent;
 	return getOpacityByAnyName();
 }
 
+function cleanUpCopyPasteLinks(layers) {
+const	key = 'copyPastedTo';
+
+	for (const layer of layers) if (key in layer) {
+	const	pasteTargets = layer[key];
+
+		if (pasteTargets) {
+
+			if (TESTING) console.log(
+				'layers rendered, cleanup copypaste:', [
+					'layer:', layer,
+					'pasted to:', pasteTargets,
+				]
+			);
+
+			layer[key] = null;
+		}
+
+		delete layer[key];
+	}
+}
+
 async function getRenderByValues(project, values, nestedLayersBatch, renderParams) {
 
 	async function renderOneLayer(layer) {
@@ -9745,6 +9785,8 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 						layers = (
 							isArray(layers)
 							? layers.slice()
+							: layer.isLayerFolder
+							? []
 							: [layer]
 						);
 
@@ -9755,11 +9797,9 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 							if (isNonEmptyArray(linkedLayers))
 							for (const linkedLayer of linkedLayers) {
-								if (
-									!linkedLayer.copyPastedTo
-								&&	addToListIfNotYet(layers, linkedLayer)
-								) {
-									linkedLayer.copyPastedTo = layer;
+
+								if (addToListIfNotYet(layers, linkedLayer)) {
+									getOrInitChild(linkedLayer, 'copyPastedTo', Array).push(layer);
 								}
 							}
 						}
@@ -9812,11 +9852,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 				if (layers.length > 0) {
 
 					if (backward) {
-						if (layers === layer.layers) {
-							layers = layers.slice();
-						}
-
-						layers.reverse();
+						layers = layers.slice().reverse();
 					}
 
 //* Passthrough mode:
@@ -9857,8 +9893,12 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 						) {
 							canvasCopy = getCanvasFlipped(project, canvas, flipSide, FLAG_RENDER_LAYER_COPY);
 						} else {
-							layersToRender = layersToRender.slice(0, indexToRender).concat(layers);
-							indexToRender = layersToRender.length;
+							layersToRender = (
+								layersToRender.slice(0, indexToRender)
+								.concat(layers)
+								.concat(layersToRender.slice(indexToRender))
+							);
+							indexToRender += layers.length;
 
 							return await onOneLayerDone();
 						}
@@ -9895,17 +9935,12 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 					if (TESTING_RENDER) addDebugImage(project, img, 'folder content result: img = getRenderByValues');
 				}
 
-				if (addCopyPaste) {
-					for (const renderedLayer of layers) {
-						if (renderedLayer.copyPastedTo === layer) {
-							renderedLayer.copyPastedTo = null;
-						}
-					}
-				}
-			} else {
+				cleanUpCopyPasteLinks(layers);
+			} else
 
 //* Not a folder, not a stack of copypaste:
 
+			if (!layer.isLayerFolder) {
 				img = layer.img || await getOrLoadImage(project, layer);
 			}
 		}
@@ -10135,6 +10170,8 @@ let	canvas, ctx, mask, clippingMask;
 
 		await renderOneLayer(layer);
 	}
+
+	cleanUpCopyPasteLinks(layersToRender);
 
 //* End of layer batch.
 
@@ -10434,6 +10471,7 @@ const	fileName  = render.fileName  || (render.fileName  = getKeyForValueSet(proj
 const	img       = render.img       || (render.img       = await getOrCreateRenderedImg(project, render));
 
 	if (img) {
+		img.alt =
 		img.fileNameToSave =
 		render.fileNameToSave = (
 			getFileNameByValuesToSave(project, values)
@@ -10441,7 +10479,6 @@ const	img       = render.img       || (render.img       = await getOrCreateRende
 			+ (img.type || 'png')
 		);
 
-		img.alt =
 		img.title = img.fileNameToSave + img.subtitle;
 	}
 
@@ -10459,6 +10496,7 @@ async function getOrCreateRenderedImg(project, render) {
 
 			const	msec = canvas.renderingTime;
 
+				img.alt =
 				img.name = fileName + '.' + (img.type || 'png');
 				img.subtitle = (
 					TITLE_LINE_BREAK
@@ -10472,7 +10510,6 @@ async function getOrCreateRenderedImg(project, render) {
 				+	')'
 				);
 
-				img.alt =
 				img.title = img.name + img.subtitle;
 
 				prerenders[fileName] = img;
@@ -11052,8 +11089,8 @@ let	batchContainer, subContainer;
 					const	endTime = getTimeNow();
 						totalTime = (endTime - startTime);
 
-						img.name = project.fileName + '.' + (img.type || 'png');
 						img.alt =
+						img.name = project.fileName + '.' + (img.type || 'png');
 						img.title = (
 							img.name
 						+	TITLE_LINE_BREAK
