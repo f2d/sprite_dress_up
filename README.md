@@ -31,10 +31,10 @@ Firefox 56 is supported as a bottom line.
 
 
 
+## Server side
+
 <details>
-<summary>
-## Server side (optional, for web hosting)
-</summary>
+<summary>Optional, for web hosting. See more details here.</summary>
 
 ### update_config.py
 
