@@ -31,7 +31,10 @@ Firefox 56 is supported as a bottom line.
 
 
 
-## Server side
+<details>
+<summary>
+## Server side (optional, for web hosting)
+</summary>
 
 ### update_config.py
 
@@ -114,6 +117,8 @@ python ./update_config.py -im7 -filter Sinc
 * `Sinc` is slower, sharper on high-detail high-res images, very bad artifacts on vector-like icons.
 * `Lanczos` and its variants are slower, look okay, but almost the same as `Welch` on all examples.
 * Most of others available are too blocky or too blurry on the test projects files.
+
+</details>
 
 
 
