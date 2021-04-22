@@ -3408,6 +3408,12 @@ const	blob = (
 		: new Blob( [data], { type } )
 	);
 
+//* Reuse buffer to avoid recreating it later:
+
+	if (isArrayBuffer(data)) {
+		blob.buffer = data;
+	}
+
 //* Reuse old blob:
 
 	if (trackList = getTrackListFromProject(trackList)) {
@@ -12705,11 +12711,13 @@ function closeProject(buttonTab) {
 //* Runtime: prepare UI *------------------------------------------------------
 
 async function initUI() {
-let	logLabel, logLabelWrap;
+const	LOG_TIMERS_PRECONFIG = LOG_TIMERS || RUNNING_FROM_DISK;
+const	logLabelWrap = 'Init';
+let	logLabel;
 
-	if (LOG_TIMERS) console.time(logLabelWrap = 'Init');
+	if (LOG_TIMERS_PRECONFIG) console.time(logLabelWrap);
 	if (LOG_GROUPING) console.group(logLabelWrap);
-	if (LOG_TIMERS) console.time(logLabel = `Init localization "${LANG}"`);
+	if (LOG_TIMERS_PRECONFIG) console.time(logLabel = `Init localization "${LANG}"`);
 
 	document.body.classList.remove('stub');
 	document.body.classList.add('loading');
@@ -12718,7 +12726,7 @@ let	logLabel, logLabelWrap;
 
 	document.body.innerHTML = getLocalizedHTML('loading');
 
-	if (LOG_TIMERS) console.timeEnd(logLabel);
+	if (LOG_TIMERS_PRECONFIG) console.timeEnd(logLabel);
 
 //* Remember config defaults:
 
@@ -12749,11 +12757,11 @@ const	configVarNames = [
 
 //* Load redefined config:
 
-	if (LOG_TIMERS) console.time(logLabel = 'Init external config');
+	if (LOG_TIMERS_PRECONFIG) console.time(logLabel = 'Init external config');
 
 	await loadLibPromise(CONFIG_FILE_PATH);
 
-	if (LOG_TIMERS) console.timeEnd(logLabel);
+	if (LOG_TIMERS_PRECONFIG) console.timeEnd(logLabel);
 
 //* Restore invalid config values to default:
 
@@ -14529,7 +14537,7 @@ let	oldSetting;
 	document.body.classList.add('ready');
 
 	if (LOG_GROUPING) console.groupEnd(logLabelWrap);
-	if (LOG_TIMERS) console.timeEnd(logLabelWrap);
+	if (LOG_TIMERS_PRECONFIG) console.timeEnd(logLabelWrap);
 	if (LOG_ACTIONS) logTime('Init: ready to work.');
 }
 
