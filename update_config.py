@@ -568,11 +568,11 @@ def get_image_cmd_result(src_file_path, cmd_args, new_size_arg=None, check_thumb
 	return get_cmd_result(cmd_args_with_src_path)
 
 def get_image_size(src_file_path):
-	for try_cmd_args_to_resize_image in get_image_cmd_versions(cmd_args_to_get_image_size):
+	for try_cmd_args_to_get_image_size in get_image_cmd_versions(cmd_args_to_get_image_size):
 
 		cmd_result = get_image_cmd_result(
 			src_file_path
-		,	try_cmd_args_to_resize_image
+		,	try_cmd_args_to_get_image_size
 		)
 
 		image_size = cmd_result.strip().lower()
