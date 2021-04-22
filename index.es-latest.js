@@ -113,6 +113,7 @@ var	exampleRootDir = ''
 ,	REQUIRE_NON_EMPTY_SELECTION	= false	//* <- buggy
 ,	SAVE_COLOR_AS_ONE_PIXEL_IMAGE	= false	//* <- may be stretched back by layers attributes, but not yet standard.
 ,	SAVE_OPACITY_ROUNDED		= true
+,	SAVE_WITH_SELECTED_PRERENDER	= true
 ,	SORT_OPTION_LIST_NAMES		= true
 ,	SORT_OPTION_SECTION_NAMES	= false
 ,	START_WITH_BIG_TEXT		= false
@@ -942,6 +943,15 @@ const	zlibPakoFileName = (
 		,	'dir' : LIB_FORMATS_DIR + 'ora/ora_js/'
 		,	'files' : ['ora.js']
 		,	'depends' : ['zip.js']
+		},
+
+		'ora-blending.js' : {
+
+//* Source: https://github.com/zsgalusz/ora.js
+
+			'varName' : 'blending'
+		,	'dir' : LIB_FORMATS_DIR + 'ora/ora_js/'
+		,	'files' : ['ora-blending.js']
 		},
 
 		'psd.js' : {
@@ -9276,13 +9286,14 @@ const	size = getImageContentSize(imgElement);
 		return imgElement;
 	}
 
-const	canvas = getNewCanvasForProject(project);
-const	ctx = canvas.getContext('2d');
-const	flatColorData = ctx.createImageData(canvas.width, canvas.height);
-
 	fillColor = Math.max(0, Math.min(255, orz(fillColor)));
 
+const	canvas = getNewCanvasForProject(project);
+const	ctx = canvas.getContext('2d');
+
+const	flatColorData = new ImageData(canvas.width, canvas.height);
 	flatColorData.data.fill(fillColor);
+
 	ctx.putImageData(flatColorData, 0,0);
 
 const	w = orz(getPropFromAnySource('width',  imgOrLayer, size, project));
@@ -11444,66 +11455,74 @@ let	oraLayers, img, randomOtherImg, failed, timeNow;
 
 //* Use current selected options to create merged preview:
 
-	try {
-	const	render = await getOrCreateRender(
-			project
-		,	{
-				'values' : getPatchedObject(
-					getUpdatedMenuValues(project)
-				,	replaceJSONpartsForZoomRef
-				)
-			}
-		);
+	if (SAVE_WITH_SELECTED_PRERENDER) {
+		try {
+		const	render = await getOrCreateRender(
+				project
+			,	{
+					'values' : getPatchedObject(
+						getUpdatedMenuValues(project)
+					,	replaceJSONpartsForZoomRef
+					)
+				}
+			);
 
-		if (isStopRequestedAnywhere(thisJob, project)) {
-			oraLayers = null;
-		} else {
-			if (render) {
-				img = render.img;
-			}
+			if (isStopRequestedAnywhere(thisJob, project)) {
+				oraLayers = null;
+			} else {
+				if (render) {
+					img = render.img;
+				}
 
 //* If current selected options give empty result, pick another prerendered image:
 
-			if (!img) {
-			const	renders = project.renders;
+				if (!img) {
+				const	renders = project.renders;
 
-				if (isNonNullObject(renders)) for (const key in renders)
-				if (isImageElement(randomOtherImg = renders[key])) {
-					img = randomOtherImg;
+					if (isNonNullObject(renders)) for (const key in renders)
+					if (isImageElement(randomOtherImg = renders[key])) {
+						img = randomOtherImg;
 
-					break;
+						break;
+					}
+				}
+
+				if (!img) {
+					failed = true;
 				}
 			}
+		} catch (error) {
+
+			failed = true;
+			console.error(error);
+		}
+	// } else {
+		// failed = ! await loadLibOnDemandPromise('ora-blending.js');
+	}
 
 //* Convert layer tree to format used by the library:
 
-			if (img) {
-				oraLayers = await getLayersInOraFormat(project.layers);
-			} else {
-				failed = true;
-			}
-		}
-	} catch (error) {
-
-		failed = true;
-		console.error(error);
+	if (!failed) {
+		oraLayers = await getLayersInOraFormat(project.layers);
 	}
 
 //* Pass prepared data to the library API and save the file content that it gives back:
 
-	if (img && oraLayers) {
+	if (img || oraLayers) {
 	const	oraFile = new ora.Ora(project.width, project.height);
 		oraFile.lastModTime = project.lastModTime;
 		oraFile.layers = oraLayers;
-		oraFile.prerendered = img;
 
-		if (
-			project.width  > ORA_EXPORT_THUMBNAIL_SIZE
-		||	project.height > ORA_EXPORT_THUMBNAIL_SIZE
-		) {
-			oraFile.thumbnail = await getImagePromiseFromCanvasToBlob(getResizedCanvasFromImg(img, ORA_EXPORT_THUMBNAIL_SIZE));
-		} else {
-			oraFile.thumbnail = img;
+		if (img) {
+			oraFile.prerendered = img;
+			oraFile.thumbnail = (
+				(
+					project.width  > ORA_EXPORT_THUMBNAIL_SIZE
+				||	project.height > ORA_EXPORT_THUMBNAIL_SIZE
+				)
+				? await getImagePromiseFromCanvasToBlob(getResizedCanvasFromImg(img, ORA_EXPORT_THUMBNAIL_SIZE))
+				: img
+			);
 		}
 
 		failed = ! await new Promise(
