@@ -4518,6 +4518,17 @@ function hasImageToLoad(layer) {
 
 //* Pile of hacks and glue to get things working:
 
+async function getOrLoadFixedImage(project, layer) {
+const	img = layer.img || await getOrLoadImage(project, layer);
+
+	if (img) {
+		img.top  = layer.top;
+		img.left = layer.left;
+	}
+
+	return img;
+}
+
 async function getOrLoadImage(project, layer) {
 
 	async function thisToPngTryOne(target, node) {
@@ -9955,7 +9966,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 //* Not a folder, not a stack of copypaste:
 
 			if (!layer.isLayerFolder) {
-				img = layer.img || await getOrLoadImage(project, layer);
+				img = await getOrLoadFixedImage(project, layer);
 			}
 		}
 
@@ -10003,7 +10014,8 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 				if (mask = layer.mask) {
 				const	fillColor = orz(mask.defaultColor);
-				const	maskImage = mask.img || await getOrLoadImage(project, mask);
+				const	maskImage = await getOrLoadFixedImage(project, mask);
+
 					mask = getCanvasFilledOutsideOfImage(project, maskImage, fillColor);
 
 					if (TESTING_RENDER) addDebugImage(project, mask, 'mask = getCanvasFilledOutsideOfImage: ' + fillColor);
