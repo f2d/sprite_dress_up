@@ -561,6 +561,13 @@ input[type="file"]:disabled {
 	border-collapse: collapse;
 	white-space: nowrap;
 }
+.loaded-file .project-render .render-debug-nested-level {
+	padding-left: 1em;
+	border-left: 0.2em solid #bbb;
+}
+.loaded-file .project-render .render-debug-nested-level:hover {
+	border-color: #bdf;
+}
 .loaded-file img {
 	padding: 0.5em;
 	margin: 0.5em;
@@ -568,7 +575,7 @@ input[type="file"]:disabled {
 	box-shadow: 0.1875em 0.1875em rgba(0,0,0, 0.1);
 }
 .loaded-file img[onclick]:hover {
-	border-color: gray;
+	border-color: gray !important;
 }
 .project-options header {
 	padding: 0.5em 1em;

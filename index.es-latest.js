@@ -35,6 +35,29 @@
 //* TODO: save opened project as PSD. Try https://github.com/Agamnentzar/ag-psd
 //* TODO: save images: WebP, JPEG XL. https://bugs.chromium.org/p/chromium/issues/detail?id=170565#c77 - toDataURL/toBlob quality 1.0 = lossless.
 //* TODO: make exported project files identically reproducible?
+//* TODO: compatible PSD -> ORA layer mode/structure conversions; on load/save/both?
+/*
+
+(0) folder with isolation="auto":
+	- if op="src-over" and opacity="1", then simply dump contained layers into parent context.
+	- otherwise, treat as isolation="isolate".
+
+(1a) clipping with isolation="isolate":
+	- use "src-atop" (clipping) over all merged content below in ORA.
+	- when loading from PSD, wrap with base into isolated folder, named in round brackets, e.g. "(clipping group)" or "(base layer content)".
+
+(1b) clipping with passthrough or isolation="isolate-alpha":
+	- strip alpha before (B), render group content over B (A), apply alpha (B to A) via "src-in", not "src-atop", to keep invertions inside?
+	- transition cannot be used as equivalent operation.
+
+(2a) mask with isolation="isolate":
+	- use "dst-in" (clipping mask) or "dst-out" (erase mask) over all merged content below in ORA.
+	- when loading from PSD, wrap with base into isolated folder, named in round brackets, e.g. "(layer mask)" and "(layer content)".
+
+(2b) mask with passthrough or isolation="isolate-alpha":
+	- store render before (B), render passthrough content over B (A), use transition (B to A) using mask x opacity (T) of passthrough folder.
+
+*/
 
 //* TODO ---------------------- other: ----------------------------------------
 //* TODO: don't add custom properties to objects of built-in types, if possible.
@@ -97,6 +120,7 @@ var	exampleRootDir = ''
 ,	ASK_BEFORE_EXIT_IF_OPENED_FILES	= true	//* <- this is annoying and would not be needed if big files could load fast.
 ,	CACHE_UNALTERABLE_FOLDERS_MERGED	= true	//* <- not much opportunity if almost everything is recolored or passthrough.
 ,	CACHE_UNALTERABLE_IMAGES_TRIMMED	= false	//* <- images are compressed faster by canvas API, when stored as PNG.
+,	CLEAR_CANVAS_FOR_GC		= true
 ,	DEDUPLICATE_LOADED_IMAGES	= false
 ,	DOWNSCALE_BY_MAX_FACTOR_FIRST	= true	//* <- other way (starting with partial factor) is not better, probably worse.
 ,	EXAMPLE_NOTICE			= false	//* <- show the warning near the list of files.
@@ -111,9 +135,11 @@ var	exampleRootDir = ''
 ,	PRELOAD_USED_LAYER_IMAGES	= false
 ,	READ_FILE_CONTENT_TO_GET_TYPE	= false	//* <- this relies on the browser or the OS to magically determine file type.
 ,	REQUIRE_NON_EMPTY_SELECTION	= false	//* <- buggy
-,	SAVE_COLOR_AS_ONE_PIXEL_IMAGE	= false	//* <- may be stretched back by layers attributes, but not yet standard.
-,	SAVE_OPACITY_ROUNDED		= true
-,	SAVE_WITH_SELECTED_PRERENDER	= true
+,	SAVE_ADDITIONAL_LAYER_NAMES	= true	//* <- verbose names for mask image layers, wrapper folders, etc. to store PSD features into ORA.
+,	SAVE_COLOR_AS_ONE_PIXEL_IMAGE	= false	//* <- and stretch by non-standard layer attributes; anyway, color fill is super-compressible in PNG even at full image size.
+,	SAVE_OPACITY_ROUNDED		= false
+,	SAVE_ORA_CUSTOM_PROPERTIES	= false
+,	SAVE_WITH_SELECTED_PRERENDER	= true	//* <- reuse dress-up image, because ora.js rendering is currently very basic.
 ,	SORT_OPTION_LIST_NAMES		= true
 ,	SORT_OPTION_SECTION_NAMES	= false
 ,	START_WITH_BIG_TEXT		= false
@@ -237,6 +263,7 @@ const	CONFIG_FILE_PATH = 'config.js'			//* <- declarations-only file to redefine
 	+		'(.*?)'				//* <- [4] remainder for next step
 	+	'$'
 	)
+
 ,	regLayerNameToSkip	= null			//* <- old: /^(skip)$/i
 ,	regSplitLayerNames	= /[\/,]+/g
 ,	regSplitParam		= /[\s\r\n]+/g		//* <- old: /[\s,_]+/g
@@ -284,28 +311,31 @@ const	CONFIG_FILE_PATH = 'config.js'			//* <- declarations-only file to redefine
 	}
 
 ,	regLayerBlendModePass	= /^pass[-through]*$/i
-,	regLayerBlendModeAlpha	= /^(source|destination)-(\w+)$/i
+,	regLayerBlendModeAlpha	= /^(source|destination|xor)(-\w+)?$/i
+,	regLayerBlendModeClip	= /^(source|destination)-(atop)$/i
+,	regLayerBlendModeMask	= /^(source|destination)-(in|out)$/i
 ,	regLayerTypeSingleTrim	= /s+$/i
-,	regHasDigit		= /\d/
+,	regSanitizeLayerComment	= /[\(\)\[\]\{\}\<\>]+/g
+,	regSanitizeFileName	= /[_\s\/\\:<>?*"]+/g
 ,	regFileExt		= /(\.)([^.]+)?$/
+,	regHMS			= /(T\d+)-(\d+)-(\d+\D*)/
 ,	regMultiDot		= /\.\.+/g
 ,	regNumDots		= /[\d.]+/g
-,	regNaNorDot		= /[^\d.]+/g
+,	regNaNOrDot		= /[^\d.]+/g
 ,	regNaN			= /\D+/g
 ,	regNonWord		= /\W+/g	//* <- "\w" includes underscore "_"
-,	regNonAlphaNum		= /[^0-9a-z]+/gi
 ,	regNonHex		= /[^0-9a-f]+/gi
+,	regNonAlphaNum		= /[^0-9a-z]+/gi
+,	regHasDigit		= /\d/
 ,	regSpace		= /\s+/g
 ,	regCommaSpace		= /\,+s*/g
-,	regSanitizeFileName	= /[_\s\/\\:<>?*"]+/g
 ,	regTemplateVarName	= /\{(\w+)\}/g
-,	regHMS			= /(T\d+)-(\d+)-(\d+\D*)/
-,	regTrim			= getTrimReg('\\s')
 ,	regTrimBrackets		= getTrimReg('\\(\\)\\[\\]\\{\\}\\<\\>')
-,	regTrimCommaSpace	= getTrimReg('\\s,')
 ,	regTrimNaN		= getTrimReg('\\D')
-,	regTrimNaNorSign	= getTrimReg('^\\d\\.+-')
-,	regTrimNewLine		= /[^\S\r\n]*(\r\n|\r|\n)/g
+,	regTrimNaNOrSign	= getTrimReg('^\\d\\.+-')
+,	regTrimSpace		= getTrimReg('\\s')
+,	regTrimSpaceOrComma	= getTrimReg('\\s,')
+,	regTrimSpaceBeforeNewLine = /[^\S\r\n]*(\r\n|\r|\n)/g
 ,	regTrimTailBrTags	= /(\<br\/\>\s*)+$/gi
 
 ,	matchClassButton	= getCriteria('button')
@@ -403,6 +433,11 @@ const	SPLIT_SEC = 60
 		'names' : DUMMY_TEXT_ARRAY,
 	})
 
+,	LAYER_NAME_MASK_IMAGE = 'Mask image'
+,	LAYER_NAME_MASKED_CONTENT = 'Masked content'
+,	LAYER_NAME_CLIPPED_CONTENT = 'Clipped content'	//* <- wrapper for layers with blending modes
+,	LAYER_NAME_CLIPPING_GROUP = 'Clipping group'
+
 ,	FALSY_STRINGS = [
 		'0'
 	,	'no'
@@ -441,9 +476,10 @@ const	SPLIT_SEC = 60
 ,	BLEND_MODE_INVERT = 'source-out'
 ,	BLEND_MODE_ADD = 'lighter'
 ,	BLEND_MODE_PASS = 'pass'
-,	BLEND_MODE_TRANSIT = 'transition'
+,	BLEND_MODE_FADE_IN = 'transition-in'
+,	BLEND_MODE_FADE_OUT = 'transition-out'
 
-,	BLEND_MODES_ALPHA_PREFIXES = ['source', 'destination', 'xor']
+,	BLEND_MODES_ALPHA_PREFIXES = ['source', 'destination', 'src', 'dst', 'xor']
 
 //* Source: https://www.w3.org/TR/SVGCompositing/#comp-op-property
 
@@ -476,14 +512,13 @@ const	SPLIT_SEC = 60
 	]
 
 ,	BLEND_MODES_REMAP_TO_ORA = {
-		[ BLEND_MODE_ADD ] : 'plus'
+		[ BLEND_MODE_ADD ] : 'svg:plus'
 	}
 
 ,	BLEND_MODES_REPLACE_TO_ORA = [
 		['source', 'src']
 	,	['destination', 'dst']
 	,	[new RegExp('^(' + BLEND_MODES_IN_SVG.join('|') + ')$', 'i'), 'svg:$1']
-	,	[/^([^:]+)$/, 'test:$1']
 	]
 
 ,	BLEND_MODES_REPLACE = [
@@ -821,6 +856,7 @@ var	ora, zip, zlib, pako, PSD, UPNG, UZIP	//* <- external variable names, do not
 ,	isStopRequested
 ,	isBatchWIP
 ,	lastTimeProjectTabSelectedByUser = 0
+,	rgbaCacheByColorName = {}
 	;
 
 //* Config: internal, wrapped to be called after reading external config *-----
@@ -1339,9 +1375,9 @@ function arrayFilterNonEmptyValues(value) {
 
 function arrayFilterUniqueValues(value, index, array) { return (array.indexOf(value) === index); }
 function orz(value) { return parseInt(value||0)||0; }
-function orzClamp(value, min, max) { return Math.max(min, Math.min(max, orz(value))); }
 function orzFloat(value) { return parseFloat(value||.0)||.0; }
 function orzTrim(value) { return orz(String(value).replace(regTrimNaN, '')); }
+function orzClamp(value, min, max, parserFunc) { return Math.max(min, Math.min(max, (parserFunc || orz)(value))); }
 
 function getDistance(x,y) { return Math.sqrt(x*x + y*y); }
 function getAlphaDataIndex(x,y, width) { return (((y*width + x) << 2) | 3); } // { return (((y*width + x) * 4) + 3); }
@@ -1438,6 +1474,10 @@ async function isIdenticalData(a, b) {
 	);
 }
 
+function hasAnyPart(value, parts) { return parts.some((part) => value.includes(part)); }
+function hasAnyPrefix(value, parts) { return parts.some((part) => hasPrefix(value, part)); }
+function hasAnyPostfix(value, parts) { return parts.some((part) => hasPostfix(value, part)); }
+
 function hasPrefix(value, prefix) {
 	return (
 		prefix
@@ -1485,7 +1525,7 @@ function addRangeToList(values, newValuesText) {
 	const	range = (
 			String(rangeText)
 			.split(regMultiDot)
-			.map((textPart) => textPart.replace(regTrimNaNorSign, ''))
+			.map((textPart) => textPart.replace(regTrimNaNOrSign, ''))
 			.filter(arrayFilterNonEmptyValues)
 			.map(orzFloat)
 		);
@@ -1531,7 +1571,7 @@ function getThisOrAnyNonEmptyItem(value, index, values) {
 		return value;
 	}
 
-let	foundValue = undefined;
+let	foundValue;
 
 	if (
 		(
@@ -1749,8 +1789,8 @@ function getLocalizedSectionName(sectionName) {
 function trim(text) {
 	return (
 		getJoinedOrEmptyText(text)
-		.replace(regTrim, '')
-		.replace(regTrimNewLine, '\n')
+		.replace(regTrimSpace, '')
+		.replace(regTrimSpaceBeforeNewLine, '\n')
 	);
 }
 
@@ -1899,11 +1939,24 @@ let	rgba = getRGBAFromColorCodeText(color);
 		return rgba;
 	}
 
+const	normalizedColorText = getNormalizedColorText(color);
+
+//* Reuse previous results, as they won't change without changing the browser:
+
+	if (normalizedColorText in rgbaCacheByColorName) {
+		rgba = rgbaCacheByColorName[normalizedColorText];
+
+		if (TESTING && rgba) {
+			rgba.reuseCount ? ++rgba.reuseCount : (rgba.reuseCount = 1);
+		}
+
+		return rgba;
+	}
+
 //* Ask browser built-in API what a color word means:
 
 const	canvas = cre('canvas');
 const	ctx = canvas.getContext('2d');
-const	normalizedColorText = getNormalizedColorText(color);
 
 	canvas.width = 1;
 	canvas.height = 1;
@@ -1923,8 +1976,7 @@ let	rgbaFromCanvas;
 
 		maxCount = orzClamp(maxCount || 4, 3,4);
 		rgba = Array.from(ctx.getImageData(0,0, 1,1).data.subarray(0, maxCount));
-
-		return getNormalizedRGBA(rgba);
+		rgba = getNormalizedRGBA(rgba);
 	} else {
 		if (TESTING) console.log(
 			'getRGBAFromColorCodeOrName - unknown color: "'
@@ -1936,6 +1988,8 @@ let	rgbaFromCanvas;
 		+	'"'
 		);
 	}
+
+	return rgbaCacheByColorName[normalizedColorText] = rgba;
 }
 
 function getRGBAFromColorCodeOrArray(color, maxCount) {
@@ -3294,7 +3348,7 @@ let	count = 0;
 function getTrackListFromProject(holder) {
 	if (isNonNullObject(holder)) {
 
-		if (holder.fileName) {
+		if (holder.isProject) {
 			return (
 				holder.blobs
 			||	holder.blobsAndURLs
@@ -3850,7 +3904,8 @@ function replaceJSONpartsForZoomRef(key, value) {
 
 function clearCanvasBeforeGC(canvas) {
 	if (
-		canvas
+		CLEAR_CANVAS_FOR_GC
+	&&	canvas
 	&&	isCanvasElement(canvas = canvas.canvas || canvas)
 	) {
 		canvas.width = 1;
@@ -4352,6 +4407,26 @@ const	index = names.indexOf(switchName);
 	return names[index === 0 ? 1 : 0];
 }
 
+function isMaskWrapperFolder(layer) {
+let	layers;
+
+	return (
+		isNonNullObject(layer)
+	&&	isNonNullObject(layers = layer.layers)
+	&&	layers.length > 1
+	&&	regLayerBlendModeMask.test(layers[0].blendMode)
+	);
+}
+
+function getNameForAuxLayer(prefix, name) {
+	return (
+		SAVE_ADDITIONAL_LAYER_NAMES
+	&&	(name = String(name || '').replace(regSanitizeLayerComment, '')).length > 0
+		? '(' + prefix + ': ' + name + ')'
+		: '(' + prefix + ')'
+	);
+}
+
 function getTruthyValue(value) {
 	return !(
 		!value
@@ -4376,13 +4451,21 @@ let	replaced;
 	||	remaps[
 			replaced = trim(
 				replacements.reduce(
-					(text, fromTo) => text.replace(fromTo[0], fromTo[1] || '')
+					(text, [ from, to ]) => text.replace(from, to || '')
 				,	blendMode
 				)
 			)
 		]
 	||	replaced
 	||	blendMode
+	);
+}
+
+function getOraBlendMode(text) {
+	return getNormalizedBlendMode(
+		text
+	,	BLEND_MODES_REMAP_TO_ORA
+	,	BLEND_MODES_REPLACE_TO_ORA
 	);
 }
 
@@ -4457,6 +4540,10 @@ function getLayerPathText(layer) {
 	return getLayerPathNamesChain(layer, FLAG_LAYER_PATH_TEXT);
 }
 
+function getJoinedNames(layers) {
+	return layers.map((layer) => layer.name).join(' / ');
+}
+
 function getLayersTopSeparated(layers) {
 let	layersToRender = DUMMY_EMPTY_ARRAY;
 
@@ -4474,6 +4561,18 @@ let	layersToRender = DUMMY_EMPTY_ARRAY;
 	}
 
 	return layersToRender;
+}
+
+function isLayerClippedOrMask(layer) {
+	if (TESTING && !(isNonNullObject(layer) && layer.blendMode)) {
+		console.error('isLayerClippedOrMask: No blendMode, maybe not a layer:', [layer, getLayerPathText(layer)]);
+	}
+
+	return (
+		// regLayerBlendModeAlpha.test(layer.blendMode)
+		regLayerBlendModeClip.test(layer.blendMode)
+	||	regLayerBlendModeMask.test(layer.blendMode)
+	);
 }
 
 function isLayerRendered(layer) {
@@ -4991,6 +5090,7 @@ let	project, totalStartTime;
 		,	buttonTab
 		,	buttonText
 		,	buttonStatus
+		,	'isProject' : true
 		,	'thumbnail' : imgThumb
 		,	'foldersCount' : 0
 		,	'layersCount' : 0
@@ -7275,7 +7375,7 @@ const	params = {};
 	if (typeof layer.sourceData   === 'undefined') layer.sourceData   = sourceData;
 	if (typeof layer.nameOriginal === 'undefined') layer.nameOriginal = nameOriginal;
 
-let	name = nameOriginal.replace(regTrimCommaSpace, '');
+let	name = nameOriginal.replace(regTrimSpaceOrComma, '');
 
 const	checkVirtualPath = (
 		isInsideVirtualPath
@@ -7284,10 +7384,10 @@ const	checkVirtualPath = (
 
 //* Common sense and generalization fixes:
 
-	if (layer.blendMode === BLEND_MODE_CLIP) {
-		layer.blendMode = BLEND_MODE_NORMAL;
-		layer.isClipped = true;
-	}
+	// if (layer.blendMode === BLEND_MODE_CLIP) {
+		// layer.blendMode = BLEND_MODE_NORMAL;
+		// layer.isClipped = true;		//* <- non-standard and incorrect, src-atop does not imply an isolated subcontext
+	// }
 
 	if (layer.blendMode === BLEND_MODE_PASS) {
 		layer.blendMode = BLEND_MODE_NORMAL;
@@ -7296,7 +7396,9 @@ const	checkVirtualPath = (
 
 	if (layer.isPassThrough) {
 		if (isLayerFolder) {
-			layer.blendMode = BLEND_MODE_NORMAL;
+			if (!regLayerBlendModeAlpha.test(layer.blendMode)) {
+				layer.blendMode = BLEND_MODE_NORMAL;
+			}
 		} else {
 			layer.isPassThrough = false;
 		}
@@ -7316,8 +7418,8 @@ let	match, separator, subLayer;
 		subLayer = layer;
 		isSubLayerFolder = isLayerFolder;
 		isLayerFolder = true;
-		name          = match[1].replace(regTrimCommaSpace, '');
-		subLayer.name = match[4].replace(regTrimCommaSpace, '');
+		name          = match[1].replace(regTrimSpaceOrComma, '');
+		subLayer.name = match[4].replace(regTrimSpaceOrComma, '');
 
 		layer = {
 			subLayer
@@ -7358,7 +7460,7 @@ let	match, separator, subLayer;
 
 		name = (
 			(match[1] + ', ' + match[4])
-			.replace(regTrimCommaSpace, '')
+			.replace(regTrimSpaceOrComma, '')
 		);
 	}
 
@@ -7754,9 +7856,9 @@ async function loadORA(project) {
 
 			const	name = layer.name || '';
 			const	mode = layer.composite || '';
-			const	modeAlpha = layer.composite_alpha || mode || '';//* <- non-standard, for testing
-			const	modeColor = layer.composite_color || mode || '';//* <- non-standard, for testing
-			const	mask = layer.mask || null;			//* <- non-standard, for testing
+			const	modeAlpha = layer.composite_alpha || mode || '';	//* <- non-standard, for testing
+			const	modeColor = layer.composite_color || mode || '';	//* <- non-standard, for testing
+			const	mask = layer.mask || null;				//* <- non-standard, for testing
 			const	layers = layer.layers || null;
 			const	isLayerFolder = (
 					(isNonNullObject(layers) && isRealNumber(layers.length))
@@ -7767,14 +7869,30 @@ async function loadORA(project) {
 			const	colorMode = getNormalizedBlendMode(modeColor);
 			const	blendMode = colorMode || alphaMode || getNormalizedBlendMode(mode);
 
+			const	opacity = orzClamp(layer.opacity, 0, 1, orzFloat);
+			const	isolation = layer.isolation || '';
+			const	isIsolatedAlpha = (isolation === 'isolate-alpha');	//* <- non-standard, for testing
 			const	isPassThrough = (
-					blendMode === BLEND_MODE_PASS		//* <- non-standard, for testing
-				||	layer.isolation === 'auto'
+					isIsolatedAlpha
+				||	blendMode === BLEND_MODE_PASS			//* <- non-standard, for testing
+				||	isolation === BLEND_MODE_PASS			//* <- non-standard, for testing
+				||	(
+						isolation === 'auto'			//* <- Krita is OK with this
+					// &&	opacity === 1				//* <- MyPaint only supports more limited conditions
+					// &&	alphaMode === BLEND_MODE_NORMAL
+					// &&	blendMode === BLEND_MODE_NORMAL
+					// &&	colorMode === BLEND_MODE_NORMAL
+					)
 				);
 
+//* Note:
+//*	ORA-standard way for layer clipping is using compositing mode "src-atop" above base content inside isolated folder.
+//*	All the content inside isolation context below an "src-atop" layer becomes the base for clipping.
+//*	A clipping group must be always made explicitly as (alpha-)isolated folder if needed.
+
 			const	isClipped = (
-					alphaMode === BLEND_MODE_CLIP
-				||	getTruthyValue(layer.clipping)		//* <- non-standard, for testing
+					getTruthyValue(layer.clipping)		//* <- non-standard, for testing
+				// ||	alphaMode === BLEND_MODE_CLIP		//* <- non-standard and incorrect
 				);
 
 			const	isVisible = (
@@ -7786,6 +7904,7 @@ async function loadORA(project) {
 
 			const	layerWIP = {
 					isLayerFolder
+				,	isIsolatedAlpha
 				,	isPassThrough
 				,	isClipped
 				,	isVisible
@@ -7793,14 +7912,16 @@ async function loadORA(project) {
 				,	'blendModeOriginal' : mode
 				,	'blendModeOriginalAlpha' : modeAlpha
 				,	'blendModeOriginalColor' : modeColor
-				,	'opacity' : orzFloat(layer.opacity)
+				,	'opacity' : opacity
 				};
 
 				if (!isLayerFolder) {
 					setImageLoadOrCountIfLoaded(layer, layerWIP);
 				}
 
-//* Note: layer masks also may be emulated via compositing modes in ORA
+//* Note:
+//*	ORA-standard way for layer masks is using compositing mode "dst-in" above masked content inside isolated folder.
+//*	All the content inside isolation context below an "dst-in" layer becomes masked.
 
 				if (mask) {
 					setImageLoadOrCountIfLoaded(mask, layerWIP.mask = {});
@@ -8625,17 +8746,27 @@ let	buffer = project.renderingBuffer;
 	return new Uint8Array(buffer);
 }
 
-function drawImageOrColor(project, ctx, img, blendMode, opacity, mask) {
-	if (!ctx || !img) {
-		return null;
+async function drawImageOrColor(project, ctx, img, blendMode, opacity, mask, invertMask) {
+let	canvas = null;
+
+	if (ctx) {
+		if (isCanvasElement(ctx)) {
+			canvas = ctx;
+			ctx = canvas.getContext('2d');
+		} else
+		if (isNonNullObject(ctx)) {
+			canvas = ctx.canvas;
+		}
 	}
 
 	if (typeof opacity === 'undefined') opacity = 1;
 	if (typeof blendMode === 'undefined') blendMode = BLEND_MODE_NORMAL;
 
-const	canvas = ctx.canvas;
-
-	if (canvas && opacity > 0) {
+	if (
+		canvas
+	&&	img
+	&&	opacity > 0
+	) {
 	const	x = orz(img.left);
 	const	y = orz(img.top);
 	const	w = canvas.width;
@@ -8653,9 +8784,9 @@ const	canvas = ctx.canvas;
 			}
 		}
 
-		function tryBlendingEmulation(blendMode) {
+		async function tryBlendingEmulation(blendMode) {
 
-			function tryEmulation(callback) {
+			async function tryEmulation(callback) {
 			let	logLabelWrap, logLabel, testPrefix;
 
 				if (TESTING_RENDER) {
@@ -8665,9 +8796,7 @@ const	canvas = ctx.canvas;
 						logLabelWrap = (
 							blendMode
 						+	': '
-						+	project.rendering.nestedLayers.map(
-								(layer) => layer.name
-							).join(' / ')
+						+	getJoinedNames(project.rendering.nestedLayers)
 						);
 
 						console.time(logLabelWrap);
@@ -8683,7 +8812,13 @@ const	canvas = ctx.canvas;
 
 				if (TESTING_RENDER) {
 					testPrefix = 'tryBlendingEmulation: ' + blendMode + ', layer ';
-					addDebugImage(project, canvas, testPrefix + 'below at ' + (ctx.globalAlpha * 100) + '%', 'yellow');
+
+					await addDebugImage(
+						project
+					,	canvas
+					,	testPrefix + 'below at ' + (ctx.globalAlpha * 100) + '%'
+					,	'brown'
+					);
 				}
 
 			const	dataBelow = ctx.getImageData(0,0, w,h);
@@ -8696,7 +8831,12 @@ const	canvas = ctx.canvas;
 
 				drawImageOrColorInside(img);
 
-				if (TESTING_RENDER) addDebugImage(project, canvas, testPrefix + 'above at ' + (ctx.globalAlpha * 100) + '%', 'orange');
+				if (TESTING_RENDER) await addDebugImage(
+					project
+				,	canvas
+				,	testPrefix + 'above at ' + (ctx.globalAlpha * 100) + '%'
+				,	'orange'
+				);
 
 				ctx.globalAlpha = 1;
 
@@ -8709,13 +8849,29 @@ const	canvas = ctx.canvas;
 
 				if (isTransition) {
 					ctx.clearRect(0,0, w,h);
+
+					if (mask && invertMask) {
+						ctx.globalAlpha = 1;
+						ctx.globalCompositeOperation = BLEND_MODE_NORMAL;
+
+						drawImageOrColorInside('white');
+
+						ctx.globalCompositeOperation = BLEND_MODE_CUT;
+					}
+
 					ctx.globalAlpha = opacity;
 
 					drawImageOrColorInside(mask || 'white');
 
-					if (TESTING_RENDER) addDebugImage(project, canvas, testPrefix + 'mask at ' + (ctx.globalAlpha * 100) + '%', 'brown');
+					if (TESTING_RENDER) await addDebugImage(
+						project
+					,	canvas
+					,	testPrefix + 'mask at ' + (ctx.globalAlpha * 100) + '%'
+					,	'violet'
+					);
 
 					ctx.globalAlpha = 1;
+					ctx.globalCompositeOperation = BLEND_MODE_NORMAL;
 
 				const	maskData = ctx.getImageData(0,0, w,h);
 					rgbaMask = maskData.data;
@@ -8779,7 +8935,7 @@ const	canvas = ctx.canvas;
 				CompositionModule
 			&&	CompositionFuncList
 			&&	CompositionFuncList.includes(funcName)
-			&&	tryEmulation(usingAsmJS)
+			&&	await tryEmulation(usingAsmJS)
 			) {
 				return true;
 			}
@@ -8788,13 +8944,17 @@ const	canvas = ctx.canvas;
 		ctx.globalCompositeOperation = blendMode;
 
 	const	ctxBlendMode = ctx.globalCompositeOperation;
-	const	isTransition = !!(mask || blendMode === BLEND_MODE_TRANSIT);
+	const	isTransition = !!(
+			mask
+		||	blendMode === BLEND_MODE_FADE_IN
+		||	blendMode === BLEND_MODE_FADE_OUT
+		);
 
 //* Use native JS blending if available, or emulation fails/unavailable:
 
 		if (
 			ctxBlendMode === blendMode
-		||	!tryBlendingEmulation(blendMode)
+		||	! await tryBlendingEmulation(blendMode)
 		) {
 			if (TESTING && ctxBlendMode !== blendMode) console.error('blendMode:', [blendMode, 'fallback:', ctxBlendMode]);
 
@@ -9036,6 +9196,10 @@ function makeCanvasOpaqueAndGetItsMask(project, ctx) {
 		++project.rendering.layersBatchCount;
 	}
 
+	if (isCanvasElement(ctx)) {
+		ctx = ctx.getContext('2d');
+	}
+
 const	canvas = cre('canvas');
 const	w = canvas.width  = ctx.canvas.width;
 const	h = canvas.height = ctx.canvas.height;
@@ -9057,13 +9221,21 @@ const	img = ctx.getImageData(0,0, w,h);
 	return canvas;
 }
 
+function scrollToDebugImage(target) {
+	target = eventStop(event, FLAG_EVENT_STOP_IMMEDIATE).target;
+
+	if (isImageElement(target)) {
+		target.scrollIntoView(true);
+	}
+}
+
 async function addDebugImage(project, canvas, comment, highLightColor) {
 	if (
 		TESTING_RENDER
 	&&	canvas
-	&&	canvas.toDataURL
+	&&	isCanvasElement(canvas = canvas.canvas || canvas)
 	) {
-	const	img = cre('img', (project ? project.renderContainer : document.body));
+	const	img = cre('img', (project ? project.renderDebugContainer || project.renderContainer : document.body));
 
 		if (await getImagePromiseFromCanvasToBlob(canvas, null, null, null, img)) {
 			// URL.revokeObjectURL(img.src);
@@ -9086,12 +9258,12 @@ async function addDebugImage(project, canvas, comment, highLightColor) {
 		if (project) {
 		const	PR = project.rendering || DUMMY_EMPTY_ARRAY;
 		const	layers = PR.nestedLayers || DUMMY_EMPTY_ARRAY;
-		const	layer = layers[layers.length - 1] || DUMMY_EMPTY_ARRAY;
+		const	layer = layers[layers.length - 1] || PR.lastNestedLayer || DUMMY_EMPTY_ARRAY;
 
 			img.title = [
 				'render name: ' + PR.fileName
 			,	'render nesting level: ' + layers.length
-			,	'render nesting path: ' + layers.map((v) => v.name).join(' / ')
+			,	'render nesting path: ' + getJoinedNames(layers)
 			,	'layer nesting path: ' + getLayerPathText(layer)
 			,	'layer name: ' + (layer ? layer.nameOriginal : layer)
 			,	'comment: ' + comment
@@ -9104,6 +9276,8 @@ async function addDebugImage(project, canvas, comment, highLightColor) {
 			img.style.borderColor = highLightColor;
 			img.style.boxShadow = '3px 3px ' + highLightColor;
 		}
+
+		img.setAttribute('onclick', 'scrollToDebugImage(this)');
 	}
 }
 
@@ -9318,17 +9492,17 @@ const	y = orz(getPropFromAnySource('top',    imgOrLayer, imgElement));
 	return canvas;
 }
 
-function getCanvasBlended(project, imgBelow, imgAbove, mode, maskOpacity) {
+async function getCanvasBlended(project, imgBelow, imgAbove, mode, maskOpacity) {
 const	canvas = getNewCanvasForProject(project);
 const	ctx = canvas.getContext('2d');
 
-	if (imgBelow) drawImageOrColor(project, ctx, imgBelow);
-	if (imgAbove) drawImageOrColor(project, ctx, imgAbove, mode || BLEND_MODE_CLIP, maskOpacity);
+	if (imgBelow) await drawImageOrColor(project, ctx, imgBelow);
+	if (imgAbove) await drawImageOrColor(project, ctx, imgAbove, mode || BLEND_MODE_CLIP, maskOpacity);
 
 	return canvas;
 }
 
-function getCanvasColored(project, values, listName, img) {
+async function getCanvasColored(project, values, listName, img) {
 let	canvas, color;
 const	selectedColors = project.rendering.colors;
 
@@ -9353,7 +9527,7 @@ const	selectedColors = project.rendering.colors;
 	}
 
 	if (color) {
-		canvas = getCanvasBlended(
+		canvas = await getCanvasBlended(
 			project
 		,	(img || color)
 		,	(img ? color : null)
@@ -9361,6 +9535,34 @@ const	selectedColors = project.rendering.colors;
 	}
 
 	return canvas || img;
+}
+
+async function getMaskIntersection(project, ...masks) {
+let	resultMask;
+
+	for (const mask of masks) if (mask) {
+		if (resultMask) {
+		const	intersectedMask = await getCanvasBlended(project, resultMask, mask, BLEND_MODE_MASK);
+
+			if (TESTING_RENDER) await addDebugImage(
+				project
+			,	intersectedMask
+			,	[
+					'mask = getCanvasBlended: ' + BLEND_MODE_MASK
+				,	'oldResult = ' + resultMask
+				,	'addedMask = ' + mask
+				,	'newResult = ' + intersectedMask
+				].join(TITLE_LINE_BREAK)
+			,	'lightblue'
+			);
+
+			resultMask = intersectedMask;
+		} else {
+			resultMask = mask;
+		}
+	}
+
+	return resultMask;
 }
 
 function getProjectOptionValue(project, sectionName, listName, ...optionName) {
@@ -9644,8 +9846,6 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 	async function renderOneLayer(layer) {
 
 		async function onOneLayerDone() {
-			PR.nestedLayers.pop();
-
 			if (
 				ADD_PAUSE_AT_INTERVALS
 			&&	PR.lastPauseTime + PAUSE_WORK_INTERVAL < getTimeNow()
@@ -9656,9 +9856,12 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 				PR.lastPauseTime = getTimeNow();
 			}
+
+			PR.nestedLayers.pop();
 		}
 
 	const	PR = project.rendering;
+		PR.lastNestedLayer = layer;
 		PR.nestedLayers.push(layer);
 		PR.nestedLevelMax = Math.max(
 			PR.nestedLevelMax
@@ -9668,11 +9871,18 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 		if (TESTING > 9) console.log(
 			'rendering nested layer at:'
 		,	PR.nestedLayers.length
-		,	PR.nestedLayers.map((v) => v.name).join(' / ')
+		,	getJoinedNames(PR.nestedLayers)
 		,	PR.nestedLayers
 		);
 
-	const	{ ignoreColors, skipCopyPaste, clippingGroupWIP } = renderParams;
+	const	{
+			baseCanvasBefore,
+			clippingGroupWIP,
+			ignoreColors,
+			skipCopyPaste,
+
+		} = renderParams;
+
 	const	{ names, params } = layer;
 
 	const	skipRecoloring = !!params.if_only;
@@ -9729,12 +9939,13 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 //* Skip not visible, not selected, etc:
 
-	let	opacity = 0;
+	let	opacity = (
+			isLayerRendered(layer)
+			? getLayerVisibilityByValues(project, layer, values)
+			: 0
+		);
 
-		if (
-			!isLayerRendered(layer)
-		||	!(opacity = renderParams.opacity || getLayerVisibilityByValues(project, layer, values))
-		) {
+		if (!opacity) {
 			return await onOneLayerDone();
 		}
 
@@ -9743,6 +9954,10 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 	let	blendMode = layer.blendMode;
 
 		if (ignoreColors) {
+			if (regLayerBlendModeClip.test(blendMode)) {
+				return await onOneLayerDone();
+			}
+
 			if (!regLayerBlendModeAlpha.test(blendMode)) {
 				blendMode = BLEND_MODE_NORMAL;
 			}
@@ -9765,7 +9980,19 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 //* Start rendering:
 
-	let	img, canvasCopy;
+	let	img;
+	let	canvasBeforeSubContext;
+	let	canvasForSubContext;
+	let	clippingMaskForSubContext;
+
+		if (baseCanvasBefore) {
+			await addDebugImage(
+				project
+			,	baseCanvasBefore
+			,	'renderParams.baseCanvasBefore'
+			,	'limegreen'
+			);
+		}
 
 		if (
 			!canvas
@@ -9773,7 +10000,14 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 		) {
 			ctx = canvas.getContext('2d');
 
-			if (TESTING_RENDER) addDebugImage(project, canvas, 'renderParams.baseCanvas', 'green');
+			if (TESTING_RENDER) {
+				await addDebugImage(
+					project
+				,	canvas
+				,	'canvas = renderParams.baseCanvas'
+				,	'green'
+				);
+			}
 		}
 
 //* Render clipping group as separate batch:
@@ -9790,10 +10024,19 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 				}
 			);
 
-			if (TESTING_RENDER) addDebugImage(project, img, 'clippingGroupResult: img = getRenderByValues', 'cyan');
+			if (TESTING_RENDER) await addDebugImage(
+				project
+			,	img
+			,	'img = getRenderByValues: clippingGroupResult'
+			,	'cyan'
+			);
 		} else {
 
-		let	layers = layer.layers || null;
+		let	layers = (
+				layer.isMaskGenerated && isMaskWrapperFolder(layer)
+				? layer.layers.slice(1)
+				: layer.layers
+			) || null;
 
 //* Append copypasted layers to subqueue:
 
@@ -9865,11 +10108,11 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 					!skipRecoloring
 				&&	layer.isColorList
 				) {
-					names.find(
-						(listName) => !!(
-							img = getCanvasColored(project, values, listName)
-						)
-					);
+					for (const listName of names) {
+						if (img = await getCanvasColored(project, values, listName)) {
+							break;
+						}
+					}
 				} else
 
 //* Get layer/folder/batch as flat image:
@@ -9904,25 +10147,64 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 					) {
 					const	isPassThroughAndClippingBase = (
 							indexToRender > 0
-						&&	layer.isVirtualFolder
+						&&	layer.isVirtualFolder	//* <- TODO: blending modes and non-virtual folders
 						&&	layer === layersToRender[indexToRender - 1].clippingLayer
+						);
+
+					const	isPassThroughAndIsolatedAlpha = (
+							layer.isIsolatedAlpha
+						// &&	layers.some(isLayerClippedOrMask)
 						);
 
 						if (
 							flipSide
-						||	isPassThroughAndClippingBase	//* <- TODO: blending modes and non-virtual folders
+						||	isPassThroughAndClippingBase
+						||	isPassThroughAndIsolatedAlpha
 						||	blendMode !== BLEND_MODE_NORMAL
 						||	opacity != 1
 						||	layer.mask
 						||	layer.isMaskGenerated
 						) {
-							canvasCopy = getCanvasFlipped(project, canvas, flipSide, FLAG_RENDER_LAYER_COPY);
+							canvasForSubContext = getCanvasFlipped(
+								project
+							,	canvas
+							,	flipSide
+							,	FLAG_RENDER_LAYER_COPY
+							);
+
+							if (TESTING_RENDER) await addDebugImage(
+								project
+							,	canvasForSubContext
+							,	'canvasForSubContext = getCanvasFlipped: ' + flipSide
+							,	'gold'
+							);
+
+							if (isPassThroughAndIsolatedAlpha) {
+
+								canvasBeforeSubContext = getCanvasCopy(project, canvasForSubContext);
+							}
+
+							if (regLayerBlendModeClip.test(blendMode)) {
+
+								clippingMaskForSubContext = makeCanvasOpaqueAndGetItsMask(
+									project
+								,	canvasForSubContext
+								);
+
+								if (TESTING_RENDER) await addDebugImage(
+									project
+								,	canvasForSubContext
+								,	'clippingMaskForSubContext = makeCanvasOpaqueAndGetItsMask'
+								,	'blue'
+								);
+							}
 						} else {
 							layersToRender = (
 								layersToRender.slice(0, indexToRender)
 								.concat(layers)
 								.concat(layersToRender.slice(indexToRender))
 							);
+
 							indexToRender += layers.length;
 
 							return await onOneLayerDone();
@@ -9942,8 +10224,9 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 						,	values
 						,	layers
 						,	{
-								'ignoreColors' : (ignoreColors || isToRecolor)
-							,	'baseCanvas' : canvasCopy
+								'baseCanvas' : canvasForSubContext
+							,	'baseCanvasBefore' : canvasBeforeSubContext
+							,	'ignoreColors' : (ignoreColors || isToRecolor)
 							,	'skipCopyPaste' : (addCopyPaste ? layer : false)
 							,	'canSaveMergedImage' : !layer.isUnalterable
 							}
@@ -9957,7 +10240,11 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 						}
 					}
 
-					if (TESTING_RENDER) addDebugImage(project, img, 'folder content result: img = getRenderByValues');
+					if (TESTING_RENDER) await addDebugImage(
+						project
+					,	img
+					,	'img = getRenderByValues: subfolder content'
+					);
 				}
 
 				cleanUpCopyPasteLinks(layers);
@@ -9996,7 +10283,11 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 						,	FLAG_RENDER_IGNORE_COLORS		//* <- only care about alpha channel
 						);
 
-						if (TESTING_RENDER) addDebugImage(project, mask, 'mask = getRenderByValues');
+						if (TESTING_RENDER) await addDebugImage(
+							project
+						,	mask
+						,	'mask = getRenderByValues: current folder content above'
+						);
 
 //* Apply padding to generated mask:
 
@@ -10005,7 +10296,11 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 								padCanvas(mask, padding);
 							}
 
-							if (TESTING_RENDER) addDebugImage(project, mask, 'padCanvas: mask');
+							if (TESTING_RENDER) await addDebugImage(
+								project
+							,	mask
+							,	'padCanvas: mask'
+							);
 						}
 					}
 				} else
@@ -10018,28 +10313,49 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 					mask = getCanvasFilledOutsideOfImage(project, maskImage, fillColor);
 
-					if (TESTING_RENDER) addDebugImage(project, mask, 'mask = getCanvasFilledOutsideOfImage: ' + fillColor);
+					if (TESTING_RENDER) await addDebugImage(
+						project
+					,	mask
+					,	'mask = getCanvasFilledOutsideOfImage: ' + fillColor
+					,	'lightblue'
+					);
 				}
 
-//* Apply mask:
+				if (canvasForSubContext) {
+
+//* Flip mask to match current buffer:
+
+					if (
+						mask
+					&&	flipSide
+					) {
+						mask = getCanvasFlipped(project, mask, flipSide);
+
+						if (TESTING_RENDER) await addDebugImage(
+							project
+						,	mask
+						,	'mask = getCanvasFlipped: ' + flipSide
+						,	'gold'
+						);
+					}
+				} else
+
+//* Apply mask to layer:
 
 				if (mask) {
-					if (canvasCopy) {
-						if (flipSide) {
-							mask = getCanvasFlipped(project, mask, flipSide);
+					img = await getCanvasBlended(project, img, mask, BLEND_MODE_MASK);
 
-							if (TESTING_RENDER) addDebugImage(project, mask, 'mask = getCanvasFlipped');
-						}
-					} else {
-						img = getCanvasBlended(project, img, mask, BLEND_MODE_MASK);
+					if (TESTING_RENDER) await addDebugImage(
+						project
+					,	img
+					,	'img = getCanvasBlended: mask'
+					,	'red'
+					);
 
-						if (TESTING_RENDER) addDebugImage(project, img, 'img = getCanvasBlended: mask');
-
-						clearCanvasBeforeGC(mask);
-					}
+					clearCanvasBeforeGC(mask);
 				}
 
-//* Apply color:
+//* Apply color to layer:
 
 				if (
 					!skipRecoloring
@@ -10047,41 +10363,128 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 				&&	!layer.isColorList	//* <- already got selected color fill
 				) {
 					for (const listName of names) {
-						img = getCanvasColored(project, values, listName, img);
+						img = await getCanvasColored(project, values, listName, img);
 					}
 				}
 
-//* Flip:
+//* Flip layer:
 
 				if (flipSide) {
 					img = getCanvasFlipped(project, img, flipSide);
 
-					if (TESTING_RENDER) addDebugImage(project, img, 'img = getCanvasFlipped');
+					if (TESTING_RENDER) await addDebugImage(
+						project
+					,	img
+					,	'img = getCanvasFlipped: ' + flipSide
+					,	'gold'
+					);
 				}
 			}
 
-//* Add content to current buffer canvas:
+		const	isLayerMaskedOrFaded = (
+				mask
+			||	opacity != 1
+			);
+
+//* Prepare current buffer to add layer onto:
 
 			if (!ctx) {
 				canvas = getNewCanvasForProject(project);
 				ctx = canvas.getContext('2d');
 			}
 
-			if (canvasCopy) {
-				drawImageOrColor(project, ctx, img, BLEND_MODE_TRANSIT, opacity, mask);
+			if (canvasForSubContext) {
 
-				if (TESTING_RENDER) addDebugImage(project, canvas, [
-					'drawImageOrColor: ' + BLEND_MODE_TRANSIT
-				,	'opacity = ' + opacity
-				,	'mask = ' + mask
-				].join(TITLE_LINE_BREAK), 'red');
+//* Apply stored mask to the blended clipping group content:
 
-				clearCanvasBeforeGC(mask);
-				clearCanvasBeforeGC(canvasCopy);
+				if (clippingMaskForSubContext) {
+					await drawImageOrColor(project, img, clippingMaskForSubContext, BLEND_MODE_MASK);
+
+					if (TESTING_RENDER) await addDebugImage(
+						project
+					,	img
+					,	'drawImageOrColor: mask = clippingMaskForSubContext'
+					,	'red'
+					);
+
+					clearCanvasBeforeGC(clippingMaskForSubContext);
+				}
+
+//* Apply mask to result of passthrough subfolder:
+
+				if (isLayerMaskedOrFaded) {
+				const	alphaMode = BLEND_MODE_FADE_IN;
+
+					await drawImageOrColor(project, ctx, img, alphaMode, opacity, mask);
+
+					if (TESTING_RENDER) await addDebugImage(
+						project
+					,	canvas
+					,	[
+							'drawImageOrColor: ' + alphaMode
+						,	'opacity = ' + opacity
+						,	'mask = ' + mask
+						].join(TITLE_LINE_BREAK)
+					,	'magenta'
+					);
+
+					clearCanvasBeforeGC(mask);
+					clearCanvasBeforeGC(img);
+				} else {
+					clearCanvasBeforeGC(canvas);
+
+					canvas = img;
+					ctx = canvas.getContext('2d');
+				}
+
 			} else {
-				drawImageOrColor(project, ctx, img, blendMode, opacity);
 
-				if (TESTING_RENDER) addDebugImage(project, canvas, 'drawImageOrColor: ' + blendMode);
+//* Apply mask inside passthrough subfolder:
+
+				if (
+					baseCanvasBefore
+				&&	regLayerBlendModeMask.test(blendMode)
+				) {
+				const	invertMask = (blendMode === BLEND_MODE_MASK);
+				const	alphaMode = BLEND_MODE_FADE_OUT;
+
+					await drawImageOrColor(project, ctx, baseCanvasBefore, alphaMode, opacity, img, invertMask);
+
+					if (TESTING_RENDER) await addDebugImage(
+						project
+					,	canvas
+					,	[
+							'drawImageOrColor: ' + alphaMode
+						,	'blendMode = ' + blendMode
+						,	'opacity = ' + opacity
+						,	'mask = ' + img
+						,	'invertMask = ' + invertMask
+						,	'baseCanvasBefore = ' + baseCanvasBefore
+						].join(TITLE_LINE_BREAK)
+					,	'magenta'
+					);
+				} else
+
+//* Draw merged isolated subfolder or a single layer onto current buffer:
+
+				{
+					await drawImageOrColor(project, ctx, img, blendMode, opacity);
+
+					if (TESTING_RENDER) await addDebugImage(
+						project
+					,	canvas
+					,	'drawImageOrColor: ' + blendMode
+					,	(
+							blendMode === BLEND_MODE_NORMAL ? null :
+							regLayerBlendModeClip.test(blendMode) ? 'cyan' :
+							regLayerBlendModeMask.test(blendMode) ? 'deeppink' :
+							regLayerBlendModeAlpha.test(blendMode) ? 'pink' :
+							null
+						)
+					);
+				}
+
+				clearCanvasBeforeGC(img);
 			}
 
 			++project.rendering.layersApplyCount;
@@ -10092,12 +10495,15 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 				clippingGroupWIP
 			&&	layer === bottomLayer
 			) {
-				clippingMask = makeCanvasOpaqueAndGetItsMask(project, ctx);
+				clippingGroupMask = makeCanvasOpaqueAndGetItsMask(project, ctx);
 
-				if (TESTING_RENDER) addDebugImage(project, canvas, 'clippingMask = makeCanvasOpaqueAndGetItsMask');
+				if (TESTING_RENDER) await addDebugImage(
+					project
+				,	canvas
+				,	'clippingGroupMask = makeCanvasOpaqueAndGetItsMask'
+				,	'blue'
+				);
 			}
-
-			clearCanvasBeforeGC(img);
 		}
 
 		return await onOneLayerDone();
@@ -10159,14 +10565,14 @@ let	layer, layersToRenderOne;
 	}
 
 let	layersToRender = layersToRenderOne || nestedLayersBatch || project.layers;
-let	indexToRender = layersToRender.length;
+let	indexToRender = layersToRender.length - 1;
 let	indexToStop = 0;
 
-const	bottomLayer = layersToRender[indexToRender - 1];
+const	bottomLayer = layersToRender[indexToRender];
 const	isBackSide = (getPropBySameNameChain(values, 'side') === 'back');
 const	colors = getPropByNameChain(values, 'colors') || {};
 
-let	canvas, ctx, mask, clippingMask;
+let	canvas, ctx, clippingGroupMask;
 
 	if (
 		!ADD_PAUSE_BEFORE_EACH_LAYER
@@ -10177,12 +10583,20 @@ let	canvas, ctx, mask, clippingMask;
 
 //* Start rendering layer batch:
 
-	if (layersToRenderOne) {
-		indexToStop = layersToRenderOne.indexOf(layer);
-		indexToRender = indexToStop + 1;
+	if (TESTING_RENDER) {
+		project.renderDebugContainer = cre('div', project.renderDebugContainer || project.renderContainer);
+		project.renderDebugContainer.className = 'render-debug-nested-level';
 	}
 
-	while (indexToRender-- > indexToStop) if (layer = layersToRender[indexToRender]) {
+	if (layersToRenderOne) {
+		indexToStop = layersToRenderOne.indexOf(layer);
+		indexToRender = indexToStop;
+	}
+
+	for (
+		; indexToRender >= indexToStop
+		; indexToRender--
+	) if (layer = layersToRender[indexToRender]) {
 
 		if (ADD_PAUSE_BEFORE_EACH_LAYER) {
 			await pause(1);
@@ -10205,13 +10619,22 @@ let	canvas, ctx, mask, clippingMask;
 
 //* Apply stored mask to the blended clipping group content:
 
-		if (mask = clippingMask) {
-			drawImageOrColor(project, ctx, mask, BLEND_MODE_MASK);
+		if (clippingGroupMask) {
+			await drawImageOrColor(project, ctx, clippingGroupMask, BLEND_MODE_MASK);
 
-			if (TESTING_RENDER) addDebugImage(project, canvas, 'drawImageOrColor: mask = clippingMask');
+			if (TESTING_RENDER) await addDebugImage(
+				project
+			,	canvas
+			,	'drawImageOrColor: mask = clippingGroupMask'
+			,	'red'
+			);
 
-			clearCanvasBeforeGC(mask);
+			clearCanvasBeforeGC(clippingGroupMask);
 		}
+	}
+
+	if (TESTING_RENDER && project.renderDebugContainer) {
+		project.renderDebugContainer = project.renderDebugContainer.parentNode;
 	}
 
 //* End of layer tree:
@@ -11284,15 +11707,52 @@ async function saveProject(project) {
 			}
 
 		const	name = layer.nameOriginal || layer.name;
+
+		const	visibility = (
+				layer.isVisible
+				? 'visible'
+				: 'hidden'
+			);
+
+		const	opacity = (
+				layer.opacity >= 0
+			&&	layer.opacity <= 1
+				? orzFloat(
+					SAVE_OPACITY_ROUNDED
+					? layer.opacity.toFixed(2)
+					: layer.opacity
+				)
+				: 1
+			);
+
 		let	x = orz(layer.left);
 		let	y = orz(layer.top);
-		let	oraNode, mask;
+		let	oraNode;
 
 			if (layer.isLayerFolder) {
+			const	subLayers = await getLayersInOraFormat(layer.layers);
+
+				if (null === subLayers) {
+					return null;
+				}
+
 				oraNode = new ora.OraStack(name);
-				oraNode.isolation = (layer.isPassThrough ? 'auto' : 'isolate');
+				oraNode.layers = subLayers || [];
+				oraNode.isolation = (
+					layer.isPassThrough
+					? (
+						layer.isIsolatedAlpha
+					// ||	layer.isClipped
+					||	opacity != 1
+					||	layer.blendMode !== BLEND_MODE_NORMAL
+						? 'isolate-alpha'	//* <- non-standard, for testing
+						: 'auto'
+					)
+					: 'isolate'
+				);
 			} else {
 				oraNode = new ora.OraLayer(name, layer.width, layer.height);
+
 			const	img = layer.imgFromColor || layer.img || await getOrLoadImage(project, layer);
 
 				if (isImageElement(img)) {
@@ -11336,6 +11796,7 @@ async function saveProject(project) {
 					);
 
 					if (isImageElement(imgFromColor)) {
+						oraNode.image_type = 'color';
 						oraNode.image = layer.imgFromColor = imgFromColor;
 					}
 				}
@@ -11344,80 +11805,130 @@ async function saveProject(project) {
 			oraNode.x = x;
 			oraNode.y = y;
 
-			oraNode.opacity = orzFloat(
-				SAVE_OPACITY_ROUNDED
-				? layer.opacity.toFixed(2)
-				: layer.opacity
-			);
-
-			oraNode.visibility = (
-				layer.isVisible
-				? 'visible'
-				: 'hidden'
-			);
+		const	mask = layer.mask;
+		const	maskImage = (mask ? (mask.img || await getOrLoadImage(project, mask)) : null);
 
 		const	blendMode = layer.blendMode;
-		const	oraBlendMode = getNormalizedBlendMode(
-				blendMode
-			,	BLEND_MODES_REMAP_TO_ORA
-			,	BLEND_MODES_REPLACE_TO_ORA
-			);
+		const	oraBlendMode = getOraBlendMode(blendMode);
 
-			if (
-				blendMode !== BLEND_MODE_NORMAL
-			&&	blendMode !== BLEND_MODE_PASS
-			&&	blendMode !== BLEND_MODE_TRANSIT
-			) {
-				oraNode.composite = oraNode[
-					blendMode.includes(BLEND_MODES_ALPHA_PREFIXES)
-					? 'composite_alpha'
-					: 'composite_color'
-				] = oraBlendMode;
-			}
+//* Write non-standard properties analogous to PSD, for testing:
 
-			if (
-				layer.isClipped
-			||	blendMode === BLEND_MODE_CLIP
-			) {
-				oraNode.composite = oraNode.composite_alpha = getNormalizedBlendMode(
-					BLEND_MODE_CLIP
-				,	BLEND_MODES_REMAP_TO_ORA
-				,	BLEND_MODES_REPLACE_TO_ORA
-				);
-			}
+			if (SAVE_ORA_CUSTOM_PROPERTIES) {
+				if (
+					blendMode !== BLEND_MODE_NORMAL
+				&&	blendMode !== BLEND_MODE_PASS
+				&&	blendMode !== BLEND_MODE_FADE_IN
+				&&	blendMode !== BLEND_MODE_FADE_OUT
+				) {
+					oraNode.composite = oraNode[
+						hasAnyPrefix(blendMode, BLEND_MODES_ALPHA_PREFIXES)
+						? 'composite_alpha'
+						: 'composite_color'
+					] = oraBlendMode;
+				}
 
-			if (
-				!oraNode.composite_alpha
-			||	!oraNode.composite_color
-			||	oraNode.composite_alpha === oraNode.composite_color
-			) {
-				delete oraNode.composite_alpha;
-				delete oraNode.composite_color;
-			}
+				if (blendMode === BLEND_MODE_CLIP) {
+					oraNode.composite = oraNode.composite_alpha = getOraBlendMode(BLEND_MODE_CLIP);
+				}
 
-			if (mask = layer.mask) {
-			const	maskImage = mask.img || await getOrLoadImage(project, mask);
+				if (
+					!oraNode.composite_alpha
+				||	!oraNode.composite_color
+				||	oraNode.composite_alpha === oraNode.composite_color
+				) {
+					delete oraNode.composite_alpha;
+					delete oraNode.composite_color;
+				}
 
-				if (maskImage) {
+				if (layer.isClipped) {
+					oraNode.clipping = 'group';
+				}
+
+				if (
+					maskImage
+				&&	isImageElement(maskImage)
+				) {
 					oraNode.mask = {
 						'image' : maskImage
 					,	'x' : orz(mask.left)
 					,	'y' : orz(mask.top)
 					};
 				}
-			}
+			} else {
 
-			if (layer.isLayerFolder) {
-			const	subLayers = await getLayersInOraFormat(layer.layers);
+//* ORA-standard way to store masks and clipping groups by adding dummy subfolders:
 
-				if (null === subLayers) {
-					return null;
+				if (
+					maskImage
+				&&	isImageElement(maskImage)
+				) {
+				const	oraMaskNode = new ora.OraLayer(getNameForAuxLayer(LAYER_NAME_MASK_IMAGE, name));
+					oraMaskNode.image_type = 'mask';
+					oraMaskNode.image = maskImage;
+					oraMaskNode.x = orz(mask.left);
+					oraMaskNode.y = orz(mask.top);
+					oraMaskNode.composite = getOraBlendMode(
+						mask.defaultColor
+						? BLEND_MODE_CUT
+						: BLEND_MODE_MASK
+					);
+
+					if (clippingGroup && !layer.isClipped) {
+
+						clippingGroup.unshift(oraMaskNode);
+
+						if (TESTING > 9) console.log(
+							'mask:', [
+								name,
+								'mode:', oraMaskNode.composite,
+								'fill:', mask.defaultColor,
+								'mask:', mask,
+								'layer:', layer,
+								'clippingGroup:', clippingGroup,
+								'oraMaskNode:', oraMaskNode,
+								'oraNode:', oraNode,
+							]
+						);
+					} else {
+					const	oraMaskWrapper = new ora.OraStack(name);
+						oraMaskWrapper.layers = [ oraMaskNode, oraNode ];
+						oraMaskWrapper.isolation = (
+							layer.isPassThrough
+							? 'isolate-alpha'	//* <- non-standard, for testing
+							: 'isolate'
+						);
+
+						if (TESTING > 9) console.log(
+							'mask:', [
+								name,
+								'mode:', oraMaskNode.composite,
+								'fill:', mask.defaultColor,
+								'mask:', mask,
+								'layer:', layer,
+								'oraMaskWrapper:', oraMaskWrapper,
+								'oraMaskNode:', oraMaskNode,
+								'oraNode:', oraNode,
+							]
+						);
+
+						oraNode.name = getNameForAuxLayer(LAYER_NAME_MASKED_CONTENT, name);
+						oraNode = oraMaskWrapper;
+					}
 				}
 
-				oraNode.layers = subLayers || [];
+				if (clippingGroup || layer.isClipped) {
+					(clippingGroup || (clippingGroup = [])).push(oraNode);
+				}
+
+				oraNode.composite = oraBlendMode;
 			}
 
-			oraLayers.push(oraNode);
+			oraNode.opacity = opacity;
+			oraNode.visibility = visibility;
+
+			if (!clippingGroup) {
+				oraLayers.push(oraNode);
+			}
 		}
 
 		if (!layers) {
@@ -11425,6 +11936,7 @@ async function saveProject(project) {
 		}
 
 	const	oraLayers = [];
+	let	clippingGroup = null;
 
 		for (const layer of layers) {
 		let	tempLayer = layer;
@@ -11446,6 +11958,57 @@ async function saveProject(project) {
 			if (null === await addOneLayer(tempLayer)) {
 				return null;
 			}
+
+			if (clippingGroup && !layer.isClipped) {
+
+			const	oraClippingBase = clippingGroup.pop();
+			const	name = oraClippingBase.name;
+
+			const	oraClippingWrapper = new ora.OraStack(getNameForAuxLayer(LAYER_NAME_CLIPPING_GROUP, name));
+				oraClippingWrapper.composite = oraClippingBase.composite;
+				oraClippingWrapper.isolation = 'isolate';
+
+			let	oraClippedWrapper, lastAddedNode;
+
+				for (const oraNode of clippingGroup) {
+
+				const	blendMode = getNormalizedBlendMode(oraNode.composite);
+
+					if (blendMode === BLEND_MODE_NORMAL) {
+						oraNode.composite = getOraBlendMode(BLEND_MODE_CLIP);
+					} else
+					if (blendMode !== BLEND_MODE_MASK) {
+						if (
+							oraClippedWrapper
+						&&	oraClippedWrapper === lastAddedNode
+						) {
+							oraClippedWrapper.layers.push(oraNode);
+						} else {
+							oraClippedWrapper = new ora.OraStack(getNameForAuxLayer(LAYER_NAME_CLIPPED_CONTENT, name));
+							oraClippedWrapper.layers = [ oraNode ];
+							oraClippedWrapper.composite = getOraBlendMode(BLEND_MODE_CLIP);
+							oraClippedWrapper.isolation = 'auto';
+
+							oraClippingWrapper.layers.push(lastAddedNode = oraClippedWrapper);
+						}
+
+						continue;
+					}
+
+					oraClippingWrapper.layers.push(lastAddedNode = oraNode);
+				}
+
+				oraClippingBase.composite = getOraBlendMode(BLEND_MODE_NORMAL);
+
+				oraClippingWrapper.layers.push(oraClippingBase);
+				oraLayers.push(oraClippingWrapper);
+
+				clippingGroup = null;
+			}
+		}
+
+		if (clippingGroup) {
+			oraLayers.push(...clippingGroup);
 		}
 
 		return oraLayers;
