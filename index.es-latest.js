@@ -19,6 +19,7 @@
 //* TODO: colors: add "name1,2,3,etc[gradient-map=N/N%=rgb-N-N-N/N%=next+rgb-N-N-N/avg|max|min|rgb]" to interpolate between selected given color values in given name order using given source RGB (or avg/max/min of them). If too many gradient points (number of names > 2 + number points), ignore leftover points. If too many names, distribute undefined points evenly in the last (top?) stretch of gradient. Autosort points by %value. Color value after percent may be used to insert given color value or calculate value dependent on next/previous point (cycle in passes until all are defined). 0/100% may be used for defining colors; use names for omitted. If no usable color names, do nothing.
 
 //* TODO ---------------------- rendering: ------------------------------------
+//* TODO: blending: fix fig+outline in ORA vs PSD.
 //* TODO: collage: fix stuck rendering of oversized collage.
 //* TODO: collage: arrange joined images without using DOM, to avoid currently visible images moving to hidden container when saving collage.
 //* TODO: clipping: fix hiding of clipping group with skipped/invisible/empty base layer.
@@ -793,6 +794,7 @@ const	SPLIT_SEC = 60
 		'blendMode' : BLEND_MODE_NORMAL,
 		'isBlendModeTS' : false,
 		'isClipped' : false,
+		'clippingLayer' : null,
 	}
 
 ,	IMAGE_DATA_KEYS_TO_LOAD = [
@@ -9281,14 +9283,20 @@ async function addDebugImage(project, canvas, comment, highLightColor) {
 	}
 }
 
-async function setMergedImage(project, img, layer) {
+async function setMergedImage(project, img, layer, canIgnoreColors) {
 	if (CACHE_UNALTERABLE_FOLDERS_MERGED) {
 		if (CACHE_UNALTERABLE_IMAGES_TRIMMED) {
 			img = getCroppedCanvasCopy(project, img) || img;
 		}
 
 		if (img = await getImagePromiseFromCanvasToBlob(img, project)) {
-			project.mergedImages.push(layer.mergedImage = img);
+			layer[
+				canIgnoreColors
+				? 'mergedImageToRecolor'
+				: 'mergedImage'
+			] = img;
+
+			project.mergedImages.push(img);
 
 			if (TESTING > 1) console.log('Set merged branch image:', layer);
 
@@ -10213,12 +10221,16 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 //* Render folder contents, isolated or based on result before passthrough:
 
+				const	canIgnoreColors = (ignoreColors || isToRecolor);
+
 					if (
-						canSaveMergedImage
-					&&	layer.mergedImage
+						!canSaveMergedImage
+					||	!(img = (
+							canIgnoreColors
+							? layer.mergedImage || layer.mergedImageToRecolor
+							: layer.mergedImage
+						))
 					) {
-						img = layer.mergedImage;
-					} else {
 						img = await getRenderByValues(
 							project
 						,	values
@@ -10226,7 +10238,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 						,	{
 								'baseCanvas' : canvasForSubContext
 							,	'baseCanvasBefore' : canvasBeforeSubContext
-							,	'ignoreColors' : (ignoreColors || isToRecolor)
+							,	'ignoreColors' : canIgnoreColors
 							,	'skipCopyPaste' : (addCopyPaste ? layer : false)
 							,	'canSaveMergedImage' : !layer.isUnalterable
 							}
@@ -10236,7 +10248,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 							canSaveMergedImage
 						&&	img
 						) {
-							await setMergedImage(project, img, layer);
+							await setMergedImage(project, img, layer, canIgnoreColors);
 						}
 					}
 
