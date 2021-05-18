@@ -19,11 +19,9 @@
 //* TODO: colors: add "name1,2,3,etc[gradient-map=N/N%=rgb-N-N-N/N%=next+rgb-N-N-N/avg|max|min|rgb]" to interpolate between selected given color values in given name order using given source RGB (or avg/max/min of them). If too many gradient points (number of names > 2 + number points), ignore leftover points. If too many names, distribute undefined points evenly in the last (top?) stretch of gradient. Autosort points by %value. Color value after percent may be used to insert given color value or calculate value dependent on next/previous point (cycle in passes until all are defined). 0/100% may be used for defining colors; use names for omitted. If no usable color names, do nothing.
 
 //* TODO ---------------------- rendering: ------------------------------------
-//* TODO: blending: fix fig+outline in ORA vs PSD.
 //* TODO: collage: fix stuck rendering of oversized collage.
 //* TODO: collage: arrange joined images without using DOM, to avoid currently visible images moving to hidden container when saving collage.
 //* TODO: clipping: fix hiding of clipping group with skipped/invisible/empty base layer.
-//* TODO: clipping: disambiguate PSD/SAI clipping mode (which groups implicitly) from ORA/SVG src-atop (which does not group and leaks via passthrough/isolation=auto) by wrapping the group (clipped layers and the base) into additional folder to make resulting files look as intended in MyPaint. Assign base layer name/blendmode/opacity/mask to wrapper, rename wrapped base to "(comment-only sanitized placeholder name)" to keep it working as intended in dress-up. This will break path/name relationship of clipping group with its former parent folder. Maybe it would be better to make this "implicit virtal subfolder" behaviour official?
 //* TODO: blending: arithmetic emulation of all operations, not native to JS.
 //* TODO: blending: arithmetic emulation of all operations in 16/32-bit (float?) until final result; optional with checkbox/selectbox.
 //* TODO: blending: keep layer images as PNGs, create arrays for high-precision blending on demand, discard arrays when HQ mode is disabled.
@@ -35,30 +33,8 @@
 //* TODO: save opened project as ORA with all unused layers and other data included, full precision for opacity, etc.
 //* TODO: save opened project as PSD. Try https://github.com/Agamnentzar/ag-psd
 //* TODO: save images: WebP, JPEG XL. https://bugs.chromium.org/p/chromium/issues/detail?id=170565#c77 - toDataURL/toBlob quality 1.0 = lossless.
-//* TODO: make exported project files identically reproducible?
+//* TODO: make exported project files identically reproducible, if possible. Now works as long as source file, its mod.date and result layer tree are the same.
 //* TODO: compatible PSD -> ORA layer mode/structure conversions; on load/save/both?
-/*
-
-(0) folder with isolation="auto":
-	- if op="src-over" and opacity="1", then simply dump contained layers into parent context.
-	- otherwise, treat as isolation="isolate".
-
-(1a) clipping with isolation="isolate":
-	- use "src-atop" (clipping) over all merged content below in ORA.
-	- when loading from PSD, wrap with base into isolated folder, named in round brackets, e.g. "(clipping group)" or "(base layer content)".
-
-(1b) clipping with passthrough or isolation="isolate-alpha":
-	- strip alpha before (B), render group content over B (A), apply alpha (B to A) via "src-in", not "src-atop", to keep invertions inside?
-	- transition cannot be used as equivalent operation.
-
-(2a) mask with isolation="isolate":
-	- use "dst-in" (clipping mask) or "dst-out" (erase mask) over all merged content below in ORA.
-	- when loading from PSD, wrap with base into isolated folder, named in round brackets, e.g. "(layer mask)" and "(layer content)".
-
-(2b) mask with passthrough or isolation="isolate-alpha":
-	- store render before (B), render passthrough content over B (A), use transition (B to A) using mask x opacity (T) of passthrough folder.
-
-*/
 
 //* TODO ---------------------- other: ----------------------------------------
 //* TODO: don't add custom properties to objects of built-in types, if possible.
@@ -316,6 +292,7 @@ const	CONFIG_FILE_PATH = 'config.js'			//* <- declarations-only file to redefine
 ,	regLayerBlendModeClip	= /^(source|destination)-(atop)$/i
 ,	regLayerBlendModeMask	= /^(source|destination)-(in|out)$/i
 ,	regLayerTypeSingleTrim	= /s+$/i
+,	regSanitizeLayerName	= /\([^\)]*\)|\[[^\]]*\]/g
 ,	regSanitizeLayerComment	= /[\(\)\[\]\{\}\<\>]+/g
 ,	regSanitizeFileName	= /[_\s\/\\:<>?*"]+/g
 ,	regFileExt		= /(\.)([^.]+)?$/
@@ -1110,6 +1087,13 @@ function isRealNumber(value) {
 	);
 }
 
+function isNullOrUndefined(value) {
+	return (
+		value === null
+	||	typeof value === 'undefined'
+	);
+}
+
 function isNonNullObject(value) {
 	return (
 		value !== null
@@ -1348,15 +1332,20 @@ function arrayFillRepeat(dest, src) {
 const	srcLength = src.length;
 let	destIndex = dest.length;
 
-	if (destIndex === srcLength) {
-		dest.set(src);
-	} else {
+	if (
+		destIndex > 0
+	&&	srcLength > 0
+	) {
+		if (destIndex === srcLength) {
+			dest.set(src);
+		} else {
 
 //* Simple generic solution that works well:
 //* Source: https://stackoverflow.com/a/30229089
 
-		while (destIndex--) {
-			dest[destIndex] = src[destIndex % srcLength];
+			while (destIndex--) {
+				dest[destIndex] = src[destIndex % srcLength];
+			}
 		}
 	}
 
@@ -1456,14 +1445,21 @@ async function isIdenticalBlob(a, b) {
 	&&	isBlob(b)
 	&&	a.size === b.size
 	&&	a.type === b.type
-	&&	(a = new Uint8Array(a.buffer || (a.buffer = await getFilePromise(a))))	//* <- keep the buffers for faster comparisons
-	&&	(b = new Uint8Array(b.buffer || (b.buffer = await getFilePromise(b))))
-	&&	a.byteLength === b.byteLength
 	) {
-		if (isAlignedToBytes(a, 4) && isAlignedToBytes(b, 4)) return isIdentical(a, b, 4, Uint32Array);
-		if (isAlignedToBytes(a, 2) && isAlignedToBytes(b, 2)) return isIdentical(a, b, 2, Uint16Array);
+		if (
+			a.size > 0
+		&&	(a = new Uint8Array(a.buffer || (a.buffer = await getFilePromise(a))))	//* <- keep the buffers for faster comparisons
+		&&	(b = new Uint8Array(b.buffer || (b.buffer = await getFilePromise(b))))
+		&&	a.byteLength === b.byteLength
+		) {
 
-		return isIdentical(a, b);
+			if (isAlignedToBytes(a, 4) && isAlignedToBytes(b, 4)) return isIdentical(a, b, 4, Uint32Array);
+			if (isAlignedToBytes(a, 2) && isAlignedToBytes(b, 2)) return isIdentical(a, b, 2, Uint16Array);
+
+			return isIdentical(a, b);
+		}
+
+		return true;
 	}
 
 	return false;
@@ -1593,15 +1589,13 @@ let	foundValue;
 
 function getJoinedOrEmptyText(text, joinText) {
 	return (
-		typeof text === 'undefined'
-	||	text === null
+		isNullOrUndefined(text)
 		? '' :
 		(
 			text
 		&&	isFunction(text.join)
 			? text.join(
-				typeof joinText === 'undefined'
-			||	joinText === null
+				isNullOrUndefined(joinText)
 				? '\n'
 				: joinText
 			)
@@ -4421,12 +4415,30 @@ let	layers;
 }
 
 function getNameForAuxLayer(prefix, name) {
-	return (
+let	fullText, shorterText;
+
+	if (
 		SAVE_ADDITIONAL_LAYER_NAMES
-	&&	(name = String(name || '').replace(regSanitizeLayerComment, '')).length > 0
-		? '(' + prefix + ': ' + name + ')'
-		: '(' + prefix + ')'
-	);
+	&&	(name = trim(name)).length > 0
+	&&	(fullText = trim(
+			name
+			.replace(regSanitizeLayerComment, '')
+			.replace(regSpace, ' ')
+		)).length > 0
+	) {
+		if (fullText.length > 32) {
+			shorterText = trim(
+				name
+				.replace(regSanitizeLayerName, '')
+				.replace(regSanitizeLayerComment, '')
+				.replace(regSpace, ' ')
+			);
+		}
+
+		return '(' + prefix + ': ' + (shorterText || fullText) + ')';
+	}
+
+	return '(' + prefix + ')';
 }
 
 function getTruthyValue(value) {
@@ -4525,10 +4537,10 @@ function getLayerPathNamesChain(layer, flags) {
 		flags = {};
 	}
 
-const	path = (flags.includeSelf ? [layer.name] : []);
+const	path = (flags.includeSelf ? [layer.nameOriginal || layer.name] : []);
 
 	while (layer = getParentLayer(layer)) {
-		path.unshift(layer.name);
+		path.unshift(layer.nameOriginal || layer.name);
 	}
 
 	if (flags.asText) {
@@ -4543,7 +4555,7 @@ function getLayerPathText(layer) {
 }
 
 function getJoinedNames(layers) {
-	return layers.map((layer) => layer.name).join(' / ');
+	return layers.map((layer) => (layer.nameOriginal || layer.name)).join(' / ');
 }
 
 function getLayersTopSeparated(layers) {
@@ -5825,7 +5837,7 @@ async function getProjectViewMenu(project) {
 		}
 
 		function getUnskippedProcessedLayers(layers, isInsideColorList) {
-		let	clippingLayer;
+		let	clippingLayer = null;
 
 			for (
 			let	layerIndex = layers.length;
@@ -5833,18 +5845,6 @@ async function getProjectViewMenu(project) {
 			) {
 			const	layer = layers[layerIndex];
 
-//* Source:
-//*	https://stackoverflow.com/questions/30610523/reverse-array-in-javascript-without-mutating-original-array#comment100151603_30610528
-//*
-//* Compare array cloning methods:
-//*	https://jsben.ch/lO6C5
-//*
-//* Top results for Vivaldi (Chrome-based):
-//*	1. slice()
-//*	2. [...spread]
-//*	3. Array.from()
-
-			// for (const layer of layers.slice().reverse()) {
 				if (layer.isClipped) {
 					layer.clippingLayer = clippingLayer;
 				} else {
@@ -8059,7 +8059,7 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 				);
 
 			const	hasNoFillOpacityValue = (
-					fillOpacity === null
+					isNullOrUndefined(fillOpacity)
 				||	!isRealNumber(fillOpacity)
 				);
 
@@ -9744,20 +9744,20 @@ function getLayerVisibilityByValues(project, layer, values, listName) {
 		if (listName) {
 		const	opacity = getSelectedOptionValue(project, values, 'opacities', listName);
 
-			if (opacity === null) {
-				unselectable = true;
-			} else {
+			if (isRealNumber(opacity)) {
 				maxOpacity = opacity;
+			} else {
+				unselectable = true;
 			}
 		} else
 		for (const listName of layer.names) {
 		const	opacity = getSelectedOptionValue(project, values, 'opacities', listName);
 
-			if (opacity === null) {
-				unselectable = true;
-			} else {
+			if (isRealNumber(opacity)) {
 				if (maxOpacity < opacity) maxOpacity = opacity;
 				if (maxOpacity >= 1) break;
+			} else {
+				unselectable = true;
 			}
 		}
 
@@ -10126,6 +10126,17 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 //* Get layer/folder/batch as flat image:
 
 				if (layers.length > 0) {
+
+//* Source:
+//*	https://stackoverflow.com/questions/30610523/reverse-array-in-javascript-without-mutating-original-array#comment100151603_30610528
+//*
+//* Compare array cloning methods:
+//*	https://jsben.ch/lO6C5
+//*
+//* Top results for Vivaldi (Chrome-based):
+//*	1. slice()
+//*	2. [...spread]
+//*	3. Array.from()
 
 					if (backward) {
 						layers = layers.slice().reverse();
@@ -11742,21 +11753,20 @@ async function saveProject(project) {
 		let	oraNode;
 
 			if (layer.isLayerFolder) {
-			const	subLayers = await getLayersInOraFormat(layer.layers);
+			const	subLayers = layer.layers;
+			const	oraNodeChildren = await getLayersInOraFormat(subLayers);
 
-				if (null === subLayers) {
+				if (null === oraNodeChildren) {
 					return null;
 				}
 
 				oraNode = new ora.OraStack(name);
-				oraNode.layers = subLayers || [];
+				oraNode.layers = oraNodeChildren;
 				oraNode.isolation = (
 					layer.isPassThrough
 					? (
 						layer.isIsolatedAlpha
-					// ||	layer.isClipped
-					||	opacity != 1
-					||	layer.blendMode !== BLEND_MODE_NORMAL
+					||	layer.mask
 						? 'isolate-alpha'	//* <- non-standard, for testing
 						: 'auto'
 					)
@@ -11888,19 +11898,10 @@ async function saveProject(project) {
 					if (clippingGroup && !layer.isClipped) {
 
 						clippingGroup.unshift(oraMaskNode);
+					} else
+					if (layer.isLayerFolder) {
 
-						if (TESTING > 9) console.log(
-							'mask:', [
-								name,
-								'mode:', oraMaskNode.composite,
-								'fill:', mask.defaultColor,
-								'mask:', mask,
-								'layer:', layer,
-								'clippingGroup:', clippingGroup,
-								'oraMaskNode:', oraMaskNode,
-								'oraNode:', oraNode,
-							]
-						);
+						oraNode.layers.unshift(oraMaskNode);
 					} else {
 					const	oraMaskWrapper = new ora.OraStack(name);
 						oraMaskWrapper.layers = [ oraMaskNode, oraNode ];
@@ -11910,25 +11911,20 @@ async function saveProject(project) {
 							: 'isolate'
 						);
 
-						if (TESTING > 9) console.log(
-							'mask:', [
-								name,
-								'mode:', oraMaskNode.composite,
-								'fill:', mask.defaultColor,
-								'mask:', mask,
-								'layer:', layer,
-								'oraMaskWrapper:', oraMaskWrapper,
-								'oraMaskNode:', oraMaskNode,
-								'oraNode:', oraNode,
-							]
-						);
-
 						oraNode.name = getNameForAuxLayer(LAYER_NAME_MASKED_CONTENT, name);
 						oraNode = oraMaskWrapper;
 					}
 				}
 
-				if (clippingGroup || layer.isClipped) {
+//* Create only valid clipping groups (e.g. with a non-passthrough base layer):
+
+				if (
+					clippingGroup
+				||	(
+						layer.isClipped
+					&&	layer.clippingLayer
+					)
+				) {
 					(clippingGroup || (clippingGroup = [])).push(oraNode);
 				}
 
@@ -11943,13 +11939,10 @@ async function saveProject(project) {
 			}
 		}
 
-		if (!layers) {
-			return [];
-		}
-
 	const	oraLayers = [];
 	let	clippingGroup = null;
 
+		if (layers && layers.length > 0)
 		for (const layer of layers) {
 		let	tempLayer = layer;
 
@@ -11986,28 +11979,33 @@ async function saveProject(project) {
 
 				const	blendMode = getNormalizedBlendMode(oraNode.composite);
 
+//* Add layer as is, set mode to clipped if needed:
+
 					if (blendMode === BLEND_MODE_NORMAL) {
 						oraNode.composite = getOraBlendMode(BLEND_MODE_CLIP);
+
+						oraClippingWrapper.layers.push(lastAddedNode = oraNode);
 					} else
-					if (blendMode !== BLEND_MODE_MASK) {
-						if (
-							oraClippedWrapper
-						&&	oraClippedWrapper === lastAddedNode
-						) {
-							oraClippedWrapper.layers.push(oraNode);
-						} else {
-							oraClippedWrapper = new ora.OraStack(getNameForAuxLayer(LAYER_NAME_CLIPPED_CONTENT, name));
-							oraClippedWrapper.layers = [ oraNode ];
-							oraClippedWrapper.composite = getOraBlendMode(BLEND_MODE_CLIP);
-							oraClippedWrapper.isolation = 'auto';
 
-							oraClippingWrapper.layers.push(lastAddedNode = oraClippedWrapper);
-						}
+					if (blendMode === BLEND_MODE_MASK) {
+						oraClippingWrapper.layers.push(lastAddedNode = oraNode);
+					} else
 
-						continue;
+//* Add layer inside clipped wrapper to keep original blending modes working:
+
+					if (
+						oraClippedWrapper
+					&&	oraClippedWrapper === lastAddedNode
+					) {
+						oraClippedWrapper.layers.push(oraNode);
+					} else {
+						oraClippedWrapper = new ora.OraStack(getNameForAuxLayer(LAYER_NAME_CLIPPED_CONTENT, name));
+						oraClippedWrapper.layers = [ oraNode ];
+						oraClippedWrapper.composite = getOraBlendMode(BLEND_MODE_CLIP);
+						oraClippedWrapper.isolation = 'auto';
+
+						oraClippingWrapper.layers.push(lastAddedNode = oraClippedWrapper);
 					}
-
-					oraClippingWrapper.layers.push(lastAddedNode = oraNode);
 				}
 
 				oraClippingBase.composite = getOraBlendMode(BLEND_MODE_NORMAL);
