@@ -131,6 +131,7 @@ var	exampleRootDir = ''
 ,	TESTING				= false	//* <- dump more info into the console; several levels are possible.
 ,	TESTING_PNG			= false	//* <- dump a PNG onto the page after converting from pixel data.
 ,	TESTING_RENDER			= false	//* <- dump a PNG onto the page after each rendering operation.
+,	TESTING_RENDER_CACHE		= false	//* <- dump a PNG onto the page after each cached crop or merge.
 ,	USE_CRITERIA_ARRAY		= true
 ,	USE_MINIFIED_JS			= true	//* <- currently only pako.
 ,	USE_ONE_FILE_ZIP_WORKER		= false	//* <- concatenated bundle, which is not included in distribution by default.
@@ -782,15 +783,20 @@ const	SPLIT_SEC = 60
 		'imgData',
 	]
 
-,	CLEANUP_CHILD_KEYS = ['layers']
+,	CLEANUP_PROJECT_LAYERS_RECURSIVE_KEYS = ['layers']
 
-,	CLEANUP_KEYS_TESTING = [
+,	CLEANUP_PROJECT_LAYERS_MERGED_CACHE_KEYS = [
+		'mergedImage',
+		'mergedImageToRecolor',
+	]
+
+,	CLEANUP_PROJECT_AFTER_LOAD_KEYS = [
 		'loading',
 		// 'loadImage',	//* <- keep for lazy-loading
 		'toPng',
 	]
 
-,	CLEANUP_KEYS = CLEANUP_KEYS_TESTING.concat([
+,	CLEANUP_PROJECT_IF_NOT_TESTING_KEYS = CLEANUP_PROJECT_AFTER_LOAD_KEYS.concat([
 		'blendModeOriginal',
 		'blendModeOriginalAlpha',
 		'blendModeOriginalColor',
@@ -2190,6 +2196,8 @@ function cleanupObjectTree(obj, childKeys, keysToRemove) {
 	if (isNonNullObject(obj)) {
 
 		for (const key of keysToRemove) if (key in obj) {
+
+			if (TESTING > 9) console.log('cleanupObjectTree:', [obj.fileName || obj.nameOriginal || obj.name, obj, obj[key]]);
 
 			obj[key] = null;
 			delete obj[key];
@@ -4937,11 +4945,11 @@ let	project, container;
 
 			cleanupObjectTree(
 				project
-			,	CLEANUP_CHILD_KEYS
+			,	CLEANUP_PROJECT_LAYERS_RECURSIVE_KEYS
 			,	(
 					TESTING
-					? CLEANUP_KEYS_TESTING
-					: CLEANUP_KEYS
+					? CLEANUP_PROJECT_AFTER_LOAD_KEYS
+					: CLEANUP_PROJECT_IF_NOT_TESTING_KEYS
 				)
 			);
 
@@ -9231,55 +9239,80 @@ function scrollToDebugImage(target) {
 	}
 }
 
-async function addDebugImage(project, canvas, comment, highLightColor) {
+async function addDebugImage(project, imageOrCanvas, comment, highLightColor) {
 	if (
 		TESTING_RENDER
-	&&	canvas
-	&&	isCanvasElement(canvas = canvas.canvas || canvas)
+	&&	imageOrCanvas
 	) {
-	const	img = cre('img', (project ? project.renderDebugContainer || project.renderContainer : document.body));
+	const	container = (
+			project
+			? project.renderDebugContainer || project.renderContainer
+			: document.body
+		);
 
-		if (await getImagePromiseFromCanvasToBlob(canvas, null, null, null, img)) {
-			// URL.revokeObjectURL(img.src);
-			// setTimeout(() => URL.revokeObjectURL(img.src), 12345);
-		} else {
-			try {
-				img.src = canvas.toDataURL();
+	let	canvas, img, src;
 
-			} catch (error) {
-				console.error(error);
+		if (isImageElement(imageOrCanvas)) {
+
+			if (src = imageOrCanvas.src) {
+				img = cre('img');
+				img.src = src;
+			}
+		} else
+		if (isCanvasElement(canvas = imageOrCanvas.canvas || imageOrCanvas)) {
+
+			if (img = await getImagePromiseFromCanvasToBlob(canvas)) {
+				// URL.revokeObjectURL(img.src);
+				// setTimeout(() => URL.revokeObjectURL(img.src), 12345);
+			} else {
+				try {
+					if (src = canvas.toDataURL()) {
+						img = cre('img');
+						img.src = src;
+					}
+
+				} catch (error) {
+					console.error(error);
+				}
 			}
 		}
 
-		if (!img.src) {
-			img.src = getImageSrcPlaceholder();
+		if (
+			img
+		&&	img.src
+		) {
+			img.alt = comment;
+
+			if (project) {
+			const	PR = project.rendering || DUMMY_EMPTY_ARRAY;
+			const	layers = PR.nestedLayers || DUMMY_EMPTY_ARRAY;
+			const	layer = layers[layers.length - 1] || PR.lastNestedLayer || DUMMY_EMPTY_ARRAY;
+
+				img.title = [
+					'blending step number: ' + PR.blendingStepsCount
+				,	'debug image number: ' + (++PR.debugImagesCount)
+				,	'render name: ' + PR.fileName
+				,	'render nesting level: ' + layers.length
+				,	'render nesting path: ' + getJoinedNames(layers)
+				,	'layer nesting path: ' + getLayerPathText(layer)
+				,	'layer name: ' + (layer ? layer.nameOriginal : layer)
+				,	'comment: ' + comment
+				].join(TITLE_LINE_BREAK);
+			} else {
+				img.title = comment;
+			}
+
+			if (highLightColor) {
+				img.style.borderColor = highLightColor;
+				img.style.boxShadow = '3px 3px ' + highLightColor;
+			}
+
+			img.setAttribute('onclick', 'scrollToDebugImage(this)');
+
+			container.appendChild(img);
+
+			return img;
 		}
-
-		img.alt = comment;
-
-		if (project) {
-		const	PR = project.rendering || DUMMY_EMPTY_ARRAY;
-		const	layers = PR.nestedLayers || DUMMY_EMPTY_ARRAY;
-		const	layer = layers[layers.length - 1] || PR.lastNestedLayer || DUMMY_EMPTY_ARRAY;
-
-			img.title = [
-				'render name: ' + PR.fileName
-			,	'render nesting level: ' + layers.length
-			,	'render nesting path: ' + getJoinedNames(layers)
-			,	'layer nesting path: ' + getLayerPathText(layer)
-			,	'layer name: ' + (layer ? layer.nameOriginal : layer)
-			,	'comment: ' + comment
-			].join(TITLE_LINE_BREAK);
-		} else {
-			img.title = comment;
-		}
-
-		if (highLightColor) {
-			img.style.borderColor = highLightColor;
-			img.style.boxShadow = '3px 3px ' + highLightColor;
-		}
-
-		img.setAttribute('onclick', 'scrollToDebugImage(this)');
 	}
 }
 
@@ -9290,6 +9323,13 @@ async function setMergedImage(project, img, layer, canIgnoreColors) {
 		}
 
 		if (img = await getImagePromiseFromCanvasToBlob(img, project)) {
+
+			cleanupObjectTree(
+				layer
+			,	CLEANUP_PROJECT_LAYERS_RECURSIVE_KEYS
+			,	CLEANUP_PROJECT_LAYERS_MERGED_CACHE_KEYS
+			);
+
 			layer[
 				canIgnoreColors
 				? 'mergedImageToRecolor'
@@ -9300,7 +9340,7 @@ async function setMergedImage(project, img, layer, canIgnoreColors) {
 
 			if (TESTING > 1) console.log('Set merged branch image:', layer);
 
-			if (TESTING > 2 || TESTING_RENDER) {
+			if (TESTING_RENDER_CACHE) {
 				img.onclick = del;
 				img.title = [
 					getLayerPathText(layer)
@@ -9343,7 +9383,7 @@ const	crop = getAutoCropArea(img);
 
 		if (TESTING > 1) console.log('Cropped image on canvas:', canvas);
 
-		if (TESTING > 2 || TESTING_RENDER) {
+		if (TESTING_RENDER_CACHE) {
 			canvas.onclick = del;
 			canvas.title = 'cropped image: ' + canvas.width + 'x' + canvas.height + ', click to remove';
 
@@ -9906,9 +9946,8 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 		);
 
 	const	canSaveMergedImage = (
-			!!renderParams.canSaveMergedImage
+			layer.isUnalterable
 		&&	!skipCopyPaste
-		&&	layer.isUnalterable
 		);
 
 	let	clippingGroupResult = false;
@@ -10235,13 +10274,25 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 				const	canIgnoreColors = (ignoreColors || isToRecolor);
 
 					if (
-						!canSaveMergedImage
-					||	!(img = (
+						canSaveMergedImage
+					&&	(img = (
 							canIgnoreColors
 							? layer.mergedImage || layer.mergedImageToRecolor
 							: layer.mergedImage
 						))
 					) {
+						if (TESTING_RENDER) await addDebugImage(
+							project
+						,	img
+						,	(
+								img === layer.mergedImage
+								? 'img = mergedImage'
+								: 'img = mergedImageToRecolor'
+							)
+						,	'tan'
+						);
+					} else
+					if (
 						img = await getRenderByValues(
 							project
 						,	values
@@ -10251,23 +10302,20 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 							,	'baseCanvasBefore' : canvasBeforeSubContext
 							,	'ignoreColors' : canIgnoreColors
 							,	'skipCopyPaste' : (addCopyPaste ? layer : false)
-							,	'canSaveMergedImage' : !layer.isUnalterable
 							}
+						)
+					) {
+						if (TESTING_RENDER) await addDebugImage(
+							project
+						,	img
+						,	'img = getRenderByValues: subfolder content'
+						,	'palegreen'
 						);
 
-						if (
-							canSaveMergedImage
-						&&	img
-						) {
+						if (canSaveMergedImage) {
 							await setMergedImage(project, img, layer, canIgnoreColors);
 						}
 					}
-
-					if (TESTING_RENDER) await addDebugImage(
-						project
-					,	img
-					,	'img = getRenderByValues: subfolder content'
-					);
 				}
 
 				cleanUpCopyPasteLinks(layers);
@@ -10277,6 +10325,12 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 			if (!layer.isLayerFolder) {
 				img = await getOrLoadFixedImage(project, layer);
+
+				if (TESTING_RENDER) await addDebugImage(
+					project
+				,	img
+				,	'img = getOrLoadFixedImage: layer'
+				);
 			}
 		}
 
@@ -10323,6 +10377,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 								project
 							,	mask
 							,	'padCanvas: mask'
+							,	'lightblue'
 							);
 						}
 					}
@@ -10368,6 +10423,8 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 				if (mask) {
 					img = await getCanvasBlended(project, img, mask, BLEND_MODE_MASK);
 
+					++PR.blendingStepsCount;
+
 					if (TESTING_RENDER) await addDebugImage(
 						project
 					,	img
@@ -10387,6 +10444,8 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 				) {
 					for (const listName of names) {
 						img = await getCanvasColored(project, values, listName, img);
+
+						++PR.blendingStepsCount
 					}
 				}
 
@@ -10423,6 +10482,8 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 				if (clippingMaskForSubContext) {
 					await drawImageOrColor(project, img, clippingMaskForSubContext, BLEND_MODE_MASK);
 
+					++PR.blendingStepsCount;
+
 					if (TESTING_RENDER) await addDebugImage(
 						project
 					,	img
@@ -10439,6 +10500,8 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 				const	alphaMode = BLEND_MODE_FADE_IN;
 
 					await drawImageOrColor(project, ctx, img, alphaMode, opacity, mask);
+
+					++PR.blendingStepsCount;
 
 					if (TESTING_RENDER) await addDebugImage(
 						project
@@ -10460,6 +10523,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 					ctx = canvas.getContext('2d');
 				}
 
+				clearCanvasBeforeGC(canvasBeforeSubContext);
 			} else {
 
 //* Apply mask inside passthrough subfolder:
@@ -10472,6 +10536,8 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 				const	alphaMode = BLEND_MODE_FADE_OUT;
 
 					await drawImageOrColor(project, ctx, baseCanvasBefore, alphaMode, opacity, img, invertMask);
+
+					++PR.blendingStepsCount;
 
 					if (TESTING_RENDER) await addDebugImage(
 						project
@@ -10492,6 +10558,8 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 				{
 					await drawImageOrColor(project, ctx, img, blendMode, opacity);
+
+					++PR.blendingStepsCount;
 
 					if (TESTING_RENDER) await addDebugImage(
 						project
@@ -10579,6 +10647,8 @@ let	layer, layersToRenderOne;
 			startTime
 		,	'lastPauseTime' : startTime
 		,	'fileName' : getFileNameByValues(project, values)
+		,	'blendingStepsCount' : 0
+		,	'debugImagesCount' : 0
 		,	'layersApplyCount' : 0
 		,	'layersBatchCount' : 1
 		,	'nestedLevelMax' : 0
@@ -10586,6 +10656,8 @@ let	layer, layersToRenderOne;
 		,	'colors' : {}
 		};
 	}
+
+const	PR = project.rendering;
 
 let	layersToRender = layersToRenderOne || nestedLayersBatch || project.layers;
 let	indexToRender = layersToRender.length - 1;
@@ -10645,6 +10717,8 @@ let	canvas, ctx, clippingGroupMask;
 		if (clippingGroupMask) {
 			await drawImageOrColor(project, ctx, clippingGroupMask, BLEND_MODE_MASK);
 
+			++PR.blendingStepsCount;
+
 			if (TESTING_RENDER) await addDebugImage(
 				project
 			,	canvas
@@ -10663,7 +10737,6 @@ let	canvas, ctx, clippingGroupMask;
 //* End of layer tree:
 
 	if (!nestedLayersBatch) {
-	const	PR = project.rendering;
 	const	renderingTime = getTimeNow() - PR.startTime;
 	const	renderName = PR.fileName;
 
@@ -10683,7 +10756,8 @@ let	canvas, ctx, clippingGroupMask;
 			if (LOG_ACTIONS) logTime(
 				'"' + project.fileName + '" rendered in '
 			+	[	PR.layersBatchCount + ' canvas elements'
-				,	PR.layersApplyCount + ' blending steps'
+				,	PR.layersApplyCount + ' layers applied'
+				,	PR.blendingStepsCount + ' blending steps'
 				,	PR.nestedLevelMax + ' max nesting levels'
 				,	(renderingTime / 1000) + ' seconds'
 				,	'subtitle'
@@ -11783,6 +11857,7 @@ async function saveProject(project) {
 //* Reuse color-fill image kept from previous save:
 
 					if (layer.imgFromColor) {
+						oraNode.image_type = 'color';
 						oraNode.width  = Math.max(1, project.width);
 						oraNode.height = Math.max(1, project.height);
 						x = y = 0;
