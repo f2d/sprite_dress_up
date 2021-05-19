@@ -338,7 +338,6 @@ const	CONFIG_FILE_PATH = 'config.js'			//* <- declarations-only file to redefine
 const	SPLIT_SEC = 60
 ,	MIN_CHANNEL_VALUE = 0
 ,	MAX_CHANNEL_VALUE = 255
-,	MAX_OPACITY = 255
 ,	MAX_BATCH_PRECOUNT = 9999
 
 ,	FLAG_FLIP_HORIZONTAL = 1
@@ -393,8 +392,8 @@ const	SPLIT_SEC = 60
 ,	DUMMY_NULL_ARRAY = Object.freeze( [null] )	//* <- immutable, for cross-product combinations
 ,	DUMMY_TEXT_ARRAY = Object.freeze( [''] )
 
-,	DEFAULT_COLOR_VALUE_ARRAY = Object.freeze( [0,0,0,255] )
-,	TRANSPARENT_COLOR_VALUE_ARRAY = Object.freeze( [0,0,0,0] )
+,	DEFAULT_COLOR_VALUE_ARRAY = Object.freeze( [0,0,0, MAX_CHANNEL_VALUE] )
+,	TRANSPARENT_COLOR_VALUE_ARRAY = Object.freeze( [0,0,0, MIN_CHANNEL_VALUE] )
 
 ,	DUMMY_OPTION_PARAMS = Object.freeze({
 		'noOptionSwitches' : true,
@@ -447,6 +446,8 @@ const	SPLIT_SEC = 60
 		'getElementsByType' : ['*[type="', '"]'],
 		'getElementsById'   : ['*[id="', '"]'],
 	}
+
+,	DEFAULT_MASK_FILL_COLOR = 'black'
 
 ,	BLEND_MODE_NORMAL = 'source-over'
 ,	BLEND_MODE_CLIP = 'source-atop'
@@ -2037,11 +2038,11 @@ const	rgba = getRGBAFromColorCodeOrArray(color);
 
 function getNormalizedRGBA(rgba) {
 	if (rgba.length > 3) {
-		if (rgba[3] === 255) {
+		if (rgba[3] === MAX_CHANNEL_VALUE) {
 			return rgba.slice(0,3);
 		}
 
-		if (rgba[3] === 0) {
+		if (rgba[3] === MIN_CHANNEL_VALUE) {
 			return TRANSPARENT_COLOR_VALUE_ARRAY.slice();
 		}
 	}
@@ -3990,6 +3991,19 @@ const	height = img.naturalHeight || img.height;
 	return { width, height };
 }
 
+function getCanvasFromImg(img) {
+const	canvas = cre('canvas');
+const	ctx = canvas.getContext('2d');
+const	size = getImageContentSize(img);
+
+	canvas.width  = size.width;
+	canvas.height = size.height;
+
+	ctx.drawImage(img, 0,0);
+
+	return canvas;
+}
+
 function getResizedCanvasFromImg(img, w,h) {
 const	canvas = cre('canvas');
 const	ctx = canvas.getContext('2d');
@@ -4104,14 +4118,28 @@ const	ctx = canvas.getContext('2d');
 	return ctx;
 }
 
-function getImageDataInverted(imageData) {
+function getCanvasFromMaskInvertAlpha(img) {
+const	canvas = getCanvasFromImg(img);
+const	ctx = canvas.getContext('2d');
+const	w = canvas.width;
+const	h = canvas.height;
+
+	ctx.globalAlpha = 1;
+	ctx.globalCompositeOperation = BLEND_MODE_INVERT;
+	ctx.fillStyle = DEFAULT_MASK_FILL_COLOR;
+	ctx.fillRect(0,0, w,h);
+
+	return canvas;
+}
+
+function getImageDataInvertAlpha(imageData) {
 const	ctx = getCtxFromImageData(imageData);
 const	w = imageData.width;
 const	h = imageData.height;
 
 	ctx.globalAlpha = 1;
 	ctx.globalCompositeOperation = BLEND_MODE_INVERT;
-	ctx.fillStyle = 'white';
+	ctx.fillStyle = DEFAULT_MASK_FILL_COLOR;
 	ctx.fillRect(0,0, w,h);
 
 	return ctx.getImageData(0,0, w,h);
@@ -4458,7 +4486,7 @@ function getTruthyValue(value) {
 }
 
 function getNormalizedOpacity(numValue) {
-	return Math.max(0, Math.min(1, orz(numValue) / MAX_OPACITY));
+	return Math.max(0, Math.min(1, orz(numValue) / MAX_CHANNEL_VALUE));
 }
 
 function getNormalizedBlendMode(text, remaps, replacements) {
@@ -4545,10 +4573,10 @@ function getLayerPathNamesChain(layer, flags) {
 		flags = {};
 	}
 
-const	path = (flags.includeSelf ? [layer.nameOriginal || layer.name] : []);
+const	path = (flags.includeSelf ? [layer.name || layer.nameOriginal] : []);
 
 	while (layer = getParentLayer(layer)) {
-		path.unshift(layer.nameOriginal || layer.name);
+		path.unshift(layer.name || layer.nameOriginal);
 	}
 
 	if (flags.asText) {
@@ -4563,7 +4591,7 @@ function getLayerPathText(layer) {
 }
 
 function getJoinedNames(layers) {
-	return layers.map((layer) => (layer.nameOriginal || layer.name)).join(' / ');
+	return layers.map((layer) => (layer.name || layer.nameOriginal)).join(' / ');
 }
 
 function getLayersTopSeparated(layers) {
@@ -6891,7 +6919,7 @@ function getLayerWithParamsFromParamList(paramList, layer) {
 	}
 
 	function getWIPLayerPathText() {
-		return getLayerPathText(layer.parent) + '"' + (layer.nameOriginal || layer.name) + '"';
+		return getLayerPathText(layer.parent) + '"' + (layer.name || layer.nameOriginal) + '"';
 	}
 
 	if (!layer) {
@@ -7934,7 +7962,9 @@ async function loadORA(project) {
 //*	All the content inside isolation context below an "dst-in" layer becomes masked.
 
 				if (mask) {
-					setImageLoadOrCountIfLoaded(mask, layerWIP.mask = {});
+					setImageLoadOrCountIfLoaded(mask, layerWIP.mask = {
+						'fillOutside' : orz(mask.fill_outside)
+					});
 				}
 
 				parentGroup = await getNextParentAfterAddingLayerToTree(
@@ -8118,7 +8148,7 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 					&&	!(mask.disabled || (mask.flags & 2))	//* <- mask visibility checkbox, supposedly
 					) {
 						layerWIP.mask = {
-							'defaultColor' : orz(mask.defaultColor)
+							'fillOutside' : orz(mask.defaultColor)
 						,	'imgData' : img.maskData		//* <- RGBA byte array
 						};
 
@@ -8777,20 +8807,22 @@ let	canvas = null;
 	&&	img
 	&&	opacity > 0
 	) {
-	const	x = orz(img.left);
-	const	y = orz(img.top);
 	const	w = canvas.width;
 	const	h = canvas.height;
 
 		function drawImageOrColorInside(img) {
+			if (
+				isImageElement(img)
+			||	isCanvasElement(img)
+			) {
+				ctx.drawImage(img, orz(img.left), orz(img.top));
+			} else
 			if (
 				img.join
 			||	img.split
 			) {
 				ctx.fillStyle = getColorTextFromArray(img);
 				ctx.fillRect(0,0, w,h);
-			} else {
-				ctx.drawImage(img, x,y);
 			}
 		}
 
@@ -8864,14 +8896,14 @@ let	canvas = null;
 						ctx.globalAlpha = 1;
 						ctx.globalCompositeOperation = BLEND_MODE_NORMAL;
 
-						drawImageOrColorInside('white');
+						drawImageOrColorInside(DEFAULT_MASK_FILL_COLOR);
 
 						ctx.globalCompositeOperation = BLEND_MODE_CUT;
 					}
 
 					ctx.globalAlpha = opacity;
 
-					drawImageOrColorInside(mask || 'white');
+					drawImageOrColorInside(mask || DEFAULT_MASK_FILL_COLOR);
 
 					if (TESTING_RENDER) await addDebugImage(
 						project
@@ -9096,9 +9128,9 @@ function getPaddedImageData(referenceImageData, method, threshold, dimensions) {
 	}
 
 	function subtractPadding(referenceImageData, dimensions) {
-		return getImageDataInverted(
+		return getImageDataInvertAlpha(
 			addPadding(
-				getImageDataInverted(referenceImageData)
+				getImageDataInvertAlpha(referenceImageData)
 			,	dimensions
 			)
 		);
@@ -9223,7 +9255,7 @@ const	img = ctx.getImageData(0,0, w,h);
 		index >= 0;
 		index -= 4
 	) {
-		data[index] = 255;
+		data[index] = MAX_CHANNEL_VALUE;
 	}
 
 	ctx.putImageData(img, 0,0);
@@ -9295,7 +9327,7 @@ async function addDebugImage(project, imageOrCanvas, comment, highLightColor) {
 				,	'render nesting level: ' + layers.length
 				,	'render nesting path: ' + getJoinedNames(layers)
 				,	'layer nesting path: ' + getLayerPathText(layer)
-				,	'layer name: ' + (layer ? layer.nameOriginal : layer)
+				,	'layer name: ' + (layer ? (layer.nameOriginal || layer.name) : layer)
 				,	'comment: ' + comment
 				].join(TITLE_LINE_BREAK);
 			} else {
@@ -9491,53 +9523,62 @@ const	ctx = canvas.getContext('2d');
 	return canvas;
 }
 
-function getCanvasFilledOutsideOfImage(project, imgOrLayer, fillColor) {
-	if (!isNonNullObject(imgOrLayer)) {
-		return null;
+function getCanvasFilledOutsideOfImage(project, imgOrLayer, fillValue) {
+let	imgElement, imgSize;
+
+	fillValue = Math.max(MIN_CHANNEL_VALUE, Math.min(MAX_CHANNEL_VALUE, orz(fillValue)));
+
+	if (isNonNullObject(imgOrLayer)) {
+
+		imgElement = getPropByAnyOfNamesChain(imgOrLayer, 'img');
+
+		if (
+			isImageElement(imgElement)
+		||	isCanvasElement(imgElement)
+		) {
+			imgSize = getImageContentSize(imgElement);
+		} else {
+			imgElement = null;
+		}
+
+		if (
+			!fillValue
+		||	(
+				isNonNullObject(imgOrLayer)
+			&&	!imgOrLayer.left && !imgElement.left
+			&&	!imgOrLayer.top  && !imgElement.top
+			&&	isNonNullObject(imgSize)
+			&&	(!imgSize.width  || imgSize.width  === project.width)
+			&&	(!imgSize.height || imgSize.height === project.height)
+			)
+		) {
+			return imgElement;
+		}
 	}
 
-const	imgElement = getPropByAnyOfNamesChain(imgOrLayer, 'img');
+	if (fillValue) {
+	const	canvas = getNewCanvasForProject(project);
+	const	ctx = canvas.getContext('2d');
 
-	if (
-		!isImageElement(imgElement)
-	&&	!isCanvasElement(imgElement)
-	) {
-		return null;
+	const	flatColorData = new ImageData(canvas.width, canvas.height);
+		flatColorData.data.fill(fillValue);
+
+		ctx.putImageData(flatColorData, 0,0);
+
+		if (imgElement) {
+		const	w = orz(getPropFromAnySource('width',  imgOrLayer, imgSize, project));
+		const	h = orz(getPropFromAnySource('height', imgOrLayer, imgSize, project));
+		const	x = orz(getPropFromAnySource('left',   imgOrLayer, imgElement));
+		const	y = orz(getPropFromAnySource('top',    imgOrLayer, imgElement));
+
+			ctx.clearRect(x,y, w,h);
+			ctx.drawImage(imgElement, x,y);
+		}
+
+		return canvas;
 	}
 
-const	size = getImageContentSize(imgElement);
-
-	if (
-		!fillColor
-	||	(
-			!imgOrLayer.left && !imgElement.left
-		&&	!imgOrLayer.top  && !imgElement.top
-		&&	(!size.width  || size.width  === project.width)
-		&&	(!size.height || size.height === project.height)
-		)
-	) {
-		return imgElement;
-	}
-
-	fillColor = Math.max(0, Math.min(255, orz(fillColor)));
-
-const	canvas = getNewCanvasForProject(project);
-const	ctx = canvas.getContext('2d');
-
-const	flatColorData = new ImageData(canvas.width, canvas.height);
-	flatColorData.data.fill(fillColor);
-
-	ctx.putImageData(flatColorData, 0,0);
-
-const	w = orz(getPropFromAnySource('width',  imgOrLayer, size, project));
-const	h = orz(getPropFromAnySource('height', imgOrLayer, size, project));
-const	x = orz(getPropFromAnySource('left',   imgOrLayer, imgElement));
-const	y = orz(getPropFromAnySource('top',    imgOrLayer, imgElement));
-
-	ctx.clearRect(x,y, w,h);
-	ctx.drawImage(imgElement, x,y);
-
-	return canvas;
+	return imgElement;
 }
 
 async function getCanvasBlended(project, imgBelow, imgAbove, mode, maskOpacity) {
@@ -9870,7 +9911,12 @@ const	parent = layer.optionParent;
 function cleanUpCopyPasteLinks(layers) {
 const	key = 'copyPastedTo';
 
-	for (const layer of layers) if (key in layer) {
+	if (isArray(layers))
+	for (const layer of layers)
+	if (
+		isNonNullObject(layer)
+	&&	key in layer
+	) {
 	const	pasteTargets = layer[key];
 
 		if (pasteTargets) {
@@ -10080,8 +10126,15 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 		} else {
 
 		let	layers = (
-				layer.isMaskGenerated && isMaskWrapperFolder(layer)
-				? layer.layers.slice(1)
+				isMaskWrapperFolder(layer)
+				? (
+					layer.isMaskGenerated
+					? layer.layers.slice(1)
+					:
+					backward
+					? layer.layers.slice(1).concat(layer.layers.slice(0,1))
+					: layer.layers
+				)
 				: layer.layers
 			) || null;
 
@@ -10178,7 +10231,11 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 //*	3. Array.from()
 
 					if (backward) {
-						layers = layers.slice().reverse();
+						layers = (
+							layers === layer.layers
+							? layers.slice()
+							: layers
+						).reverse();
 					}
 
 //* Passthrough mode:
@@ -10326,10 +10383,12 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 			if (!layer.isLayerFolder) {
 				img = await getOrLoadFixedImage(project, layer);
 
-				if (TESTING_RENDER) await addDebugImage(
+				if (TESTING_RENDER && img) await addDebugImage(
 					project
 				,	img
-				,	'img = getOrLoadFixedImage: layer'
+				,	'img = getOrLoadFixedImage: layer content'
+				+	', x = ' + img.left
+				+	', y = ' + img.top
 				);
 			}
 		}
@@ -10363,7 +10422,8 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 						if (TESTING_RENDER) await addDebugImage(
 							project
 						,	mask
-						,	'mask = getRenderByValues: current folder content above'
+						,	'mask = getRenderByValues: current folder content above, colors ignored'
+						,	'darkgray'
 						);
 
 //* Apply padding to generated mask:
@@ -10371,14 +10431,14 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 						if (mask) {
 							for (const padding of paddings) {
 								padCanvas(mask, padding);
-							}
 
-							if (TESTING_RENDER) await addDebugImage(
-								project
-							,	mask
-							,	'padCanvas: mask'
-							,	'lightblue'
-							);
+								if (TESTING_RENDER) await addDebugImage(
+									project
+								,	mask
+								,	'mask = padCanvas: ' + JSON.stringify(padding)
+								,	'lightblue'
+								);
+							}
 						}
 					}
 				} else
@@ -10386,15 +10446,23 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 //* Get mask defined in the document:
 
 				if (mask = layer.mask) {
-				const	fillColor = orz(mask.defaultColor);
+				const	maskFillOutside = orz(mask.fillOutside);
 				const	maskImage = await getOrLoadFixedImage(project, mask);
 
-					mask = getCanvasFilledOutsideOfImage(project, maskImage, fillColor);
+					if (TESTING_RENDER && maskImage) await addDebugImage(
+						project
+					,	maskImage
+					,	'mask = getOrLoadFixedImage: layer mask'
+					+	', x = ' + maskImage.left
+					+	', y = ' + maskImage.top
+					);
+
+					mask = getCanvasFilledOutsideOfImage(project, maskImage, maskFillOutside);
 
 					if (TESTING_RENDER) await addDebugImage(
 						project
 					,	mask
-					,	'mask = getCanvasFilledOutsideOfImage: ' + fillColor
+					,	'mask = getCanvasFilledOutsideOfImage: ' + maskFillOutside
 					,	'lightblue'
 					);
 				}
@@ -11902,11 +11970,19 @@ async function saveProject(project) {
 			oraNode.x = x;
 			oraNode.y = y;
 
-		const	mask = layer.mask;
-		const	maskImage = (mask ? (mask.img || await getOrLoadImage(project, mask)) : null);
-
 		const	blendMode = layer.blendMode;
 		const	oraBlendMode = getOraBlendMode(blendMode);
+
+		const	mask = layer.mask;
+		let	maskImage, maskFillOutside, isMaskImage, isAnyMask;
+
+			if (mask) {
+				maskImage = mask.img || await getOrLoadImage(project, mask);
+				maskFillOutside = orz(mask.fillOutside);
+
+				isMaskImage = maskImage && isImageElement(maskImage);
+				isAnyMask = isMaskImage || (maskFillOutside > 0);
+			}
 
 //* Write non-standard properties analogous to PSD, for testing:
 
@@ -11941,34 +12017,49 @@ async function saveProject(project) {
 					oraNode.clipping = 'group';
 				}
 
-				if (
-					maskImage
-				&&	isImageElement(maskImage)
-				) {
+				if (isAnyMask) {
 					oraNode.mask = {
 						'image' : maskImage
 					,	'x' : orz(mask.left)
 					,	'y' : orz(mask.top)
+					,	'fill_outside' : maskFillOutside
 					};
 				}
 			} else {
 
 //* ORA-standard way to store masks and clipping groups by adding dummy subfolders:
 
-				if (
-					maskImage
-				&&	isImageElement(maskImage)
-				) {
+				if (isAnyMask) {
 				const	oraMaskNode = new ora.OraLayer(getNameForAuxLayer(LAYER_NAME_MASK_IMAGE, name));
 					oraMaskNode.image_type = 'mask';
-					oraMaskNode.image = maskImage;
 					oraMaskNode.x = orz(mask.left);
 					oraMaskNode.y = orz(mask.top);
-					oraMaskNode.composite = getOraBlendMode(
-						mask.defaultColor
-						? BLEND_MODE_CUT
-						: BLEND_MODE_MASK
-					);
+
+				let	maskCanvas;
+
+					if (isMaskImage && maskFillOutside >= MAX_CHANNEL_VALUE) {
+						maskCanvas = getCanvasFromMaskInvertAlpha(maskImage);
+
+						oraMaskNode.composite = getOraBlendMode(BLEND_MODE_CUT);
+					} else {
+						oraMaskNode.composite = getOraBlendMode(BLEND_MODE_MASK);
+
+						if (maskFillOutside > MIN_CHANNEL_VALUE) {
+							maskImage = await getOrLoadFixedImage(project, mask);
+							maskCanvas = getCanvasFilledOutsideOfImage(project, maskImage, maskFillOutside);
+
+							oraMaskNode.x = 0;
+							oraMaskNode.y = 0;
+						}
+					}
+
+					if (isCanvasElement(maskCanvas)) {
+						maskImage = await getImagePromiseFromCanvasToBlob(maskCanvas, project);
+					}
+
+					if (isImageElement(maskImage)) {
+						oraMaskNode.image = maskImage;
+					}
 
 					if (clippingGroup && !layer.isClipped) {
 
