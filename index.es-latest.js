@@ -19,6 +19,7 @@
 //* TODO: colors: add "name1,2,3,etc[gradient-map=N/N%=rgb-N-N-N/N%=next+rgb-N-N-N/avg|max|min|rgb]" to interpolate between selected given color values in given name order using given source RGB (or avg/max/min of them). If too many gradient points (number of names > 2 + number points), ignore leftover points. If too many names, distribute undefined points evenly in the last (top?) stretch of gradient. Autosort points by %value. Color value after percent may be used to insert given color value or calculate value dependent on next/previous point (cycle in passes until all are defined). 0/100% may be used for defining colors; use names for omitted. If no usable color names, do nothing.
 
 //* TODO ---------------------- rendering: ------------------------------------
+//* TODO: copypaste: fix group with top mask or outline + reverse-hor + etc.
 //* TODO: collage: fix stuck rendering of oversized collage.
 //* TODO: collage: arrange joined images without using DOM, to avoid currently visible images moving to hidden container when saving collage.
 //* TODO: clipping: fix hiding of clipping group with skipped/invisible/empty base layer.
@@ -30,7 +31,6 @@
 //* TODO: batch: to avoid bruteforcing global cross-products, build a tree-graph of selectable option dependency forks when loading a project. Make a graph from each separated root, but include unconditional [no-render] paths into each tree for color collections, etc.
 
 //* TODO ---------------------- export: ---------------------------------------
-//* TODO: save opened project as ORA with all unused layers and other data included, full precision for opacity, etc.
 //* TODO: save opened project as PSD. Try https://github.com/Agamnentzar/ag-psd
 //* TODO: save images: WebP, JPEG XL. https://bugs.chromium.org/p/chromium/issues/detail?id=170565#c77 - toDataURL/toBlob quality 1.0 = lossless.
 //* TODO: make exported project files identically reproducible, if possible. Now works as long as source file, its mod.date and result layer tree are the same.
@@ -116,7 +116,7 @@ var	exampleRootDir = ''
 ,	SAVE_COLOR_AS_ONE_PIXEL_IMAGE	= false	//* <- and stretch by non-standard layer attributes; anyway, color fill is super-compressible in PNG even at full image size.
 ,	SAVE_OPACITY_ROUNDED		= false
 ,	SAVE_ORA_CUSTOM_PROPERTIES	= false
-,	SAVE_WITH_SELECTED_PRERENDER	= true	//* <- reuse dress-up image, because ora.js rendering is currently very basic.
+,	SAVE_WITH_SELECTED_PRERENDER	= false	//* <- reuse dress-up image, because ora.js rendering is currently very basic.
 ,	SORT_OPTION_LIST_NAMES		= true
 ,	SORT_OPTION_SECTION_NAMES	= false
 ,	START_WITH_BIG_TEXT		= false
@@ -330,7 +330,7 @@ const	CONFIG_FILE_PATH = 'config.js'			//* <- declarations-only file to redefine
 ,	regJSONstringify = {
 		'asFlatLine'	: /^(data)$/i
 	,	'asFlatLines'	: /^(layers)$/i
-	,	'skipByKey'	: /^(channels|parent|sourceData)$/i
+	,	'skipByKey'	: /^(channels|parent|sourceData\w*)$/i
 	,	'skipByKeyIfLong' : /^(imageData)$/i
 	,	'showFromTree'	: /^(layers|name)$/i
 	}
@@ -685,20 +685,24 @@ const	SPLIT_SEC = 60
 	]
 
 ,	PROJECT_VIEW_CONTROLS = [
-		/*{
+		{
 			'header' : 'original_view_header',
 			'buttons' : {
 				'show_original' : 'show_original_png',
 				'save_original' : 'save_original_png',
-				'save_original_ora' : 'save_original_ora',
+				'save_original_ora' : '',
+				'save_original_ora_all_layers' : '',
+				'save_original_ora_used_layers' : '',
 			},
-		},*/
+		},
 		{
 			'header' : 'current_view_header',
 			'buttons' : {
 				'show' : 'show_png',
 				'save' : 'save_png',
-				'save_ora' : 'save_ora',
+				'save_ora' : '',
+				'save_ora_all_layers' : '',
+				'save_ora_used_layers' : '',
 			},
 		},
 		{
@@ -793,20 +797,24 @@ const	SPLIT_SEC = 60
 
 ,	CLEANUP_PROJECT_AFTER_LOAD_KEYS = [
 		'loading',
-		// 'loadImage',	//* <- keep for lazy-loading
+		// 'loadImage',		//* <- keep for lazy-loading
 		'toPng',
 	]
 
 ,	CLEANUP_PROJECT_IF_NOT_TESTING_KEYS = CLEANUP_PROJECT_AFTER_LOAD_KEYS.concat([
-		'blendModeOriginal',
+		// 'blendModeOriginal',	//* <- keep for saving
 		'blendModeOriginalAlpha',
 		'blendModeOriginalColor',
-		// 'nameOriginal',
+		// 'nameOriginal',	//* <- keep for saving
+		// 'sourceDataFile',	//* <- keep for saving
+		'sourceDataNode',
 		'sourceData',
 		'pixelData',
 		'maskData',
-		// 'imgData',	//* <- keep for lazy-loading
+		// 'imgData',		//* <- keep for lazy-loading
 	])
+
+,	SAVE_FILE_TYPES = ['ora']
 
 //* Config: internal, included scripts and loaders of project files *----------
 
@@ -826,7 +834,7 @@ var	ora, zip, zlib, pako, PSD, UPNG, UZIP	//* <- external variable names, do not
 
 ,	PSD_JS
 ,	CompositionModule
-,	CompositionFuncList
+,	compositionFunctionNames
 
 ,	FILE_TYPE_LIBS
 ,	FILE_TYPE_LOADERS
@@ -837,11 +845,16 @@ var	ora, zip, zlib, pako, PSD, UPNG, UZIP	//* <- external variable names, do not
 ,	USE_ES5_JS
 ,	USE_WORKERS_IF_CAN
 
+,	canvasForTest
+,	ctxForTest
 ,	draggedElement
 ,	thumbnailPlaceholder
 ,	isStopRequested
 ,	isBatchWIP
+
 ,	lastTimeProjectTabSelectedByUser = 0
+
+,	functionNameByBlendMode = {}
 ,	rgbaCacheByColorName = {}
 	;
 
@@ -1137,15 +1150,29 @@ const	protocol = (
 //* Source: https://stackoverflow.com/a/55896125
 
 function isImageTypeExportSupported(type) {
-const	canvas = cre('canvas');
-	canvas.width = 1;
-	canvas.height = 1;
-
 	return (
-		canvas
+		getCanvasForTest()
 		.toDataURL(type)
 		.includes(DATA_PREFIX + type)
 	);
+}
+
+function getCanvasForTest() {
+	if (!canvasForTest) {
+	const	canvas = canvasForTest = cre('canvas');
+		canvas.width = 1;
+		canvas.height = 1;
+	}
+
+	return canvasForTest;
+}
+
+function getCtxForTest() {
+	if (!ctxForTest) {
+		ctxForTest = getCanvasForTest().getContext('2d');
+	}
+
+	return ctxForTest;
 }
 
 function getTrimReg(chars) {
@@ -1958,11 +1985,7 @@ const	normalizedColorText = getNormalizedColorText(color);
 
 //* Ask browser built-in API what a color word means:
 
-const	canvas = cre('canvas');
-const	ctx = canvas.getContext('2d');
-
-	canvas.width = 1;
-	canvas.height = 1;
+const	ctx = getCtxForTest();
 	ctx.fillStyle = 'transparent';
 	ctx.fillStyle = normalizedColorText;
 
@@ -1982,7 +2005,7 @@ let	rgbaFromCanvas;
 		rgba = getNormalizedRGBA(rgba);
 	} else {
 		if (TESTING) console.log(
-			'getRGBAFromColorCodeOrName - unknown color: "'
+			'getRGBAFromColorCodeOrName: unknown color "'
 		+		color
 		+	'" ('
 		+		normalizedColorText
@@ -2198,7 +2221,14 @@ function cleanupObjectTree(obj, childKeys, keysToRemove) {
 
 		for (const key of keysToRemove) if (key in obj) {
 
-			if (TESTING > 9) console.log('cleanupObjectTree:', [obj.fileName || obj.nameOriginal || obj.name, obj, obj[key]]);
+			if (TESTING > 9) console.log(
+				'cleanupObjectTree:', [
+					obj.fileName || obj.nameOriginal || obj.name,
+					'obj:', obj,
+					'key:', key,
+					'value:', obj[key],
+				]
+			);
 
 			obj[key] = null;
 			delete obj[key];
@@ -2714,6 +2744,8 @@ function makeElementFitOnClick(element, initialState) {
 
 	element.className = initialState || 'size-fit';
 	element.setAttribute('onclick', `this.classList.toggle('size-fit'), this.classList.toggle('size-full')`);
+
+	return element;
 }
 
 function getOffsetXY(element) {
@@ -2925,7 +2957,7 @@ let	arg, argDate, argNum, argText, date, YMD, HMS;
 			}
 		}
 
-		if (TESTING > 9) console.log('getFormattedTime arg[' + index + ']:', [typeof arg, arg]);
+		if (TESTING > 9) console.log('getFormattedTime: arg[' + index + '] =', [typeof arg, arg]);
 	}
 
 	if (!date && argText && isFunction(Date.parse)) {
@@ -3573,7 +3605,7 @@ async function saveDL(data, fileName, ext, addTime, jsonReplacerFunc) {
 		if (mustRevokeURL) URL.revokeObjectURL(url);
 	}
 
-	if (TESTING > 1) console.log(fileName, ext, data);
+	if (TESTING > 1) console.log('saveDL:', fileName, ext, data);
 
 let	blob, size, type, url;
 let	mustRevokeURL = false;
@@ -4439,12 +4471,9 @@ const	index = names.indexOf(switchName);
 	return names[index === 0 ? 1 : 0];
 }
 
-function isMaskWrapperFolder(layer) {
-let	layers;
-
+function isLayerGroupMasked(layers) {
 	return (
-		isNonNullObject(layer)
-	&&	isNonNullObject(layers = layer.layers)
+		isArray(layers)
 	&&	layers.length > 1
 	&&	regLayerBlendModeMask.test(layers[0].blendMode)
 	);
@@ -4518,6 +4547,8 @@ function getOraBlendMode(text) {
 	,	BLEND_MODES_REPLACE_TO_ORA
 	);
 }
+
+function getBlendModeFunctionName(text) { return text.replace(/\W+/g, '_').toLowerCase(); }
 
 function getParentLayer(layer, stopConditionCallback) {
 	if (!layer) {
@@ -4753,8 +4784,10 @@ async function getOrLoadImage(project, layer) {
 		for (const target of targets) if (isNonNullObject(target))
 		for (
 			const sourceOrTarget
-			of (project.loading ? [
+			of (target.isProject ? [
 				target.sourceData
+			,	target.sourceDataFile
+			// ,	target.sourceDataNode
 			,	target
 			] : [
 				target
@@ -5140,8 +5173,11 @@ let	project, totalStartTime;
 		,	buttonTab
 		,	buttonText
 		,	buttonStatus
-		,	'isProject' : true
 		,	'thumbnail' : imgThumb
+		,	'isProject' : true
+		,	'isUsingAllLayers' : true
+		,	'usedFoldersCount' : 0
+		,	'usedLayersCount' : 0
 		,	'foldersCount' : 0
 		,	'layersCount' : 0
 		,	'imagesCount' : 0
@@ -5304,7 +5340,7 @@ async function getProjectViewMenu(project) {
 
 				project.loading.errorPossible = 'project_status_error_creating_menu';
 				project.options = options;
-				project.layersTopSeparated = getLayersTopSeparated(project.layers);
+				project.layersTopSeparated = getLayersTopSeparated(project.layersToRender || project.layers);
 
 			const	sectionNames = [];
 			const	listNamesBySection = {};
@@ -5861,6 +5897,17 @@ async function getProjectViewMenu(project) {
 				project.loading.images.push(layer);
 			}
 
+			if (
+				layer.parent
+			&&	!layer.isVirtualFolder
+			) {
+				if (layer.isLayerFolder) {
+					++project.usedFoldersCount;
+				} else {
+					++project.usedLayersCount;
+				}
+			}
+
 			if (layersInside) {
 				layer.layers = getUnskippedProcessedLayers(
 					layersInside
@@ -5873,6 +5920,11 @@ async function getProjectViewMenu(project) {
 		}
 
 		function getUnskippedProcessedLayers(layers, isInsideColorList) {
+
+			if (!isNonEmptyArray(layers)) {
+				return [];
+			}
+
 		let	clippingLayer = null;
 
 			for (
@@ -5918,7 +5970,7 @@ async function getProjectViewMenu(project) {
 
 	let	options;
 
-		project.layers = getUnskippedProcessedLayers(project.layers);
+		project.layersToRender = getUnskippedProcessedLayers(project.layers);
 
 		if (options) {
 
@@ -6000,7 +6052,7 @@ async function getProjectViewMenu(project) {
 				}
 
 				project.alterableLayerNames = alterableLayerNames.sort();
-				project.isUnalterable = isContentUnalterable(project.layers);
+				project.isUnalterable = isContentUnalterable(project.layersToRender || project.layers);
 				project.mergedImages = [];
 			}
 		}
@@ -6011,8 +6063,10 @@ async function getProjectViewMenu(project) {
 	function getLayerImgLoadPromise(layer, project) {
 		if (layer.layers) {
 			if (TESTING > 9) console.log(
-				'No image loaded because it is folder at: '
-			+	getLayerPathText(layer)
+				'No image loaded because it is a folder:', [
+					getLayerPathText(layer),
+					layer,
+				]
 			);
 
 			return true;
@@ -6025,10 +6079,11 @@ async function getProjectViewMenu(project) {
 
 			if (!VERIFY_PARAM_COLOR_VS_LAYER_CONTENT) {
 				if (TESTING > 1) console.log(
-					'Got color code in param: '
-				+	getColorTextFromArray(colorCode)
-				+	', layer content not checked at: '
-				+	getLayerPathText(layer)
+					'Got color code in param, layer content not checked:', [
+						getColorTextFromArray(colorCode),
+						getLayerPathText(layer),
+						layer,
+					]
 				);
 
 				return true;
@@ -6054,12 +6109,13 @@ async function getProjectViewMenu(project) {
 
 							if (layerRGBAText !== colorCodeText) {
 								console.error(
-									'Got color code in param: '
-								+	colorCodeText
-								+	', prefered instead of layer content: '
-								+	layerRGBAText
-								+	', at:'
-								+	getLayerPathText(layer)
+									'Got color code in param, prefered:', [
+										colorCodeText,
+										'ignored color code in layer content:',
+										layerRGBAText,
+										getLayerPathText(layer),
+										layer,
+									]
 								);
 							}
 
@@ -6071,10 +6127,11 @@ async function getProjectViewMenu(project) {
 				} else
 				if (colorCode) {
 					if (TESTING) console.log(
-						'Got color code in param: '
-					+	getColorTextFromArray(colorCode)
-					+	', layer content not found at: '
-					+	getLayerPathText(layer)
+						'Got color code in param, layer content not found:', [
+							getColorTextFromArray(colorCode),
+							getLayerPathText(layer),
+							layer,
+						]
 					);
 
 					layer.img = colorCode;
@@ -6231,7 +6288,7 @@ async function getProjectViewMenu(project) {
 
 				optionList.items = separatedLayers;
 
-				if (TESTING > 1) console.log(sectionName + ' options:', section);
+				if (TESTING > 1) console.log('addOptions: "' + sectionName + '", options:', section);
 
 				function markGlobalNotRenderedLayers(layers) {
 					layers.forEach(
@@ -6251,7 +6308,7 @@ async function getProjectViewMenu(project) {
 					);
 				}
 
-				markGlobalNotRenderedLayers(project.layers);
+				markGlobalNotRenderedLayers(project.layersToRender || project.layers);
 			}
 
 //* List box = set of parts:
@@ -6643,16 +6700,40 @@ const	colorModeText = project.colorMode || '';
 const	canvasSizeText = getLocalizedText('project_pixels', project.width, project.height);
 const	resolutionText = getNestedFilteredArrayJoinedText([canvasSizeText, bitDepthText, colorModeText], ', ');
 
-const	foldersCount = project.foldersCount;
-const	layersCount  = project.layersCount;
 const	imagesCount  = project.imagesCount || (project.imagesCount = project.loading.imagesCount);
-const	imagesCountStubHTML = (imagesCount ? '<span class="project-images-loaded"></span>' : '');
+const	imagesCountStubHTML = '<span class="project-images-loaded"></span>';
 const	layersTextParts = [];
 
-	if (layersCount)  layersTextParts.push(getLocalizedText('project_layers', layersCount));
-	if (foldersCount) layersTextParts.push(getLocalizedText('project_folders', foldersCount));
+const	{
+		layersCount,
+		foldersCount,
+		usedLayersCount,
+		usedFoldersCount,
 
-const	layersText = getNestedFilteredArrayJoinedText(layersTextParts, ', ');
+	} = project;
+
+const	isUsingAllLayers = project.isUsingAllLayers = !(
+		(usedLayersCount && usedLayersCount !== layersCount)
+	||	(usedFoldersCount && usedFoldersCount !== foldersCount)
+	);
+
+	if (usedLayersCount || layersCount)  layersTextParts.push(
+		usedLayersCount === layersCount
+		? getLocalizedText('project_layers', layersCount)
+		: getLocalizedText('project_used_layers', usedLayersCount, layersCount)
+	);
+
+	if (usedFoldersCount || foldersCount) layersTextParts.push(
+		usedFoldersCount === foldersCount
+		? getLocalizedText('project_folders', foldersCount)
+		: getLocalizedText('project_used_folders', usedFoldersCount, foldersCount)
+	);
+
+let	layersText = getNestedFilteredArrayJoinedText(layersTextParts, ', ');
+
+	if (!isUsingAllLayers) {
+		layersText = getLocalizedText('project_used_count', layersText);
+	}
 
 const	sourceFile = project.loading.data.file || {};
 const	sourceFileTime = project.lastModTime = sourceFile.lastModified || sourceFile.lastModifiedDate;
@@ -6677,17 +6758,60 @@ const	summaryTextParts = [
 
 //* Add batch controls:
 
-	if (project.options) {
-		for (const controlGroup of PROJECT_VIEW_CONTROLS) {
-		const	buttonsGroup = cre('div', buttonsPanel);
-			buttonsGroup.className = 'sub panel';
+	for (const controlGroup of PROJECT_VIEW_CONTROLS)
+	if (
+		project.options
+	||	controlGroup.header === 'original_view_header'
+	) {
+	const	buttonsGroup = cre('div', buttonsPanel);
+		buttonsGroup.className = 'sub panel';
 
-		const	buttonsHeader = cre('header', buttonsGroup);
-			buttonsHeader.textContent = getLocalizedText(controlGroup.header) + ':';
+	const	buttonsHeader = cre('header', buttonsGroup);
+		buttonsHeader.textContent = getLocalizedText(controlGroup.header) + ':';
 
-			addButtonGroup(buttonsGroup, controlGroup.buttons);
+		addButtonGroup(buttonsGroup, controlGroup.buttons);
+	}
+
+//* Hide redundant or useless buttons:
+
+	for (const button of getAllByTag('button', buttonsPanel))
+	if (button) {
+		if (button.name) {
+		const	actionWords = button.name.split(regNonAlphaNum);
+
+			if (SAVE_FILE_TYPES.some(
+				(fileType) => actionWords.includes(fileType)
+			)) {
+			const	isNotForUsingAllLayers = (
+					actionWords.includes('all')
+				||	actionWords.includes('used')
+				||	actionWords.includes('layers')
+				);
+
+				button.hidden = (isUsingAllLayers === isNotForUsingAllLayers);
+
+				if (TESTING > 9) console.log(
+					'createProjectView: "' + project.fileName + '"', [
+						'action:', button.name,
+						'actionWords:', actionWords,
+						'using all:', isUsingAllLayers,
+						'not for all:', isNotForUsingAllLayers,
+						'button.hidden:', button.hidden,
+						'button', button,
+					]
+				);
+
+				if (button.hidden) {
+					del(button);
+				}
+
+			}
+		} else {
+			button.disabled = true;
 		}
+	}
 
+	if (project.options) {
 		container.addEventListener('change', onProjectMenuUpdate, false);
 
 //* Add place for options menu and results:
@@ -6790,6 +6914,8 @@ async function getProjectMergedImagePromise(project, flags) {
 			(resolve, reject) => resolvePromiseOnImgLoad(
 				img
 			,	(img) => {
+					makeElementFitOnClick(img);
+
 					if (
 						alsoSetThumbnail
 					&&	waitForThumbnail
@@ -6817,8 +6943,6 @@ const	img = await getProjectMergedImagePromise(project, FLAG_PROJECT_SET_THUMBNA
 	}
 
 	if (img) {
-		makeElementFitOnClick(img);
-
 	const	container = createProjectView(project);
 	const	header = getAllByTag('header', container)[0];
 	const	footer = getAllByTag('footer', container)[0];
@@ -7395,7 +7519,7 @@ const	params = getOrInitChild(layer, 'params');
 	return layer;
 }
 
-async function getNextParentAfterAddingLayerToTree(layer, sourceData, nameOriginal, parentGroup, isLayerFolder, isInsideVirtualPath) {
+async function getNextParentAfterAddingLayerToTree(layer, sourceDataNode, nameOriginal, parentGroup, isLayerFolder, isInsideVirtualPath) {
 	if (
 		!isInsideVirtualPath
 	&&	(
@@ -7410,7 +7534,7 @@ async function getNextParentAfterAddingLayerToTree(layer, sourceData, nameOrigin
 const	paramList = [];
 const	params = {};
 
-	if (typeof layer.sourceData   === 'undefined') layer.sourceData   = sourceData;
+	if (typeof layer.sourceDataNode === 'undefined') layer.sourceDataNode = sourceDataNode;
 	if (typeof layer.nameOriginal === 'undefined') layer.nameOriginal = nameOriginal;
 
 let	name = nameOriginal.replace(regTrimSpaceOrComma, '');
@@ -7570,7 +7694,7 @@ const	paramName = 'check_order';
 		if (subLayer) {
 			parentGroup = await getNextParentAfterAddingLayerToTree(
 				subLayer
-			,	sourceData
+			,	sourceDataNode
 			,	subLayer.name
 			,	parentGroup
 			,	isSubLayerFolder
@@ -7622,16 +7746,12 @@ const	notChanged = (project.imagesLoadedCount === loadedCount);
 	}
 
 	element.textContent = (
-		loadedCount
-	&&	loadedCount !== imagesCount
-		? getLocalizedText('project_images_loaded', loadedCount, imagesCount)
-		: getLocalizedText(
-			(
-				loadedCount
-				? 'project_images_loaded_all'
-				: 'project_images'
-			)
-		,	imagesCount
+		!loadedCount
+		? getLocalizedText('project_images', imagesCount)
+		: getLocalizedText('project_loaded_count',
+			loadedCount !== imagesCount
+			? getLocalizedText('project_loaded_images', loadedCount, imagesCount)
+			: getLocalizedText('project_loaded_all_images', loadedCount)
 		)
 	);
 
@@ -7670,7 +7790,7 @@ function updateElementFixedWidth(element, ref, key) {
 function updateProjectOperationProgress(context, operation, ...args) {
 const	project = context.project || context;
 
-	if (TESTING > 9) console.log(arguments);
+	if (TESTING > 9) console.log('updateProjectOperationProgress:', arguments);
 
 	if (operation === 'project_status_ready_options') {
 	let	count = args[0];
@@ -7749,7 +7869,7 @@ async function loadCommonWrapper(project, libName, getFileParserPromise, treeCon
 		return;
 	}
 
-let	sourceData;
+let	sourceDataFile;
 const	actionLabel = 'processing document with ' + libName;
 
 	if (LOG_ACTIONS) logTime('"' + project.fileName + '" started ' + actionLabel);
@@ -7762,7 +7882,7 @@ const	actionLabel = 'processing document with ' + libName;
 	const	file = await getFileFromLoadingData(project.loading.data, project.loading);
 
 		if (file) {
-			sourceData = await getFileParserPromise(file).catch(catchPromiseError);
+			sourceDataFile = await getFileParserPromise(file).catch(catchPromiseError);
 		}
 	} catch (error) {
 		logError(error, arguments);
@@ -7771,7 +7891,7 @@ const	actionLabel = 'processing document with ' + libName;
 	if (LOG_ACTIONS) logTime(
 		'"' + project.fileName + '"'
 	+	(
-			sourceData
+			sourceDataFile
 			? ' finished ' + actionLabel + ', took '
 			: ' stopped by ' + (
 				isStopRequestedAnywhere(project)
@@ -7787,18 +7907,18 @@ const	actionLabel = 'processing document with ' + libName;
 		return;
 	}
 
-	if (sourceData) {
+	if (sourceDataFile) {
 
-		if (TESTING > 1) console.log(sourceData);
+		if (TESTING > 1) console.log('loadCommonWrapper: "' + libName + '", sourceDataFile:', sourceDataFile);
 
 		project.loading.errorPossible = 'project_status_error_in_layers';
-		project.sourceData = sourceData;
+		project.sourceDataFile = sourceDataFile;
 
 		if (TAB_THUMBNAIL_PRELOAD) {
 			getProjectMergedImagePromise(project, FLAG_PROJECT_SET_THUMBNAIL);
 		}
 
-		if (await treeConstructorFunc(project, sourceData)) {
+		if (await treeConstructorFunc(project, sourceDataFile)) {
 			return (
 				project.loading.then
 				? await project.loading.then(project)
@@ -7833,20 +7953,20 @@ async function loadORA(project) {
 				}
 			);
 		}
-	,	async function treeConstructorFunc(project, sourceData) {
+	,	async function treeConstructorFunc(project, oraFile) {
 			if (
-				!sourceData.layers
-			||	!sourceData.layers.length
+				!oraFile.layers
+			||	!oraFile.layers.length
 			) {
 				return;
 			}
 
-			project.foldersCount	= orz(sourceData.stacksCount);
-			project.layersCount	= orz(sourceData.layersCount);
-			project.nodesCount	= sourceData.layers.length;
+			project.foldersCount = orz(oraFile.stacksCount);
+			project.layersCount  = orz(oraFile.layersCount);
+			project.nodesCount   = oraFile.layers.length;
 
-			project.width	= orz(sourceData.width);
-			project.height	= orz(sourceData.height);
+			project.width  = orz(oraFile.width);
+			project.height = orz(oraFile.height);
 
 //* Fix for original ora.js:
 
@@ -7857,14 +7977,14 @@ async function loadORA(project) {
 			&&	!project.layersCount
 			) {
 				project.layersCount = project.nodesCount;
-				rootLayers = sourceData.layers.slice().reverse();
+				rootLayers = oraFile.layers.slice().reverse();
 			} else {
-				rootLayers = sourceData.layers;
+				rootLayers = oraFile.layers;
 			}
 
 //* Gather layers into a tree object:
 
-			async function addLayerToTree(layer, parentGroup) {
+			async function addLayerToTree(oraNode, parentGroup) {
 
 				function setImageLoadOrCountIfLoaded(imageHolder, newHolder) {
 				const	img = getPropByAnyOfNamesChain(imageHolder, 'img', 'image');
@@ -7892,31 +8012,31 @@ async function loadORA(project) {
 					setImageGeometryProperties(newHolder, imageHolder, img);
 				}
 
-			const	name = layer.name || '';
-			const	mode = layer.composite || '';
-			const	modeAlpha = layer.composite_alpha || mode || '';	//* <- non-standard, for testing
-			const	modeColor = layer.composite_color || mode || '';	//* <- non-standard, for testing
-			const	mask = layer.mask || null;				//* <- non-standard, for testing
-			const	layers = layer.layers || null;
+			const	name = oraNode.name || '';
+			const	mode = oraNode.composite || '';
+			const	modeAlpha = oraNode.composite_alpha || mode || '';	//* <- non-standard, for testing
+			const	modeColor = oraNode.composite_color || mode || '';	//* <- non-standard, for testing
+			const	mask = oraNode.mask || null;				//* <- non-standard, for testing
+			const	layers = oraNode.layers || null;
 			const	isLayerFolder = (
 					(isNonNullObject(layers) && isRealNumber(layers.length))
-				||	(layer instanceof ora.OraStack)
+				||	(oraNode instanceof ora.OraStack)
 				);
 
 			const	alphaMode = getNormalizedBlendMode(modeAlpha);
 			const	colorMode = getNormalizedBlendMode(modeColor);
 			const	blendMode = colorMode || alphaMode || getNormalizedBlendMode(mode);
 
-			const	opacity = orzClamp(layer.opacity, 0, 1, orzFloat);
-			const	isolation = layer.isolation || '';
+			const	opacity = orzClamp(oraNode.opacity, 0, 1, orzFloat);
+			const	isolation = oraNode.isolation || '';
 			const	isIsolatedAlpha = (isolation === 'isolate-alpha');	//* <- non-standard, for testing
 			const	isPassThrough = (
 					isIsolatedAlpha
 				||	blendMode === BLEND_MODE_PASS			//* <- non-standard, for testing
 				||	isolation === BLEND_MODE_PASS			//* <- non-standard, for testing
 				||	(
-						isolation === 'auto'			//* <- Krita is OK with this
-					// &&	opacity === 1				//* <- MyPaint only supports more limited conditions
+						isolation === 'auto'			//* <- not consistent with Krita
+					// &&	opacity === 1				//* <- consistent with MyPaint for standard trivial case
 					// &&	alphaMode === BLEND_MODE_NORMAL
 					// &&	blendMode === BLEND_MODE_NORMAL
 					// &&	colorMode === BLEND_MODE_NORMAL
@@ -7929,15 +8049,15 @@ async function loadORA(project) {
 //*	A clipping group must be always made explicitly as (alpha-)isolated folder if needed.
 
 			const	isClipped = (
-					getTruthyValue(layer.clipping)		//* <- non-standard, for testing
-				// ||	alphaMode === BLEND_MODE_CLIP		//* <- non-standard and incorrect
+					getTruthyValue(oraNode.clipping)		//* <- non-standard, for testing
+				// ||	alphaMode === BLEND_MODE_CLIP			//* <- non-standard and incorrect
 				);
 
 			const	isVisible = (
-					typeof layer.visibility === 'undefined'
-				||	layer.visibility === 'visible'
-				||	layer.visibility !== 'hidden'
-				||	getTruthyValue(layer.visibility)	//* <- non-standard, for testing
+					typeof oraNode.visibility === 'undefined'
+				||	oraNode.visibility === 'visible'
+				||	oraNode.visibility !== 'hidden'
+				||	getTruthyValue(oraNode.visibility)		//* <- non-standard, for testing
 				);
 
 			const	layerWIP = {
@@ -7953,8 +8073,12 @@ async function loadORA(project) {
 				,	'opacity' : opacity
 				};
 
+				if (oraNode.otherAttributes) {
+					layerWIP.otherAttributes = oraNode.otherAttributes;
+				}
+
 				if (!isLayerFolder) {
-					setImageLoadOrCountIfLoaded(layer, layerWIP);
+					setImageLoadOrCountIfLoaded(oraNode, layerWIP);
 				}
 
 //* Note:
@@ -7969,7 +8093,7 @@ async function loadORA(project) {
 
 				parentGroup = await getNextParentAfterAddingLayerToTree(
 					layerWIP
-				,	layer
+				,	oraNode
 				,	name
 				,	parentGroup
 				,	isLayerFolder
@@ -8032,19 +8156,21 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 	,	function getFileParserPromise(file) {
 			return window[varName].fromDroppedFile(file);
 		}
-	,	async function treeConstructorFunc(project, sourceData) {
+	,	async function treeConstructorFunc(project, psdFile) {
 
 			if (
-				!sourceData.layers
-			||	!sourceData.layers.length
+				!psdFile.layers
+			||	!psdFile.layers.length
 			) {
 				return;
 			}
 
-		const	projectHeader = sourceData.header || sourceData;
+		const	rootLayers = psdFile.tree().children();
+
+		const	projectHeader = psdFile.header || psdFile;
 		const	projectMode = projectHeader.mode;
 
-			project.nodesCount = sourceData.layers.length;
+			project.nodesCount = psdFile.layers.length;
 
 			project.width	= projectHeader.cols || projectHeader.width;
 			project.height	= projectHeader.rows || projectHeader.height;
@@ -8066,23 +8192,22 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 				);
 			}
 
-			async function addLayerToTree(layer, parentGroup) {
-			const	node = layer;
-				layer = node.layer || node;
+			async function addLayerToTree(psdNode, parentGroup) {
+			const	psdLayer = psdNode.layer || psdNode;
 
 			const	layers = (
-					[node, layer].some(isFolderNode)
-					? node.children()
+					[psdNode, psdLayer].some(isFolderNode)
+					? psdNode.children()
 					: null
 				);
 
 			const	isLayerFolder = (isNonNullObject(layers) && isRealNumber(layers.length));
-			const	name = getPropFromAnySource('name',  layer, node) || '';
-			const	img  = getPropFromAnySource('image', layer, node);
-			const	mask = getPropFromAnySource('mask',  layer, node, img);
-			const	blending = getPropByAnyOfNamesChain(layer, 'blendMode', 'blending', 'mode');
-			const	clipping = getPropByAnyOfNamesChain(layer, 'blendMode', 'clipping', 'clipped');
-			const	modePass = getPropByNameChain(layer, 'adjustments', 'sectionDivider', 'obj', 'blendMode');
+			const	name = getPropFromAnySource('name',  psdLayer, psdNode) || '';
+			const	img  = getPropFromAnySource('image', psdLayer, psdNode);
+			const	mask = getPropFromAnySource('mask',  psdLayer, psdNode, img);
+			const	blending = getPropByAnyOfNamesChain(psdLayer, 'blendMode', 'blending', 'mode');
+			const	clipping = getPropByAnyOfNamesChain(psdLayer, 'blendMode', 'clipping', 'clipped');
+			const	modePass = getPropByNameChain(psdLayer, 'adjustments', 'sectionDivider', 'obj', 'blendMode');
 			const	blendMode = getNormalizedBlendMode(blending);
 
 			const	isPassThrough = (
@@ -8091,8 +8216,8 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 				);
 
 			const	fillOpacity = (
-					isFunction(layer.fillOpacity)
-					? layer.fillOpacity().layer.adjustments.fillOpacity.obj.value
+					isFunction(psdLayer.fillOpacity)
+					? getPropByNameChain(psdLayer.fillOpacity(), 'layer', 'adjustments', 'fillOpacity', 'obj', 'value')
 					: null
 				);
 
@@ -8111,7 +8236,7 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 					isLayerFolder
 				,	isPassThrough
 				,	'isClipped' : getTruthyValue(clipping)
-				,	'isVisible' : getTruthyValue(layer.visible)
+				,	'isVisible' : getTruthyValue(psdLayer.visible)
 				,	blendMode
 				,	'blendModeOriginal' : blending
 				,	'isBlendModeTS' : (
@@ -8119,23 +8244,23 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 					&&	BLEND_MODES_WITH_TS_VERSION.includes(blendMode)
 					)
 				,	'opacity' : (
-						getNormalizedOpacity(layer.opacity)
+						getNormalizedOpacity(psdLayer.opacity)
 						* (hasNoFillOpacityValue ? 1 : getNormalizedOpacity(fillOpacity))
 					)
 				};
 
 				if (img) {
 					if (!isLayerFolder) {
-					const	data = getPropFromAnySource('pixelData', layer, node, img);
+					const	data = getPropFromAnySource('pixelData', psdLayer, psdNode, img);
 
 						if (data && data.length > 0) {
 							if (GET_LAYER_IMAGE_FROM_BITMAP) {
 								layerWIP.imgData = data;
 							} else {
-								layerWIP.toImage = () => getOrLoadImage(project, layer);
+								layerWIP.toImage = () => getOrLoadImage(project, psdLayer);
 							}
 
-							setImageGeometryProperties(layerWIP, layer, img);
+							setImageGeometryProperties(layerWIP, psdLayer, img);
 
 							++project.imagesCount;
 						}
@@ -8145,7 +8270,7 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 						img.hasMask
 					&&	img.maskData
 					&&	mask
-					&&	!(mask.disabled || (mask.flags & 2))	//* <- mask visibility checkbox, supposedly
+					&&	!(mask.disabled || (mask.flags & 2))		//* <- mask visibility checkbox, supposedly
 					) {
 						layerWIP.mask = {
 							'fillOutside' : orz(mask.defaultColor)
@@ -8160,7 +8285,7 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 
 				parentGroup = await getNextParentAfterAddingLayerToTree(
 					layerWIP
-				,	layer
+				,	psdNode
 				,	name
 				,	parentGroup
 				,	isLayerFolder
@@ -8210,7 +8335,7 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 			return await addLayerGroupCommonWrapper(
 				project
 			,	project.layers = []
-			,	sourceData.tree().children()
+			,	rootLayers
 			,	addLayerToTree
 			);
 		}
@@ -8538,8 +8663,7 @@ async function getAllValueSets(project, values, startTime, flags) {
 						optionListIndex, '/', maxListIndex,
 						'=', isValid,
 						':', addedCount, 'added',
-					].join(' '),
-					[
+					].join(' '), [
 						JSON.stringify(valueSetToCheck),
 						JSON.stringify(valueSet),
 					]
@@ -8832,7 +8956,12 @@ let	canvas = null;
 			let	logLabelWrap, logLabel, testPrefix;
 
 				if (TESTING_RENDER) {
-					console.log('blendMode:', [blendMode, 'opacity:', opacity, mask ? 'callback with mask' : 'callback']);
+					console.log(
+						'tryBlendingEmulation:', blendMode, [
+							'opacity:', opacity,
+							mask ? 'callback with mask' : 'callback'
+						]
+					);
 
 					if (LOG_TIMERS) {
 						logLabelWrap = (
@@ -8849,16 +8978,13 @@ let	canvas = null;
 
 //* Get pixels of layer below (B):
 
-				ctx.globalAlpha = 1;
-				ctx.globalCompositeOperation = BLEND_MODE_NORMAL;
-
 				if (TESTING_RENDER) {
-					testPrefix = 'tryBlendingEmulation: ' + blendMode + ', layer ';
+					testPrefix = 'tryBlendingEmulation: ' + blendMode + ', ';
 
 					await addDebugImage(
 						project
 					,	canvas
-					,	testPrefix + 'below at ' + (ctx.globalAlpha * 100) + '%'
+					,	testPrefix + 'layer below'
 					,	'brown'
 					);
 				}
@@ -8868,6 +8994,8 @@ let	canvas = null;
 
 //* Get pixels of layer above (A):
 
+				ctx.globalCompositeOperation = BLEND_MODE_NORMAL;
+				ctx.globalAlpha = 1;
 				ctx.clearRect(0,0, w,h);
 				ctx.globalAlpha = (isTransition ? 1 : opacity);
 
@@ -8876,11 +9004,9 @@ let	canvas = null;
 				if (TESTING_RENDER) await addDebugImage(
 					project
 				,	canvas
-				,	testPrefix + 'above at ' + (ctx.globalAlpha * 100) + '%'
+				,	testPrefix + 'layer above at ' + (ctx.globalAlpha * 100) + '%'
 				,	'orange'
 				);
-
-				ctx.globalAlpha = 1;
 
 			const	dataAbove = ctx.getImageData(0,0, w,h);
 			const	rgbaAbove = dataAbove.data;
@@ -8890,17 +9016,9 @@ let	canvas = null;
 			let	rgbaMask;
 
 				if (isTransition) {
+					ctx.globalCompositeOperation = BLEND_MODE_NORMAL;
+					ctx.globalAlpha = 1;
 					ctx.clearRect(0,0, w,h);
-
-					if (mask && invertMask) {
-						ctx.globalAlpha = 1;
-						ctx.globalCompositeOperation = BLEND_MODE_NORMAL;
-
-						drawImageOrColorInside(DEFAULT_MASK_FILL_COLOR);
-
-						ctx.globalCompositeOperation = BLEND_MODE_CUT;
-					}
-
 					ctx.globalAlpha = opacity;
 
 					drawImageOrColorInside(mask || DEFAULT_MASK_FILL_COLOR);
@@ -8912,8 +9030,19 @@ let	canvas = null;
 					,	'violet'
 					);
 
-					ctx.globalAlpha = 1;
-					ctx.globalCompositeOperation = BLEND_MODE_NORMAL;
+					if (invertMask) {
+						ctx.globalCompositeOperation = BLEND_MODE_INVERT;
+						ctx.globalAlpha = 1;
+
+						drawImageOrColorInside(DEFAULT_MASK_FILL_COLOR);
+
+						if (TESTING_RENDER) await addDebugImage(
+							project
+						,	canvas
+						,	testPrefix + 'mask inverted'
+						,	'violet'
+						);
+					}
 
 				const	maskData = ctx.getImageData(0,0, w,h);
 					rgbaMask = maskData.data;
@@ -8959,7 +9088,7 @@ let	canvas = null;
 						uint8array.set(rgbaMask, arrayLength << 1);
 					}
 
-					compute[funcName](arrayLength);
+					compute[functionName](arrayLength);
 					rgbaAbove.set(uint8array.subarray(0, arrayLength));
 
 					return true;
@@ -8971,12 +9100,19 @@ let	canvas = null;
 
 //* Try computing in asm.js:
 
-		const	funcName = blendMode.replace(/\W+/g, '_').toLowerCase();
+		let	functionName;
 
 			if (
 				CompositionModule
-			&&	CompositionFuncList
-			&&	CompositionFuncList.includes(funcName)
+			&&	(
+					(
+						functionNameByBlendMode
+					&&	(functionName = functionNameByBlendMode[blendMode])
+					) || (
+						compositionFunctionNames
+					&&	compositionFunctionNames.includes(functionName = getBlendModeFunctionName(blendMode))
+					)
+				)
 			&&	await tryEmulation(usingAsmJS)
 			) {
 				return true;
@@ -9922,7 +10058,7 @@ const	key = 'copyPastedTo';
 		if (pasteTargets) {
 
 			if (TESTING > 1 || TESTING_RENDER) console.log(
-				'layers rendered, cleanup copypaste:', [
+				'Layers rendered, cleanup copypaste:', [
 					'layer:', layer,
 					'pasted to:', pasteTargets,
 				]
@@ -9963,7 +10099,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 		);
 
 		if (TESTING > 9) console.log(
-			'rendering nested layer at:'
+			'Rendering nested layer at:'
 		,	PR.nestedLayers.length
 		,	getJoinedNames(PR.nestedLayers)
 		,	PR.nestedLayers
@@ -10125,14 +10261,25 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 			);
 		} else {
 
+		const	isMaskLayerInGroup = isLayerGroupMasked(layer.layers);
+		let	isMaskPutToBottom = false;
 		let	layers = (
-				isMaskWrapperFolder(layer)
+				isMaskLayerInGroup
 				? (
+
+//* Skip the preexisting mask:
+
 					layer.isMaskGenerated
 					? layer.layers.slice(1)
 					:
-					backward
+
+//* Put the mask to bottom, so it will be back to top after reverse:
+
+					(isMaskPutToBottom = backward)
 					? layer.layers.slice(1).concat(layer.layers.slice(0,1))
+
+//* Otherwise, use layer group as is:
+
 					: layer.layers
 				)
 				: layer.layers
@@ -10150,9 +10297,29 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 					if (isNonEmptyArray(aliasesToPaste)) {
 						addCopyPaste = true;
 
+						if (isMaskPutToBottom) {
+							layers.unshift(layers.pop());
+						}
+
 						layers = (
 							isArray(layers)
-							? layers.slice()
+							? (
+								isMaskLayerInGroup
+								? {
+									'layers' : (
+										layers === layer.layers
+										? layers.slice()
+										: layers
+									)
+								,	'isVirtualFolder' : true
+								,	'isOrderedBySide' : layer.isOrderedBySide
+								,	'isIsolatedAlpha' : layer.isPassThrough
+								,	'isPassThrough' : layer.isPassThrough
+								// ,	'flipSide' : layer.flipSide
+								,	'parent' : layer.parent
+								}
+								: layers.slice()
+							)
 							: layer.isLayerFolder
 							? []
 							: [layer]
@@ -10164,11 +10331,12 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 						const	linkedLayers = getPropByNameChain(project, 'layersCopyPasteSourcesByAlias', alias);
 
 							if (isNonEmptyArray(linkedLayers))
-							for (const linkedLayer of linkedLayers) {
-
-								if (addToListIfNotYet(layers, linkedLayer)) {
-									getOrInitChild(linkedLayer, 'copyPastedTo', Array).push(layer);
-								}
+							for (const linkedLayer of linkedLayers)
+							if (
+								!linkedLayer.copyPastedTo		//* <- no nested recursion
+							&&	addToListIfNotYet(layers, linkedLayer)	//* <- no duplicates in same context
+							) {
+								getOrInitChild(linkedLayer, 'copyPastedTo', Array).push(layer);
 							}
 						}
 
@@ -10189,7 +10357,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 						}
 
 						if (TESTING > 9) console.log(
-							'layers after copypaste:', [
+							'Layers after copypaste:', [
 								layers,
 								'was:', oldLayersCount,
 								'added:', addedLayersCount,
@@ -10727,7 +10895,7 @@ let	layer, layersToRenderOne;
 
 const	PR = project.rendering;
 
-let	layersToRender = layersToRenderOne || nestedLayersBatch || project.layers;
+let	layersToRender = layersToRenderOne || nestedLayersBatch || project.layersToRender || project.layers;
 let	indexToRender = layersToRender.length - 1;
 let	indexToStop = 0;
 
@@ -11523,7 +11691,7 @@ let	batchContainer, subContainer;
 			}
 
 			if (TESTING > 9) console.log(
-				'add image to zip file: ' + imagesDone + ' / ' + imagesTotal,
+				'Add image to zip file: ' + imagesDone + ' / ' + imagesTotal,
 				[
 					'URI:', img.src,
 					'content type:', content.type || typeof content,
@@ -11851,7 +12019,7 @@ let	container = project.renderContainer;
 	}
 }
 
-async function saveProject(project) {
+async function saveProject(project, flags) {
 
 	async function getLayersInOraFormat(layers) {
 
@@ -11970,7 +12138,24 @@ async function saveProject(project) {
 			oraNode.x = x;
 			oraNode.y = y;
 
-		const	blendMode = layer.blendMode;
+			if (
+				flags.saveOriginalData
+			&&	layer.otherAttributes
+			) {
+				oraNode.otherAttributes = layer.otherAttributes;
+			}
+
+		let	blendMode = layer.blendMode;
+
+			if (!functionNameByBlendMode[blendMode]) {
+			const	ctx = getCtxForTest();
+				ctx.globalCompositeOperation = blendMode;
+
+				if (ctx.globalCompositeOperation !== blendMode) {
+					blendMode = layer.blendModeOriginal;
+				}
+			}
+
 		const	oraBlendMode = getOraBlendMode(blendMode);
 
 		const	mask = layer.mask;
@@ -12194,6 +12379,10 @@ async function saveProject(project) {
 		return;
 	}
 
+	if (!isNonNullObject(flags)) {
+		flags = {};
+	}
+
 const	isSingleWIP = setWIPstate(true, project);
 const	actionLabel = 'exporting to ORA file';
 
@@ -12204,9 +12393,19 @@ const	thisJob = { project, 'lastPauseTime' : getTimeNow() };
 
 let	oraLayers, img, randomOtherImg, failed, timeNow;
 
+//* Use preexisting merged preview from the project file:
+
+	if (
+		flags.saveOriginalPreview
+	&&	(img = await getProjectMergedImagePromise(project))
+	); else
+
 //* Use current selected options to create merged preview:
 
-	if (SAVE_WITH_SELECTED_PRERENDER) {
+	if (
+		flags.saveSelectedPreview
+	||	SAVE_WITH_SELECTED_PRERENDER
+	) {
 		try {
 		const	render = await getOrCreateRender(
 				project
@@ -12247,14 +12446,22 @@ let	oraLayers, img, randomOtherImg, failed, timeNow;
 			failed = true;
 			console.error(error);
 		}
-	// } else {
-		// failed = ! await loadLibOnDemandPromise('ora-blending.js');
+	} else
+
+//* Let the library handle previews:
+
+	{
+		failed = ! await loadLibOnDemandPromise('ora-blending.js');
 	}
 
 //* Convert layer tree to format used by the library:
 
 	if (!failed) {
-		oraLayers = await getLayersInOraFormat(project.layers);
+		oraLayers = await getLayersInOraFormat(
+			flags.saveUsedLayers ? project.layersToRender :
+			flags.saveAllLayers  ? project.layers :
+			(project.layersToRender || project.layers)
+		);
 	}
 
 //* Pass prepared data to the library API and save the file content that it gives back:
@@ -12263,6 +12470,15 @@ let	oraLayers, img, randomOtherImg, failed, timeNow;
 	const	oraFile = new ora.Ora(project.width, project.height);
 		oraFile.lastModTime = project.lastModTime;
 		oraFile.layers = oraLayers;
+
+		if (flags.saveOriginalData) {
+		const	sourceDataFile = project.sourceDataFile || project.sourceData;
+
+			if (sourceDataFile) {
+				oraFile.zipFile = sourceDataFile.zipFile;
+				oraFile.otherAttributes = sourceDataFile.otherAttributes;
+			}
+		}
 
 		if (img) {
 			oraFile.prerendered = img;
@@ -12280,7 +12496,7 @@ let	oraLayers, img, randomOtherImg, failed, timeNow;
 			(resolve, reject) => oraFile.save(
 				(blob) => {
 					try {
-						resolve(saveDL(blob, project.baseName, 'ora', 1));
+						resolve(saveDL(blob, project.baseName, flags.fileType || 'ora', 1));
 
 					} catch (error) {
 						reject(error);
@@ -12291,6 +12507,7 @@ let	oraLayers, img, randomOtherImg, failed, timeNow;
 					'imageFound' : getProgressUpdaterFunction(thisJob, 'project_status_saving_layers'),
 					'imageDedup' : getProgressUpdaterFunction(thisJob, 'project_status_saving_images'),
 					'imageMerge' : getProgressUpdaterFunction(thisJob, 'project_status_saving_render'),
+					'otherData'  : getProgressUpdaterFunction(thisJob, 'project_status_saving_other'),
 					'zipExport'  : getProgressUpdaterFunction(thisJob, 'project_status_saving_file', true),
 				}
 			)
@@ -12702,6 +12919,9 @@ function setWIPstate(isWIP, project) {
 			if (!PROJECT_NAMING_BUTTON_NAMES.includes(element.name)) {
 
 				element.disabled = (
+					!element.name
+				&&	tagName === 'button'
+				) || (
 					tagName === 'button'
 				&&	element.name === 'stop'
 					? !isWIP
@@ -12715,7 +12935,12 @@ function setWIPstate(isWIP, project) {
 				updateProjectOperationProgress(project, 'project_status_rendering');
 			}
 		} else {
-			updateProjectOperationProgress(project, 'project_status_ready_options');
+			updateProjectOperationProgress(
+				project
+			,	project.options
+				? 'project_status_ready_options'
+				: 'project_status_ready_no_options'
+			);
 		}
 	} else {
 		isStopRequested = false;
@@ -12725,6 +12950,8 @@ function setWIPstate(isWIP, project) {
 
 			if (element.name !== 'download_all') {
 				element.disabled = (
+					!element.name
+				) || (
 					element.name === 'stop'
 					? !isWIP
 					: isWIP
@@ -12912,12 +13139,52 @@ const	actionWords = action.split(regNonAlphaNum);
 
 			alert(getLocalizedText('see_console'));
 		} else
+		if (actionWords.includes('original')) {
+			getProjectMergedImagePromise(project).then(
+				(img) => getEmptyRenderContainer(project).appendChild(img)
+			).catch(catchPromiseError);
+		} else
 		if (actionWords.includes('all')) showAll(project); else
 		if (actionWords.includes('join')) showJoin(project);
 		else showImg(project);
 	} else
 	if (actionWords.includes('save')) {
-		if (actionWords.includes('ora')) saveProject(project); else
+		if (SAVE_FILE_TYPES.some(
+			(fileType) => {
+				if (actionWords.includes(fileType)) {
+				const	saveAllData = actionWords.includes('all');
+				const	saveUsedData = actionWords.includes('used');
+				const	saveOriginal = actionWords.includes('original');
+				const	saveSelected = (
+						actionWords.includes('selected')
+					||	actionWords.includes('current')
+					);
+
+					saveProject(
+						project
+					,	{
+							fileType,
+							'saveAllLayers'  : saveAllData,
+							'saveUsedLayers' : saveUsedData,
+							'saveOriginalData' : saveAllData || !saveUsedData,
+							'saveOriginalPreview' : saveOriginal,
+							'saveSelectedPreview' : saveSelected,
+						}
+					);
+
+					return true;
+				}
+			}
+		)); else
+		if (actionWords.includes('original')) {
+			getProjectMergedImagePromise(project).then(
+				(img) => saveDL(
+					img.src
+				,	project.baseName || project.fileName
+				,	img.type || 'png'
+				)
+			).catch(catchPromiseError);
+		} else
 		if (actionWords.includes('zip')) saveZip(project); else
 		if (actionWords.includes('all')) saveAll(project); else
 		if (actionWords.includes('join')) saveJoin(project);
@@ -13030,13 +13297,15 @@ const	project = container.project;
 			} catch (error) {
 				console.error(error);
 
-				if (TESTING) console.log('onProjectMenuUpdate:', [
-					sectionName,
-					listName,
-					selectValue,
-					batchOptions,
-					batchSets,
-				]);
+				if (TESTING) console.log(
+					'onProjectMenuUpdate:', [
+						sectionName,
+						listName,
+						selectValue,
+						batchOptions,
+						batchSets,
+					]
+				);
 
 				project.renderBatchSelectedOptions = null;
 				project.renderBatchSelectedSets = null;
@@ -13209,7 +13478,7 @@ let	files, name, ext;
 	&&	(files = batch.files)
 	&&	files.length
 	) {
-		if (TESTING > 1) console.log(batch);
+		if (TESTING > 1) console.log('onPageDrop:', batch);
 
 		for (const file of files)
 		if (
@@ -13473,7 +13742,7 @@ function closeProject(buttonTab) {
 
 		if (revokedBlobsCount) {
 			if (LOG_ACTIONS) logTime('"' + project.fileName + '" closed, revoked ' + revokedBlobsCount + ' blobs.');
-			if (TESTING > 2) console.log(project);
+			if (TESTING > 2) console.log('closeProject:', project);
 		}
 	}
 }
@@ -13597,7 +13866,11 @@ let	canLoadLocalFiles = true;
 	await loadLibPromise(LIB_UTIL_DIR + 'composition.asm.js');
 
 	if (CompositionModule = AsmCompositionModule) {
-		CompositionFuncList = Object.keys(CompositionModule(window, null, new ArrayBuffer(nextValidHeapSize(0))));
+		compositionFunctionNames = Object.keys(CompositionModule(window, null, new ArrayBuffer(nextValidHeapSize(0))));
+
+		for (const functionName of compositionFunctionNames) {
+			functionNameByBlendMode[getNormalizedBlendMode(functionName)] = functionName;
+		}
 	}
 
 	if (LOG_TIMERS) console.timeEnd(logLabel);
