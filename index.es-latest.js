@@ -22,6 +22,7 @@
 //* TODO: collage: fix stuck rendering of oversized collage.
 //* TODO: collage: arrange joined images without using DOM, to avoid currently visible images moving to hidden container when saving collage.
 //* TODO: clipping: fix hiding of clipping group with skipped/invisible/empty base layer.
+//* TODO: blending: maybe skip creating base data copy, unless necessary (for transition back in passthrough folders).
 //* TODO: blending: arithmetic emulation of all operations, not native to JS.
 //* TODO: blending: arithmetic emulation of all operations in 16/32-bit (float?) until final result; optional with checkbox/selectbox.
 //* TODO: blending: keep layer images as PNGs, create arrays for high-precision blending on demand, discard arrays when HQ mode is disabled.
@@ -3469,6 +3470,18 @@ async function getImageElementFromData(imageData, project, colorsCount) {
 		) {
 			return img;
 		}
+	}
+}
+
+function getImageElementFromSrc(url) {
+	if (
+		isString(url)
+	&&	url.length
+	) {
+	const	img = cre('img');
+		img.src = url;
+
+		return img;
 	}
 }
 
@@ -7617,8 +7630,8 @@ let	match, separator, subLayer;
 		subLayer.name = match[4].replace(regTrimSpaceOrComma, '');
 
 		layer = {
-			subLayer
-		,	nameOriginal
+			nameOriginal
+		,	subLayer
 		,	'isVirtualFolder' : true
 		,	'isVisible' : true
 		,	'opacity' : 1
@@ -8046,9 +8059,6 @@ async function loadORA(project) {
 				}
 
 			const	name = oraNode.name || '';
-			const	mode = oraNode.composite || '';
-			const	modeAlpha = oraNode.composite_alpha || mode || '';	//* <- non-standard, for testing
-			const	modeColor = oraNode.composite_color || mode || '';	//* <- non-standard, for testing
 			const	mask = oraNode.mask || null;				//* <- non-standard, for testing
 			const	layers = oraNode.layers || null;
 			const	isLayerFolder = (
@@ -8056,11 +8066,16 @@ async function loadORA(project) {
 				||	(oraNode instanceof ora.OraStack)
 				);
 
-			const	alphaMode = getNormalizedBlendMode(modeAlpha);
-			const	colorMode = getNormalizedBlendMode(modeColor);
-			const	blendMode = colorMode || alphaMode || getNormalizedBlendMode(mode);
-
 			const	opacity = orzClamp(oraNode.opacity, 0, 1, orzFloat);
+
+			const	oraBlendMode = oraNode.composite || '';
+			const	oraAlphaMode = oraNode.composite_alpha || oraBlendMode || '';	//* <- non-standard, for testing
+			const	oraColorMode = oraNode.composite_color || oraBlendMode || '';	//* <- non-standard, for testing
+
+			const	alphaMode = getNormalizedBlendMode(oraAlphaMode);
+			const	colorMode = getNormalizedBlendMode(oraColorMode);
+			const	blendMode = colorMode || alphaMode || getNormalizedBlendMode(oraBlendMode);
+
 			const	isolation = oraNode.isolation || '';
 			const	isIsolatedAlpha = (isolation === ISOLATE_ALPHA);	//* <- non-standard, for testing
 			const	isPassThrough = (
@@ -8095,16 +8110,18 @@ async function loadORA(project) {
 				);
 
 			const	layerWIP = {
-					isLayerFolder
-				,	isIsolatedAlpha
-				,	isPassThrough
-				,	isClipped
+					'nameOriginal' : name
+				,	name
+				,	isLayerFolder
 				,	isVisible
+				,	isClipped
+				,	isPassThrough
+				,	isIsolatedAlpha
+				,	opacity
 				,	blendMode
-				,	'blendModeOriginal' : mode
-				,	'blendModeOriginalAlpha' : modeAlpha
-				,	'blendModeOriginalColor' : modeColor
-				,	'opacity' : opacity
+				,	'blendModeOriginal' : oraBlendMode
+				,	'blendModeOriginalAlpha' : oraAlphaMode
+				,	'blendModeOriginalColor' : oraColorMode
 				};
 
 				if (oraNode.otherAttributes) {
@@ -8239,14 +8256,16 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 			const	name = getPropFromAnySource('name',  psdLayer, psdNode) || '';
 			const	img  = getPropFromAnySource('image', psdLayer, psdNode);
 			const	mask = getPropFromAnySource('mask',  psdLayer, psdNode, img);
-			const	blending = getPropByAnyOfNamesChain(psdLayer, 'blendMode', 'blending', 'mode');
-			const	clipping = getPropByAnyOfNamesChain(psdLayer, 'blendMode', 'clipping', 'clipped');
-			const	modePass = getPropByNameChain(psdLayer, 'adjustments', 'sectionDivider', 'obj', 'blendMode');
-			const	blendMode = getNormalizedBlendMode(blending);
+			const	isVisible = getTruthyValue(getPropByAnyOfNamesChain(psdLayer, 'visible', 'visibility'));
+			const	isClipped = getTruthyValue(getPropByAnyOfNamesChain(psdLayer, 'blendMode', 'clipping', 'clipped'));
+			const	psdBlendMode = getPropByAnyOfNamesChain(psdLayer, 'blendMode', 'blending', 'mode');
+			const	psdPassMode = getPropByNameChain(psdLayer, 'adjustments', 'sectionDivider', 'obj', 'blendMode');
+			const	blendMode = getNormalizedBlendMode(psdBlendMode);
 
 			const	isPassThrough = (
-					regLayerBlendModePass.test(modePass)
-				||	regLayerBlendModePass.test(blendMode)
+					regLayerBlendModePass.test(blendMode)
+				||	regLayerBlendModePass.test(psdPassMode)
+				||	regLayerBlendModePass.test(psdBlendMode)
 				);
 
 			const	fillOpacity = (
@@ -8260,6 +8279,12 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 				||	!isRealNumber(fillOpacity)
 				);
 
+			const	opacity = (
+					hasNoFillOpacityValue
+					? getNormalizedOpacity(psdLayer.opacity)
+					: getNormalizedOpacity(psdLayer.opacity) * getNormalizedOpacity(fillOpacity)
+				);
+
 //* Note:
 //*	"Fill" opacity is used in PSD from SAI2
 //*	to store opacity value instead of standard opacity
@@ -8267,19 +8292,17 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 //* Source: https://github.com/meltingice/psd.js/issues/153#issuecomment-436456896
 
 			const	layerWIP = {
-					isLayerFolder
+					name
+				,	isLayerFolder
+				,	isVisible
+				,	isClipped
 				,	isPassThrough
-				,	'isClipped' : getTruthyValue(clipping)
-				,	'isVisible' : getTruthyValue(psdLayer.visible)
+				,	opacity
 				,	blendMode
-				,	'blendModeOriginal' : blending
+				,	'blendModeOriginal' : psdBlendMode
 				,	'isBlendModeTS' : (
 						hasNoFillOpacityValue
 					&&	BLEND_MODES_WITH_TS_VERSION.includes(blendMode)
-					)
-				,	'opacity' : (
-						getNormalizedOpacity(psdLayer.opacity)
-						* (hasNoFillOpacityValue ? 1 : getNormalizedOpacity(fillOpacity))
 					)
 				};
 
@@ -9028,28 +9051,65 @@ let	canvas = null;
 
 //* Get pixels of layer above (A):
 
-				ctx.globalCompositeOperation = BLEND_MODE_NORMAL;
-				ctx.globalAlpha = 1;
-				ctx.clearRect(0,0, w,h);
-				ctx.globalAlpha = (isTransition ? 1 : opacity);
+			let	isCanvasChanged = false;
+			let	dataAbove;
+			let	rgbaAbove;
 
-				drawImageOrColorInside(img);
+				if (isImageData(img)) {
+					dataAbove = img;
 
-				if (TESTING_RENDER) await addDebugImage(
-					project
-				,	canvas
-				,	testPrefix + 'layer above at ' + (ctx.globalAlpha * 100) + '%'
-				,	'orange'
-				);
+					if (TESTING_RENDER) await addDebugImage(
+						project
+					,	dataAbove
+					,	testPrefix + 'image data above'
+					,	'orange'
+					);
+				} else {
+					isCanvasChanged = true;
 
-			const	dataAbove = ctx.getImageData(0,0, w,h);
-			const	rgbaAbove = dataAbove.data;
+					ctx.globalCompositeOperation = BLEND_MODE_NORMAL;
+					ctx.globalAlpha = 1;
+					ctx.clearRect(0,0, w,h);
+					ctx.globalAlpha = (isTransition ? 1 : opacity);
+
+					drawImageOrColorInside(img);
+
+					if (TESTING_RENDER) await addDebugImage(
+						project
+					,	canvas
+					,	testPrefix + 'layer above at ' + (ctx.globalAlpha * 100) + '%'
+					,	'orange'
+					);
+
+					dataAbove = ctx.getImageData(0,0, w,h);
+				}
+
+				if (isImageData(dataAbove)) {
+					rgbaAbove = dataAbove.data;
+				}
 
 //* Get pixels of transition mask (M):
 
+			let	dataMask;
 			let	rgbaMask;
 
+				if (isImageData(mask)) {
+					dataMask = (
+						invertMask
+						? getImageDataInvertAlpha(mask)
+						: mask
+					);
+
+					if (TESTING_RENDER) await addDebugImage(
+						project
+					,	dataMask
+					,	testPrefix + 'mask image data'
+					,	'violet'
+					);
+				} else
 				if (isTransition) {
+					isCanvasChanged = true;
+
 					ctx.globalCompositeOperation = BLEND_MODE_NORMAL;
 					ctx.globalAlpha = 1;
 					ctx.clearRect(0,0, w,h);
@@ -9078,11 +9138,14 @@ let	canvas = null;
 						);
 					}
 
-				const	maskData = ctx.getImageData(0,0, w,h);
-					rgbaMask = maskData.data;
+					dataMask = ctx.getImageData(0,0, w,h);
 				}
 
-//* Compute resulting pixels linearly into dataAbove, and save result back onto canvas:
+				if (isImageData(dataMask)) {
+					rgbaMask = dataMask.data;
+				}
+
+//* Compute resulting pixels linearly into dataBelow, and save result back onto canvas:
 
 				if (TESTING_RENDER && LOG_TIMERS) {
 					console.timeEnd(logLabel);
@@ -9096,7 +9159,12 @@ let	canvas = null;
 					console.time(logLabel = blendMode + ': saving result to canvas');
 				}
 
-				ctx.putImageData(isDone ? dataAbove : dataBelow, 0,0);
+				if (
+					isDone
+				||	isCanvasChanged
+				) {
+					ctx.putImageData(dataBelow, 0,0);
+				}
 
 				if (TESTING_RENDER && LOG_TIMERS) {
 					console.timeEnd(logLabel);
@@ -9108,6 +9176,11 @@ let	canvas = null;
 			}
 
 			function usingAsmJS(rgbaAbove, rgbaBelow, rgbaMask) {
+
+				if (!rgbaAbove || !rgbaBelow) {
+					return false;
+				}
+
 				try {
 				const	arrayLength = rgbaAbove.length;
 				const	uint8array = getOrCreateReusableHeap(project);
@@ -9123,7 +9196,7 @@ let	canvas = null;
 					}
 
 					compute[functionName](arrayLength);
-					rgbaAbove.set(uint8array.subarray(0, arrayLength));
+					rgbaBelow.set(uint8array.subarray(0, arrayLength));
 
 					return true;
 
@@ -9441,10 +9514,10 @@ function scrollToDebugImage(target) {
 	}
 }
 
-async function addDebugImage(project, imageOrCanvas, comment, highLightColor) {
+async function addDebugImage(project, imageSource, comment, highLightColor) {
 	if (
 		TESTING_RENDER
-	&&	imageOrCanvas
+	&&	isNonNullObject(imageSource)
 	) {
 	const	container = (
 			project
@@ -9454,33 +9527,31 @@ async function addDebugImage(project, imageOrCanvas, comment, highLightColor) {
 
 	let	canvas, img, src;
 
-		if (isImageElement(imageOrCanvas)) {
-
-			if (src = imageOrCanvas.src) {
-				img = cre('img');
-				img.src = src;
-			}
-		} else
-		if (isCanvasElement(canvas = imageOrCanvas.canvas || imageOrCanvas)) {
-
-			if (img = await getImagePromiseFromCanvasToBlob(canvas)) {
-				// URL.revokeObjectURL(img.src);
-				// setTimeout(() => URL.revokeObjectURL(img.src), 12345);
+		try {
+			if (isImageElement(imageSource)) {
+				img = getImageElementFromSrc(imageSource.src);
 			} else {
-				try {
-					if (src = canvas.toDataURL()) {
-						img = cre('img');
-						img.src = src;
-					}
+				if (isImageData(imageSource)) {
+					canvas = getCanvasFromImageData(imageSource);
+				} else {
+					canvas = imageSource.canvas || imageSource;
+				}
 
-				} catch (error) {
-					console.error(error);
+				if (isCanvasElement(canvas)) {
+					if (img = await getImagePromiseFromCanvasToBlob(canvas)) {
+						// URL.revokeObjectURL(img.src);
+						// setTimeout(() => URL.revokeObjectURL(img.src), 12345);
+					} else {
+						img = getImageElementFromSrc(canvas.toDataURL());
+					}
 				}
 			}
+		} catch (error) {
+			console.error(error);
 		}
 
 		if (
-			img
+			isImageElement(img)
 		&&	img.src
 		) {
 			img.alt = comment;
@@ -9515,6 +9586,13 @@ async function addDebugImage(project, imageOrCanvas, comment, highLightColor) {
 
 			return img;
 		}
+
+		if (TESTING_RENDER_CACHE || TESTING > 1) console.error('addDebugImage failed:', [
+			'arguments:', arguments,
+			'canvas:', canvas,
+			'img:', img,
+			'src:', src,
+		]);
 	}
 }
 
@@ -9540,7 +9618,7 @@ async function setMergedImage(project, img, layer, canIgnoreColors) {
 
 			project.mergedImages.push(img);
 
-			if (TESTING > 1) console.log('Set merged branch image:', layer);
+			if (TESTING_RENDER_CACHE || TESTING > 1) console.log('Set merged branch image:', layer);
 
 			if (TESTING_RENDER_CACHE) {
 				img.onclick = del;
@@ -9583,7 +9661,7 @@ const	crop = getAutoCropArea(img);
 	const	ctx = canvas.getContext('2d');
 		ctx.drawImage(img, -crop.left, -crop.top);
 
-		if (TESTING > 1) console.log('Cropped image on canvas:', canvas);
+		if (TESTING_RENDER_CACHE || TESTING > 1) console.log('Cropped image on canvas:', canvas);
 
 		if (TESTING_RENDER_CACHE) {
 			canvas.onclick = del;
@@ -9642,7 +9720,7 @@ const	canvas = getNewCanvasForImg(project, img);
 const	ctx = canvas.getContext('2d');
 
 	if (isCanvasElement(img)) {
-		ctx.putImageData(img.getContext('2d').getImageData(0,0, canvas.width, canvas.height), 0,0);
+		ctx.putImageData(getImageDataFromCanvasOrImage(img), 0,0);
 	} else {
 		ctx.drawImage(img, 0,0);
 	}
@@ -10140,7 +10218,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 		);
 
 	const	{
-			baseCanvasBefore,
+			baseImageBefore,
 			clippingGroupWIP,
 			ignoreColors,
 			skipCopyPaste,
@@ -10235,31 +10313,23 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 //* Start rendering:
 
-	let	img;
-	let	canvasBeforeSubContext;
+	let	isImageBeforeReused = false;
+	let	imageToAddOrBlend;
+	let	imageBeforeSubContext;
 	let	canvasForSubContext;
 	let	clippingMaskForSubContext;
 
-		if (baseCanvasBefore) {
-			await addDebugImage(
-				project
-			,	baseCanvasBefore
-			,	'renderParams.baseCanvasBefore'
-			,	'limegreen'
-			);
-		}
-
 		if (
-			!canvas
-		&&	(canvas = renderParams.baseCanvas)
+			!currentLevelCanvas
+		&&	(currentLevelCanvas = renderParams.baseCanvas)
 		) {
-			ctx = canvas.getContext('2d');
+			currentLevelContext = currentLevelCanvas.getContext('2d');
 
 			if (TESTING_RENDER) {
 				await addDebugImage(
 					project
-				,	canvas
-				,	'canvas = renderParams.baseCanvas'
+				,	currentLevelCanvas
+				,	'currentLevelCanvas = renderParams.baseCanvas: ' + currentLevelCanvas
 				,	'green'
 				);
 			}
@@ -10268,7 +10338,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 //* Render clipping group as separate batch:
 
 		if (clippingGroupResult) {
-			img = await getRenderByValues(
+			imageToAddOrBlend = await getRenderByValues(
 				project
 			,	values
 			,	clippingGroupLayers
@@ -10281,8 +10351,8 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 			if (TESTING_RENDER) await addDebugImage(
 				project
-			,	img
-			,	'img = getRenderByValues: clippingGroupResult'
+			,	imageToAddOrBlend
+			,	'imageToAddOrBlend = getRenderByValues: clippingGroupResult'
 			,	'cyan'
 			);
 		} else
@@ -10294,7 +10364,11 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 		&&	layer.isColorList
 		) {
 			for (const listName of names) {
-				if (img = await getCanvasColored(project, values, listName)) {
+				if (imageToAddOrBlend = await getCanvasColored(
+					project
+				,	values
+				,	listName
+				)) {
 					break;
 				}
 			}
@@ -10348,8 +10422,17 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 						++addedCopyPaste;
 
-						getOrInitChild(layerGroupsByType || (layerGroupsByType = {}), pasteType, Array).push(linkedLayer);
-						getOrInitChild(linkedLayer, 'copyPastedTo', Array).push(layer);
+						getOrInitChild(
+							layerGroupsByType || (layerGroupsByType = {})
+						,	pasteType
+						,	Array
+						).push(linkedLayer);
+
+						getOrInitChild(
+							linkedLayer
+						,	'copyPastedTo'
+						,	Array
+						).push(layer);
 					}
 				}
 			}
@@ -10443,7 +10526,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 					) {
 						canvasForSubContext = getCanvasFlipped(
 							project
-						,	canvas
+						,	currentLevelCanvas
 						,	flipSide
 						,	FLAG_RENDER_LAYER_COPY
 						);
@@ -10451,13 +10534,41 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 						if (TESTING_RENDER) await addDebugImage(
 							project
 						,	canvasForSubContext
-						,	'canvasForSubContext = getCanvasFlipped: ' + flipSide
+						,	'canvasForSubContext = getCanvasFlipped: flipSide = ' + flipSide
 						,	'gold'
 						);
 
 						if (isPassThroughAndIsolatedAlpha) {
 
-							canvasBeforeSubContext = getCanvasCopy(project, canvasForSubContext);
+							isImageBeforeReused = (
+								baseImageBefore
+							&&	!flipSide
+							&&	layer === bottomLayer
+							);
+
+							imageBeforeSubContext = (
+								isImageBeforeReused
+								? baseImageBefore
+								: (
+									getImageDataFromCanvasOrImage(canvasForSubContext)
+								||	getCanvasCopy(project, canvasForSubContext)
+								)
+							);
+
+							if (TESTING_RENDER) await addDebugImage(
+								project
+							,	imageBeforeSubContext
+							,	'imageBeforeSubContext = ' + (
+									isImageBeforeReused
+									? 'renderParams.baseImageBefore: ' + baseImageBefore
+									: 'getCanvasCopy: ' + imageBeforeSubContext
+								)
+							,	(
+									isImageBeforeReused
+									? 'tan'
+									: 'limegreen'
+								)
+							);
 						}
 
 						if (regLayerBlendModeClip.test(blendMode)) {
@@ -10494,49 +10605,52 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 				&&	!addedCopyPaste
 				);
 
-			const	canIgnoreColors = (ignoreColors || isToRecolor);
-
 				if (
 					canSaveMergedImage
-				&&	(img = (
-						canIgnoreColors
+				&&	(imageToAddOrBlend = (
+						isToRecolor
 						? layer.mergedImage || layer.mergedImageToRecolor
 						: layer.mergedImage
 					))
 				) {
 					if (TESTING_RENDER) await addDebugImage(
 						project
-					,	img
+					,	imageToAddOrBlend
 					,	(
-							img === layer.mergedImage
-							? 'img = mergedImage'
-							: 'img = mergedImageToRecolor'
+							imageToAddOrBlend === layer.mergedImage
+							? 'imageToAddOrBlend = mergedImage'
+							: 'imageToAddOrBlend = mergedImageToRecolor'
 						)
 					,	'tan'
 					);
 				} else
 				if (
-					img = await getRenderByValues(
+					imageToAddOrBlend = await getRenderByValues(
 						project
 					,	values
 					,	layers
 					,	{
 							'baseCanvas' : canvasForSubContext
-						,	'baseCanvasBefore' : canvasBeforeSubContext
-						,	'ignoreColors' : canIgnoreColors
+						,	'baseImageBefore' : imageBeforeSubContext
 						,	'skipCopyPaste' : (addedCopyPaste ? layer : false)
+						,	'ignoreColors' : isToRecolor
 						}
 					)
 				) {
 					if (TESTING_RENDER) await addDebugImage(
 						project
-					,	img
-					,	'img = getRenderByValues: subfolder content'
+					,	imageToAddOrBlend
+					,	'imageToAddOrBlend = getRenderByValues: subfolder content'
 					,	'palegreen'
 					);
 
 					if (canSaveMergedImage) {
-						await setMergedImage(project, img, layer, canIgnoreColors);
+						await setMergedImage(
+							project
+						,	imageToAddOrBlend
+						,	layer
+						,	isToRecolor
+						);
 					}
 				}
 
@@ -10546,20 +10660,20 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 //* Not a folder, not a stack of copypaste:
 
 			if (!layer.isLayerFolder) {
-				img = await getOrLoadFixedImage(project, layer);
+				imageToAddOrBlend = await getOrLoadFixedImage(project, layer);
 
-				if (TESTING_RENDER && img) await addDebugImage(
+				if (TESTING_RENDER && imageToAddOrBlend) await addDebugImage(
 					project
-				,	img
-				,	'img = getOrLoadFixedImage: layer content'
-				+	', x = ' + img.left
-				+	', y = ' + img.top
+				,	imageToAddOrBlend
+				,	'imageToAddOrBlend = getOrLoadFixedImage: layer content'
+				+	', x = ' + imageToAddOrBlend.left
+				+	', y = ' + imageToAddOrBlend.top
 				);
 			}
 		}
 
-		if (img) {
-		let	mask;
+		if (imageToAddOrBlend) {
+		let	clippingMask;
 
 			if (clippingGroupResult) {
 				opacity = 1;
@@ -10571,13 +10685,18 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 				const	paddings = (
 						names
 						.map(
-							(listName) => getSelectedOptionValue(project, values, 'paddings', listName)
+							(listName) => getSelectedOptionValue(
+								project
+							,	values
+							,	'paddings'
+							,	listName
+							)
 						)
 						.filter(arrayFilterNonEmptyValues)
 					);
 
 					if (paddings.length > 0) {
-						mask = await getRenderByValues(
+						clippingMask = await getRenderByValues(
 							project
 						,	values
 						,	layersToRender.slice(0, indexToRender)	//* <- content after/above this layer
@@ -10586,21 +10705,21 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 						if (TESTING_RENDER) await addDebugImage(
 							project
-						,	mask
-						,	'mask = getRenderByValues: current folder content above, colors ignored'
+						,	clippingMask
+						,	'clippingMask = getRenderByValues: current folder content above, colors ignored'
 						,	'darkgray'
 						);
 
 //* Apply padding to generated mask:
 
-						if (mask) {
+						if (clippingMask) {
 							for (const padding of paddings) {
-								padCanvas(mask, padding);
+								padCanvas(clippingMask, padding);
 
 								if (TESTING_RENDER) await addDebugImage(
 									project
-								,	mask
-								,	'mask = padCanvas: ' + JSON.stringify(padding)
+								,	clippingMask
+								,	'clippingMask = padCanvas: ' + JSON.stringify(padding)
 								,	'lightblue'
 								);
 							}
@@ -10610,24 +10729,28 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 //* Get mask defined in the document:
 
-				if (mask = layer.mask) {
-				const	maskFillOutside = orz(mask.fillOutside);
-				const	maskImage = await getOrLoadFixedImage(project, mask);
+				if (clippingMask = layer.mask) {
+				const	maskFillOutside = orz(clippingMask.fillOutside);
+				const	maskImage = await getOrLoadFixedImage(project, clippingMask);
 
 					if (TESTING_RENDER && maskImage) await addDebugImage(
 						project
 					,	maskImage
-					,	'mask = getOrLoadFixedImage: layer mask'
+					,	'clippingMask = getOrLoadFixedImage: layer mask'
 					+	', x = ' + maskImage.left
 					+	', y = ' + maskImage.top
 					);
 
-					mask = getCanvasFilledOutsideOfImage(project, maskImage, maskFillOutside);
+					clippingMask = getCanvasFilledOutsideOfImage(
+						project
+					,	maskImage
+					,	maskFillOutside
+					);
 
 					if (TESTING_RENDER) await addDebugImage(
 						project
-					,	mask
-					,	'mask = getCanvasFilledOutsideOfImage: ' + maskFillOutside
+					,	clippingMask
+					,	'clippingMask = getCanvasFilledOutsideOfImage: ' + maskFillOutside
 					,	'lightblue'
 					);
 				}
@@ -10637,15 +10760,19 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 //* Flip mask to match current buffer:
 
 					if (
-						mask
+						clippingMask
 					&&	flipSide
 					) {
-						mask = getCanvasFlipped(project, mask, flipSide);
+						clippingMask = getCanvasFlipped(
+							project
+						,	clippingMask
+						,	flipSide
+						);
 
 						if (TESTING_RENDER) await addDebugImage(
 							project
-						,	mask
-						,	'mask = getCanvasFlipped: ' + flipSide
+						,	clippingMask
+						,	'clippingMask = getCanvasFlipped: ' + flipSide
 						,	'gold'
 						);
 					}
@@ -10653,19 +10780,24 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 
 //* Apply mask to layer:
 
-				if (mask) {
-					img = await getCanvasBlended(project, img, mask, BLEND_MODE_MASK);
+				if (clippingMask) {
+					imageToAddOrBlend = await getCanvasBlended(
+						project
+					,	imageToAddOrBlend
+					,	clippingMask
+					,	BLEND_MODE_MASK
+					);
 
 					++PR.blendingStepsCount;
 
 					if (TESTING_RENDER) await addDebugImage(
 						project
-					,	img
-					,	'img = getCanvasBlended: mask'
+					,	imageToAddOrBlend
+					,	'imageToAddOrBlend = getCanvasBlended: clippingMask'
 					,	'red'
 					);
 
-					clearCanvasBeforeGC(mask);
+					clearCanvasBeforeGC(clippingMask);
 				}
 
 //* Apply color to layer:
@@ -10676,7 +10808,12 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 				&&	!layer.isColorList	//* <- already got selected color fill
 				) {
 					for (const listName of names) {
-						img = await getCanvasColored(project, values, listName, img);
+						imageToAddOrBlend = await getCanvasColored(
+							project
+						,	values
+						,	listName
+						,	imageToAddOrBlend
+						);
 
 						++PR.blendingStepsCount
 					}
@@ -10685,27 +10822,31 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 //* Flip layer:
 
 				if (flipSide) {
-					img = getCanvasFlipped(project, img, flipSide);
+					imageToAddOrBlend = getCanvasFlipped(
+						project
+					,	imageToAddOrBlend
+					,	flipSide
+					);
 
 					if (TESTING_RENDER) await addDebugImage(
 						project
-					,	img
-					,	'img = getCanvasFlipped: ' + flipSide
+					,	imageToAddOrBlend
+					,	'imageToAddOrBlend = getCanvasFlipped: ' + flipSide
 					,	'gold'
 					);
 				}
 			}
 
 		const	isLayerMaskedOrFaded = (
-				mask
+				clippingMask
 			||	opacity != 1
 			);
 
 //* Prepare current buffer to add layer onto:
 
-			if (!ctx) {
-				canvas = getNewCanvasForProject(project);
-				ctx = canvas.getContext('2d');
+			if (!currentLevelContext) {
+				currentLevelCanvas = getNewCanvasForProject(project);
+				currentLevelContext = currentLevelCanvas.getContext('2d');
 			}
 
 			if (canvasForSubContext) {
@@ -10713,14 +10854,19 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 //* Apply stored mask to the blended clipping group content:
 
 				if (clippingMaskForSubContext) {
-					await drawImageOrColor(project, img, clippingMaskForSubContext, BLEND_MODE_MASK);
+					await drawImageOrColor(
+						project
+					,	imageToAddOrBlend
+					,	clippingMaskForSubContext
+					,	BLEND_MODE_MASK
+					);
 
 					++PR.blendingStepsCount;
 
 					if (TESTING_RENDER) await addDebugImage(
 						project
-					,	img
-					,	'drawImageOrColor: mask = clippingMaskForSubContext'
+					,	imageToAddOrBlend
+					,	'drawImageOrColor: clippingMask = clippingMaskForSubContext'
 					,	'red'
 					);
 
@@ -10732,56 +10878,73 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 				if (isLayerMaskedOrFaded) {
 				const	alphaMode = BLEND_MODE_FADE_IN;
 
-					await drawImageOrColor(project, ctx, img, alphaMode, opacity, mask);
+					await drawImageOrColor(
+						project
+					,	currentLevelContext
+					,	imageToAddOrBlend
+					,	alphaMode
+					,	opacity
+					,	clippingMask
+					);
 
 					++PR.blendingStepsCount;
 
 					if (TESTING_RENDER) await addDebugImage(
 						project
-					,	canvas
+					,	currentLevelCanvas
 					,	[
 							'drawImageOrColor: ' + alphaMode
 						,	'opacity = ' + opacity
-						,	'mask = ' + mask
+						,	'clippingMask = ' + clippingMask
 						].join(TITLE_LINE_BREAK)
 					,	'magenta'
 					);
 
-					clearCanvasBeforeGC(mask);
-					clearCanvasBeforeGC(img);
+					clearCanvasBeforeGC(clippingMask);
+					clearCanvasBeforeGC(imageToAddOrBlend);
 				} else {
-					clearCanvasBeforeGC(canvas);
+					clearCanvasBeforeGC(currentLevelCanvas);
 
-					canvas = img;
-					ctx = canvas.getContext('2d');
+					currentLevelCanvas = imageToAddOrBlend;
+					currentLevelContext = currentLevelCanvas.getContext('2d');
 				}
 
-				clearCanvasBeforeGC(canvasBeforeSubContext);
+				if (!isImageBeforeReused) {
+					clearCanvasBeforeGC(imageBeforeSubContext);
+				}
 			} else {
 
 //* Apply mask inside passthrough subfolder:
 
 				if (
-					baseCanvasBefore
+					baseImageBefore
 				&&	regLayerBlendModeMask.test(blendMode)
 				) {
 				const	invertMask = (blendMode === BLEND_MODE_MASK);
 				const	alphaMode = BLEND_MODE_FADE_OUT;
 
-					await drawImageOrColor(project, ctx, baseCanvasBefore, alphaMode, opacity, img, invertMask);
+					await drawImageOrColor(
+						project
+					,	currentLevelContext
+					,	baseImageBefore
+					,	alphaMode
+					,	opacity
+					,	imageToAddOrBlend
+					,	invertMask
+					);
 
 					++PR.blendingStepsCount;
 
 					if (TESTING_RENDER) await addDebugImage(
 						project
-					,	canvas
+					,	currentLevelCanvas
 					,	[
 							'drawImageOrColor: ' + alphaMode
 						,	'blendMode = ' + blendMode
 						,	'opacity = ' + opacity
-						,	'mask = ' + img
+						,	'clippingMask = ' + imageToAddOrBlend
 						,	'invertMask = ' + invertMask
-						,	'baseCanvasBefore = ' + baseCanvasBefore
+						,	'baseImageBefore = ' + baseImageBefore
 						].join(TITLE_LINE_BREAK)
 					,	'magenta'
 					);
@@ -10790,13 +10953,19 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 //* Draw merged isolated subfolder or a single layer onto current buffer:
 
 				{
-					await drawImageOrColor(project, ctx, img, blendMode, opacity);
+					await drawImageOrColor(
+						project
+					,	currentLevelContext
+					,	imageToAddOrBlend
+					,	blendMode
+					,	opacity
+					);
 
 					++PR.blendingStepsCount;
 
 					if (TESTING_RENDER) await addDebugImage(
 						project
-					,	canvas
+					,	currentLevelCanvas
 					,	'drawImageOrColor: ' + blendMode
 					,	(
 							blendMode === BLEND_MODE_NORMAL ? null :
@@ -10808,7 +10977,7 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 					);
 				}
 
-				clearCanvasBeforeGC(img);
+				clearCanvasBeforeGC(imageToAddOrBlend);
 			}
 
 			++project.rendering.layersApplyCount;
@@ -10819,11 +10988,11 @@ async function getRenderByValues(project, values, nestedLayersBatch, renderParam
 				clippingGroupWIP
 			&&	layer === bottomLayer
 			) {
-				clippingGroupMask = makeCanvasOpaqueAndGetItsMask(project, ctx);
+				clippingGroupMask = makeCanvasOpaqueAndGetItsMask(project, currentLevelContext);
 
 				if (TESTING_RENDER) await addDebugImage(
 					project
-				,	canvas
+				,	currentLevelCanvas
 				,	'clippingGroupMask = makeCanvasOpaqueAndGetItsMask'
 				,	'blue'
 				);
@@ -10905,8 +11074,6 @@ const	bottomLayer = layersToRender[indexToRender];
 const	isBackSide = (getPropBySameNameChain(values, 'side') === 'back');
 const	colors = getPropByNameChain(values, 'colors') || {};
 
-let	canvas, ctx, clippingGroupMask;
-
 	if (
 		!ADD_PAUSE_BEFORE_EACH_LAYER
 	&&	ADD_PAUSE_BEFORE_EACH_FOLDER
@@ -10926,6 +11093,10 @@ let	canvas, ctx, clippingGroupMask;
 		indexToRender = indexToStop;
 	}
 
+let	clippingGroupMask;
+let	currentLevelCanvas;
+let	currentLevelContext;
+
 	for (
 		; indexToRender >= indexToStop
 		; indexToRender--
@@ -10936,7 +11107,9 @@ let	canvas, ctx, clippingGroupMask;
 		}
 
 		if (isStopRequestedAnywhere(project)) {
-			canvas = ctx = null;
+
+			currentLevelCanvas =
+			currentLevelContext = null;
 
 			break;
 		}
@@ -10948,19 +11121,27 @@ let	canvas, ctx, clippingGroupMask;
 
 //* End of layer batch.
 
-	if (canvas && ctx) {
+	if (
+		currentLevelCanvas
+	&&	currentLevelContext
+	) {
 
 //* Apply stored mask to the blended clipping group content:
 
 		if (clippingGroupMask) {
-			await drawImageOrColor(project, ctx, clippingGroupMask, BLEND_MODE_MASK);
+			await drawImageOrColor(
+				project
+			,	currentLevelContext
+			,	clippingGroupMask
+			,	BLEND_MODE_MASK
+			);
 
 			++PR.blendingStepsCount;
 
 			if (TESTING_RENDER) await addDebugImage(
 				project
-			,	canvas
-			,	'drawImageOrColor: mask = clippingGroupMask'
+			,	currentLevelCanvas
+			,	'drawImageOrColor: clippingMask = clippingGroupMask'
 			,	'red'
 			);
 
@@ -10979,7 +11160,9 @@ let	canvas, ctx, clippingGroupMask;
 	const	renderName = PR.fileName;
 
 		if (isStopRequestedAnywhere(project)) {
-			canvas = ctx = null;
+
+			currentLevelCanvas =
+			currentLevelContext = null;
 
 			if (LOG_ACTIONS) logTime(
 				'getRenderByValues - stopped by request after '
@@ -10988,8 +11171,8 @@ let	canvas, ctx, clippingGroupMask;
 			,	renderName
 			);
 		} else
-		if (canvas) {
-			canvas.renderingTime = renderingTime;
+		if (currentLevelCanvas) {
+			currentLevelCanvas.renderingTime = renderingTime;
 
 			if (LOG_ACTIONS) logTime(
 				'"' + project.fileName + '" rendered in '
@@ -11014,7 +11197,7 @@ let	canvas, ctx, clippingGroupMask;
 		project.rendering = null;
 	}
 
-	return canvas;
+	return currentLevelCanvas;
 }
 
 function isOptionSingle(params) {
@@ -11677,7 +11860,7 @@ let	batchContainer, subContainer;
 
 	let	imagesDone = 0;
 	const	imagesTotal = renderedImages.length;
-	const	onImageAddedProgress = getProgressUpdaterFunction(thisJob, 'project_status_saving_images');
+	const	onImageAddedProgress = getProgressUpdaterCallback(thisJob, 'project_status_saving_images');
 
 		onImageAddedProgress(imagesDone, imagesTotal);
 
@@ -11761,7 +11944,7 @@ let	batchContainer, subContainer;
 						reject(error);
 					}
 				}
-			,	getProgressUpdaterFunction(thisJob, 'project_status_saving_file', true)
+			,	getProgressUpdaterCallback(thisJob, 'project_status_saving_file', true)
 			,	reject
 			)
 		).catch(catchPromiseError);
@@ -12512,11 +12695,11 @@ let	oraLayers, img, randomOtherImg, failed, timeNow;
 				}
 			,	reject
 			,	{
-					'imageFound' : getProgressUpdaterFunction(thisJob, 'project_status_saving_layers'),
-					'imageDedup' : getProgressUpdaterFunction(thisJob, 'project_status_saving_images'),
-					'imageMerge' : getProgressUpdaterFunction(thisJob, 'project_status_saving_render'),
-					'otherData'  : getProgressUpdaterFunction(thisJob, 'project_status_saving_other'),
-					'zipExport'  : getProgressUpdaterFunction(thisJob, 'project_status_saving_file', true),
+					'imageFound' : getProgressUpdaterCallback(thisJob, 'project_status_saving_layers'),
+					'imageDedup' : getProgressUpdaterCallback(thisJob, 'project_status_saving_images'),
+					'imageMerge' : getProgressUpdaterCallback(thisJob, 'project_status_saving_render'),
+					'otherData'  : getProgressUpdaterCallback(thisJob, 'project_status_saving_other'),
+					'zipExport'  : getProgressUpdaterCallback(thisJob, 'project_status_saving_file', true),
 				}
 			)
 		).catch(catchPromiseError);
@@ -12537,7 +12720,7 @@ let	oraLayers, img, randomOtherImg, failed, timeNow;
 	if (isSingleWIP) setWIPstate(false, project);
 }
 
-function getProgressUpdaterFunction(context, key, isCountFormatted) {
+function getProgressUpdaterCallback(context, key, isCountFormatted) {
 const	getCountFormatted = (
 		isCountFormatted
 		? (value) => value.toLocaleString(LANG)
