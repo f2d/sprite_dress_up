@@ -19,7 +19,6 @@
 //* TODO: colors: add "name1,2,3,etc[gradient-map=N/N%=rgb-N-N-N/N%=next+rgb-N-N-N/avg|max|min|rgb]" to interpolate between selected given color values in given name order using given source RGB (or avg/max/min of them). If too many gradient points (number of names > 2 + number points), ignore leftover points. If too many names, distribute undefined points evenly in the last (top?) stretch of gradient. Autosort points by %value. Color value after percent may be used to insert given color value or calculate value dependent on next/previous point (cycle in passes until all are defined). 0/100% may be used for defining colors; use names for omitted. If no usable color names, do nothing.
 
 //* TODO ---------------------- rendering: ------------------------------------
-//* TODO: copypaste: fix group with top mask or outline + reverse-hor + etc.
 //* TODO: collage: fix stuck rendering of oversized collage.
 //* TODO: collage: arrange joined images without using DOM, to avoid currently visible images moving to hidden container when saving collage.
 //* TODO: clipping: fix hiding of clipping group with skipped/invisible/empty base layer.
@@ -451,6 +450,11 @@ const	SPLIT_SEC = 60
 	}
 
 ,	DEFAULT_MASK_FILL_COLOR = 'black'
+
+,	ISOLATE_ALL = 'isolate'
+,	ISOLATE_ALPHA = 'isolate-alpha'
+,	ISOLATE_AUTO = 'auto'
+,	ISOLATE_PASS = 'pass-through'
 
 ,	BLEND_MODE_NORMAL = 'source-over'
 ,	BLEND_MODE_CLIP = 'source-atop'
@@ -4020,16 +4024,27 @@ function setImageSrc(img, data, onLoad, onError) {
 }
 
 function getImageContentSize(img) {
-const	width  = img.naturalWidth  || img.width;
-const	height = img.naturalHeight || img.height;
+	if (isNonNullObject(img)) {
+	const	width  = img.naturalWidth  || img.width;
+	const	height = img.naturalHeight || img.height;
 
-	return { width, height };
+		if (width && height) {
+			return { width, height };
+		}
+	}
+
+	if (TESTING > 2) console.error('getImageContentSize failed:', arguments);
 }
 
 function getCanvasFromImg(img) {
+const	size = getImageContentSize(img);
+
+	if (!size) {
+		return;
+	}
+
 const	canvas = cre('canvas');
 const	ctx = canvas.getContext('2d');
-const	size = getImageContentSize(img);
 
 	canvas.width  = size.width;
 	canvas.height = size.height;
@@ -4040,9 +4055,14 @@ const	size = getImageContentSize(img);
 }
 
 function getResizedCanvasFromImg(img, w,h) {
+const	size = getImageContentSize(img);
+
+	if (!size) {
+		return;
+	}
+
 const	canvas = cre('canvas');
 const	ctx = canvas.getContext('2d');
-const	size = getImageContentSize(img);
 const	widthFrom  = size.width;
 const	heightFrom = size.height;
 
@@ -4142,19 +4162,20 @@ function getCanvasFromImageData(imageData) {
 }
 
 function getCtxFromImageData(imageData) {
-const	canvas = cre('canvas');
-const	ctx = canvas.getContext('2d');
+const	canvas = getCanvasFromImageData(imageData);
 
-	canvas.width = imageData.width;
-	canvas.height = imageData.height;
-
-	ctx.putImageData(imageData, 0,0);
-
-	return ctx;
+	if (canvas) {
+		return canvas.getContext('2d');
+	}
 }
 
 function getCanvasFromMaskInvertAlpha(img) {
 const	canvas = getCanvasFromImg(img);
+
+	if (!canvas) {
+		return;
+	}
+
 const	ctx = canvas.getContext('2d');
 const	w = canvas.width;
 const	h = canvas.height;
@@ -4169,6 +4190,11 @@ const	h = canvas.height;
 
 function getImageDataInvertAlpha(imageData) {
 const	ctx = getCtxFromImageData(imageData);
+
+	if (!ctx) {
+		return;
+	}
+
 const	w = imageData.width;
 const	h = imageData.height;
 
@@ -4180,12 +4206,12 @@ const	h = imageData.height;
 	return ctx.getImageData(0,0, w,h);
 }
 
-function getImageData(img, x,y, w,h) {
-	if (!isNonNullObject(img)) {
+function getImageDataFromCanvasOrImage(img, x,y, w,h) {
+const	size = getImageContentSize(img);
+
+	if (!size) {
 		return;
 	}
-
-const	size = getImageContentSize(img);
 
 	if (isCanvasElement(img)) {
 	const	canvas = img;
@@ -4215,17 +4241,25 @@ const	size = getImageContentSize(img);
 }
 
 function getFirstPixelRGBA(img) {
-	if (isImageElement(img)) {
-		img = getImageData(img, 0,0, 1,1).data;
-	}
-
-	if (img && img.slice) {
+	if (
+		isNonNullObject(img)
+	&&	(
+			img.slice
+		||	(
+				(img = getImageDataFromCanvasOrImage(img, 0,0, 1,1))
+			&&	(img = img.data)
+			&&	img.slice
+			)
+		)
+	) {
 		return img.slice(0,4);
 	}
+
+	if (TESTING > 2) console.error('getFirstPixelRGBA failed:', arguments);
 }
 
 function getAutoCropArea(img, bgToCheck) {
-const	imageData = getImageData(img);
+const	imageData = getImageDataFromCanvasOrImage(img);
 
 	if (!isNonNullImageData(imageData)) {
 		return;
@@ -8028,17 +8062,18 @@ async function loadORA(project) {
 
 			const	opacity = orzClamp(oraNode.opacity, 0, 1, orzFloat);
 			const	isolation = oraNode.isolation || '';
-			const	isIsolatedAlpha = (isolation === 'isolate-alpha');	//* <- non-standard, for testing
+			const	isIsolatedAlpha = (isolation === ISOLATE_ALPHA);	//* <- non-standard, for testing
 			const	isPassThrough = (
 					isIsolatedAlpha
 				||	blendMode === BLEND_MODE_PASS			//* <- non-standard, for testing
-				||	isolation === BLEND_MODE_PASS			//* <- non-standard, for testing
+				||	isolation === ISOLATE_PASS			//* <- non-standard, for testing
+				||	regLayerBlendModePass.test(isolation)		//* <- non-standard, for testing
 				||	(
-						isolation === 'auto'			//* <- not consistent with Krita
-					// &&	opacity === 1				//* <- consistent with MyPaint for standard trivial case
-					// &&	alphaMode === BLEND_MODE_NORMAL
-					// &&	blendMode === BLEND_MODE_NORMAL
-					// &&	colorMode === BLEND_MODE_NORMAL
+						isolation === ISOLATE_AUTO		//* <- not consistent with Krita (tested in v4.4.3)
+					&&	opacity === 1				//* <- consistent with MyPaint for standard trivial case
+					&&	blendMode === BLEND_MODE_NORMAL
+					&&	alphaMode === BLEND_MODE_NORMAL
+					&&	colorMode === BLEND_MODE_NORMAL
 					)
 				);
 
@@ -9328,7 +9363,7 @@ function padCanvas(ctx, padding) {
 			ctx.globalAlpha = 1;
 			ctx.globalCompositeOperation = BLEND_MODE_CUT;
 
-			ctx.drawImage(getCtxFromImageData(cutImageData).canvas, 0,0);
+			ctx.drawImage(getCanvasFromImageData(cutImageData), 0,0);
 
 			ctx.globalCompositeOperation = BLEND_MODE_NORMAL;
 		}
@@ -12025,6 +12060,19 @@ async function saveProject(project, flags) {
 				: 1
 			);
 
+		let	blendMode = layer.blendMode;
+
+			if (!functionNameByBlendMode[blendMode]) {
+			const	ctx = getCtxForTest();
+				ctx.globalCompositeOperation = blendMode;
+
+				if (ctx.globalCompositeOperation !== blendMode) {
+					blendMode = layer.blendModeOriginal;
+				}
+			}
+
+		const	oraBlendMode = getOraBlendMode(blendMode);
+
 		let	x = orz(layer.left);
 		let	y = orz(layer.top);
 		let	oraNode;
@@ -12044,10 +12092,15 @@ async function saveProject(project, flags) {
 					? (
 						layer.isIsolatedAlpha
 					||	layer.mask
-						? 'isolate-alpha'	//* <- non-standard, for testing
-						: 'auto'
+						? ISOLATE_ALPHA		//* <- non-standard, for testing
+						:
+						!layer.isClipped
+					&&	blendMode === BLEND_MODE_NORMAL
+					&&	opacity === 1		//* <- consistent with MyPaint for standard trivial case
+						? ISOLATE_AUTO		//* <- not consistent with Krita (tested in v4.4.3)
+						: ISOLATE_PASS		//* <- non-standard, for testing
 					)
-					: 'isolate'
+					: ISOLATE_ALL
 				);
 			} else {
 				oraNode = new ora.OraLayer(name, layer.width, layer.height);
@@ -12111,19 +12164,6 @@ async function saveProject(project, flags) {
 			) {
 				oraNode.otherAttributes = layer.otherAttributes;
 			}
-
-		let	blendMode = layer.blendMode;
-
-			if (!functionNameByBlendMode[blendMode]) {
-			const	ctx = getCtxForTest();
-				ctx.globalCompositeOperation = blendMode;
-
-				if (ctx.globalCompositeOperation !== blendMode) {
-					blendMode = layer.blendModeOriginal;
-				}
-			}
-
-		const	oraBlendMode = getOraBlendMode(blendMode);
 
 		const	mask = layer.mask;
 		let	maskImage, maskFillOutside, isMaskImage, isAnyMask;
@@ -12225,8 +12265,8 @@ async function saveProject(project, flags) {
 						oraMaskWrapper.layers = [ oraMaskNode, oraNode ];
 						oraMaskWrapper.isolation = (
 							layer.isPassThrough
-							? 'isolate-alpha'	//* <- non-standard, for testing
-							: 'isolate'
+							? ISOLATE_ALPHA	//* <- non-standard, for testing
+							: ISOLATE_ALL
 						);
 
 						oraNode.name = getNameForAuxLayer(LAYER_NAME_MASKED_CONTENT, name);
@@ -12293,7 +12333,7 @@ async function saveProject(project, flags) {
 
 			const	oraClippingWrapper = new ora.OraStack(getNameForAuxLayer(LAYER_NAME_CLIPPING_GROUP, name));
 				oraClippingWrapper.composite = oraClippingBase.composite;
-				oraClippingWrapper.isolation = 'isolate';
+				oraClippingWrapper.isolation = ISOLATE_ALL;
 
 			let	oraClippedWrapper, lastAddedNode;
 
@@ -12324,7 +12364,8 @@ async function saveProject(project, flags) {
 						oraClippedWrapper = new ora.OraStack(getNameForAuxLayer(LAYER_NAME_CLIPPED_CONTENT, name));
 						oraClippedWrapper.layers = [ oraNode ];
 						oraClippedWrapper.composite = getOraBlendMode(BLEND_MODE_CLIP);
-						oraClippedWrapper.isolation = 'auto';
+						oraClippedWrapper.isolation = ISOLATE_PASS;	//* <- non-standard, for testing
+						// oraClippedWrapper.isolation = ISOLATE_AUTO;	//* <- not consistent with Krita (v4.4.3)
 
 						oraClippingWrapper.layers.push(lastAddedNode = oraClippedWrapper);
 					}
