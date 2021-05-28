@@ -12422,6 +12422,7 @@ async function saveProject(project, flags) {
 				oraNode = new ora.OraLayer(name, layer.width, layer.height);
 
 			const	img = layer.imgFromColor || layer.img || await getOrLoadImage(project, layer);
+			let	rgba;
 
 				if (isImageElement(img)) {
 					oraNode.image = img;
@@ -12429,9 +12430,9 @@ async function saveProject(project, flags) {
 //* Reuse color-fill image kept from previous save:
 
 					if (layer.imgFromColor) {
-						oraNode.image_type = 'color';
 						oraNode.width  = Math.max(1, project.width);
 						oraNode.height = Math.max(1, project.height);
+
 						x = y = 0;
 					}
 				} else
@@ -12439,14 +12440,16 @@ async function saveProject(project, flags) {
 //* Get color-fill image from color and keep for next save:
 
 				if (img) {
-				const	rgba = getRGBACutOrPadded(img);
 				let	width  = oraNode.width  = Math.max(1, project.width);
 				let	height = oraNode.height = Math.max(1, project.height);
+
 					x = y = 0;
 
 					if (SAVE_COLOR_AS_ONE_PIXEL_IMAGE) {
 						width = height = 1;
 					}
+
+					rgba = getRGBACutOrPadded(img);
 
 				const	imgFromColor = await getImageElementFromData({
 						'data' : rgba
@@ -12465,9 +12468,20 @@ async function saveProject(project, flags) {
 					);
 
 					if (isImageElement(imgFromColor)) {
-						oraNode.image_type = 'color';
 						oraNode.image = layer.imgFromColor = imgFromColor;
 					}
+				}
+
+				if (layer.imgFromColor) {
+					if (!rgba) {
+						rgba = getRGBACutOrPadded(layer.img);
+					}
+
+					oraNode.image_type = (
+						rgba[3] > MIN_CHANNEL_VALUE
+						? 'color'
+						: 'empty'
+					);
 				}
 			}
 
