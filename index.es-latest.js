@@ -31,7 +31,6 @@
 //* TODO: batch: to avoid bruteforcing global cross-products, build a tree-graph of selectable option dependency forks when loading a project. Make a graph from each separated root, but include unconditional [no-render] paths into each tree for color collections, etc.
 
 //* TODO ---------------------- export: ---------------------------------------
-//* TODO: recompress uncompressed PNGs (too big filesize for given image dimensions) when saving project. Don't waste time on this when opening.
 //* TODO: save opened project as JSON (maybe name it BRA, Base64Raster, to open in JS drawpads).
 //* TODO: save opened project as SVG (probably more complicated, but widespread).
 //* TODO: save opened project as PSD. Try https://github.com/Agamnentzar/ag-psd
@@ -111,6 +110,8 @@ var	exampleRootDir = ''
 ,	LOG_ACTIONS			= false
 ,	LOG_GROUPING			= false	//* <- becomes a mess with concurrent operations.
 ,	LOG_TIMERS			= false
+,	OPTIMIZE_COLOR_FILL_PNG		= true	//* <- convert into 3/4-byte RGB(A) array on load, compress with UPNG on save.
+,	OPTIMIZE_UNCOMPRESSED_PNG	= true	//* <- saved by Krita, relying only on ORA file ZIP compression instead; but in JS it's slow to unzip and bloats RAM storage; on the other hand, ORA files with recompressed PNGs may get bigger.
 ,	PRELOAD_ALL_LAYER_IMAGES	= false
 ,	PRELOAD_USED_LAYER_IMAGES	= false
 ,	READ_FILE_CONTENT_TO_GET_TYPE	= false	//* <- this relies on the browser or the OS to magically determine file type.
@@ -791,9 +792,9 @@ const	SPLIT_SEC = 60
 ,	IMAGE_DATA_KEYS_TO_LOAD = [
 		'toImage',
 		'loadImage',
-		'pixelData',
-		'maskData',
 		'imgData',
+		'maskData',
+		'pixelData',
 	]
 
 ,	CLEANUP_PROJECT_LAYERS_RECURSIVE_KEYS = ['layers']
@@ -1413,6 +1414,7 @@ function orzTrim(value) { return orz(String(value).replace(regTrimNaN, '')); }
 function orzClamp(value, min, max, parserFunc) { return Math.max(min, Math.min(max, (parserFunc || orz)(value))); }
 
 function getDistance(x,y) { return Math.sqrt(x*x + y*y); }
+function getNumberOfChannels(n) { return orzClamp(n || 4, 3,4); }
 function getAlphaDataIndex(x,y, width) { return (((y*width + x) << 2) | 3); } // { return (((y*width + x) * 4) + 3); }
 function repeatText(text, numberOfTimes) { return (new Array(numberOfTimes + 1)).join(text); }
 
@@ -1894,7 +1896,7 @@ function getRGBACutOrPadded(rgbaSource, rgbaDefault) {
 	return (
 		rgbaSource.length >= 4
 		? rgbaSource.slice(0,4)
-		: rgbaSource.concat(rgbaDefault.slice(rgbaSource.length))
+		: rgbaSource.concat((rgbaDefault || DEFAULT_COLOR_VALUE_ARRAY).slice(rgbaSource.length))
 	);
 }
 
@@ -2008,9 +2010,7 @@ let	rgbaFromCanvas;
 	) {
 		ctx.fillRect(0,0, 1,1);
 
-		maxCount = orzClamp(maxCount || 4, 3,4);
-		rgba = Array.from(ctx.getImageData(0,0, 1,1).data.subarray(0, maxCount));
-		rgba = getNormalizedRGBA(rgba);
+		rgba = getNormalizedRGBAFromImageData(ctx.getImageData(0,0, 1,1), maxCount);
 	} else {
 		if (TESTING) console.log(
 			'getRGBAFromColorCodeOrName: unknown color "'
@@ -2027,11 +2027,9 @@ let	rgbaFromCanvas;
 }
 
 function getRGBAFromColorCodeOrArray(color, maxCount) {
-	maxCount = orzClamp(maxCount || 4, 3,4);
-
 	return (
 		isSlicableNotString(color)
-		? getNumbersArray(color, maxCount)
+		? getNumbersArray(color, getNumberOfChannels(maxCount))
 		: getRGBAFromColorCodeOrName(color, maxCount)
 	);
 }
@@ -2067,6 +2065,14 @@ const	rgba = getRGBAFromColorCodeOrArray(color);
 	);
 }
 
+function getNormalizedRGBAFromImageData(imageData, maxCount) {
+	return getNormalizedRGBA(
+		Array.from(
+			imageData.data.subarray(0, getNumberOfChannels(maxCount))
+		)
+	);
+}
+
 function getNormalizedRGBA(rgba) {
 	if (rgba.length > 3) {
 		if (rgba[3] === MAX_CHANNEL_VALUE) {
@@ -2083,10 +2089,9 @@ function getNormalizedRGBA(rgba) {
 
 function getColorTextFromArray(rgba, maxCount) {
 	if (isSlicableNotString(rgba)) {
-		maxCount = orzClamp(maxCount || 4, 3,4);
 		rgba = (
 			rgba
-			.slice(0, maxCount)
+			.slice(0, getNumberOfChannels(maxCount))
 			.map(
 				(channelValue, index) => (
 					index === 3
@@ -3185,6 +3190,7 @@ function getFilePromiseFromURL(url, responseType, context) {
 
 	if (
 		!url
+	||	!isString(url)
 	||	typeof XMLHttpRequest !== 'function'
 	) {
 		return null;
@@ -3249,6 +3255,9 @@ async function getImagePromiseFromCanvasToBlob(canvas, trackList, mimeType, qual
 			img = cre('img');
 		}
 
+		img.type = blob.type.split('/').pop();
+		img.fileSize = blob.size;
+
 	let	url;
 
 		if (trackList) {
@@ -3293,7 +3302,6 @@ async function getImagePromiseFromCanvasToBlob(canvas, trackList, mimeType, qual
 					getErrorFromEvent(evt, 'Canvas to blob: image loading failed.', reject);
 				};
 
-				img.type = blob.type.split('/').pop();
 				img.src = url;
 			}
 		);
@@ -3417,6 +3425,39 @@ function getTrackListFromProject(holder) {
 	}
 }
 
+function getRGBAFromDataIfColorFill(imageData, project, layer) {
+	if (
+		OPTIMIZE_COLOR_FILL_PNG
+	&&	(layer && !(layer.top || layer.left))
+	&&	imageData && project
+	&&	imageData.data
+	&&	imageData.width  === project.width
+	&&	imageData.height === project.height
+	) {
+	const	data = imageData.data;
+	const	size = imageData.data.length;
+
+		if (size > 0) {
+		let	index = size;
+
+			while (--index) if (data[index] !== data[index % 4]) {
+
+				if (TESTING > 2) console.log('not RGBA:', index, '/', size, layer.nameOriginal || layer.name);
+
+				break;
+			}
+
+			if (index < 4) {
+			const	rgba = getNormalizedRGBAFromImageData(imageData);
+
+				if (TESTING > 2) console.log('getNormalizedRGBA:', index, '/', size, layer.nameOriginal || layer.name, rgba);
+
+				return rgba;
+			}
+		}
+	}
+}
+
 function getImageDataFromData(imageData) {
 	if (isImageData(imageData)) {
 		return imageData;
@@ -3446,13 +3487,19 @@ async function getImageElementFromData(imageData, project, colorsCount) {
 			);
 
 		const	entry = await getImageBlobAndURLFromDataOrList(arrayBuffer, TYPE_IMAGE_PNG, project);
-		let	{ img, url } = entry;
+		let	{ img, url, blob } = entry;
 
 			if (img) {
+				img.imageDataLength = imageData.data.length;
+				img.fileSize = arrayBuffer.byteLength;
+
 				return img;
 			} else {
 			const	img = entry.img = cre('img', (TESTING_PNG ? document.body : null));
 				img.src = url;
+
+				img.imageDataLength = imageData.data.length;
+				img.fileSize = arrayBuffer.byteLength;
 
 				if (TESTING_PNG) console.log('getImageElementFromData:', [imageData, arrayBuffer, url, img]);
 
@@ -3468,6 +3515,8 @@ async function getImageElementFromData(imageData, project, colorsCount) {
 			isCanvasElement(canvas = getCanvasFromImageData(imageData))
 		&&	isImageElement(img = await getImagePromiseFromCanvasToBlob(canvas, project))
 		) {
+			img.imageDataLength = imageData.data.length;
+
 			return img;
 		}
 	}
@@ -3485,17 +3534,24 @@ function getImageElementFromSrc(url) {
 	}
 }
 
-//* Not used yet: *------------------------------------------------------------
-/*
 function getImageDataFromArrayBuffer(arrayBuffer) {
-const	img = UPNG.decode(arrayBuffer);
-const	rgbaArray = UPNG.toRGBA8(img)[0];	//* <- UPNG.toRGBA8 returns array of frames, size = width * height * 4 bytes.
-const	imageData = new ImageData(img.width, img.height);
-	imageData.data.set(rgbaArray);
+	if (arrayBuffer) {
+	const	decoded = UPNG.decode(arrayBuffer);
+	const	frames = UPNG.toRGBA8(decoded);		//* <- UPNG.toRGBA8 returns array of frames, size = width * height * 4 bytes.
+	const	imageData = new ImageData(decoded.width, decoded.height);
+		imageData.data.set(new Uint8Array(frames[0]));
 
-	return imageData;
+		if (TESTING_PNG) console.log('getImageDataFromArrayBuffer:', [
+			'arrayBuffer:', arrayBuffer,
+			'decoded:', decoded,
+			'frames:', frames,
+			'imageData:', imageData,
+		]);
+
+		return imageData;
+	}
 }
-
+/*
 function getImageDataPromiseFromBlob(blob) {
 	return (
 		blob
@@ -3504,20 +3560,35 @@ function getImageDataPromiseFromBlob(blob) {
 		.catch(catchPromiseError)
 	);
 }
+*/
+function getArrayBufferPromiseFromURL(url) {
+	return (
+		getFilePromiseFromURL(url, 'arraybuffer')
+		.catch(catchPromiseError)
+	);
+}
 
-async function getImageDataFromURL(url) {
+async function getImageDataFromURL(source) {
 	if (
-		isString(url)
-	&&	url.length > 0
+		USE_UPNG
+	&&	await loadLibOnDemandPromise('UPNG.js')
 	) {
-	const	arrayBuffer = await getFilePromiseFromURL(url, 'arraybuffer').catch(catchPromiseError);
-
-		if (arrayBuffer) {
-			return getImageDataFromArrayBuffer(arrayBuffer);
-		}
+		return getImageDataFromArrayBuffer(
+			isArrayBuffer(source)
+			? source
+			: await getArrayBufferPromiseFromURL(source)
+		);
+	} else {
+		return await new Promise(
+			(resolve, reject) => resolvePromiseOnImgLoad(
+				getImageElementFromSrc(source)
+			,	(img) => resolve(getImageDataFromCanvasOrImage(img))
+			,	reject
+			)
+		).catch(catchPromiseError);
 	}
 }
-*/
+
 async function getImageBlobAndURLFromDataOrList(data, type, trackList) {
 	if (isArray(data)) {
 		data = Uint8Array.from(data, (v) => v.charCodeAt(0)).buffer;
@@ -4311,7 +4382,7 @@ let	foundTop = -1;
 			}
 
 			if (isArray(bgToCheck)) {
-				bgRGBA = getRGBACutOrPadded(bgToCheck, DEFAULT_COLOR_VALUE_ARRAY);
+				bgRGBA = getRGBACutOrPadded(bgToCheck);
 			}
 		}
 	}
@@ -4799,13 +4870,16 @@ async function getOrLoadImage(project, layer) {
 //* Try converting raw pixel data:
 
 		if (pixelData = getPropByAnyOfNamesChain(node, 'imgData', 'maskData', 'pixelData')) {
-		const	imgData = {
+		const	imageData = {
 				'data' : getPropByAnyOfNamesChain(pixelData, 'data')
 			,	'width' : getPropFromAnySource('width', pixelData, target, node)
 			,	'height' : getPropFromAnySource('height', pixelData, target, node)
 			};
 
-			if (img = await getImageElementFromData(imgData, project)) {
+			if (img = (
+				getRGBAFromDataIfColorFill(imageData, project, layer)
+			||	await getImageElementFromData(imageData, project)
+			)) {
 				return img;
 			}
 		}
@@ -4831,6 +4905,7 @@ async function getOrLoadImage(project, layer) {
 	}
 
 	async function thisToPngTryEach(...targets) {
+
 	let	img;
 
 		for (const target of targets) if (isNonNullObject(target))
@@ -4865,6 +4940,63 @@ async function getOrLoadImage(project, layer) {
 			]
 		) if (isNonNullObject(imgOrNode))
 		if (img = await thisToPngTryOne(target, imgOrNode)) {
+
+			if (
+				OPTIMIZE_UNCOMPRESSED_PNG
+			&&	isImageElement(img)
+			&&	!img.imageDataLength
+			) {
+			let	buffer;
+			const	url = img.src;
+			const	imageSize = getImageContentSize(img);
+			const	fileSize = (
+					img.file_size
+				||	img.fileSize
+				||	(buffer = await getArrayBufferPromiseFromURL(url)).byteLength
+				);
+
+				if (
+					fileSize
+					>
+					imageSize.width *
+					imageSize.height * 3
+				) {
+				const	imageData = await getImageDataFromURL(buffer || url);
+				const	reencodedImg = (
+						getRGBAFromDataIfColorFill(imageData, project, layer)
+					||	await getImageElementFromData(imageData, project)
+					);
+
+					if (reencodedImg) {
+
+						if (TESTING_PNG) console.log('getOrLoadImage: reencoded', [
+							'imageDataLength:', img.imageDataLength,
+							'img:', img,
+							'url:', url,
+							'size:', fileSize,
+							'buffer:', buffer,
+							'imageData:', imageData,
+							'reencodedImg:', reencodedImg,
+							'reencodedSize:', reencodedImg.fileSize,
+							'layer:', layer,
+							'project:', project,
+						]);
+
+						img = reencodedImg;
+					}
+
+				}
+			} else
+			if (img.imageDataLength) {
+
+				if (TESTING_PNG > 1) console.log('getOrLoadImage: skipped reencoding', [
+					'fileSize:', img.fileSize,
+					'imageDataLength:', img.imageDataLength,
+					'img:', img,
+					'layer:', layer,
+					'project:', project,
+				]);
+			}
 
 			if (layer) {
 				target.img = img;
@@ -8955,16 +9087,17 @@ const	values = {};
 }
 
 function getOrCreateReusableHeap(project) {
-let	buffer = project.renderingBuffer;
+let	uint8array = project.renderingBuffer;
 
-	if (!buffer) {
+	if (!uint8array) {
 	const	realSize = project.width * project.height * 4 * 3;	//* <- 2 RGBA pixel buffers + 1 Alpha mask (as RGBA too for convenience)
 	const	paddedSize = nextValidHeapSize(realSize);
+	const	buffer = new ArrayBuffer(paddedSize);
 
-		buffer = project.renderingBuffer = new ArrayBuffer(paddedSize);
+		uint8array = project.renderingBuffer = new Uint8Array(buffer);
 	}
 
-	return new Uint8Array(buffer);
+	return uint8array;
 }
 
 async function drawImageOrColor(project, ctx, img, blendMode, opacity, mask, invertMask) {
@@ -12306,7 +12439,7 @@ async function saveProject(project, flags) {
 //* Get color-fill image from color and keep for next save:
 
 				if (img) {
-				const	rgba = getRGBACutOrPadded(img, DEFAULT_COLOR_VALUE_ARRAY);
+				const	rgba = getRGBACutOrPadded(img);
 				let	width  = oraNode.width  = Math.max(1, project.width);
 				let	height = oraNode.height = Math.max(1, project.height);
 					x = y = 0;
