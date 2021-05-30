@@ -39,6 +39,7 @@
 //* TODO: compatible PSD -> ORA layer mode/structure conversions; on load/save/both?
 
 //* TODO ---------------------- other: ----------------------------------------
+//* TODO: fix stuck loading of ORA with big PNGs while optimizing them all by UPNG.js.
 //* TODO: don't add custom properties to objects of built-in types, if possible.
 //* TODO: global job list for WIP cancelling instead of spaghetti-coded flag checks.
 //* TODO: split JS files in a way that lets older browsers to use parts they can parse and execute (only show menu, or only load ORA, etc.).
@@ -110,6 +111,7 @@ var	exampleRootDir = ''
 ,	LOG_ACTIONS			= false
 ,	LOG_GROUPING			= false	//* <- becomes a mess with concurrent operations.
 ,	LOG_TIMERS			= false
+,	OPTIMIZE_ALL_PNG		= false
 ,	OPTIMIZE_COLOR_FILL_PNG		= true	//* <- convert into 3/4-byte RGB(A) array on load, compress with UPNG on save.
 ,	OPTIMIZE_UNCOMPRESSED_PNG	= true	//* <- saved by Krita, relying only on ORA file ZIP compression instead; but in JS it's slow to unzip and bloats RAM storage; on the other hand, ORA files with recompressed PNGs may get bigger.
 ,	PRELOAD_ALL_LAYER_IMAGES	= false
@@ -3535,7 +3537,7 @@ function getImageElementFromSrc(url) {
 }
 
 function getImageDataFromArrayBuffer(arrayBuffer) {
-	if (arrayBuffer) {
+	if (isArrayBuffer(arrayBuffer)) {
 	const	decoded = UPNG.decode(arrayBuffer);
 	const	frames = UPNG.toRGBA8(decoded);		//* <- UPNG.toRGBA8 returns array of frames, size = width * height * 4 bytes.
 	const	imageData = new ImageData(decoded.width, decoded.height);
@@ -3551,16 +3553,7 @@ function getImageDataFromArrayBuffer(arrayBuffer) {
 		return imageData;
 	}
 }
-/*
-function getImageDataPromiseFromBlob(blob) {
-	return (
-		blob
-		.arrayBuffer()
-		.then((arrayBuffer) => getImageDataFromArrayBuffer(arrayBuffer))
-		.catch(catchPromiseError)
-	);
-}
-*/
+
 function getArrayBufferPromiseFromURL(url) {
 	return (
 		getFilePromiseFromURL(url, 'arraybuffer')
@@ -3568,7 +3561,7 @@ function getArrayBufferPromiseFromURL(url) {
 	);
 }
 
-async function getImageDataFromURL(source) {
+async function getImageDataDecodedFromImage(source) {
 	if (
 		USE_UPNG
 	&&	await loadLibOnDemandPromise('UPNG.js')
@@ -3576,7 +3569,14 @@ async function getImageDataFromURL(source) {
 		return getImageDataFromArrayBuffer(
 			isArrayBuffer(source)
 			? source
-			: await getArrayBufferPromiseFromURL(source)
+			:
+			isBlob(source)
+			? (source.buffer || await source.arrayBuffer())
+			: await getArrayBufferPromiseFromURL(
+				isImageElement(source)
+				? source.src
+				: source
+			)
 		);
 	} else {
 		return await new Promise(
@@ -3867,6 +3867,15 @@ const	varName = lib.varName || '';
 		return true;
 	}
 
+//* Avoid duplicate loading, possible due to async:
+
+	if (
+		lib.loadingPromise
+	&&	getScriptElementsByLibName(libName).length > 0
+	) {
+		return await lib.loadingPromise;
+	}
+
 const	dir = lib.dir || '';
 const	scripts = asFlatArray(lib.files);
 const	depends = asFlatArray(lib.depends);
@@ -3878,7 +3887,7 @@ const	depends = asFlatArray(lib.depends);
 		return false;
 	}
 
-	return new Promise(
+	return lib.loadingPromise = new Promise(
 		(resolve, reject) => {
 
 			function addNextScript(evt) {
@@ -3949,12 +3958,7 @@ const	depends = asFlatArray(lib.depends);
 
 //* Otherwise, cleanup and report fail:
 
-					del(
-						getAllByTag('script', document.head)
-						.filter(
-							(script) => (script.getAttribute('data-lib-name') === libName)
-						)
-					);
+					del(getScriptElementsByLibName(libName));
 
 					if (LOG_ACTIONS) logTime('"' + libName + '" library failed loading');
 
@@ -3965,6 +3969,15 @@ const	depends = asFlatArray(lib.depends);
 			addNextScript();
 		}
 	).catch(catchPromiseError);
+}
+
+function getScriptElementsByLibName(libName) {
+	return (
+		getAllByTag('script', document.head)
+		.filter(
+			(script) => (script.getAttribute('data-lib-name') === libName)
+		)
+	)
 }
 
 //* Page-specific functions: internal, utility *-------------------------------
@@ -4942,7 +4955,10 @@ async function getOrLoadImage(project, layer) {
 		if (img = await thisToPngTryOne(target, imgOrNode)) {
 
 			if (
-				OPTIMIZE_UNCOMPRESSED_PNG
+				(
+					OPTIMIZE_ALL_PNG
+				||	OPTIMIZE_UNCOMPRESSED_PNG
+				)
 			&&	isImageElement(img)
 			&&	!img.imageDataLength
 			) {
@@ -4952,16 +4968,21 @@ async function getOrLoadImage(project, layer) {
 			const	fileSize = (
 					img.file_size
 				||	img.fileSize
-				||	(buffer = await getArrayBufferPromiseFromURL(url)).byteLength
+				||	getPropByNameChain(
+						buffer = await getArrayBufferPromiseFromURL(url)
+					,	'byteLength'
+					)
 				);
 
 				if (
-					fileSize
-					>
-					imageSize.width *
-					imageSize.height * 3
+					OPTIMIZE_ALL_PNG
+				||	(
+						fileSize >
+						imageSize.width *
+						imageSize.height * 3
+					)
 				) {
-				const	imageData = await getImageDataFromURL(buffer || url);
+				const	imageData = await getImageDataDecodedFromImage(buffer || url);
 				const	reencodedImg = (
 						getRGBAFromDataIfColorFill(imageData, project, layer)
 					||	await getImageElementFromData(imageData, project)
@@ -4984,7 +5005,6 @@ async function getOrLoadImage(project, layer) {
 
 						img = reencodedImg;
 					}
-
 				}
 			} else
 			if (img.imageDataLength) {
