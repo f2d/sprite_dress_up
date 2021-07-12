@@ -13308,8 +13308,6 @@ function setWIPstate(isWIP, project) {
 
 			if (element.name !== 'download_all') {
 				element.disabled = (
-					!element.name
-				) || (
 					element.name === 'stop'
 					? !isWIP
 					: isWIP
