@@ -6297,38 +6297,55 @@ async function getProjectViewMenu(project) {
 
 		return getOrLoadImage(project, layer).then(
 			(img) => {
-				if (isImageElement(img)) {
-					if (layer.isColor) {
-						layer.img = getFirstPixelRGBA(img);
+				if (
+					layer.isColor
+				&&	(
+						isArray(img)
+					||	isImageElement(img)
+					)
+				) {
+				const	layerRGBA = (
+						isArray(img)
+						? img
+						: getFirstPixelRGBA(img)
+					);
 
-						if (colorCode) {
-						const	colorCodeText = getColorTextFromArray(colorCode);
-						const	layerRGBAText = getColorTextFromArray(layer.img);
+					if (colorCode) {
+					const	colorCodeText = getColorTextFromArray(colorCode);
+					const	layerRGBAText = getColorTextFromArray(layerRGBA);
 
-							if (layerRGBAText !== colorCodeText) {
-								console.error(
-									'Got color code in param, prefered:', [
-										colorCodeText,
-										'ignored color code in layer content:',
-										layerRGBAText,
-										getLayerPathText(layer),
-										layer,
-									]
-								);
-							}
+						if (layerRGBAText !== colorCodeText) {
 
-							layer.img = colorCode;
+							console.error(
+								'Got color code in param, prefered:', [
+									colorCodeText,
+									'ignored color code in layer content:',
+									layerRGBAText,
+									getLayerPathText(layer),
+									layer,
+									img,
+								]
+							);
 						}
+
+						layer.img = colorCode;
+					} else {
+						layer.img = layerRGBA;
 					}
 
 					return true;
 				} else
+				if (isImageElement(img)) {
+					return true;
+				} else
 				if (colorCode) {
+
 					if (TESTING) console.log(
 						'Got color code in param, layer content not found:', [
 							getColorTextFromArray(colorCode),
 							getLayerPathText(layer),
 							layer,
+							img,
 						]
 					);
 
