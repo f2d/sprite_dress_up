@@ -33,7 +33,7 @@
 //* TODO ---------------------- export: ---------------------------------------
 //* TODO: save opened project as JSON (maybe name it BRA, Base64Raster, to open in JS drawpads).
 //* TODO: save opened project as SVG (probably more complicated, but widespread).
-//* TODO: save opened project as PSD. Try https://github.com/Agamnentzar/ag-psd
+//* TODO: save opened project as PSD. Try https://github.com/Agamnentzar/ag-psd (may also work with PSB)
 //* TODO: save images: WebP, JPEG XL. https://bugs.chromium.org/p/chromium/issues/detail?id=170565#c77 - toDataURL/toBlob quality 1.0 = lossless.
 //* TODO: make exported project files identically reproducible, if possible. Now works as long as source file, its mod.date and result layer tree are the same.
 //* TODO: compatible PSD -> ORA layer mode/structure conversions; on load/save/both?
@@ -836,14 +836,24 @@ const	LIB_ROOT_DIR = 'lib/'
 
 ,	ZIP_FORMAT_DIR = LIB_FORMATS_DIR + 'zip/zip_js/'
 ,	ZLIB_ASM_DIR = LIB_FORMATS_DIR + 'zlib/zlib-asm/v0.2.2/'	//* <- last version supported by zip.js, ~ x2 faster than default
-,	ZLIB_PAKO_DIR = LIB_FORMATS_DIR + 'zlib/pako/v2.0.2/'	//* <- good and fast enough for everything
+,	ZLIB_PAKO_DIR = LIB_FORMATS_DIR + 'zlib/pako/v2.0.2/'		//* <- good and fast enough for everything
+	;
+
+//* External variable names, do not change *-----------------------------------
+
+var	PSD
+,	UPNG
+,	UZIP
+,	agPsd
+,	ora
+,	pako
+,	zip
+,	zlib
 	;
 
 //* To be figured on the go *--------------------------------------------------
 
-var	ora, zip, zlib, pako, PSD, UPNG, UZIP	//* <- external variable names, do not change
-
-,	PSD_JS
+var	PSD_JS
 ,	CompositionModule
 ,	compositionFunctionNames
 
@@ -1000,13 +1010,24 @@ const	zlibPakoFileName = (
 		,	'files' : ['ora-blending.js']
 		},
 
+		'ag-psd' : {
+
+//* Source: https://github.com/Agamnentzar/ag-psd
+//* Builds: https://www.jsdelivr.com/package/npm/ag-psd
+//* Bundle: https://cdn.jsdelivr.net/npm/ag-psd@14.2.0/dist/bundle.js
+
+			'varName' : 'agPsd'
+		,	'dir' : LIB_FORMATS_DIR + 'psd/ag-psd/'
+		,	'files' : ['ag-psd-14.2.0-dist-bundle.js']	//* <- also works with PSB files
+		},
+
 		'psd.js' : {
 
 //* Source: https://github.com/meltingice/psd.js/issues/154#issuecomment-446279652
 //* Based on https://github.com/layervault/psd.rb
 
 			'varName' : 'PSD_JS'
-		,	'dir' : LIB_FORMATS_DIR + 'psd/psd_js/psd.js_build_by_rtf-const_2018-12-11/'	//* <- working with bigger files?
+		,	'dir' : LIB_FORMATS_DIR + 'psd/psd_js/psd.js_build_by_rtf-const_2018-12-11/'	//* <- works with bigger files?
 		,	'files' : ['psd.js']
 		},
 
@@ -1016,7 +1037,7 @@ const	zlibPakoFileName = (
 //* Fork of https://github.com/meltingice/psd.js
 
 			'varName' : 'PSD'
-		,	'dir' : LIB_FORMATS_DIR + 'psd/psd_js/psd.js_fork_by_imcuttle_2018-09-19/'		//* <- working here
+		,	'dir' : LIB_FORMATS_DIR + 'psd/psd_js/psd.js_fork_by_imcuttle_2018-09-19/'	//* <- works here
 		,	'files' : ['psd.browser.js']
 		},
 	};
@@ -1043,14 +1064,33 @@ const	zlibPakoFileName = (
 	FILE_TYPE_LOADERS = [
 		{
 			'dropFileExts' : ['ora', 'zip']
-		,	'inputFileAcceptMimeTypes' : ['image/openraster', 'application/zip']
+		,	'inputFileMimeTypes' : [
+				'image/openraster',
+				'application/zip',
+			]
 		,	'handlerFuncs' : [
 				loadORA,
 			]
 		},
 		{
+			'dropFileExts' : ['psd', 'psb']
+		,	'inputFileMimeTypes' : [
+				'image/psb',
+				'image/psd',
+				'image/photoshop',
+				'image/x-photoshop',
+				'image/vnd.adobe.photoshop',
+			]
+		,	'handlerFuncs' : [
+				loadAgPSD,
+			]
+		},
+		{
 			'dropFileExts' : ['psd']
-		,	'inputFileAcceptMimeTypes' : ['image/x-photoshop', 'image/vnd.adobe.photoshop']
+		,	'inputFileMimeTypes' : [
+				'image/x-photoshop',
+				'image/vnd.adobe.photoshop',
+			]
 		,	'handlerFuncs' : [
 				loadPSD,
 				// loadPSDBrowser,	//* <- second parser is only needed if it could success on different files
@@ -5358,7 +5398,7 @@ let	project, totalStartTime;
 	for (const loader of FILE_TYPE_LOADERS)
 	if (
 		loader.dropFileExts.includes(ext)
-	||	loader.inputFileAcceptMimeTypes.includes(mimeType)
+	||	loader.inputFileMimeTypes.includes(mimeType)
 	) for (const func of loader.handlerFuncs) {
 
 		projectButtons.errorPossible = 'project_status_error_in_format';
@@ -8565,6 +8605,49 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 			,	rootLayers
 			,	addLayerToTree
 			);
+		}
+	);
+}
+
+async function loadAgPSD(project) {
+
+const	fileReadingOptions = {
+		useImageData : !!GET_LAYER_IMAGE_FROM_BITMAP,		//* <- `imageData` field instead of `canvas`
+		useRawThumbnail : !!GET_LAYER_IMAGE_FROM_BITMAP,	//* <- `thumnailRaw` field instead of `thumbnail`
+		logMissingFeatures : !!TESTING,
+		// logDevFeatures : !!TESTING,
+	};
+
+	return await loadCommonWrapper(
+		project
+	,	'ag-psd'
+	,	function getFileParserPromise(file) {
+			return (
+				getFilePromise(file, 'arraybuffer', project)
+				.then((buffer) => agPsd.readPsd(buffer, fileReadingOptions))
+				.catch(catchPromiseError)
+			);
+		}
+	,	async function treeConstructorFunc(project, psdFile) {
+
+		const	versionInfo = getPropByNameChain(psdFile, 'imageResources', 'versionInfo');
+		const	versionInfoText = (
+				['readerName', 'writerName']
+				.map((key) => getPropByNameChain(versionInfo, key))
+				.filter(arrayFilterNonEmptyValues)
+				.filter(arrayFilterUniqueValues)
+				.join('\n')
+			);
+
+			if (TESTING) console.log('loadAgPSD:', [
+				'project:', project,
+				'psdFile:', psdFile,
+				'fileReadingOptions:', fileReadingOptions,
+				'versionInfoText:', versionInfoText,
+			]);
+
+//* TODO:
+
 		}
 	);
 }
@@ -14264,7 +14347,7 @@ const	inputFileAcceptTypes = [];
 	for (const loader of FILE_TYPE_LOADERS) {
 
 	const	exts = loader.dropFileExts || DUMMY_EMPTY_ARRAY;
-	const	mimeTypes = loader.inputFileAcceptMimeTypes || DUMMY_EMPTY_ARRAY;
+	const	mimeTypes = loader.inputFileMimeTypes || DUMMY_EMPTY_ARRAY;
 	const	lowerCaseExts = exts.map((ext) => ext.toLowerCase());
 	const	upperCaseExts = exts.map((ext) => ext.toUpperCase());
 	const	key = upperCaseExts.shift();
