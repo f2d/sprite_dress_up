@@ -8183,19 +8183,20 @@ async function loadORA(project) {
 			project.width  = orz(oraFile.width);
 			project.height = orz(oraFile.height);
 
-//* Fix for original ora.js:
-
-		let	rootLayers;
+//* Fixes for original ora.js:
 
 			if (
-				project.nodesCount
+				!project.foldersCount
 			&&	!project.layersCount
 			) {
 				project.layersCount = project.nodesCount;
-				rootLayers = oraFile.layers.slice().reverse();
-			} else {
-				rootLayers = oraFile.layers;
 			}
+
+		const	rootLayers = (
+				ora.keepLayersOrderTopToBottom
+				? oraFile.layers
+				: oraFile.layers.slice().reverse()
+			);
 
 //* Gather layers into a tree object:
 
