@@ -126,6 +126,7 @@ filter_placeholder = '<filter_placeholder>'
 
 layer_suffix_file_types = [
 	'psd'
+,	'psb'
 ]
 
 zip_file_types = [
