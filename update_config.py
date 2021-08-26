@@ -310,12 +310,12 @@ def get_formatted_time(t, str_format=format_print):
 	return datetime.datetime.fromtimestamp(t).strftime(str_format)
 
 # https://gist.github.com/cbwar/d2dfbc19b140bd599daccbe0fe925597#gistcomment-2845059
-def get_formatted_filesize(num, space=' ', binary='i', suffix='B'):
-	magnitude = int(math.floor(math.log(num, 1024)))
-	val = num / math.pow(1024, magnitude)
+def get_formatted_filesize(full_num, space=' ', binary='i', suffix='B'):
+	magnitude = int(math.floor(math.log(full_num, 1000)))
+	shown_val = full_num / math.pow(1024, magnitude)
 	if magnitude > 7:
-		return '{:.1f}{}{}{}{}'.format(val, space, 'Y', binary, suffix)
-	return '{:3.1f}{}{}{}{}'.format(val, space, ['', 'K', 'M', 'G', 'T', 'P', 'E', 'Z'][magnitude], binary, suffix)
+		return '{:.1f}{}{}{}{}'.format(shown_val, space, 'Y', binary, suffix)
+	return '{:3.1f}{}{}{}{}'.format(shown_val, space, ['', 'K', 'M', 'G', 'T', 'P', 'E', 'Z'][magnitude], binary, suffix)
 
 def get_quoted_value_text(value):
 	return (
