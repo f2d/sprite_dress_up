@@ -148,7 +148,7 @@ cmd_args_to_get_image_size = [
 	'identify'
 ,	'-verbose'
 ,	'-format'
-,	'%Wx%H'
+,	'%Wx%H/'
 ,	src_file_path_placeholder
 ]
 
@@ -257,6 +257,9 @@ def is_type_str(v):
 
 def get_str_from_bytes(v):
 	return v if is_type_str(v) else v.decode()
+
+def get_text_lowercase(text):
+	return str(text).lower()
 
 def get_text_encoded_for_print(text):
 	return text.encode(print_encoding) if sys.version_info.major == 2 else text
@@ -441,9 +444,14 @@ def get_image_path_for_cmd(src_file_path, check_thumbnail=False):
 	src_file_ext = get_file_ext(src_file_path)
 	print_with_colored_title('File type:', src_file_ext)
 
-	if src_file_ext in zip_file_types:
+	if merged_layer_suffix in src_file_ext:
+		return src_file_path
 
+	unzipped_file_path = None
+
+	try:
 		src_zip = zipfile.ZipFile(src_file_path, 'r')
+
 		if src_zip:
 			names_to_search = (
 				zipped_thumbnail_filenames
@@ -458,13 +466,20 @@ def get_image_path_for_cmd(src_file_path, check_thumbnail=False):
 					print_with_colored_title('Found full merged image file:', zipped_path)
 
 					unzipped_content = src_zip.read(zipped_path)
+					unzipped_file_path = remove_temp_file(temp_extracted_file_path)
 
-					src_file_path = remove_temp_file(temp_extracted_file_path)
-					src_file_ext = get_file_ext(src_file_path)
-
-					write_file(src_file_path, unzipped_content, mode='w+b')
+					write_file(unzipped_file_path, unzipped_content, mode='w+b')
 
 					break
+
+	except zipfile.BadZipFile as exception:
+
+		if src_file_ext in zip_file_types:
+			print_with_colored_title('Error reading file as ZIP:', exception)
+	else:
+		if unzipped_file_path:
+			src_file_path = unzipped_file_path
+			src_file_ext = get_file_ext(src_file_path)
 
 	if src_file_ext in layer_suffix_file_types:
 		src_file_path += merged_layer_suffix
@@ -568,7 +583,7 @@ def get_image_cmd_result(src_file_path, cmd_args, new_size_arg=None, check_thumb
 
 	return get_cmd_result(cmd_args_with_src_path)
 
-def get_image_size(src_file_path):
+def get_image_sizes(src_file_path):
 	for try_cmd_args_to_get_image_size in get_image_cmd_versions(cmd_args_to_get_image_size):
 
 		cmd_result = get_image_cmd_result(
@@ -576,12 +591,15 @@ def get_image_size(src_file_path):
 		,	try_cmd_args_to_get_image_size
 		)
 
-		image_size = cmd_result.strip().lower()
+		image_sizes = list(map(get_text_lowercase, cmd_result.strip().strip('/').split('/', 2)))
 
-		if re.match(pat_check_image_size, image_size):
-			print_with_colored_title('Got image size:', image_size)
+		if len(image_sizes) > 0:
+			image_size = image_sizes[0]
 
-			return image_size
+			if re.match(pat_check_image_size, image_size):
+				print_with_colored_title('Got image size:', image_size)
+
+				return image_sizes
 
 	return ''
 
@@ -831,18 +849,30 @@ for dir_name, filenames in sorted(src_filenames_by_subdir.items()):
 		text_filesize_bytes = re.sub(pat_separate_thousands, r' ', str(num_filesize))
 		text_modtime = get_formatted_time(num_modtime)
 
+		image_path = path
+		image_size = None
+		image_sizes = get_image_sizes(path)
+
+		if not is_type_str(image_sizes) and not is_type_str(image_size):
+
+			if len(image_sizes) > 0:
+				image_size = image_sizes[0]
+
+			if len(image_sizes) > 1:
+				image_path += merged_layer_suffix
+
 		text_image_size = (
-			get_image_size(path)
+			image_size
 		or	get_old_field(old_files, dir_name, filename, 'pixels')
 		)
 
 		text_preview_base64 = (
-			get_resized_image_as_base64(path, preview_size_arg)
+			get_resized_image_as_base64(image_path, preview_size_arg)
 		or	get_old_field(old_files, dir_name, filename, 'preview')
 		)
 
 		text_thumbnail_base64 = (
-			get_resized_image_as_base64(path, thumbnail_size_arg)
+			get_resized_image_as_base64(image_path, thumbnail_size_arg)
 		or	get_old_field(old_files, dir_name, filename, 'thumbnail')
 		)
 
