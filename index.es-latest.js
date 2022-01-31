@@ -227,6 +227,9 @@ const	CONFIG_FILE_PATH = 'config.js'			//* <- declarations-only file to redefine
 ,	LS_KEY_BIG_TEXT = LS_NAMESPACE + 'BigText'
 ,	LS_KEY_FIXED_TAB_WIDTH = LS_NAMESPACE + 'FixedTabWidth'
 
+,	LANG_FALLBACK = 'en'
+,	LANG_IN_DOCUMENT = document.documentElement.lang
+
 ,	LS = window.localStorage || localStorage
 ,	URL = window.URL || window.webkitURL || URL
 ,	LANG = document.documentElement.lang || 'en'
@@ -853,7 +856,8 @@ var	PSD
 
 //* To be figured on the go *--------------------------------------------------
 
-var	PSD_JS
+var	LANG
+,	PSD_JS
 ,	CompositionModule
 ,	compositionFunctionNames
 
@@ -14212,16 +14216,32 @@ let	logLabel;
 
 	if (LOG_TIMERS_PRECONFIG) console.time(logLabelWrap);
 	if (LOG_GROUPING) console.group(logLabelWrap);
-	if (LOG_TIMERS_PRECONFIG) console.time(logLabel = `Init localization "${LANG}"`);
 
 	document.body.classList.remove('stub');
 	document.body.classList.add('loading');
 
-	await loadLibPromise(LIB_LANG_DIR + 'localization.' + LANG + '.js');
+	for (const langName of [
+		LANG_IN_DOCUMENT,
+		LANG_FALLBACK,
+	]) {
+		if (LOG_TIMERS_PRECONFIG) console.time(logLabel = `Init localization "${langName}"`);
+
+	let	langLoaded = await loadLibPromise(LIB_LANG_DIR + 'localization.' + langName + '.js');
+
+		if (LOG_TIMERS_PRECONFIG) console.timeEnd(logLabel);
+
+		if (langLoaded) {
+			LANG = langName;
+
+			break;
+		}
+	}
+
+	if (!LANG) {
+		return;
+	}
 
 	document.body.innerHTML = getLocalizedHTML('loading');
-
-	if (LOG_TIMERS_PRECONFIG) console.timeEnd(logLabel);
 
 //* Remember config defaults:
 
