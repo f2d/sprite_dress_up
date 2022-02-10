@@ -232,7 +232,6 @@ const	CONFIG_FILE_PATH = 'config.js'			//* <- declarations-only file to redefine
 
 ,	LS = window.localStorage || localStorage
 ,	URL = window.URL || window.webkitURL || URL
-,	LANG = document.documentElement.lang || 'en'
 
 ,	RUNNING_FROM_DISK = isURLFromDisk('/')
 ,	CAN_USE_WORKERS = (typeof Worker === 'function' && !RUNNING_FROM_DISK)
@@ -316,7 +315,7 @@ const	CONFIG_FILE_PATH = 'config.js'			//* <- declarations-only file to redefine
 ,	regNonAlphaNum		= /[^0-9a-z]+/gi
 ,	regHasDigit		= /\d/
 ,	regSpace		= /\s+/g
-,	regCommaSpace		= /\,+s*/g
+,	regCommaSpace		= /\,+\s*/g
 ,	regTemplateVarName	= /\{(\w+)\}/g
 ,	regTrimBrackets		= getTrimReg('\\(\\)\\[\\]\\{\\}\\<\\>')
 ,	regTrimNaN		= getTrimReg('\\D')
@@ -5399,7 +5398,7 @@ let	loadersTried = 0;
 let	project, totalStartTime;
 
 	try_loaders:
-	for (const loader of FILE_TYPE_LOADERS)
+	for (const loader of FILE_TYPE_LOADERS) if (loader)
 	if (
 		loader.dropFileExts.includes(ext)
 	||	loader.inputFileMimeTypes.includes(mimeType)
@@ -7589,12 +7588,10 @@ const	params = getOrInitChild(layer, 'params');
 
 					forEachSetInCrossProduct(
 						[methods, thresholds, boundaries]
-					,	(method, threshold, dimensions) => {
-							addToListIfNotYet(
-								collection
-							,	orderedJSONstringify({ method, threshold, dimensions })
-							);
-						}
+					,	(method, threshold, dimensions) => addToListIfNotYet(
+							collection
+						,	orderedJSONstringify({ method, threshold, dimensions })
+						)
 					);
 				}
 			} else
