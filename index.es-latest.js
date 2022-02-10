@@ -13919,6 +13919,26 @@ function onPageDrop(evt) {
 		return;
 	}
 
+let	inputElement = (
+		evt
+	&&	evt.tagName
+		? evt
+		:
+		evt
+	&&	evt.target
+	&&	evt.target.tagName
+		? evt.target
+		: null
+	);
+
+const	acceptedExts = (
+		inputElement
+	&&	inputElement.getAttribute('directory') !== null
+	&&	inputElement.getAttribute('accept') !== null
+		? inputElement.getAttribute('accept').split(regCommaSpace)
+		: null
+	);
+
 const	filesToLoad = [];
 let	files, name, ext;
 
@@ -13942,9 +13962,23 @@ let	files, name, ext;
 			file
 		&&	(name = file.name).length > 0
 		&&	(ext = getFileExt(name)).length > 0
+		&&	(
+				!acceptedExts
+			||	acceptedExts.includes(ext)
+			||	acceptedExts.includes('.' + ext)
+			)
 		) {
 			filesToLoad.push({ evt, file, name, ext });
 		}
+	}
+
+//* Clear selected input value:
+
+	if (
+		inputElement
+	&&	inputElement.value
+	) {
+		inputElement.value = null;
 	}
 
 //* Process files:
@@ -14359,9 +14393,10 @@ let	canLoadLocalFiles = true;
 const	todoText = getLocalizedText('todo');
 const	todoHTML = '<p>' + getLocalizedHTML('todo') + '</p>';
 const	fileTypesByKeys = {};
+const	inputFileAcceptExts = [];
 const	inputFileAcceptTypes = [];
 
-	for (const loader of FILE_TYPE_LOADERS) {
+	for (const loader of FILE_TYPE_LOADERS) if (loader) {
 
 	const	exts = loader.dropFileExts || DUMMY_EMPTY_ARRAY;
 	const	mimeTypes = loader.inputFileMimeTypes || DUMMY_EMPTY_ARRAY;
@@ -14375,6 +14410,7 @@ const	inputFileAcceptTypes = [];
 		}
 
 		for (const ext of lowerCaseExts) {
+			addToListIfNotYet(inputFileAcceptExts, '.' + ext);
 			addToListIfNotYet(inputFileAcceptTypes, '.' + ext);
 		}
 
@@ -14401,6 +14437,7 @@ const	supportedFileTypesText = (
 		)
 		.join(', ')
 	)
+,	inputFileAcceptExtsText = inputFileAcceptExts.sort().join(', ')
 ,	inputFileAcceptTypesText = inputFileAcceptTypes.sort().join(', ')
 ,	openingNotesHTML = getLocalizedHTML('file_notes')
 ,	menuHTMLparts = {};
@@ -14413,6 +14450,9 @@ const	supportedFileTypesText = (
 	+		'</p>'
 	+		'<input type="file" onchange="onPageDrop(this)" multiple accept="'
 	+			encodeTagAttr(inputFileAcceptTypesText)
+	+		'">'
+	+		'<input type="file" onchange="onPageDrop(this)" multiple webkitdirectory directory accept="'
+	+			encodeTagAttr(inputFileAcceptExtsText)
 	+		'">'
 	+		'<p>'
 	+			getLocalizedHTML('file_formats')
