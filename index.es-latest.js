@@ -175,12 +175,12 @@ var	exampleRootDir = ''
 	'SelectElement',
 	'String',
 ].forEach(
-	function (typeName) {
-		window[
-			'is' + typeName
-		] = function (value) {
-			return (toString.call(value).slice(-1 - typeName.length, -1) === typeName);
-		};
+	(typeName) => {
+	const	functionName = 'is' + typeName;
+
+		if (typeof window[functionName] !== 'function') {
+			window[functionName] = (value) => (toString.call(value).slice(-1 - typeName.length, -1) === typeName);
+		}
 	}
 );
 
