@@ -14879,6 +14879,7 @@ const	batchButtonsHTML = (
 				(listType) => [
 					'[if ' + wrap.span.sample(listType) + ']',
 					wrap.span.name('{help_code_list_name_' + listType + '}'),
+					wrap.span.path('/'),
 					'[' + (childParam || '') + 'none]',
 				]
 			),
