@@ -779,6 +779,11 @@ const	SPLIT_SEC = 60
 		'input',
 	]
 
+,	IMAGE_FIT_CLASSES = [
+		'size-fit',
+		'size-full',
+	]
+
 ,	IMAGE_GEOMETRY_KEYS = [
 		['top', 'y'],
 		['left', 'x'],
@@ -837,8 +842,8 @@ const	LIB_ROOT_DIR = 'lib/'
 ,	LIB_UTIL_DIR = LIB_ROOT_DIR + 'util/'
 
 ,	ZIP_FORMAT_DIR = LIB_FORMATS_DIR + 'zip/zip_js/'
-,	ZLIB_ASM_DIR = LIB_FORMATS_DIR + 'zlib/zlib-asm/v0.2.2/'	//* <- last version supported by zip.js, ~ x2 faster than default
-,	ZLIB_PAKO_DIR = LIB_FORMATS_DIR + 'zlib/pako/v2.0.2/'		//* <- good and fast enough for everything
+,	ZLIB_ASM_DIR   = LIB_FORMATS_DIR + 'zlib/zlib-asm/v0.2.2/'	//* <- last version supported by zip.js, ~ x2 faster than default
+,	ZLIB_PAKO_DIR  = LIB_FORMATS_DIR + 'zlib/pako/v2.0.2/'		//* <- good and fast enough for everything
 	;
 
 //* External variable names, do not change *-----------------------------------
@@ -1064,6 +1069,23 @@ const	zlibPakoFileName = (
 		: null
 	);
 
+const	psbAndPsdMimeTypes = getJoinedCrossProductTextSet(
+		[
+			[
+				'image'
+			,	'application'
+			]
+		,	[
+				'psb'
+			,	'psd'
+			,	'photoshop'
+			,	'x-photoshop'
+			,	'vnd.adobe.photoshop'
+			]
+		]
+	,	'/'
+	);
+
 	FILE_TYPE_LOADERS = [
 		{
 			'dropFileExts' : ['ora', 'zip']
@@ -1075,25 +1097,16 @@ const	zlibPakoFileName = (
 				loadORA,
 			]
 		},
-		{
+		!TESTING ? null : {
 			'dropFileExts' : ['psd', 'psb']
-		,	'inputFileMimeTypes' : [
-				'image/psb',
-				'image/psd',
-				'image/photoshop',
-				'image/x-photoshop',
-				'image/vnd.adobe.photoshop',
-			]
+		,	'inputFileMimeTypes' : psbAndPsdMimeTypes
 		,	'handlerFuncs' : [
 				loadAgPSD,
 			]
 		},
 		{
 			'dropFileExts' : ['psd']
-		,	'inputFileMimeTypes' : [
-				'image/x-photoshop',
-				'image/vnd.adobe.photoshop',
-			]
+		,	'inputFileMimeTypes' : psbAndPsdMimeTypes.filter((text) => !text.includes('psb'))
 		,	'handlerFuncs' : [
 				loadPSD,
 				// loadPSDBrowser,	//* <- second parser is only needed if it could success on different files
@@ -1104,9 +1117,11 @@ const	zlibPakoFileName = (
 
 //* Common utility functions *-------------------------------------------------
 
-function asArray(value) { return ( isArray(value) ? value : [value] ); }
-function asFlatArray(value) { return getFlatArray(asArray(value || [])); }
-function arrayFromObjectEntriesSortByKey(a, b) { return ( a[0] > b[0] ? 1 : a[0] < b[0] ? -1 : 0 ); }
+const dotExt = (ext) => `.${ String(ext).toLowerCase() }`;
+
+const asArray = (value) => ( isArray(value) ? value : [value] );
+const asFlatArray = (value) => getFlatArray(asArray(value || []));
+const arrayFromObjectEntriesSortByKey = (a, b) => ( a[0] > b[0] ? 1 : a[0] < b[0] ? -1 : 0 );
 
 //* Reassemble items to new array:
 //* Source: https://stackoverflow.com/a/6470794
@@ -1119,7 +1134,7 @@ function arrayMoveItem(array, fromIndex, toIndex) {
 //* Source: https://stackoverflow.com/a/21071454
 
 function arrayMoveValue(array, fromIndex, toIndex) {
-	if( toIndex === fromIndex ) {
+	if (toIndex === fromIndex) {
 		return array;
 	}
 
@@ -1263,9 +1278,9 @@ function getCrossProductArray() {
 	,	(a, b) => {
 		const	result = [];
 
-			for (const ai of a)
-			for (const bi of b) {
-				result.push(ai.concat([bi]));
+			for (const a_i of a)
+			for (const b_i of b) {
+				result.push(a_i.concat([ b_i ]));
 			}
 
 			return result;
@@ -1414,6 +1429,17 @@ const	counts = [];
 	}
 
 	goDeeper(0);
+}
+
+function getJoinedCrossProductTextSet(arrays, joinText) {
+const	combos = [];
+
+	forEachSetInCrossProduct(
+		arrays
+	,	(...combo) => addToListIfNotYet(combos, combo.join(joinText))
+	);
+
+	return combos;
 }
 
 function arrayFillRepeat(dest, src) {
@@ -2800,8 +2826,15 @@ function makeElementFitOnClick(element, initialState) {
 
 //* Not listeners, because need attributes for style:
 
-	element.className = initialState || 'size-fit';
-	element.setAttribute('onclick', `this.classList.toggle('size-fit'), this.classList.toggle('size-full')`);
+	element.className = initialState || IMAGE_FIT_CLASSES[0];
+	element.setAttribute(
+		'onclick'
+	,	(
+			IMAGE_FIT_CLASSES
+			.map((className) => `this.classList.toggle('${ className }')`)
+			.join(', ')
+		)
+	);
 
 	return element;
 }
@@ -3015,7 +3048,7 @@ let	arg, argDate, argNum, argText, date, YMD, HMS;
 			}
 		}
 
-		if (TESTING > 9) console.log('getFormattedTime: arg[' + index + '] =', [typeof arg, arg]);
+		if (TESTING > 9) console.log('getFormattedTime: arg[' + index + '] =', [ typeof arg, arg ]);
 	}
 
 	if (!date && argText && isFunction(Date.parse)) {
@@ -3342,7 +3375,7 @@ async function getImagePromiseFromCanvasToBlob(canvas, trackList, mimeType, qual
 						URL.revokeObjectURL(url);
 					}
 
-					if (TESTING) console.error('Image loading failed:', [url, img, evt]);
+					if (TESTING) console.error('Image loading failed:', [ url, img, evt ]);
 
 					getErrorFromEvent(evt, 'Canvas to blob: image loading failed.', reject);
 				};
@@ -3546,7 +3579,7 @@ async function getImageElementFromData(imageData, project, colorsCount) {
 				img.imageDataLength = imageData.data.length;
 				img.fileSize = arrayBuffer.byteLength;
 
-				if (TESTING_PNG) console.log('getImageElementFromData:', [imageData, arrayBuffer, url, img]);
+				if (TESTING_PNG) console.log('getImageElementFromData:', [ imageData, arrayBuffer, url, img ]);
 
 				return new Promise(
 					(resolve, reject) => resolvePromiseOnImgLoad(img, resolve, reject)
@@ -3660,7 +3693,7 @@ const	blob = (
 			&&	entry.blob
 			&&	await isIdenticalData(entry.blob, blob)
 			) {
-				if (TESTING > 1) console.log('getImageBlobAndURLFromDataOrList: reused image', [key, entry, blob, trackList]);
+				if (TESTING > 1) console.log('getImageBlobAndURLFromDataOrList: reused image', [ key, entry, blob, trackList ]);
 
 				return entry;
 			}
@@ -3806,7 +3839,7 @@ const	baseName = (
 
 	fileName = baseName;
 
-	if (ext && !hasPostfix(fileName, ext = '.' + ext)) {
+	if (ext && !hasPostfix(fileName, ext = dotExt(ext))) {
 		fileName += ext;
 	}
 
@@ -4781,7 +4814,7 @@ function getLayerPathNamesChain(layer, flags) {
 		flags = {};
 	}
 
-const	path = (flags.includeSelf ? [layer.name || layer.nameOriginal] : []);
+const	path = (flags.includeSelf ? [ layer.name || layer.nameOriginal ] : []);
 
 	while (layer = getParentLayer(layer)) {
 		path.unshift(layer.name || layer.nameOriginal);
@@ -4823,7 +4856,7 @@ let	layersToRender = DUMMY_EMPTY_ARRAY;
 
 function isLayerClippedOrMask(layer) {
 	if (TESTING && !(isNonNullObject(layer) && layer.blendMode)) {
-		console.error('isLayerClippedOrMask: No blendMode, maybe not a layer:', [layer, getLayerPathText(layer)]);
+		console.error('isLayerClippedOrMask: No blendMode, maybe not a layer:', [ layer, getLayerPathText(layer) ]);
 	}
 
 	return (
@@ -4835,7 +4868,7 @@ function isLayerClippedOrMask(layer) {
 
 function isLayerRendered(layer) {
 	if (TESTING && !(isNonNullObject(layer) && layer.params)) {
-		console.error('isLayerRendered: No params, maybe not a layer:', [layer, getLayerPathText(layer)]);
+		console.error('isLayerRendered: No params, maybe not a layer:', [ layer, getLayerPathText(layer) ]);
 	}
 
 	return !(
@@ -4848,7 +4881,7 @@ function isLayerRendered(layer) {
 
 function isLayerSkipped(layer) {
 	if (TESTING && !(isNonNullObject(layer) && layer.params)) {
-		console.error('isLayerSkipped: No params, maybe not a layer:', [layer, getLayerPathText(layer)]);
+		console.error('isLayerSkipped: No params, maybe not a layer:', [ layer, getLayerPathText(layer) ]);
 	}
 
 	return !!(
@@ -5106,7 +5139,7 @@ async function getOrLoadImage(project, layer) {
 		return await thisToPngTryEach(layer || project);
 	} catch (error) {
 		if (layer) {
-			console.error('Failed to get layer or mask image:', [getLayerPathText(layer), error]);
+			console.error('Failed to get layer or mask image:', [ getLayerPathText(layer), error ]);
 		} else {
 			console.error('Failed to get project image:', error);
 		}
@@ -6399,7 +6432,7 @@ async function getProjectViewMenu(project) {
 				if (img === null) {
 					return true;
 				} else {
-					if (TESTING) console.error('Image loading failed:', [img, layer]);
+					if (TESTING) console.error('Image loading failed:', [ img, layer ]);
 
 					return false;
 				}
@@ -6423,7 +6456,7 @@ async function getProjectViewMenu(project) {
 				) {
 					return true;
 				} else {
-					if (TESTING) console.error('Image loading failed:', [img, layer]);
+					if (TESTING) console.error('Image loading failed:', [ img, layer ]);
 
 					return false;
 				}
@@ -7756,7 +7789,7 @@ const	params = getOrInitChild(layer, 'params');
 				params[paramType] = param || paramType;
 			}
 
-			if (TESTING > 9) console.log('Known param type:', [paramType, param, getWIPLayerPathText()]);
+			if (TESTING > 9) console.log('Known param type:', [ paramType, param, getWIPLayerPathText() ]);
 
 			continue param_list;
 		}
@@ -7769,7 +7802,7 @@ const	params = getOrInitChild(layer, 'params');
 			continue param_list;
 		}
 
-		if (TESTING) console.error('Unknown param type:', [param, getWIPLayerPathText()]);
+		if (TESTING) console.error('Unknown param type:', [ param, getWIPLayerPathText() ]);
 	}
 
 	return layer;
@@ -8613,8 +8646,8 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 async function loadAgPSD(project) {
 
 const	fileReadingOptions = {
-		useImageData : !!GET_LAYER_IMAGE_FROM_BITMAP,		//* <- `imageData` field instead of `canvas`
-		useRawThumbnail : !!GET_LAYER_IMAGE_FROM_BITMAP,	//* <- `thumnailRaw` field instead of `thumbnail`
+		useImageData : !!GET_LAYER_IMAGE_FROM_BITMAP,		//* <- "imageData" field instead of "canvas"
+		useRawThumbnail : !!GET_LAYER_IMAGE_FROM_BITMAP,	//* <- "thumnailRaw" field instead of "thumbnail"
 		logMissingFeatures : !!TESTING,
 		// logDevFeatures : !!TESTING,
 	};
@@ -9496,7 +9529,7 @@ let	canvas = null;
 			ctxBlendMode === blendMode
 		||	! await tryBlendingEmulation(blendMode)
 		) {
-			if (TESTING && ctxBlendMode !== blendMode) console.error('blendMode:', [blendMode, 'fallback:', ctxBlendMode]);
+			if (TESTING && ctxBlendMode !== blendMode) console.error('blendMode:', [ blendMode, 'fallback:', ctxBlendMode ]);
 
 			ctx.globalAlpha = opacity;
 
@@ -9646,9 +9679,9 @@ const	[ paddingX, paddingY ] = dimensions;
 	if (dimensions.length > 1) {
 		if ((paddingX < 0) !== (paddingY < 0)) {
 			if (paddingX < 0) {
-				return addPadding(subtractPadding(referenceImageData, [paddingX, 0]), [0, paddingY]);
+				return addPadding(subtractPadding(referenceImageData, [ paddingX, 0 ]), [ 0, paddingY ]);
 			} else {
-				return addPadding(subtractPadding(referenceImageData, [0, paddingY]), [paddingX, 0]);
+				return addPadding(subtractPadding(referenceImageData, [ 0, paddingY ]), [ paddingX, 0 ]);
 			}
 		}
 	}
@@ -10216,7 +10249,7 @@ function isLayerVisibleByCopyPaste(project, layer, values, listName) {
 
 function getLayerPathVisibilityByValues(project, layer, values, listName) {
 	if (TESTING && !(isNonNullObject(layer) && layer.params)) {
-		console.error('getLayerPathVisibilityByValues: No params, maybe not a layer:', [project, layer, values, listName]);
+		console.error('getLayerPathVisibilityByValues: No params, maybe not a layer:', [ project, layer, values, listName ]);
 	}
 
 const	renderingRootLayer = project.renderingRootLayer;
@@ -11697,8 +11730,7 @@ const	img       = render.img       || (render.img       = await getOrCreateRende
 		img.fileNameToSave =
 		render.fileNameToSave = (
 			getFileNameByValuesToSave(project, values)
-			+ '.'
-			+ (img.type || 'png')
+		+	dotExt(img.type || 'png')
 		);
 
 		img.title = img.fileNameToSave + img.subtitle;
@@ -11719,7 +11751,7 @@ async function getOrCreateRenderedImg(project, render) {
 			const	msec = canvas.renderingTime;
 
 				img.alt =
-				img.name = fileName + '.' + (img.type || 'png');
+				img.name = fileName + dotExt(img.type || 'png');
 				img.subtitle = (
 					TITLE_LINE_BREAK
 				+	'('
@@ -11961,7 +11993,7 @@ const	valueSets = project.renderBatchSelectedSets || (project.renderBatchSelecte
 	if (LOG_GROUPING) console.groupEnd(logLabel);
 	if (LOG_TIMERS) console.timeEnd(logLabel);
 
-	if (TESTING > 1) console.log('trackList:', [getTrackListFromProject(project), project]);
+	if (TESTING > 1) console.log('trackList:', [ getTrackListFromProject(project), project ]);
 
 	setWIPstate(false, project);
 }
@@ -12312,7 +12344,7 @@ let	batchContainer, subContainer;
 						totalTime = (endTime - startTime);
 
 						img.alt =
-						img.name = project.fileName + '.' + (img.type || 'png');
+						img.name = project.fileName + dotExt(img.type || 'png');
 						img.title = (
 							img.name
 						+	TITLE_LINE_BREAK
@@ -13965,7 +13997,7 @@ let	files, name, ext;
 		&&	(
 				!acceptedExts
 			||	acceptedExts.includes(ext)
-			||	acceptedExts.includes('.' + ext)
+			||	acceptedExts.includes(dotExt(ext))
 			)
 		) {
 			filesToLoad.push({ evt, file, name, ext });
@@ -14017,7 +14049,7 @@ const	thisJob = { startTime, files, evt };
 					)
 				)
 				.sort(arrayFromObjectEntriesSortByKey)
-				.map(([key, count]) => count + ' ' + key)
+				.map(([ key, count ]) => count + ' ' + key)
 			,	', '
 			)
 		].join(' ');
@@ -14040,7 +14072,7 @@ const	thisJob = { startTime, files, evt };
 
 		console.log('Loaded ' + loadedProjectsCount + ' of ' + files.length + ' project files.');
 	} else if (TESTING) {
-		console.error('Cannot load files:', [files, 'From event:', evt]);
+		console.error('Cannot load files:', [ files, 'From event:', evt ]);
 	}
 
 	pendingJobs.delete(thisJob);
@@ -14147,7 +14179,7 @@ let	isProjectLoaded = false;
 
 			setWIPstate(false);
 		} else {
-			console.error('Unknown action: ' + action, [button, filesTable]);
+			console.error('Unknown action: ' + action, [ button, filesTable ]);
 		}
 	} else
 	if (url = getButtonURL(button)) {
@@ -14232,7 +14264,7 @@ function closeProject(buttonTab) {
 	const	revokedBlobsCount = revokeBlobsFromTrackList(project);
 
 		if (revokedBlobsCount) {
-			if (LOG_ACTIONS) logTime('"' + project.fileName + '" closed, revoked ' + revokedBlobsCount + ' blobs.');
+			if (LOG_ACTIONS) logTime(`"${ project.fileName }" closed, revoked ${ revokedBlobsCount } blobs.`);
 			if (TESTING > 2) console.log('closeProject:', project);
 		}
 	}
@@ -14255,9 +14287,9 @@ let	logLabel;
 		LANG_IN_DOCUMENT,
 		LANG_FALLBACK,
 	]) {
-		if (LOG_TIMERS_PRECONFIG) console.time(logLabel = `Init localization "${langName}"`);
+		if (LOG_TIMERS_PRECONFIG) console.time(logLabel = `Init localization "${ langName }"`);
 
-	let	langLoaded = await loadLibPromise(LIB_LANG_DIR + 'localization.' + langName + '.js');
+	let	langLoaded = await loadLibPromise(`${ LIB_LANG_DIR }localization.${ langName }.js`);
 
 		if (LOG_TIMERS_PRECONFIG) console.timeEnd(logLabel);
 
@@ -14400,7 +14432,6 @@ const	inputFileAcceptTypes = [];
 
 	const	exts = loader.dropFileExts || DUMMY_EMPTY_ARRAY;
 	const	mimeTypes = loader.inputFileMimeTypes || DUMMY_EMPTY_ARRAY;
-	const	lowerCaseExts = exts.map((ext) => ext.toLowerCase());
 	const	upperCaseExts = exts.map((ext) => ext.toUpperCase());
 	const	key = upperCaseExts.shift();
 	const	otherTypesByKey = getOrInitChild(fileTypesByKeys, key, Array);
@@ -14409,9 +14440,9 @@ const	inputFileAcceptTypes = [];
 			addToListIfNotYet(otherTypesByKey, ext);
 		}
 
-		for (const ext of lowerCaseExts) {
-			addToListIfNotYet(inputFileAcceptExts, '.' + ext);
-			addToListIfNotYet(inputFileAcceptTypes, '.' + ext);
+		for (const ext of exts.map(dotExt)) {
+			addToListIfNotYet(inputFileAcceptExts, ext);
+			addToListIfNotYet(inputFileAcceptTypes, ext);
 		}
 
 		for (const mimeType of mimeTypes) {
@@ -14703,7 +14734,7 @@ const	batchButtonsHTML = (
 	const	linkAttr = (
 			url
 			? encodeTagAttr(url) + '" class="external-link'
-			: encodeTagAttr(`javascript:alert(getLocalizedText('unknown_link', '${linkName}'))`)
+			: encodeTagAttr(`javascript:alert(getLocalizedText('unknown_link', '${ linkName }'))`)
 		);
 
 	const	linkText = (
@@ -14711,22 +14742,16 @@ const	batchButtonsHTML = (
 		||	linkName
 		);
 
-		return (
-			'<a href="'
-		+		linkAttr
-		+	'">'
-		+		linkText
-		+	'</a>'
-		);
+		return `<a href="${ linkAttr }">${ linkText }</a>`;
 	}
 
 	function getHelpSectionLinkHTML(sectionName) {
 		return (
-			`<a onclick="showHelpSection('`
-		+		encodeTagAttr(sectionName)
-		+	`', this)" class="section-link">`
-		+		getLocalizedText(sectionName)
-		+	'</a>'
+			`<a onclick="showHelpSection('${
+				encodeTagAttr(sectionName)
+			}', this)" class="section-link">${
+				getLocalizedText(sectionName)
+			}</a>`
 		);
 	}
 
@@ -14893,7 +14918,7 @@ const	wrap = {
 		'span' : {},
 	};
 
-const	wrapperClassNames = [
+const	wrapperClassTexts = [
 		'button-text',
 		'comment',
 		'custom param value',
@@ -14910,12 +14935,12 @@ const	wrapperClassNames = [
 		'sample param value',
 	];
 
-	for (const className of wrapperClassNames) {
-	const	key = className.split(regNonAlphaNum)[0];
+	for (const wrapperClassText of wrapperClassTexts) {
+	const	keyWord = wrapperClassText.split(regNonAlphaNum)[0];
 
 		for (const tagName in wrap) {
-			wrap[tagName][key] = (...values) => (
-				'<' + tagName + ' class="' + className + '">'
+			wrap[tagName][keyWord] = (...values) => (
+				'<' + tagName + ' class="' + wrapperClassText + '">'
 			+		values.join('')
 			+	'</' + tagName + '>'
 			);
@@ -16052,10 +16077,10 @@ const	linkTooltips = [
 		window
 	,	{
 			'beforeunload' : onBeforeUnload
-		,	'dragover' :	onPageDragOver
-		,	'drop' :	onPageDrop
-		,	'keydown' :	onPageKeyDown
-		,	'resize' :	onResize
+		,	'dragover'     : onPageDragOver
+		,	'drop'         : onPageDrop
+		,	'keydown'      : onPageKeyDown
+		,	'resize'       : onResize
 		}
 	);
 

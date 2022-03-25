@@ -66,7 +66,8 @@ This script can be used manually on the server side to quickly update the table 
 `-test-filters` or
 `-filters` or
 `-f`
-— save all thumbnails to compare, one for each resizing method supported by installed ImageMagick. Files are saved as `<...>_<FilterName>.png` in a subfolder named by target image size.
+— save all thumbnails to compare, one for each resizing method supported by installed ImageMagick.
+Files are saved in a subfolder as `<ResizedImageSize>/<FileName>_<FilterName>.png`.
 
 `-resize-filter <FilterName>` or
 `-thumb-filter <FilterName>` or
@@ -92,7 +93,8 @@ This script can be used manually on the server side to quickly update the table 
 `-imagemagick-7` or
 `-im7` or
 `-7`
-— use ImageMagick version 7.x command format, such as `magick convert <args>`. If no version is given, script will try them all, starting with later.
+— use ImageMagick version 7.x command format, such as `magick convert <args>`.
+If no version is given, script will try them all, starting with later.
 
 `-optipng` or
 `-o`
@@ -100,7 +102,8 @@ This script can be used manually on the server side to quickly update the table 
 
 `-leanify` or
 `-l`
-— use Leanify command on each image after resize. If OptiPNG if also used, it is called first to fix and prevent possible Leanify errors.
+— use Leanify command on each image after resize.
+If OptiPNG if also used, it is called first to fix and prevent possible Leanify errors.
 
 
 
@@ -124,7 +127,9 @@ python ./update_config.py -im7 -filter Sinc
 
 ## Included examples
 
-Although the live page on my server has notice that examples there are provided only for testing and reference, all files in this repository are covered by MIT license, unless noted otherwise with separate license file. Also there is [another deliberately complicated file](https://yadi.sk/d/cOk8HSdC6r-t7Q), that I created explicitly for testing and released into Public Domain, not included here to avoid unnecessary bloat.
+The live page on my server, as noted there, has example files provided only for testing and reference.
+On the other hand, all files in this repository are covered by MIT license, unless noted otherwise with separate license file.
+Also, not included here to avoid unnecessary bloat, there is [another deliberately complicated file](https://yadi.sk/d/cOk8HSdC6r-t7Q), that I created explicitly for testing and released into Public Domain.
 
 
 
@@ -137,7 +142,7 @@ ORA file parser:
 PSD file parser:
 * Lightly modified [build of psd.js](https://github.com/meltingice/psd.js/issues/154#issuecomment-446279652), should be backward compatible.
 * Lightly modified [fork](https://github.com/imcuttle/psd.js) of [psd.js](https://github.com/meltingice/psd.js), globally usable without `require()`.
-* Original version and many other forks do not work here.
+* Original version and many other forks of psd.js do not work here.
 
 PNG file parser:
 * Lightly modified [UPNG.js](https://github.com/photopea/UPNG.js), should be backward compatible.
@@ -145,7 +150,7 @@ PNG file parser:
 * Unmodified [pako](https://github.com/nodeca/pako).
 
 ZIP file parser:
-* Lightly modified [zip.js](https://github.com/gildas-lormeau/zip.js), should be backward compatible.
+* Lightly modified version of [zip.js](https://github.com/gildas-lormeau/zip.js) from [ora.js](https://github.com/zsgalusz/ora.js), 2013, should be backward compatible with that, but probably not with later original versions.
 * Unmodified [pako](https://github.com/nodeca/pako) works here too.
 * Unmodified [zlib-asm](https://github.com/ukyo/zlib-asm). Versions above 0.2.2 do not work here.
 
