@@ -5,7 +5,7 @@
 
 ## Purpose
 
-1. Parse artwork project files (ORA, PSD) into menu of parts to preview preset versions.
+1. Parse artwork project files (ORA, PSD, PSB) into menu of parts to preview preset versions.
 2. Easy batch export of all versions into image files (PNG), separated or joined.
 3. Work completely on the client side, using a web browser with modern JavaScript support.
 
@@ -26,6 +26,12 @@ The application page does not preload all its program libraries at start, but ad
 So a network disconnect may prevent it from working when the page is opened from server.
 On the other hand, the page works fine from disk.
 So you may take a copy of this repository and use it locally, even without the internet.
+
+Tested to work in latest desktop versions of
+[Firefox](https://mozilla.org/),
+[Pale Moon](https://palemoon.org/),
+[Basilisk](https://basilisk-browser.org/) and
+[Vivaldi](https://vivaldi.com/).
 
 Firefox 56 is supported as a bottom line.
 
@@ -139,7 +145,10 @@ ORA file parser:
 * Heavily modified version of [ora.js](https://github.com/zsgalusz/ora.js).
 * Original version can work here, but with many limitations.
 
-PSD file parser:
+PSD and PSB file parser:
+* Unmodified [build](https://cdn.jsdelivr.net/npm/ag-psd@14.3.6/dist/bundle.js) of [ag-psd](https://github.com/Agamnentzar/ag-psd).
+
+Fallback PSD file parser:
 * Lightly modified [build of psd.js](https://github.com/meltingice/psd.js/issues/154#issuecomment-446279652), should be backward compatible.
 * Lightly modified [fork](https://github.com/imcuttle/psd.js) of [psd.js](https://github.com/meltingice/psd.js), globally usable without `require()`.
 * Original version and many other forks of psd.js do not work here.

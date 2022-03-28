@@ -33,13 +33,15 @@
 //* TODO ---------------------- export: ---------------------------------------
 //* TODO: save opened project as JSON (maybe name it BRA, Base64Raster, to open in JS drawpads).
 //* TODO: save opened project as SVG (probably more complicated, but widespread).
-//* TODO: save opened project as PSD. Try https://github.com/Agamnentzar/ag-psd (may also work with PSB)
+//* TODO: save opened project as PSD (and PSB). Try https://github.com/Agamnentzar/ag-psd
 //* TODO: save images: WebP, JPEG XL. https://bugs.chromium.org/p/chromium/issues/detail?id=170565#c77 - toDataURL/toBlob quality 1.0 = lossless.
 //* TODO: make exported project files identically reproducible, if possible. Now works as long as source file, its mod.date and result layer tree are the same.
 //* TODO: compatible PSD -> ORA layer mode/structure conversions; on load/save/both?
 
 //* TODO ---------------------- other: ----------------------------------------
 //* TODO: fix stuck loading of ORA with big PNGs while optimizing them all by UPNG.js.
+//* TODO: fix stuck loading of PSD after failed PSB.
+//* TODO: lazy-loading images (layers, merged, thumbnail) with ag-psd.
 //* TODO: don't add custom properties to objects of built-in types, if possible.
 //* TODO: global job list for WIP cancelling instead of spaghetti-coded flag checks.
 //* TODO: split JS files in a way that lets older browsers to use parts they can parse and execute (only show menu, or only load ORA, etc.).
@@ -99,7 +101,7 @@ var	exampleRootDir = ''
 ,	ADD_WIP_TEXT_ROLL		= false	//* <- rotating stick symbol, does not look good in tabs
 ,	ASK_BEFORE_EXIT_IF_OPENED_FILES	= true	//* <- this is annoying and would not be needed if big files could load fast.
 ,	CACHE_UNALTERABLE_FOLDERS_MERGED	= true	//* <- not much opportunity if almost everything is recolored or passthrough.
-,	CACHE_UNALTERABLE_IMAGES_TRIMMED	= false	//* <- images are compressed faster by canvas API, when stored as PNG.
+,	CACHE_UNALTERABLE_IMAGES_TRIMMED	= false	//* <- use less memory for kept bitmap, but more CPU for trimming; untrimmed images are compressed fast by canvas API when stored as PNG, but need more memory for empty areas when uncompressed for drawing.
 ,	CLEAR_CANVAS_FOR_GC		= true
 ,	DEDUPLICATE_LOADED_IMAGES	= false
 ,	DOWNSCALE_BY_MAX_FACTOR_FIRST	= true	//* <- other way (starting with partial factor) is not better, probably worse.
@@ -861,9 +863,9 @@ var	PSD
 //* To be figured on the go *--------------------------------------------------
 
 var	LANG
+
 ,	PSD_JS
-,	CompositionModule
-,	compositionFunctionNames
+,	AG_PSD_FILE_READING_OPTIONS
 
 ,	FILE_TYPE_LIBS
 ,	FILE_TYPE_LOADERS
@@ -873,6 +875,9 @@ var	LANG
 ,	PRELOAD_LAYER_IMAGES
 ,	USE_ES5_JS
 ,	USE_WORKERS_IF_CAN
+
+,	CompositionModule
+,	compositionFunctionNames
 
 ,	canvasForTest
 ,	ctxForTest
@@ -890,6 +895,7 @@ var	LANG
 //* Config: internal, wrapped to be called after reading external config *-----
 
 function initLibParams() {
+
 	USE_WORKERS_IF_CAN = (USE_WORKERS && CAN_USE_WORKERS);
 
 const	zlibCodecPNG = [USE_UZIP ? 'UZIP.js' : 'pako'];
@@ -1021,12 +1027,12 @@ const	zlibPakoFileName = (
 		'ag-psd' : {
 
 //* Source: https://github.com/Agamnentzar/ag-psd
-//* Builds: https://www.jsdelivr.com/package/npm/ag-psd
-//* Bundle: https://cdn.jsdelivr.net/npm/ag-psd@14.2.0/dist/bundle.js
+//* Builds: https://www.jsdelivr.com/package/npm/ag-psd?version=14.3.6
+//* Bundle: https://cdn.jsdelivr.net/npm/ag-psd@14.3.6/dist/bundle.js
 
 			'varName' : 'agPsd'
 		,	'dir' : LIB_FORMATS_DIR + 'psd/ag-psd/'
-		,	'files' : ['ag-psd-14.2.0-dist-bundle.js']	//* <- also works with PSB files
+		,	'files' : ['ag-psd-14.3.6-dist-bundle.js']	//* <- also works with PSB files
 		},
 
 		'psd.js' : {
@@ -1069,13 +1075,22 @@ const	zlibPakoFileName = (
 		: null
 	);
 
+	AG_PSD_FILE_READING_OPTIONS = {
+		// skipThumbnail          : !TAB_THUMBNAIL_PRELOAD,
+		// skipCompositeImageData : !TAB_THUMBNAIL_PRELOAD,
+		// skipLayerImageData     : !PRELOAD_ALL_LAYER_IMAGES,
+		useImageData    : true, // !!GET_LAYER_IMAGE_FROM_BITMAP,	//* <- "imageData" field instead of "canvas"
+		useRawThumbnail : true, // !!GET_LAYER_IMAGE_FROM_BITMAP,	//* <- "thumbnailRaw" field instead of "thumbnail"
+		logMissingFeatures : !!TESTING,
+		logDevFeatures : (TESTING > 9),
+	};
+
 const	psbAndPsdMimeTypes = getJoinedCrossProductTextSet(
 		[
 			[
 				'image'
 			,	'application'
-			]
-		,	[
+			], [
 				'psb'
 			,	'psd'
 			,	'photoshop'
@@ -1097,7 +1112,7 @@ const	psbAndPsdMimeTypes = getJoinedCrossProductTextSet(
 				loadORA,
 			]
 		},
-		!TESTING ? null : {
+		{
 			'dropFileExts' : ['psd', 'psb']
 		,	'inputFileMimeTypes' : psbAndPsdMimeTypes
 		,	'handlerFuncs' : [
@@ -4342,6 +4357,29 @@ const	canvas = getCanvasFromImageData(imageData);
 	}
 }
 
+function getMaskFromOpaqueImageData(img) {
+
+	if (!isNonNullImageData(img)) {
+		return;
+	}
+
+const	mask = new ImageData(img.width, img.height);
+
+	for (
+	let	sourceData = img.data
+	,	maskData = mask.data
+	,	index = sourceData.length - 1;
+		index >= 0;
+		index -= 4
+	) {
+		maskData[index] = sourceData[index - 1];
+	}
+
+	if (TESTING > 1) console.log('getMaskFromOpaqueImageData:', [img, 'maskData:', mask]);
+
+	return mask;
+}
+
 function getCanvasFromMaskInvertAlpha(img) {
 const	canvas = getCanvasFromImg(img);
 
@@ -4958,7 +4996,7 @@ async function getOrLoadImage(project, layer) {
 
 //* Try converting raw pixel data:
 
-		if (pixelData = getPropByAnyOfNamesChain(node, 'imgData', 'maskData', 'pixelData')) {
+		if (pixelData = getPropByAnyOfNamesChain(node, 'imageData', 'imgData', 'maskData', 'pixelData')) {
 		const	imageData = {
 				'data' : getPropByAnyOfNamesChain(pixelData, 'data')
 			,	'width' : getPropFromAnySource('width', pixelData, target, node)
@@ -8137,7 +8175,7 @@ function setImageGeometryProperties(target, ...sources) {
 		}
 
 		for (const source of sources) if (isNonNullObject(source))
-		for (const key of keys) if (source[key]) {
+		for (const key of keys) if (key in source) {
 			target[targetKey] = orz(source[key]);
 
 			continue sides;
@@ -8147,10 +8185,34 @@ function setImageGeometryProperties(target, ...sources) {
 	}
 }
 
+function addImageGeometryProperties(target, ...sources) {
+
+	sides:
+	for (const keys of IMAGE_GEOMETRY_KEYS) {
+	const	targetKey = keys[0];
+
+		for (const source of sources) if (isNonNullObject(source))
+		for (const key of keys) if (key in source) {
+
+			if (targetKey in target) {
+				target[targetKey] += orz(source[key]);
+			} else {
+				target[targetKey] = orz(source[key]);
+			}
+
+			continue sides;
+		}
+	}
+}
+
 //* Page-specific functions: internal, loading from file *---------------------
 
-async function loadCommonWrapper(project, libName, getFileParserPromise, treeConstructorFunc) {
-
+async function loadCommonWrapper(
+	project
+,	libName
+,	getParsedFilePromise
+,	makeNormalizedLayerTree
+) {
 	project.loading.errorPossible = 'project_status_error_loading_library';
 	project.loading.errorParams = libName;
 
@@ -8171,7 +8233,7 @@ const	actionLabel = 'processing document with ' + libName;
 	const	file = await getFileFromLoadingData(project.loading.data, project.loading);
 
 		if (file) {
-			sourceDataFile = await getFileParserPromise(file).catch(catchPromiseError);
+			sourceDataFile = await getParsedFilePromise(file).catch(catchPromiseError);
 		}
 	} catch (error) {
 		logError(error, arguments);
@@ -8207,7 +8269,7 @@ const	actionLabel = 'processing document with ' + libName;
 			getProjectMergedImagePromise(project, FLAG_PROJECT_SET_THUMBNAIL);
 		}
 
-		if (await treeConstructorFunc(project, sourceDataFile)) {
+		if (await makeNormalizedLayerTree(project, sourceDataFile)) {
 			return (
 				project.loading.then
 				? await project.loading.then(project)
@@ -8218,226 +8280,231 @@ const	actionLabel = 'processing document with ' + libName;
 }
 
 async function loadORA(project) {
-	return await loadCommonWrapper(
-		project
-	,	'ora.js'
-	,	function getFileParserPromise(file) {
-			return new Promise(
-				(resolve, reject) => {
-					try {
-						ora.load(
-							file
-						,	resolve
-						,	reject
-						,	(stepsDone, stepsTotal) => updateProjectOperationProgress(
-								project
-							,	'project_status_reading_file'
-							,	stepsDone
-							,	stepsTotal
-							)
-						);
-					} catch (error) {
-						reject(error);
-					}
+
+	function getParsedFilePromise(file) {
+		return new Promise(
+			(resolve, reject) => {
+				try {
+					ora.load(
+						file
+					,	resolve
+					,	reject
+					,	(stepsDone, stepsTotal) => updateProjectOperationProgress(
+							project
+						,	'project_status_reading_file'
+						,	stepsDone
+						,	stepsTotal
+						)
+					);
+				} catch (error) {
+					reject(error);
 				}
-			);
-		}
-	,	async function treeConstructorFunc(project, oraFile) {
-			if (
-				!oraFile.layers
-			||	!oraFile.layers.length
-			) {
-				return;
 			}
+		);
+	}
 
-			project.foldersCount = orz(oraFile.stacksCount);
-			project.layersCount  = orz(oraFile.layersCount);
-			project.nodesCount   = oraFile.layers.length;
+	async function makeNormalizedLayerTree(project, oraFile) {
+		if (
+			!oraFile.layers
+		||	!oraFile.layers.length
+		) {
+			return;
+		}
 
-			project.width  = orz(oraFile.width);
-			project.height = orz(oraFile.height);
+		project.foldersCount = orz(oraFile.stacksCount);
+		project.layersCount  = orz(oraFile.layersCount);
+		project.nodesCount   = oraFile.layers.length;
+
+		project.width  = orz(oraFile.width);
+		project.height = orz(oraFile.height);
 
 //* Fixes for original ora.js:
 
-			if (
-				!project.foldersCount
-			&&	!project.layersCount
-			) {
-				project.layersCount = project.nodesCount;
-			}
+		if (
+			!project.foldersCount
+		&&	!project.layersCount
+		) {
+			project.layersCount = project.nodesCount;
+		}
 
-		const	rootLayers = (
-				ora.keepLayersOrderTopToBottom
-				? oraFile.layers
-				: oraFile.layers.slice().reverse()
-			);
+	const	rootLayers = (
+			ora.keepLayersOrderTopToBottom
+			? oraFile.layers
+			: oraFile.layers.slice().reverse()
+		);
 
 //* Gather layers into a tree object:
 
-			async function addLayerToTree(oraNode, parentGroup) {
+		async function addLayerToTree(oraNode, parentGroup) {
 
-				function setImageLoadOrCountIfLoaded(imageHolder, newHolder) {
-				const	img = getPropByAnyOfNamesChain(imageHolder, 'img', 'image');
+			function setImageLoadOrCountIfLoaded(imageHolder, newHolder) {
+			const	img = getPropByAnyOfNamesChain(imageHolder, 'img', 'image');
 
-				//* Already loaded img element:
+			//* Already loaded img element:
 
-					if (img && img !== imageHolder) {
-						newHolder.img = img;
+				if (img && img !== imageHolder) {
+					newHolder.img = img;
 
-						project.imagesLoaded.push(img);
+					project.imagesLoaded.push(img);
 
-						++project.imagesCount;
-					} else
+					++project.imagesCount;
+				} else
 
-				//* Deferred loading, only when needed:
+			//* Deferred loading, only when needed:
 
-					if (imageHolder.loadImage) {
-						newHolder.loadImage = (onDone, onError) => {
-							imageHolder.loadImage(onDone, onError);
-						};
+				if (imageHolder.loadImage) {
+					newHolder.loadImage = (onDone, onError) => {
+						imageHolder.loadImage(onDone, onError);
+					};
 
-						++project.imagesCount;
-					}
-
-					setImageGeometryProperties(newHolder, imageHolder, img);
+					++project.imagesCount;
 				}
 
-			const	name = oraNode.name || '';
-			const	mask = oraNode.mask || null;				//* <- non-standard, for testing
-			const	layers = oraNode.layers || null;
-			const	isLayerFolder = (
-					(isNonNullObject(layers) && isRealNumber(layers.length))
-				||	(oraNode instanceof ora.OraStack)
-				);
+				setImageGeometryProperties(newHolder, imageHolder, img);
+			}
 
-			const	opacity = orzClamp(oraNode.opacity, 0, 1, orzFloat);
+		const	name = oraNode.name || '';
+		const	mask = oraNode.mask || null;				//* <- non-standard, for testing
+		const	layers = oraNode.layers || null;
+		const	isLayerFolder = (
+				(isNonNullObject(layers) && isRealNumber(layers.length))
+			||	(oraNode instanceof ora.OraStack)
+			);
 
-			const	oraBlendMode = oraNode.composite || '';
-			const	oraAlphaMode = oraNode.composite_alpha || oraBlendMode || '';	//* <- non-standard, for testing
-			const	oraColorMode = oraNode.composite_color || oraBlendMode || '';	//* <- non-standard, for testing
+		const	opacity = orzClamp(oraNode.opacity, 0, 1, orzFloat);
 
-			const	alphaMode = getNormalizedBlendMode(oraAlphaMode);
-			const	colorMode = getNormalizedBlendMode(oraColorMode);
-			const	blendMode = colorMode || alphaMode || getNormalizedBlendMode(oraBlendMode);
+		const	oraBlendMode = oraNode.composite || '';
+		const	oraAlphaMode = oraNode.composite_alpha || oraBlendMode || '';	//* <- non-standard, for testing
+		const	oraColorMode = oraNode.composite_color || oraBlendMode || '';	//* <- non-standard, for testing
 
-			const	isolation = oraNode.isolation || '';
-			const	isIsolatedAlpha = (isolation === ISOLATE_ALPHA);	//* <- non-standard, for testing
-			const	isPassThrough = (
-					isIsolatedAlpha
-				||	blendMode === BLEND_MODE_PASS			//* <- non-standard, for testing
-				||	isolation === ISOLATE_PASS			//* <- non-standard, for testing
-				||	regLayerBlendModePass.test(isolation)		//* <- non-standard, for testing
-				||	(
-						isolation === ISOLATE_AUTO		//* <- not consistent with Krita (tested in v4.4.3)
-					&&	opacity === 1				//* <- consistent with MyPaint for standard trivial case
-					&&	blendMode === BLEND_MODE_NORMAL
-					&&	alphaMode === BLEND_MODE_NORMAL
-					&&	colorMode === BLEND_MODE_NORMAL
-					)
-				);
+		const	alphaMode = getNormalizedBlendMode(oraAlphaMode);
+		const	colorMode = getNormalizedBlendMode(oraColorMode);
+		const	blendMode = colorMode || alphaMode || getNormalizedBlendMode(oraBlendMode);
+
+		const	isolation = oraNode.isolation || '';
+		const	isIsolatedAlpha = (isolation === ISOLATE_ALPHA);	//* <- non-standard, for testing
+		const	isPassThrough = (
+				isIsolatedAlpha
+			||	blendMode === BLEND_MODE_PASS			//* <- non-standard, for testing
+			||	isolation === ISOLATE_PASS			//* <- non-standard, for testing
+			||	regLayerBlendModePass.test(isolation)		//* <- non-standard, for testing
+			||	(
+					isolation === ISOLATE_AUTO		//* <- not consistent with Krita (tested in v4.4.3)
+				&&	opacity === 1				//* <- consistent with MyPaint for standard trivial case
+				&&	blendMode === BLEND_MODE_NORMAL
+				&&	alphaMode === BLEND_MODE_NORMAL
+				&&	colorMode === BLEND_MODE_NORMAL
+				)
+			);
 
 //* Note:
 //*	ORA-standard way for layer clipping is using compositing mode "src-atop" above base content inside isolated folder.
 //*	All the content inside isolation context below an "src-atop" layer becomes the base for clipping.
 //*	A clipping group must be always made explicitly as (alpha-)isolated folder if needed.
 
-			const	isClipped = (
-					getTruthyValue(oraNode.clipping)		//* <- non-standard, for testing
-				// ||	alphaMode === BLEND_MODE_CLIP			//* <- non-standard and incorrect
-				);
+		const	isClipped = (
+				getTruthyValue(oraNode.clipping)		//* <- non-standard, for testing
+			// ||	alphaMode === BLEND_MODE_CLIP			//* <- non-standard and incorrect
+			);
 
-			const	isVisible = (
-					typeof oraNode.visibility === 'undefined'
-				||	oraNode.visibility === 'visible'
-				||	oraNode.visibility !== 'hidden'
-				||	getTruthyValue(oraNode.visibility)		//* <- non-standard, for testing
-				);
+		const	isVisible = (
+				typeof oraNode.visibility === 'undefined'
+			||	oraNode.visibility === 'visible'
+			||	oraNode.visibility !== 'hidden'
+			||	getTruthyValue(oraNode.visibility)		//* <- non-standard, for testing
+			);
 
-			const	layerWIP = {
-					'nameOriginal' : name
-				,	name
-				,	isLayerFolder
-				,	isVisible
-				,	isClipped
-				,	isPassThrough
-				,	isIsolatedAlpha
-				,	opacity
-				,	blendMode
-				,	'blendModeOriginal' : oraBlendMode
-				,	'blendModeOriginalAlpha' : oraAlphaMode
-				,	'blendModeOriginalColor' : oraColorMode
-				};
+		const	layerWIP = {
+				'nameOriginal' : name
+			,	name
+			,	isLayerFolder
+			,	isVisible
+			,	isClipped
+			,	isPassThrough
+			,	isIsolatedAlpha
+			,	opacity
+			,	blendMode
+			,	'blendModeOriginal' : oraBlendMode
+			,	'blendModeOriginalAlpha' : oraAlphaMode
+			,	'blendModeOriginalColor' : oraColorMode
+			};
 
-				if (oraNode.otherAttributes) {
-					layerWIP.otherAttributes = oraNode.otherAttributes;
-				}
+			if (oraNode.otherAttributes) {
+				layerWIP.otherAttributes = oraNode.otherAttributes;
+			}
 
-				if (!isLayerFolder) {
-					setImageLoadOrCountIfLoaded(oraNode, layerWIP);
-				}
+			if (!isLayerFolder) {
+				setImageLoadOrCountIfLoaded(oraNode, layerWIP);
+			}
 
 //* Note:
 //*	ORA-standard way for layer masks is using compositing mode "dst-in" above masked content inside isolated folder.
 //*	All the content inside isolation context below an "dst-in" layer becomes masked.
 
-				if (mask) {
-					setImageLoadOrCountIfLoaded(mask, layerWIP.mask = {
-						'fillOutside' : orz(mask.fill_outside)
-					});
-				}
-
-				parentGroup = await getNextParentAfterAddingLayerToTree(
-					layerWIP
-				,	oraNode
-				,	name
-				,	parentGroup
-				,	isLayerFolder
-				);
-
-				++nodesDoneCount;
-
-				if (
-					ADD_PAUSE_AT_INTERVALS
-				&&	lastPauseTime + PAUSE_WORK_INTERVAL < getTimeNow()
-				) {
-					updateProjectOperationProgress(
-						project
-					,	'project_status_reading_layers'
-					,	nodesDoneCount
-					,	project.nodesCount
-					);
-
-					await pause(PAUSE_WORK_DURATION);
-
-					lastPauseTime = getTimeNow();
-				}
-
-				if (isStopRequested = isStopRequestedAnywhere(project)) {
-					project.loading.errorPossible = 'project_status_aborted';
-
-					return;
-				}
-
-				if (isLayerFolder) {
-					await addLayerGroupCommonWrapper(project, parentGroup, layers, addLayerToTree);
-				}
+			if (mask) {
+				setImageLoadOrCountIfLoaded(mask, layerWIP.mask = {
+					'fillOutside' : orz(mask.fill_outside)
+				});
 			}
 
-		let	nodesDoneCount = 0;
-		let	lastPauseTime = getTimeNow();
-		let	isStopRequested;
+			parentGroup = await getNextParentAfterAddingLayerToTree(
+				layerWIP
+			,	oraNode
+			,	name
+			,	parentGroup
+			,	isLayerFolder
+			);
 
-			if (isStopRequested) {
+			++nodesDoneCount;
+
+			if (
+				ADD_PAUSE_AT_INTERVALS
+			&&	lastPauseTime + PAUSE_WORK_INTERVAL < getTimeNow()
+			) {
+				updateProjectOperationProgress(
+					project
+				,	'project_status_reading_layers'
+				,	nodesDoneCount
+				,	project.nodesCount
+				);
+
+				await pause(PAUSE_WORK_DURATION);
+
+				lastPauseTime = getTimeNow();
+			}
+
+			if (isStopRequested = isStopRequestedAnywhere(project)) {
+				project.loading.errorPossible = 'project_status_aborted';
+
 				return;
 			}
 
-			return await addLayerGroupCommonWrapper(
-				project
-			,	project.layers = []
-			,	rootLayers
-			,	addLayerToTree
-			);
+			if (isLayerFolder) {
+				await addLayerGroupCommonWrapper(project, parentGroup, layers, addLayerToTree);
+			}
 		}
+
+	let	nodesDoneCount = 0;
+	let	lastPauseTime = getTimeNow();
+	let	isStopRequested;
+
+		if (isStopRequested) {
+			return;
+		}
+
+		return await addLayerGroupCommonWrapper(
+			project
+		,	project.layers = []
+		,	rootLayers
+		,	addLayerToTree
+		);
+	}
+
+	return await loadCommonWrapper(
+		project
+	,	'ora.js'
+	,	getParsedFilePromise
+	,	makeNormalizedLayerTree
 	);
 }
 
@@ -8445,89 +8512,91 @@ async function loadPSD       (project) { return await loadPSDCommonWrapper(proje
 async function loadPSDBrowser(project) { return await loadPSDCommonWrapper(project, 'psd.browser.js', 'PSD'); }
 
 async function loadPSDCommonWrapper(project, libName, varName) {
-	return await loadCommonWrapper(
-		project
-	,	libName
-	,	function getFileParserPromise(file) {
-			return window[varName].fromDroppedFile(file);
+
+	function getParsedFilePromise(file) {
+		return window[varName].fromDroppedFile(file);
+	}
+
+	async function makeNormalizedLayerTree(project, psdFile) {
+		if (
+			!psdFile.layers
+		||	!psdFile.layers.length
+		) {
+			return;
 		}
-	,	async function treeConstructorFunc(project, psdFile) {
 
-			if (
-				!psdFile.layers
-			||	!psdFile.layers.length
-			) {
-				return;
-			}
+	const	rootLayers = psdFile.tree().children();
 
-		const	rootLayers = psdFile.tree().children();
+	const	psdHeader = psdFile.header || psdFile;
+	const	psdColorMode = psdHeader.mode;
 
-		const	projectHeader = psdFile.header || psdFile;
-		const	projectMode = projectHeader.mode;
+		project.nodesCount = psdFile.layers.length;
 
-			project.nodesCount = psdFile.layers.length;
-
-			project.width	= projectHeader.cols || projectHeader.width;
-			project.height	= projectHeader.rows || projectHeader.height;
-			project.bitDepth = projectHeader.depth;
-			project.channels = projectHeader.channels;
-			project.colorMode = (
-				isRealNumber(projectMode)
-				? PSD_COLOR_MODES[projectMode]
-				: projectMode
-			);
+		project.width    = psdHeader.cols || psdHeader.width;
+		project.height   = psdHeader.rows || psdHeader.height;
+		project.bitDepth = psdHeader.depth;
+		project.channels = psdHeader.channels;
+		project.colorMode = (
+			isRealNumber(psdColorMode)
+			? PSD_COLOR_MODES[psdColorMode]
+			: psdColorMode
+		);
 
 //* Gather layers into a tree object:
 
-			function isFolderNode(node) {
-				return (
-					(isFunction(node.isFolder) && node.isFolder())
-				||	(isFunction(node.isLayer) && !node.isLayer())
-				||	(isFunction(node.hasChildren) && node.hasChildren())
-				);
-			}
+		function isFolderNode(node) {
+			return (
+				(isFunction(node.isFolder) && node.isFolder())
+			||	(isFunction(node.isLayer) && !node.isLayer())
+			||	(isFunction(node.hasChildren) && node.hasChildren())
+			);
+		}
 
-			async function addLayerToTree(psdNode, parentGroup) {
-			const	psdLayer = psdNode.layer || psdNode;
+		async function addLayerToTree(psdNode, parentGroup) {
+		const	psdLayer = psdNode.layer || psdNode;
 
-			const	layers = (
-					[psdNode, psdLayer].some(isFolderNode)
-					? psdNode.children()
-					: null
-				);
+		const	layers = (
+				[psdNode, psdLayer].some(isFolderNode)
+				? psdNode.children()
+				: null
+			);
 
-			const	isLayerFolder = (isNonNullObject(layers) && isRealNumber(layers.length));
-			const	name = getPropFromAnySource('name',  psdLayer, psdNode) || '';
-			const	img  = getPropFromAnySource('image', psdLayer, psdNode);
-			const	mask = getPropFromAnySource('mask',  psdLayer, psdNode, img);
-			const	isVisible = getTruthyValue(getPropByAnyOfNamesChain(psdLayer, 'visible', 'visibility'));
-			const	isClipped = getTruthyValue(getPropByAnyOfNamesChain(psdLayer, 'blendMode', 'clipping', 'clipped'));
-			const	psdBlendMode = getPropByAnyOfNamesChain(psdLayer, 'blendMode', 'blending', 'mode');
-			const	psdPassMode = getPropByNameChain(psdLayer, 'adjustments', 'sectionDivider', 'obj', 'blendMode');
-			const	blendMode = getNormalizedBlendMode(psdBlendMode);
+		const	isLayerFolder = (
+				isNonNullObject(layers)
+			&&	isRealNumber(layers.length)
+			);
 
-			const	isPassThrough = (
-					regLayerBlendModePass.test(blendMode)
-				||	regLayerBlendModePass.test(psdPassMode)
-				||	regLayerBlendModePass.test(psdBlendMode)
-				);
+		const	name = getPropFromAnySource('name',  psdLayer, psdNode) || '';
+		const	img  = getPropFromAnySource('image', psdLayer, psdNode);
+		const	mask = getPropFromAnySource('mask',  psdLayer, psdNode, img);
+		const	isVisible = getTruthyValue(getPropByAnyOfNamesChain(psdLayer, 'visible', 'visibility'));
+		const	isClipped = getTruthyValue(getPropByAnyOfNamesChain(psdLayer, 'blendMode', 'clipping', 'clipped'));
+		const	psdBlendMode = getPropByAnyOfNamesChain(psdLayer, 'blendMode', 'blending', 'mode');
+		const	psdPassMode = getPropByNameChain(psdLayer, 'adjustments', 'sectionDivider', 'obj', 'blendMode');
+		const	blendMode = getNormalizedBlendMode(psdBlendMode);
 
-			const	fillOpacity = (
-					isFunction(psdLayer.fillOpacity)
-					? getPropByNameChain(psdLayer.fillOpacity(), 'layer', 'adjustments', 'fillOpacity', 'obj', 'value')
-					: null
-				);
+		const	isPassThrough = (
+				regLayerBlendModePass.test(blendMode)
+			||	regLayerBlendModePass.test(psdPassMode)
+			||	regLayerBlendModePass.test(psdBlendMode)
+			);
 
-			const	hasNoFillOpacityValue = (
-					isNullOrUndefined(fillOpacity)
-				||	!isRealNumber(fillOpacity)
-				);
+		const	fillOpacity = (
+				isFunction(psdLayer.fillOpacity)
+				? getPropByNameChain(psdLayer.fillOpacity(), 'layer', 'adjustments', 'fillOpacity', 'obj', 'value')
+				: null
+			);
 
-			const	opacity = (
-					hasNoFillOpacityValue
-					? getNormalizedOpacity(psdLayer.opacity)
-					: getNormalizedOpacity(psdLayer.opacity) * getNormalizedOpacity(fillOpacity)
-				);
+		const	hasNoFillOpacityValue = (
+				isNullOrUndefined(fillOpacity)
+			||	!isRealNumber(fillOpacity)
+			);
+
+		const	opacity = (
+				hasNoFillOpacityValue
+				? getNormalizedOpacity(psdLayer.opacity)
+				: getNormalizedOpacity(psdLayer.opacity) * getNormalizedOpacity(fillOpacity)
+			);
 
 //* Note:
 //*	"Fill" opacity is used in PSD from SAI2
@@ -8535,154 +8604,319 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 //*	for layers with certain blending modes (non-TS versions).
 //* Source: https://github.com/meltingice/psd.js/issues/153#issuecomment-436456896
 
-			const	layerWIP = {
-					name
-				,	isLayerFolder
-				,	isVisible
-				,	isClipped
-				,	isPassThrough
-				,	opacity
-				,	blendMode
-				,	'blendModeOriginal' : psdBlendMode
-				,	'isBlendModeTS' : (
-						hasNoFillOpacityValue
-					&&	BLEND_MODES_WITH_TS_VERSION.includes(blendMode)
-					)
-				};
+		const	layerWIP = {
+				name
+			,	isLayerFolder
+			,	isVisible
+			,	isClipped
+			,	isPassThrough
+			,	opacity
+			,	blendMode
+			,	'blendModeOriginal' : psdBlendMode
+			,	'isBlendModeTS' : (
+					hasNoFillOpacityValue
+				&&	BLEND_MODES_WITH_TS_VERSION.includes(blendMode)
+				)
+			};
 
-				if (img) {
-					if (!isLayerFolder) {
-					const	data = getPropFromAnySource('pixelData', psdLayer, psdNode, img);
+			if (img) {
+				if (!isLayerFolder) {
+				const	data = getPropFromAnySource('pixelData', psdLayer, psdNode, img);
 
-						if (data && data.length > 0) {
-							if (GET_LAYER_IMAGE_FROM_BITMAP) {
-								layerWIP.imgData = data;
-							} else {
-								layerWIP.toImage = () => getOrLoadImage(project, psdLayer);
-							}
-
-							setImageGeometryProperties(layerWIP, psdLayer, img);
-
-							++project.imagesCount;
+					if (data && data.length > 0) {
+						if (GET_LAYER_IMAGE_FROM_BITMAP) {
+							layerWIP.imgData = data;
+						} else {
+							layerWIP.toImage = () => getOrLoadImage(project, psdLayer);
 						}
-					}
 
-					if (
-						img.hasMask
-					&&	img.maskData
-					&&	mask
-					&&	!(mask.disabled || (mask.flags & 2))		//* <- mask visibility checkbox, supposedly
-					) {
-						layerWIP.mask = {
-							'fillOutside' : orz(mask.defaultColor)
-						,	'imgData' : img.maskData		//* <- RGBA byte array
-						};
-
-						setImageGeometryProperties(layerWIP.mask, mask, img);
+						setImageGeometryProperties(layerWIP, psdLayer, img);
 
 						++project.imagesCount;
 					}
 				}
 
-				parentGroup = await getNextParentAfterAddingLayerToTree(
-					layerWIP
-				,	psdNode
-				,	name
-				,	parentGroup
-				,	isLayerFolder
-				);
-
-				++nodesDoneCount;
-
 				if (
-					ADD_PAUSE_AT_INTERVALS
-				&&	lastPauseTime + PAUSE_WORK_INTERVAL < getTimeNow()
+					img.hasMask
+				&&	img.maskData
+				&&	mask
+				&&	!(mask.disabled || (mask.flags & 2))		//* <- mask visibility checkbox, supposedly
 				) {
-					updateProjectOperationProgress(
-						project
-					,	'project_status_reading_layers'
-					,	nodesDoneCount
-					,	project.nodesCount
-					);
+					layerWIP.mask = {
+						'fillOutside' : orz(mask.defaultColor)
+					,	'imgData' : img.maskData		//* <- RGBA byte array
+					};
 
-					await pause(PAUSE_WORK_DURATION);
+					setImageGeometryProperties(layerWIP.mask, mask, img);
 
-					lastPauseTime = getTimeNow();
-				}
-
-				if (isStopRequested = isStopRequestedAnywhere(project)) {
-					project.loading.errorPossible = 'project_status_aborted';
-
-					return;
-				}
-
-				if (isLayerFolder) {
-					++project.foldersCount;
-
-					await addLayerGroupCommonWrapper(project, parentGroup, layers, addLayerToTree);
-				} else {
-					++project.layersCount;
+					++project.imagesCount;
 				}
 			}
 
-		let	nodesDoneCount = 0;
-		let	lastPauseTime = getTimeNow();
-		let	isStopRequested;
+			parentGroup = await getNextParentAfterAddingLayerToTree(
+				layerWIP
+			,	psdNode
+			,	name
+			,	parentGroup
+			,	isLayerFolder
+			);
 
-			if (isStopRequested) {
+			++nodesDoneCount;
+
+			if (
+				ADD_PAUSE_AT_INTERVALS
+			&&	lastPauseTime + PAUSE_WORK_INTERVAL < getTimeNow()
+			) {
+				updateProjectOperationProgress(
+					project
+				,	'project_status_reading_layers'
+				,	nodesDoneCount
+				,	project.nodesCount
+				);
+
+				await pause(PAUSE_WORK_DURATION);
+
+				lastPauseTime = getTimeNow();
+			}
+
+			if (isStopRequested = isStopRequestedAnywhere(project)) {
+				project.loading.errorPossible = 'project_status_aborted';
+
 				return;
 			}
 
-			return await addLayerGroupCommonWrapper(
-				project
-			,	project.layers = []
-			,	rootLayers
-			,	addLayerToTree
-			);
+			if (isLayerFolder) {
+				++project.foldersCount;
+
+				await addLayerGroupCommonWrapper(project, parentGroup, layers, addLayerToTree);
+			} else {
+				++project.layersCount;
+			}
 		}
+
+	let	nodesDoneCount = 0;
+	let	lastPauseTime = getTimeNow();
+	let	isStopRequested;
+
+		if (isStopRequested) {
+			return;
+		}
+
+		return await addLayerGroupCommonWrapper(
+			project
+		,	project.layers = []
+		,	rootLayers
+		,	addLayerToTree
+		);
+	}
+
+	return await loadCommonWrapper(
+		project
+	,	libName
+	,	getParsedFilePromise
+	,	makeNormalizedLayerTree
 	);
 }
 
 async function loadAgPSD(project) {
 
-const	fileReadingOptions = {
-		useImageData : !!GET_LAYER_IMAGE_FROM_BITMAP,		//* <- "imageData" field instead of "canvas"
-		useRawThumbnail : !!GET_LAYER_IMAGE_FROM_BITMAP,	//* <- "thumnailRaw" field instead of "thumbnail"
-		logMissingFeatures : !!TESTING,
-		// logDevFeatures : !!TESTING,
-	};
+	function getParsedFilePromise(file) {
+		return (
+			getFilePromise(file, 'arraybuffer', project)
+			.then((buffer) => agPsd.readPsd(buffer, AG_PSD_FILE_READING_OPTIONS))
+			.catch(catchPromiseError)
+		);
+	}
 
-	return await loadCommonWrapper(
-		project
-	,	'ag-psd'
-	,	function getFileParserPromise(file) {
-			return (
-				getFilePromise(file, 'arraybuffer', project)
-				.then((buffer) => agPsd.readPsd(buffer, fileReadingOptions))
-				.catch(catchPromiseError)
-			);
-		}
-	,	async function treeConstructorFunc(project, psdFile) {
+	async function makeNormalizedLayerTree(project, psdFile) {
 
-		const	versionInfo = getPropByNameChain(psdFile, 'imageResources', 'versionInfo');
-		const	versionInfoText = (
+	const	versionFields = getPropByNameChain(psdFile, 'imageResources', 'versionInfo');
+
+		if (TESTING > 1) {
+		const	versionText = (
 				['readerName', 'writerName']
-				.map((key) => getPropByNameChain(versionInfo, key))
+				.map((key) => key + ': ' + getPropByNameChain(versionFields, key))
 				.filter(arrayFilterNonEmptyValues)
 				.filter(arrayFilterUniqueValues)
 				.join('\n')
 			);
 
-			if (TESTING) console.log('loadAgPSD:', [
+			console.log('loadAgPSD:', [
 				'project:', project,
-				'psdFile:', psdFile,
-				'fileReadingOptions:', fileReadingOptions,
-				'versionInfoText:', versionInfoText,
+				'file:', psdFile,
+				'version:', versionText,
+				'options:', AG_PSD_FILE_READING_OPTIONS,
 			]);
-
-//* TODO:
-
 		}
+
+	const	rootLayers = psdFile.children;
+
+		if (
+			!rootLayers
+		||	!rootLayers.length
+		) {
+			return;
+		}
+
+		if (versionFields) {
+			project.versionInfo = versionFields;
+		}
+
+	const	psdColorMode = psdFile.colorMode;
+
+		project.width	  = psdFile.width;
+		project.height	  = psdFile.height;
+		project.bitDepth  = psdFile.bitsPerChannel;
+		project.channels  = psdFile.channels;
+		project.colorMode = (
+			isRealNumber(psdColorMode)
+			? PSD_COLOR_MODES[psdColorMode]
+			: psdColorMode
+		);
+
+		project.nodesCount = getPropByNameChain(psdFile, 'imageResources', 'layersGroup', 'length');
+
+
+//* Gather layers into a tree object:
+
+		async function addLayerToTree(psdNode, parentGroup) {
+
+		const	{ name, mask, imageData, fillOpacity } = psdNode;
+
+		const	layers = psdNode.children;
+		const	isLayerFolder = (
+				isNonNullObject(layers)
+			&&	isRealNumber(layers.length)
+			);
+
+		const	isVisible = !!(psdNode.visible || !psdNode.hidden);
+		const	isClipped = !!(psdNode.clipped || psdNode.clipping);
+
+		const	psdBlendMode = psdNode.blendMode;
+		const	blendMode = getNormalizedBlendMode(psdBlendMode);
+
+		const	psdPassMode = getPropByAnyOfNamesChain(psdNode, 'sectionDivider', 'key');
+		const	isPassThrough = !!(psdPassMode && regLayerBlendModePass.test(psdPassMode));
+
+		const	hasNoFillOpacityValue = (
+				isNullOrUndefined(fillOpacity)
+			||	!isRealNumber(fillOpacity)
+			);
+
+		const	opacity = (
+				hasNoFillOpacityValue
+				? psdNode.opacity
+				: psdNode.opacity * fillOpacity
+			);
+//* Note:
+//*	"Fill" opacity is used in PSD from SAI2
+//*	to store opacity value instead of standard opacity
+//*	for layers with certain blending modes (non-TS versions).
+
+		const	layerWIP = {
+				name
+			,	isLayerFolder
+			,	isVisible
+			,	isClipped
+			,	isPassThrough
+			,	opacity
+			,	blendMode
+			,	'blendModeOriginal' : psdBlendMode
+			,	'isBlendModeTS' : !!psdNode.transparencyShapesLayer
+			};
+
+			if (
+				!isLayerFolder
+			&&	isImageData(imageData)
+			) {
+				layerWIP.imgData = imageData;
+
+				setImageGeometryProperties(layerWIP, psdNode, imageData);
+
+				++project.imagesCount;
+			}
+
+			if (
+				isNonNullObject(mask)
+			&&	!mask.disabled
+			&&	isImageData(mask.imageData)
+			) {
+				layerWIP.mask = {
+					'fillOutside' : orz(mask.defaultColor)
+				,	'imgData' : getMaskFromOpaqueImageData(mask.imageData)
+				};
+
+				setImageGeometryProperties(layerWIP.mask, mask, mask.imageData);
+
+				if (mask.positionRelativeToLayer) {
+					addImageGeometryProperties(layerWIP.mask, layerWIP);
+				}
+
+				++project.imagesCount;
+			}
+
+			parentGroup = await getNextParentAfterAddingLayerToTree(
+				layerWIP
+			,	psdNode
+			,	name
+			,	parentGroup
+			,	isLayerFolder
+			);
+
+			++nodesDoneCount;
+
+			if (
+				ADD_PAUSE_AT_INTERVALS
+			&&	lastPauseTime + PAUSE_WORK_INTERVAL < getTimeNow()
+			) {
+				updateProjectOperationProgress(
+					project
+				,	'project_status_reading_layers'
+				,	nodesDoneCount
+				,	project.nodesCount
+				);
+
+				await pause(PAUSE_WORK_DURATION);
+
+				lastPauseTime = getTimeNow();
+			}
+
+			if (isStopRequested = isStopRequestedAnywhere(project)) {
+				project.loading.errorPossible = 'project_status_aborted';
+
+				return;
+			}
+
+			if (isLayerFolder) {
+				++project.foldersCount;
+
+				await addLayerGroupCommonWrapper(project, parentGroup, layers.slice().reverse(), addLayerToTree);
+			} else {
+				++project.layersCount;
+			}
+		}
+
+	let	nodesDoneCount = 0;
+	let	lastPauseTime = getTimeNow();
+	let	isStopRequested;
+
+		if (isStopRequested) {
+			return;
+		}
+
+		return await addLayerGroupCommonWrapper(
+			project
+		,	project.layers = []
+		,	rootLayers.slice().reverse()
+		,	addLayerToTree
+		);
+	}
+
+	return await loadCommonWrapper(
+		project
+	,	'ag-psd'
+	,	getParsedFilePromise
+	,	makeNormalizedLayerTree
 	);
 }
 
@@ -13022,6 +13256,7 @@ let	oraLayers, img, randomOtherImg, failed, timeNow;
 }
 
 function getProgressUpdaterCallback(context, key, isCountFormatted) {
+
 const	getCountFormatted = (
 		isCountFormatted
 		? (value) => value.toLocaleString(LANG)
