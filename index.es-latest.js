@@ -14305,7 +14305,7 @@ const	thisJob = { startTime, files, evt };
 		if (LOG_GROUPING) console.groupEnd(logLabel);
 		if (LOG_TIMERS) console.timeEnd(logLabel);
 
-		console.log('Loaded ' + loadedProjectsCount + ' of ' + files.length + ' project files.');
+		if (LOG_ACTIONS) console.log('Loaded ' + loadedProjectsCount + ' of ' + files.length + ' project files.');
 	} else if (TESTING) {
 		console.error('Cannot load files:', [ files, 'From event:', evt ]);
 	}
