@@ -41,7 +41,7 @@
 //* TODO ---------------------- other: ----------------------------------------
 //* TODO: fix stuck loading of ORA with big PNGs while optimizing them all by UPNG.js.
 //* TODO: fix stuck loading of PSD after failed PSB.
-//* TODO: lazy-loading images (layers, merged, thumbnail) with ag-psd.
+//* TODO: lazy-loading images (layers, merged, thumbnail) with ag-psd (seems impossible without reparsing whole file again).
 //* TODO: don't add custom properties to objects of built-in types, if possible.
 //* TODO: global job list for WIP cancelling instead of spaghetti-coded flag checks.
 //* TODO: split JS files in a way that lets older browsers to use parts they can parse and execute (only show menu, or only load ORA, etc.).
@@ -108,16 +108,18 @@ var	exampleRootDir = ''
 ,	EXAMPLE_NOTICE			= false	//* <- show the warning near the list of files.
 ,	FILE_NAME_ADD_PARAM_KEY		= true
 ,	FILE_NAME_OMIT_SINGLE_OPTIONS	= true
-,	GET_LAYER_IMAGE_FROM_BITMAP	= true
+,	LAYER_IMAGES_FROM_BITMAP	= true
+,	LAYER_IMAGES_PRELOAD_ALL	= false
+,	LAYER_IMAGES_PRELOAD_USED	= false
 ,	LOCALIZED_CASE_BY_CROSS_COUNT	= false	//* <- determine word case by product of all numbers in args; if not, then by the last number.
 ,	LOG_ACTIONS			= false
 ,	LOG_GROUPING			= false	//* <- becomes a mess with concurrent operations.
 ,	LOG_TIMERS			= false
-,	OPTIMIZE_ALL_PNG		= false
-,	OPTIMIZE_COLOR_FILL_PNG		= true	//* <- convert into 3/4-byte RGB(A) array on load, compress with UPNG on save.
-,	OPTIMIZE_UNCOMPRESSED_PNG	= true	//* <- saved by Krita, relying only on ORA file ZIP compression instead; but in JS it's slow to unzip and bloats RAM storage; on the other hand, ORA files with recompressed PNGs may get bigger.
-,	PRELOAD_ALL_LAYER_IMAGES	= false
-,	PRELOAD_USED_LAYER_IMAGES	= false
+,	PNG_OPTIMIZE_ALL		= false
+,	PNG_OPTIMIZE_COLOR_FILL		= true	//* <- convert into 3/4-byte RGB(A) array on load, compress with UPNG on save.
+,	PNG_OPTIMIZE_UNCOMPRESSED	= true	//* <- saved by Krita, relying only on ORA file ZIP compression instead; but in JS it's slow to unzip and bloats RAM storage; on the other hand, ORA files with recompressed PNGs may get bigger.
+,	PNG_USE_UPNG			= true	//* <- otherwise - canvas, which depends on browser implementation
+,	PNG_USE_UZIP			= false	//* <- otherwise - pako, which is good for all uses
 ,	READ_FILE_CONTENT_TO_GET_TYPE	= false	//* <- this relies on the browser or the OS to magically determine file type.
 ,	REQUIRE_NON_EMPTY_SELECTION	= false	//* <- buggy
 ,	SAVE_ADDITIONAL_LAYER_NAMES	= true	//* <- verbose names for mask image layers, wrapper folders, etc. to store PSD features into ORA.
@@ -142,15 +144,13 @@ var	exampleRootDir = ''
 ,	TESTING_RENDER_CACHE		= false	//* <- dump a PNG onto the page after each cached crop or merge.
 ,	USE_CRITERIA_ARRAY		= true
 ,	USE_MINIFIED_JS			= true	//* <- currently only pako.
-,	USE_ONE_FILE_ZIP_WORKER		= false	//* <- concatenated bundle, which is not included in distribution by default.
-,	USE_UPNG			= true
-,	USE_UZIP			= false
-,	USE_WORKERS			= true
-,	USE_ZLIB_ASM			= false
-,	USE_ZLIB_CODECS			= true	//* <- asm or pako instead of zip.js own.
+,	USE_WORKERS			= true	//* <- not possible when page is opened from disk
 ,	VERIFY_PARAM_COLOR_VS_LAYER_CONTENT	= false
 ,	ZERO_PERCENT_EQUALS_EMPTY		= false
-,	ZIP_SKIP_DUPLICATE_FILENAMES		= true
+,	ZIP_SKIP_DUPLICATE_FILENAMES	= true
+,	ZIP_USE_ASM			= false	//* <- otherwise - pako, which is good for all uses
+,	ZIP_USE_CODECS			= true	//* <- asm or pako instead of zip.js own.
+,	ZIP_USE_ONE_FILE_WORKER		= false	//* <- concatenated bundle, which is not included in distribution by default.
 
 //* Array/Map/Set/Object containers all work fine.
 //* Set is the fastest in this case, tested in Firefox 56, Basilisk 2021.03.17 (Firefox 56-based) and Vivaldi 3.7.2218.55 (latest Chrome-based).
@@ -898,13 +898,13 @@ function initLibParams() {
 
 	USE_WORKERS_IF_CAN = (USE_WORKERS && CAN_USE_WORKERS);
 
-const	zlibCodecPNG = [USE_UZIP ? 'UZIP.js' : 'pako'];
-const	zlibCodecZIP = [USE_ZLIB_ASM ? 'zlib-asm' : 'pako'];
+const	zlibCodecPNG = [PNG_USE_UZIP ? 'UZIP.js' : 'pako'];
+const	zlibCodecZIP = [ZIP_USE_ASM ? 'zlib-asm' : 'pako'];
 
 const	zipAllInOneFileName = 'z-worker-copy-all-in-one-file' + (
-		!USE_ZLIB_CODECS
+		!ZIP_USE_CODECS
 		? ''
-		: USE_ZLIB_ASM
+		: ZIP_USE_ASM
 		? '-zlib-asm'
 		: USE_ES5_JS
 		? '-pako.es5'
@@ -912,7 +912,7 @@ const	zipAllInOneFileName = 'z-worker-copy-all-in-one-file' + (
 	) + '.js';
 
 const	zipZlibCodecWrapper = (
-		USE_ZLIB_ASM
+		ZIP_USE_ASM
 		? 'codecs-zlib-asm.js'
 		: 'codecs-pako.js'
 	);
@@ -980,10 +980,10 @@ const	zlibPakoFileName = (
 //* CORS workaround: when not using Workers, include scripts here.
 //* Source: https://github.com/gildas-lormeau/zip.js/issues/169#issuecomment-312110395
 
-				USE_ONE_FILE_ZIP_WORKER
+				ZIP_USE_ONE_FILE_WORKER
 				? [zipAllInOneFileName]
 				:
-				USE_ZLIB_CODECS
+				ZIP_USE_CODECS
 				? [zipZlibCodecWrapper]
 				: [
 					'deflate.js',
@@ -992,8 +992,8 @@ const	zlibPakoFileName = (
 			)
 		,	'depends' : (
 				USE_WORKERS_IF_CAN
-			||	USE_ONE_FILE_ZIP_WORKER
-			||	!USE_ZLIB_CODECS
+			||	ZIP_USE_ONE_FILE_WORKER
+			||	!ZIP_USE_CODECS
 				? DUMMY_EMPTY_ARRAY
 				: zlibCodecZIP
 			)
@@ -1057,11 +1057,11 @@ const	zlibPakoFileName = (
 	};
 
 	ZIP_WORKER_SCRIPTS = (
-		USE_ONE_FILE_ZIP_WORKER
+		ZIP_USE_ONE_FILE_WORKER
 		? [
 			ZIP_FORMAT_DIR + zipAllInOneFileName
 		]
-		: USE_ZLIB_CODECS
+		: ZIP_USE_CODECS
 		? [
 			ZIP_FORMAT_DIR + 'z-worker.js',
 			ZIP_FORMAT_DIR + zipZlibCodecWrapper,
@@ -1078,9 +1078,9 @@ const	zlibPakoFileName = (
 	AG_PSD_FILE_READING_OPTIONS = {
 		// skipThumbnail          : !TAB_THUMBNAIL_PRELOAD,
 		// skipCompositeImageData : !TAB_THUMBNAIL_PRELOAD,
-		// skipLayerImageData     : !PRELOAD_ALL_LAYER_IMAGES,
-		useImageData    : true, // !!GET_LAYER_IMAGE_FROM_BITMAP,	//* <- "imageData" field instead of "canvas"
-		useRawThumbnail : true, // !!GET_LAYER_IMAGE_FROM_BITMAP,	//* <- "thumbnailRaw" field instead of "thumbnail"
+		// skipLayerImageData     : !LAYER_IMAGES_PRELOAD_ALL,
+		useImageData    : true, // !!LAYER_IMAGES_FROM_BITMAP,	//* <- "imageData" field instead of "canvas"
+		useRawThumbnail : true, // !!LAYER_IMAGES_FROM_BITMAP,	//* <- "thumbnailRaw" field instead of "thumbnail"
 		logMissingFeatures : !!TESTING,
 		logDevFeatures : (TESTING > 9),
 	};
@@ -1513,7 +1513,11 @@ function replaceAll(text, replaceWhat, replaceWith) {
 		return text;
 	}
 
-	return String(text).split(replaceWhat).join(replaceWith);
+	return String(text).replaceAll(replaceWhat, replaceWith);
+}
+
+if (!String.prototype.replaceAll) {
+	String.prototype.replaceAll = (replaceWhat, replaceWith) => this.split(replaceWhat).join(replaceWith);
 }
 
 function isNotEmptyString(value) {
@@ -3520,7 +3524,7 @@ function getTrackListFromProject(holder) {
 
 function getRGBAFromDataIfColorFill(imageData, project, layer) {
 	if (
-		OPTIMIZE_COLOR_FILL_PNG
+		PNG_OPTIMIZE_COLOR_FILL
 	&&	(layer && !(layer.top || layer.left))
 	&&	imageData && project
 	&&	imageData.data
@@ -3569,7 +3573,7 @@ function getImageDataFromData(imageData) {
 async function getImageElementFromData(imageData, project, colorsCount) {
 	if (imageData = getImageDataFromData(imageData)) {
 		if (
-			USE_UPNG
+			PNG_USE_UPNG
 		&&	await loadLibOnDemandPromise('UPNG.js')
 		) {
 		const	arrayBuffer = UPNG.encode(
@@ -3600,17 +3604,17 @@ async function getImageElementFromData(imageData, project, colorsCount) {
 					(resolve, reject) => resolvePromiseOnImgLoad(img, resolve, reject)
 				).catch(catchPromiseError);
 			}
-		}
+		} else {
+		let	canvas, img;
 
-	let	canvas, img;
+			if (
+				isCanvasElement(canvas = getCanvasFromImageData(imageData))
+			&&	isImageElement(img = await getImagePromiseFromCanvasToBlob(canvas, project))
+			) {
+				img.imageDataLength = imageData.data.length;
 
-		if (
-			isCanvasElement(canvas = getCanvasFromImageData(imageData))
-		&&	isImageElement(img = await getImagePromiseFromCanvasToBlob(canvas, project))
-		) {
-			img.imageDataLength = imageData.data.length;
-
-			return img;
+				return img;
+			}
 		}
 	}
 }
@@ -3654,7 +3658,7 @@ function getArrayBufferPromiseFromURL(url) {
 
 async function getImageDataDecodedFromImage(source) {
 	if (
-		USE_UPNG
+		PNG_USE_UPNG
 	&&	await loadLibOnDemandPromise('UPNG.js')
 	) {
 		return getImageDataFromArrayBuffer(
@@ -5070,8 +5074,8 @@ async function getOrLoadImage(project, layer) {
 
 			if (
 				(
-					OPTIMIZE_ALL_PNG
-				||	OPTIMIZE_UNCOMPRESSED_PNG
+					PNG_OPTIMIZE_ALL
+				||	PNG_OPTIMIZE_UNCOMPRESSED
 				)
 			&&	isImageElement(img)
 			&&	!img.imageDataLength
@@ -5089,7 +5093,7 @@ async function getOrLoadImage(project, layer) {
 				);
 
 				if (
-					OPTIMIZE_ALL_PNG
+					PNG_OPTIMIZE_ALL
 				||	(
 						fileSize >
 						imageSize.width *
@@ -6210,7 +6214,7 @@ async function getProjectViewMenu(project) {
 			}
 
 			if (
-				!PRELOAD_ALL_LAYER_IMAGES
+				!LAYER_IMAGES_PRELOAD_ALL
 			&&	layer.opacity > 0
 			) {
 				project.loading.images.push(layer);
@@ -6269,7 +6273,7 @@ async function getProjectViewMenu(project) {
 				}
 			}
 
-			if (PRELOAD_ALL_LAYER_IMAGES) {
+			if (LAYER_IMAGES_PRELOAD_ALL) {
 				project.loading.images.push(...layers);
 			}
 
@@ -8624,7 +8628,7 @@ async function loadPSDCommonWrapper(project, libName, varName) {
 				const	data = getPropFromAnySource('pixelData', psdLayer, psdNode, img);
 
 					if (data && data.length > 0) {
-						if (GET_LAYER_IMAGE_FROM_BITMAP) {
+						if (LAYER_IMAGES_FROM_BITMAP) {
 							layerWIP.imgData = data;
 						} else {
 							layerWIP.toImage = () => getOrLoadImage(project, psdLayer);
@@ -14615,8 +14619,8 @@ const	configVarNames = [
 	);
 
 	PRELOAD_LAYER_IMAGES = (
-		PRELOAD_ALL_LAYER_IMAGES
-	||	PRELOAD_USED_LAYER_IMAGES
+		LAYER_IMAGES_PRELOAD_ALL
+	||	LAYER_IMAGES_PRELOAD_USED
 	);
 
 //* Check loading local files:
