@@ -1263,6 +1263,10 @@ function getTrimReg(chars) {
 	return new RegExp('^[' + chars + ']+|[' + chars + ']+$', 'gi');
 }
 
+function getNonNullOrEmptyObject(obj) {
+	return isNonNullObject(obj) ? obj : {};
+}
+
 function getCriteria(...args) {
 	return (
 		USE_CRITERIA_ARRAY
@@ -1306,7 +1310,7 @@ function getCrossProductArray() {
 
 //* Shorter version, Source: https://stackoverflow.com/a/43053803
 
-const getCrossProductSub = (a, b) => [].concat(...a.map(d => b.map(e => [].concat(d, e))));
+const getCrossProductSub = (a, b) => [].concat(...a.map((d) => b.map((e) => [].concat(d, e))));
 const getCrossProductArr = (a, b, ...c) => (b ? getCrossProductArr(getCrossProductSub(a, b), ...c) : a);
 
 //* Source: http://phrogz.net/lazy-cartesian-product
@@ -1777,15 +1781,13 @@ const	wrapText = {
 			: joinTexts[0]
 		) || '';
 
-		value = value.map(
-			(value) => getNestedArrayJoinedText(value, flags, ...joinTexts)
-		);
-
 		if (flags.filter) {
 			value = value.filter(arrayFilterNonEmptyValues);
 		}
 
-		value = value.join(joinText);
+		value = value.map(
+			(value) => getNestedArrayJoinedText(value, flags, ...joinTexts)
+		).join(joinText);
 	}
 
 	return (
@@ -1925,7 +1927,7 @@ function trim(text) {
 }
 
 function pause(msec) {
-	return new Promise(resolve => setTimeout(resolve, msec));
+	return new Promise((resolve) => setTimeout(resolve, msec));
 }
 
 function eventStop(evt, flags) {
@@ -5462,10 +5464,8 @@ async function getNormalizedProjectData(sourceFile, projectButtons) {
 	}
 
 const	{ buttonTab, buttonText, buttonStatus, imgThumb } = projectButtons;
+const	{ fileName, baseName, ext } = sourceFile;
 
-const	fileName = sourceFile.name;
-const	baseName = sourceFile.baseName;
-const	ext      = sourceFile.ext;
 const	mimeType = getPropByNameChain(sourceFile, 'file', 'type');
 const	actionLabel = 'processing document structure';
 
@@ -7014,6 +7014,19 @@ const	buttonsPanel = cre('div', container);
 
 //* Show overall project info:
 
+const	{
+		width,
+		height,
+		bitDepth,
+		channels,
+		colorMode,
+		layersCount,
+		foldersCount,
+		usedLayersCount,
+		usedFoldersCount,
+
+	} = project;
+
 const	summary = cre('div', buttonsPanel);
 	summary.className = 'sub panel';
 
@@ -7022,28 +7035,19 @@ const	summaryFooter = cre('footer', summary);
 	summaryFooter.className = 'panel';
 
 const	bitDepthText = (
-		project.channels && project.bitDepth
-		? getLocalizedText('project_bits_channels', project.channels, project.bitDepth)
-		: project.channels ? getLocalizedText('project_channels', project.channels)
-		: project.bitDepth ? getLocalizedText('project_bits', project.bitDepth)
+		channels && bitDepth
+		? getLocalizedText('project_bits_channels', channels, bitDepth)
+		: channels ? getLocalizedText('project_channels', channels)
+		: bitDepth ? getLocalizedText('project_bits', bitDepth)
 		: ''
 	);
 
-const	colorModeText = project.colorMode || '';
-const	canvasSizeText = getLocalizedText('project_pixels', project.width, project.height);
-const	resolutionText = getNestedFilteredArrayJoinedText([canvasSizeText, bitDepthText, colorModeText], ', ');
+const	canvasSizeText = getLocalizedText('project_pixels', width, height);
+const	resolutionText = getNestedFilteredArrayJoinedText([canvasSizeText, bitDepthText, colorMode], ', ');
 
 const	imagesCount  = project.imagesCount || (project.imagesCount = project.loading.imagesCount);
 const	imagesCountStubHTML = '<span class="project-images-loaded"></span>';
 const	layersTextParts = [];
-
-const	{
-		layersCount,
-		foldersCount,
-		usedLayersCount,
-		usedFoldersCount,
-
-	} = project;
 
 const	isUsingAllLayers = project.isUsingAllLayers = !(
 		(usedLayersCount && usedLayersCount !== layersCount)
@@ -7236,11 +7240,13 @@ async function getProjectMergedImagePromise(project, flags) {
 	}
 
 	if (isNonNullObject(project)) {
-		if (!isNonNullObject(flags)) {
-			flags = {};
-		}
 
-	const	{ alsoSetThumbnail, waitForThumbnail } = flags;
+	const	{
+			alsoSetThumbnail,
+			waitForThumbnail,
+
+		} = getNonNullOrEmptyObject(flags);
+
 	const	img = project.mergedImage || await getOrLoadImage(project);
 
 		return new Promise(
@@ -8785,9 +8791,15 @@ async function loadAgPSD(project) {
 
 		async function addLayerToTree(psdNode, parentGroup) {
 
-		const	{ name, mask, imageData, fillOpacity } = psdNode;
+		const	{
+				name,
+				mask,
+				imageData,
+				fillOpacity,
+				children : layers,
 
-		const	layers = psdNode.children;
+			} = psdNode;
+
 		const	isLayerFolder = (
 				isNonNullObject(layers)
 			&&	isRealNumber(layers.length)
@@ -9293,15 +9305,12 @@ async function getAllValueSets(project, values, startTime, flags) {
 		return isGoingDeeper;
 	}
 
-	if (!isNonNullObject(flags)) {
-		flags = {};
-	}
-
 const	{
 		getOnlyNames,
 		stopAtMaxCount,
 		checkSelectedValue,
-	} = flags;
+
+	} = getNonNullOrEmptyObject(flags);
 
 	if (!isNonNullObject(values)) {
 		values = getAllMenuValues(project, checkSelectedValue);
@@ -10259,13 +10268,9 @@ function getCanvasFlipped(project, img, flipSide, flags) {
 		return null;
 	}
 
-	if (!isNonNullObject(flags)) {
-		flags = {};
-	}
-
 	if (!flipSide) {
 		return (
-			flags.isCopyNeeded
+			flags && flags.isCopyNeeded
 			? getCanvasCopy(project, img)
 			: img
 		);
@@ -11758,7 +11763,7 @@ function getFileNameByValues(project, values, flags) {
 
 	function getColoredHTMLOrPlainText(content, colorIndex) {
 		return (
-			flags.addColorsWithHTML
+			addColorsWithHTML
 		&&	content.length > 0
 			? (
 				'<span class="'
@@ -11789,7 +11794,7 @@ function getFileNameByValues(project, values, flags) {
 
 		let	optionName = section[listName] || '';
 
-			if (flags.isForStorageKey) {
+			if (isForStorageKey) {
 				return listName + '=' + optionName;
 			}
 
@@ -11804,14 +11809,14 @@ function getFileNameByValues(project, values, flags) {
 
 				if (
 					FILE_NAME_OMIT_SINGLE_OPTIONS
-				&&	flags.checkSelectedValue
+				&&	checkSelectedValue
 				&&	isOptionOmitable(params)
 				&&	isOptionSingle(params)
 				) {
 					return;
 				}
 
-				if (flags.skipDefaultPercent) {
+				if (skipDefaultPercent) {
 					if (sectionName === 'zoom') {
 					const	zoomPercentage = orz(optionName);
 
@@ -11874,7 +11879,7 @@ function getFileNameByValues(project, values, flags) {
 
 		return (
 			(
-				flags.isForStorageKey
+				isForStorageKey
 				? (
 					Object
 					.keys(section)
@@ -11890,19 +11895,27 @@ function getFileNameByValues(project, values, flags) {
 		);
 	}
 
-	if (!isNonNullObject(flags)) {
-		flags = {};
-	}
-
 	if (!isNonNullObject(values)) {
 		values = getUpdatedMenuValues(project);
 	}
 
-const	{ sectionNames, listNamesBySection } = project.namePartsOrder;
+const	{
+		addColorsWithHTML,
+		checkSelectedValue,
+		isForStorageKey,
+		skipDefaultPercent,
+
+	} = getNonNullOrEmptyObject(flags);
+
+const	{
+		sectionNames,
+		listNamesBySection,
+
+	} = project.namePartsOrder;
 
 	return getColoredHTMLOrPlainText(
 		(
-			flags.isForStorageKey
+			isForStorageKey
 			? NAME_PARTS_ORDER
 			: sectionNames
 		)
@@ -12193,22 +12206,24 @@ function getNewLineSubcontainer(container, values, options) {
 async function renderAll(project, flags) {
 	setWIPstate(true, project);
 
-	if (!isNonNullObject(flags)) {
-		flags = {};
-	}
+const	{
+		saveToFile,
+		saveToZipFile,
+
+	} = flags = getNonNullOrEmptyObject(flags);
 
 	if (
-		!flags.saveToFile
-	&&	!flags.saveToZipFile
-	) {
-		flags.showOnPage = true;
-	}
-
-	if (
-		flags.saveToZipFile
+		saveToZipFile
 	&&	! await loadLibOnDemandPromise('zip.js')
 	) {
 		return;
+	}
+
+	if (
+		!saveToFile
+	&&	!saveToZipFile
+	) {
+		flags.showOnPage = true;
 	}
 
 	project.renderBatchCountStartTime = null;
@@ -12239,10 +12254,18 @@ const	valueSets = project.renderBatchSelectedSets || (project.renderBatchSelecte
 async function renderBatch(project, flags, startTime, values, valueSets) {
 let	lastPauseTime = getTimeNow();
 
+const	{
+		asOneJoinedImage,
+		saveToFile,
+		saveToZipFile,
+		showOnPage,
+
+	} = getNonNullOrEmptyObject(flags);
+
 const	needWaitBetweenDL = (
-		flags.saveToFile
-	&&	!flags.saveToZipFile
-	&&	!flags.asOneJoinedImage
+		saveToFile
+	&&	!saveToZipFile
+	&&	!asOneJoinedImage
 	);
 
 const	renderedImages = [];
@@ -12264,8 +12287,8 @@ let	batchContainer, subContainer;
 	,	setsCountTotal
 	);
 
-	if (flags.showOnPage) batchContainer = getEmptyRenderContainer(project); else
-	if (flags.asOneJoinedImage) batchContainer = cre('div');
+	if (showOnPage) batchContainer = getEmptyRenderContainer(project); else
+	if (asOneJoinedImage) batchContainer = cre('div');
 
 	if (LOG_ACTIONS) logTime(
 		'"' + project.fileName + '"'
@@ -12289,7 +12312,7 @@ let	batchContainer, subContainer;
 			subContainer = getNewLineSubcontainer(batchContainer, values, optionsForNewLines);
 		}
 
-		if (flags.showOnPage) {
+		if (showOnPage) {
 			img = await showImg(
 				project
 			,	render
@@ -12299,8 +12322,8 @@ let	batchContainer, subContainer;
 		}
 
 		if (
-			flags.asOneJoinedImage
-		||	flags.saveToZipFile
+			asOneJoinedImage
+		||	saveToZipFile
 		) {
 			if (!img) {
 				img = await getRenderedImg(project, render);
@@ -12309,15 +12332,15 @@ let	batchContainer, subContainer;
 			if (img) {
 				if (
 					addToListIfNotYet(renderedImages, img)
-				&&	flags.asOneJoinedImage
-				&&	!flags.showOnPage
+				&&	asOneJoinedImage
+				&&	!showOnPage
 				&&	!batchContainer.contains(img)
 				) {
 					subContainer.appendChild(img);
 				}
 			}
 		} else
-		if (flags.saveToFile) {
+		if (saveToFile) {
 			img = await saveImg(project, render);
 		}
 
@@ -12376,7 +12399,7 @@ let	batchContainer, subContainer;
 		}
 	}
 
-	if (flags.saveToZipFile) {
+	if (saveToZipFile) {
 	const	zipFile = new zip.fs.FS();
 		zipFile.compressionLevel = 0;
 
@@ -12477,7 +12500,7 @@ let	batchContainer, subContainer;
 		pendingJobs.delete(thisJob);
 	}
 
-	if (flags.asOneJoinedImage) {
+	if (asOneJoinedImage) {
 
 		function getBatchCanvasSize(rootContainer) {
 		let	x = 0;
@@ -12601,12 +12624,12 @@ let	batchContainer, subContainer;
 				).catch(catchPromiseError);
 
 				if (img) {
-					if (flags.showOnPage) {
+					if (showOnPage) {
 						makeElementFitOnClick(img);
 						getEmptyRenderContainer(project).appendChild(img);
 					}
 
-					if (flags.saveToFile) {
+					if (saveToFile) {
 						await saveDL(
 							img.src
 						,	project.fileName + '_' + renderedImages.length
@@ -12881,7 +12904,7 @@ async function saveProject(project, flags) {
 			oraNode.y = y;
 
 			if (
-				flags.saveOriginalData
+				saveOriginalData
 			&&	layer.otherAttributes
 			) {
 				oraNode.otherAttributes = layer.otherAttributes;
@@ -13025,7 +13048,7 @@ async function saveProject(project, flags) {
 		if (layers && layers.length > 0)
 		for (const layer of layers)
 		if (!(
-			flags.saveUsedLayers
+			saveUsedLayers
 		&&	layer.isSkipped
 		)) {
 		let	tempLayer = layer;
@@ -13113,9 +13136,14 @@ async function saveProject(project, flags) {
 		return;
 	}
 
-	if (!isNonNullObject(flags)) {
-		flags = {};
-	}
+const	{
+		fileType,
+		saveOriginalData,
+		saveOriginalPreview,
+		saveSelectedPreview,
+		saveUsedLayers,
+
+	} = getNonNullOrEmptyObject(flags);
 
 const	isSingleWIP = setWIPstate(true, project);
 const	actionLabel = 'exporting to ORA file';
@@ -13130,14 +13158,14 @@ let	oraLayers, img, randomOtherImg, failed, timeNow;
 //* Use preexisting merged preview from the project file:
 
 	if (
-		flags.saveOriginalPreview
+		saveOriginalPreview
 	&&	(img = await getProjectMergedImagePromise(project))
 	); else
 
 //* Use current selected options to create merged preview:
 
 	if (
-		flags.saveSelectedPreview
+		saveSelectedPreview
 	||	SAVE_WITH_SELECTED_PRERENDER
 	) {
 		try {
@@ -13201,7 +13229,7 @@ let	oraLayers, img, randomOtherImg, failed, timeNow;
 		oraFile.lastModTime = project.lastModTime;
 		oraFile.layers = oraLayers;
 
-		if (flags.saveOriginalData) {
+		if (saveOriginalData) {
 		const	sourceDataFile = project.sourceDataFile || project.sourceData;
 
 			if (sourceDataFile) {
@@ -13226,7 +13254,7 @@ let	oraLayers, img, randomOtherImg, failed, timeNow;
 			(resolve, reject) => oraFile.save(
 				(blob) => {
 					try {
-						resolve(saveDL(blob, project.baseName, flags.fileType || 'ora', 1));
+						resolve(saveDL(blob, project.baseName, fileType || 'ora', 1));
 
 					} catch (error) {
 						reject(error);
@@ -13331,7 +13359,7 @@ const	orderBox = project.fileNamingOrderBox;
 	}
 
 	if (isActionSort || isActionReset) {
-	const	namePartsOrder = project.namePartsOrder;
+	const	{ namePartsOrder } = project;
 	const	{ sectionNames, listNamesBySection } = namePartsOrder;
 
 //* Sort in-place:
@@ -13415,7 +13443,7 @@ function updateFileNamingOrder(project, draggedElement, displacedElement) {
 let	sectionName, listName, displacedName;
 let	sectionNames, listNames, fromIndex, toIndex;
 
-const	namePartsOrder = project.namePartsOrder;
+const	{ namePartsOrder } = project;
 
 	if (sectionName = draggedElement.getAttribute('data-section')) {
 		displacedName = displacedElement.getAttribute('data-section');
