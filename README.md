@@ -159,7 +159,7 @@ PNG file codec:
 * Unmodified [pako](https://github.com/nodeca/pako).
 
 QOI file codec:
-* Lightly modified QOI.js from [qoi-ci](https://github.com/pfusik/qoi-ci). Encoding was patched here for JS RGB order. Decoding was not tested.
+* Lightly modified QOI.js from [qoi-ci](https://github.com/pfusik/qoi-ci). Encoding was patched here for JS ImageData RGBA order. Decoding was tested to match.
 
 ZIP file codec:
 * Lightly modified version of [zip.js](https://github.com/gildas-lormeau/zip.js) from [ora.js](https://github.com/zsgalusz/ora.js), 2013, should be backward compatible with that, but probably not with later original versions.
