@@ -984,7 +984,7 @@ const	zlibPakoFileName = (
 
 			'varName' : 'QOIEncoder'
 		,	'dir' : LIB_FORMATS_DIR + 'qoi/qoi-ci/'
-		,	'files' : ['qoi-ci-1.1.1-mod-rgba.js']
+		,	'files' : ['qoi-ci-1.1.1-mod-rgba-order.js']
 		},
 
 		'zip.js' : {
@@ -3645,18 +3645,20 @@ function getImageDataFromData(imageData) {
 async function getQOIByteArrayFromImageData(imageData) {
 	if (
 		await loadLibOnDemandPromise('QOI.js')
-	&&	(imageData = getImageDataFromData(imageData))
+	&&	isNonNullImageData(imageData)
 	) {
 	const	qoiFile = new QOIEncoder();
 
-		qoiFile.encode(
+		if (qoiFile.encode(
 			imageData.width
 		,	imageData.height
 		,	new Int32Array(imageData.data.buffer)	//* <- https://stackoverflow.com/a/16679447
 		,	true
-		);
-
-		return qoiFile.getEncoded().subarray(0, qoiFile.getEncodedSize());
+		)) {
+			return qoiFile.getEncoded().subarray(0, qoiFile.getEncodedSize());
+		} else {
+			console.error('Error: failed to encode QOI file content.');
+		}
 	}
 }
 
@@ -3664,6 +3666,54 @@ async function getQOIBlobFromImageData(imageData) {
 const	data = await getQOIByteArrayFromImageData(imageData);
 
 	if (data) {
+
+		if (TESTING > 9) {
+		const	qoiFile = new QOIDecoder();
+
+			if (qoiFile.decode(
+				data
+			,	data.length
+			)) {
+			const	qoiImageData = getImageDataFromData({
+					'data' : new Uint8Array(qoiFile.getPixels().buffer)
+				,	'width' : qoiFile.getWidth()
+				,	'height' : qoiFile.getHeight()
+				});
+
+			const	canvas = getCanvasFromImageData(imageData);
+			const	oldPNG = canvas.toDataURL();
+
+			const	ctx = canvas.getContext('2d');
+				ctx.putImageData(qoiImageData, 0,0);
+
+			const	newPNG = canvas.toDataURL();
+
+				if (oldPNG !== newPNG) {
+					console.warn([
+						'Warning: mismatched result of QOI encode/decode'
+
+					,	'ImageData->PNG:'
+					,	imageData.width + 'x' + imageData.height
+					,	imageData.data.length + ' bytes in pixels'
+					,	oldPNG.length + ' bytes in DataURL'
+					,	oldPNG
+
+					,	'ImageData->QOI->ImageData->PNG:'
+					,	qoiImageData.width + 'x' + qoiImageData.height
+					,	qoiImageData.data.length + ' bytes in pixels'
+					,	newPNG.length + ' bytes in DataURL'
+					,	newPNG
+					]);
+					saveDL(oldPNG, 'srcImageDataToPNG', 'png', 1);
+					saveDL(newPNG, 'srcImageDataToQOIToImageDataToPNG', 'png', 1);
+				} else {
+					console.log('Image before QOI encode is same as after QOI decode.');
+				}
+			} else {
+				console.error('Error: failed to decode QOI file content.');
+			}
+		}
+
 		return new Blob( [data], { type : 'image/x-qoi' } );
 	}
 }
@@ -3891,6 +3941,10 @@ async function saveDL(data, fileName, ext, addTime, jsonReplacerFunc) {
 
 	if (TESTING > 1) console.log('saveDL:', fileName, ext, data);
 
+	if (!data) {
+		return;
+	}
+
 let	blob, size, type, url;
 let	mustRevokeURL = false;
 
@@ -3903,7 +3957,9 @@ let	mustRevokeURL = false;
 	} else {
 		type = TYPE_TEXT;
 		data = (
-			isNonNullObject(data)
+			isNotEmptyString(data)
+			? data
+			: isNonNullObject(data)
 			? JSON.stringify(
 				data
 			,	jsonReplacerFunc || null
@@ -3917,18 +3973,28 @@ let	mustRevokeURL = false;
 			blob = true;
 			size = data.length;
 		} else {
-			if (hasPrefix(data, DATA_PREFIX)) {
-				url = data;
-			} else {
-				url = DATA_PREFIX + type + ',' + encodeURIComponent(data);
-			}
+		const	hasDataPrefix = hasPrefix(data, DATA_PREFIX);
 
-			if (blob = await getImageBlobAndURLFromData(data)) {
+			if (
+				(
+					!hasDataPrefix
+				||	data.length > 1234567
+				)
+			&&	(blob = await getImageBlobAndURLFromData(data))
+			) {
 				size = blob.size;
 				type = blob.type;
-				url = blob.url;
+				url  = blob.url;
 				mustRevokeURL = true;
-			} else {
+			}
+
+			if (!url) {
+				if (hasDataPrefix) {
+					url = data;
+				} else {
+					url = DATA_PREFIX + type + ',' + encodeURIComponent(data);
+				}
+
 				size = url.length;
 				type = url.split(';', 1)[0].split(':', 2)[1];
 			}
