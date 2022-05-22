@@ -195,6 +195,23 @@ input[type="file"]:disabled {
 .panel.sub {
 	gap: 0.5em 1em;
 }
+.panel.mid,
+.panel details > summary + .panel {
+	margin-top: 0.5em;
+}
+.panel details > summary + .panel:not(:last-child) {
+	margin-bottom: 0.5em;
+}
+.panel details > summary {
+	margin: -0.5em -1em;
+	padding: 0.5em 1em;
+}
+.panel details > summary:hover {
+	background-color: white;
+}
+.panel details > summary:focus {
+	outline: 0;
+}
 /*
 	For browsers without "gap" support, e.g. Firefox 56:
 */
@@ -686,9 +703,17 @@ input[type="file"]:disabled {
 .filename {
 	font-weight: bold;
 }
-.filename .selected-parts {	color: #b184b1;}
 .filename .list-name {		color: #1e90ff;}
 .filename .option-name {	color: #5f9ea0;}
+.filename .selected-parts {
+	color: #b184b1;
+	/* border-radius: 0.5em; */
+	/* margin: 0.25em; */
+	padding: 0.25em;
+}
+details[open] .filename .selected-parts {
+	background-color: lightyellow;
+}
 p.warning {
 	text-align: center;
 }
@@ -696,7 +721,7 @@ p.warning {
 	content: "⚠";
 }
 .count-label::before {
-	content: "(";
+	content: " (";
 }
 .count-label::after {
 	content: ")";

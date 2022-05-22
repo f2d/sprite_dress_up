@@ -34,6 +34,8 @@
 //* TODO: save opened project as JSON (maybe name it BRA, Base64Raster, to open in JS drawpads).
 //* TODO: save opened project as SVG (probably more complicated, but widespread).
 //* TODO: save opened project as PSD (and PSB). Try https://github.com/Agamnentzar/ag-psd
+//* TODO: save opened project as QRA/ORQ/QOJ (ORA with QOI instead of PNG, and maybe JSON instead of XML)?
+//* TODO: save images: QOI, via asm.js? https://phoboslab.org/log/2021/11/qoi-fast-lossless-image-compression
 //* TODO: save images: WebP, JPEG XL. https://bugs.chromium.org/p/chromium/issues/detail?id=170565#c77 - toDataURL/toBlob quality 1.0 = lossless.
 //* TODO: make exported project files identically reproducible, if possible. Now works as long as source file, its mod.date and result layer tree are the same.
 //* TODO: compatible PSD -> ORA layer mode/structure conversions; on load/save/both?
@@ -108,6 +110,7 @@ var	exampleRootDir = ''
 ,	EXAMPLE_NOTICE			= false	//* <- show the warning near the list of files.
 ,	FILE_NAME_ADD_PARAM_KEY		= true
 ,	FILE_NAME_OMIT_SINGLE_OPTIONS	= true
+,	FILE_NAMING_SUMMARY_HEADER	= true
 ,	LAYER_IMAGES_FROM_BITMAP	= true
 ,	LAYER_IMAGES_PRELOAD_ALL	= false
 ,	LAYER_IMAGES_PRELOAD_USED	= false
@@ -306,7 +309,6 @@ const	CONFIG_FILE_PATH = 'config.js'			//* <- declarations-only file to redefine
 ,	regSanitizeLayerName	= /\([^\)]*\)|\[[^\]]*\]/g
 ,	regSanitizeLayerComment	= /[\(\)\[\]\{\}\<\>]+/g
 ,	regSanitizeFileName	= /[_\s\/\\:<>?*"]+/g
-,	regFileExt		= /(\.)([^.]+)?$/
 ,	regHMS			= /(T\d+)-(\d+)-(\d+\D*)/
 ,	regMultiDot		= /\.\.+/g
 ,	regNumDots		= /[\d.]+/g
@@ -693,18 +695,13 @@ const	SPLIT_SEC = 60
 		'show_project_details',
 	]
 
-,	PROJECT_SAVE_ALL_BUTTON_NAMES = [
-		'show_all',
-		'save_all',
-		'save_zip',
-	]
-
 ,	PROJECT_VIEW_CONTROLS = [
 		{
 			'header' : 'original_view_header',
 			'buttons' : {
-				'show_original' : 'show_original_png',
-				'save_original' : 'save_original_png',
+				'show_original_png' : '',
+				'save_original_png' : '',
+				// 'save_original_qoi' : '',
 				'save_original_ora' : '',
 				'save_original_ora_all_layers' : '',
 				'save_original_ora_used_layers' : '',
@@ -713,8 +710,9 @@ const	SPLIT_SEC = 60
 		{
 			'header' : 'current_view_header',
 			'buttons' : {
-				'show' : 'show_png',
-				'save' : 'save_png',
+				'show_png' : '',
+				'save_png' : '',
+				'save_qoi' : '',
 				'save_ora' : '',
 				'save_ora_all_layers' : '',
 				'save_ora_used_layers' : '',
@@ -724,18 +722,23 @@ const	SPLIT_SEC = 60
 			'header' : 'batch_view_header',
 			'buttons' : {
 				'batch' : {
-					'show_all' : 'show_png_batch',
-					'save_all' : 'save_png_batch',
-					'save_zip' : 'save_png_batch_zip',
+					'show_all_png' : 'show_png_batch',
+					'save_all_png' : 'save_png_batch',
+					'save_zip_png' : 'save_png_batch_zip',
+					'save_zip_qoi' : 'save_qoi_batch_zip',
 				},
 				'collage' : {
-					'show_join' : 'show_png_collage',
-					'save_join' : 'save_png_collage',
+					'show_join_png' : 'show_png_collage',
+					'save_join_png' : 'save_png_collage',
+					'save_join_qoi' : 'save_qoi_collage',
 					'stop' : 'stop',
 				},
 				// 'stop' : 'stop',
 			},
 		},
+	]
+
+,	PROJECT_HIDDEN_CONTROLS = [
 		{
 			'header' : 'reset_header',
 			'buttons' : {
@@ -761,7 +764,17 @@ const	SPLIT_SEC = 60
 		},
 	]
 
-,	PROJECT_NAMING_BUTTON_NAMES = [
+,	PROJECT_SAVE_ALL_BUTTON_NAMES = Object.keys(
+		PROJECT_VIEW_CONTROLS.find(
+			(v) => v.buttons.batch
+		).buttons.batch
+	)
+
+,	PROJECT_NAMING_BUTTON_NAMES = FILE_NAMING_SUMMARY_HEADER ? [
+		'saved_file_naming_sort',
+		'saved_file_naming_reset_to_default',
+		'saved_file_naming_reset_to_initial',
+	] : [
 		'saved_file_naming_change',
 		'saved_file_naming_sort',
 		'saved_file_naming_reset_to_default',
@@ -770,9 +783,9 @@ const	SPLIT_SEC = 60
 	]
 
 ,	PROJECT_NAMING_EVENT_HANDLERS = {
-		'dragstart' :	onPanelDragStart,
-		'dragenter' :	onPanelDragMove,
-		'drop' :	onPanelDragMove,
+		'dragstart' : onPanelDragStart,
+		'dragenter' : onPanelDragMove,
+		'drop'      : onPanelDragMove,
 	}
 
 ,	PROJECT_CONTROL_TAGNAMES = [
@@ -834,7 +847,8 @@ const	SPLIT_SEC = 60
 		// 'imgData',		//* <- keep for lazy-loading
 	])
 
-,	SAVE_FILE_TYPES = ['ora']
+,	SAVE_PROJECT_FILE_TYPES = ['ora']
+,	SAVE_IMAGE_FILE_TYPES = ['png', 'qoi']
 
 //* Config: internal, included scripts and loaders of project files *----------
 
@@ -961,6 +975,16 @@ const	zlibPakoFileName = (
 		,	'dir' : LIB_FORMATS_DIR + 'png/UPNG/'
 		,	'files' : ['UPNG.js']
 		,	'depends' : zlibCodecPNG
+		},
+
+		'QOI.js' : {
+
+//* Source: https://github.com/pfusik/qoi-ci
+//* Note: swapped RGB channels order to match JS ImageData.
+
+			'varName' : 'QOIEncoder'
+		,	'dir' : LIB_FORMATS_DIR + 'qoi/qoi-ci/'
+		,	'files' : ['qoi-ci-1.1.1-mod-rgba.js']
 		},
 
 		'zip.js' : {
@@ -1265,6 +1289,16 @@ function getTrimReg(chars) {
 
 function getNonNullOrEmptyObject(obj) {
 	return isNonNullObject(obj) ? obj : {};
+}
+
+function getCombinedDict() {
+let	result = null;
+
+	for (const arg of arguments) if (isNonNullObject(arg)) {
+		result = (result ? { ...result, ...arg } : arg);
+	}
+
+	return result;
 }
 
 function getCriteria(...args) {
@@ -2957,6 +2991,42 @@ const	index = name.lastIndexOf('.');
 	);
 }
 
+function getFileNameWithSupportedExt(name, ext) {
+	return (
+		ext && SAVE_IMAGE_FILE_TYPES.includes(ext)
+		? getFileNameWithReplacedExt(name, ext)
+		: name
+	);
+}
+
+function getFileNameWithReplacedExt(name, ext) {
+
+const	parts = name.split(/\./g);
+const	lastIndex = parts.length - 1;
+
+	if (lastIndex > 0) {
+		parts[lastIndex] = ext;
+	} else {
+		parts.push(ext);
+	}
+
+	return parts.join('.');
+}
+
+function getFileNameWithSuffixBeforeExt(name, suffix) {
+
+const	parts = name.split(/\./g);
+const	lastIndex = parts.length - 1;
+
+	if (lastIndex > 0) {
+		parts[lastIndex - 1] += suffix;
+
+		return parts.join('.');
+	} else {
+		return name + suffix;
+	}
+}
+
 function getFileExt(name) { return name.split(/\./g).pop().toLowerCase(); }
 function getFileName(path) { return path.split(/\//g).pop(); }
 function getFilePathFromUrl(url) { return url.split(/\#/g).shift().split(/\?/g).shift(); }
@@ -3212,7 +3282,7 @@ function logError(error, args, context) {
 	);
 }
 
-function callbackOnImgLoad(img, resolve, reject) {
+function callbackOnImageLoad(img, resolve, reject) {
 	if (isImageElement(img)) {
 		if (img.complete) {
 			resolve(img);
@@ -3225,15 +3295,15 @@ function callbackOnImgLoad(img, resolve, reject) {
 	}
 }
 
-async function resolvePromiseOnImgLoad(img, resolve, reject) {
+async function resolvePromiseOnImageLoad(img, resolve, reject) {
 	img = await img;
 
 	if (isPromise(img)) {
 		img
-		.then((img) => callbackOnImgLoad(img, resolve, reject))
+		.then((img) => callbackOnImageLoad(img, resolve, reject))
 		.catch(reject);
 	} else {
-		callbackOnImgLoad(img, resolve, reject);
+		callbackOnImageLoad(img, resolve, reject);
 	}
 }
 
@@ -3572,6 +3642,32 @@ function getImageDataFromData(imageData) {
 	}
 }
 
+async function getQOIByteArrayFromImageData(imageData) {
+	if (
+		await loadLibOnDemandPromise('QOI.js')
+	&&	(imageData = getImageDataFromData(imageData))
+	) {
+	const	qoiFile = new QOIEncoder();
+
+		qoiFile.encode(
+			imageData.width
+		,	imageData.height
+		,	new Int32Array(imageData.data.buffer)	//* <- https://stackoverflow.com/a/16679447
+		,	true
+		);
+
+		return qoiFile.getEncoded().subarray(0, qoiFile.getEncodedSize());
+	}
+}
+
+async function getQOIBlobFromImageData(imageData) {
+const	data = await getQOIByteArrayFromImageData(imageData);
+
+	if (data) {
+		return new Blob( [data], { type : 'image/x-qoi' } );
+	}
+}
+
 async function getImageElementFromData(imageData, project, colorsCount) {
 	if (imageData = getImageDataFromData(imageData)) {
 		if (
@@ -3603,7 +3699,7 @@ async function getImageElementFromData(imageData, project, colorsCount) {
 				if (TESTING_PNG) console.log('getImageElementFromData:', [ imageData, arrayBuffer, url, img ]);
 
 				return new Promise(
-					(resolve, reject) => resolvePromiseOnImgLoad(img, resolve, reject)
+					(resolve, reject) => resolvePromiseOnImageLoad(img, resolve, reject)
 				).catch(catchPromiseError);
 			}
 		} else {
@@ -3677,7 +3773,7 @@ async function getImageDataDecodedFromImage(source) {
 		);
 	} else {
 		return await new Promise(
-			(resolve, reject) => resolvePromiseOnImgLoad(
+			(resolve, reject) => resolvePromiseOnImageLoad(
 				getImageElementFromSrc(source)
 			,	(img) => resolve(getImageDataFromCanvasOrImage(img))
 			,	reject
@@ -4195,7 +4291,7 @@ function setImageSrc(img, data, onLoad, onError) {
 
 			if (onLoad || onError) {
 				return new Promise(
-					(resolve, reject) => resolvePromiseOnImgLoad(
+					(resolve, reject) => resolvePromiseOnImageLoad(
 						img
 					,	(onLoad  ? ((img)   => { resolve(img),  onLoad(img)    }) : resolve)
 					,	(onError ? ((error) => { reject(error), onError(error) }) : reject)
@@ -4230,7 +4326,7 @@ function getImageContentSize(img) {
 	if (TESTING > 2) console.error('getImageContentSize failed:', arguments);
 }
 
-function getCanvasFromImg(img) {
+function getCanvasFromImage(img) {
 const	size = getImageContentSize(img);
 
 	if (!size) {
@@ -4248,7 +4344,7 @@ const	ctx = canvas.getContext('2d');
 	return canvas;
 }
 
-function getResizedCanvasFromImg(img, w,h) {
+function getResizedCanvasFromImage(img, w,h) {
 const	size = getImageContentSize(img);
 
 	if (!size) {
@@ -4315,7 +4411,7 @@ const	zoomFactor = TAB_ZOOM_STEP_MAX_FACTOR || ZOOM_STEP_MAX_FACTOR;
 
 		ctx.drawImage(img, 0,0, widthFrom, heightFrom, 0,0, widthTo, heightTo);
 
-		return getResizedCanvasFromImg(canvas, w,h);
+		return getResizedCanvasFromImage(canvas, w,h);
 	} else {
 	let	xOffset = 0;
 	let	yOffset = 0;
@@ -4387,7 +4483,7 @@ const	mask = new ImageData(img.width, img.height);
 }
 
 function getCanvasFromMaskInvertAlpha(img) {
-const	canvas = getCanvasFromImg(img);
+const	canvas = getCanvasFromImage(img);
 
 	if (!canvas) {
 		return;
@@ -4975,7 +5071,7 @@ async function getOrLoadImage(project, layer) {
 				? new Promise(
 					(resolve, reject) => (
 						hasPrefix(methodName, 'to')
-						? resolvePromiseOnImgLoad(node[methodName](), resolve, reject)
+						? resolvePromiseOnImageLoad(node[methodName](), resolve, reject)
 						: node[methodName](resolve, reject)
 					)
 				).catch(catchPromiseError)
@@ -5103,12 +5199,12 @@ async function getOrLoadImage(project, layer) {
 					)
 				) {
 				const	imageData = await getImageDataDecodedFromImage(buffer || url);
-				const	reencodedImg = (
+				const	reencodedImage = (
 						getRGBAFromDataIfColorFill(imageData, project, layer)
 					||	await getImageElementFromData(imageData, project)
 					);
 
-					if (reencodedImg) {
+					if (reencodedImage) {
 
 						if (TESTING_PNG) console.log('getOrLoadImage: reencoded', [
 							'imageDataLength:', img.imageDataLength,
@@ -5117,13 +5213,13 @@ async function getOrLoadImage(project, layer) {
 							'size:', fileSize,
 							'buffer:', buffer,
 							'imageData:', imageData,
-							'reencodedImg:', reencodedImg,
-							'reencodedSize:', reencodedImg.fileSize,
+							'reencodedImage:', reencodedImage,
+							'reencodedSize:', reencodedImage.fileSize,
 							'layer:', layer,
 							'project:', project,
 						]);
 
-						img = reencodedImg;
+						img = reencodedImage;
 					}
 				}
 			} else
@@ -5350,10 +5446,11 @@ let	project, container;
 
 					updateProjectOperationProgress(projectButtons, 'project_status_ready_no_options');
 				} else
-				if (result = await updateMenuAndShowImg(project) || TESTING) {
+				if (result = await updateMenuAndShowImage(project) || TESTING) {
 					await updateBatchCount(project);
 
-					updateFileNamingPanel(project);
+					if (!FILE_NAMING_SUMMARY_HEADER) updateFileNamingPanel(project);
+
 					updateFileNaming(project);
 
 					buttonTab.className = 'button loaded with-options';
@@ -5464,7 +5561,7 @@ async function getNormalizedProjectData(sourceFile, projectButtons) {
 	}
 
 const	{ buttonTab, buttonText, buttonStatus, imgThumb } = projectButtons;
-const	{ fileName, baseName, ext } = sourceFile;
+const	{ name : fileName, baseName, ext } = sourceFile;
 
 const	mimeType = getPropByNameChain(sourceFile, 'file', 'type');
 const	actionLabel = 'processing document structure';
@@ -5606,7 +5703,7 @@ async function getProjectViewMenu(project) {
 			!isStopRequestedAnywhere(project)
 		&&	(images.length > 0)
 		&&	(layer = images.pop())
-		&&	(result = await getLayerImgLoadPromise(layer, project))
+		&&	(result = await getLayerImageLoadPromise(layer, project))
 		&&	(result = await getLayerMaskLoadPromise(layer.mask, project))
 		) if (
 			ADD_PAUSE_AT_INTERVALS
@@ -6376,7 +6473,7 @@ async function getProjectViewMenu(project) {
 		return options;
 	}
 
-	function getLayerImgLoadPromise(layer, project) {
+	function getLayerImageLoadPromise(layer, project) {
 		if (layer.layers) {
 			if (TESTING > 9) console.log(
 				'No image loaded because it is a folder:', [
@@ -6920,22 +7017,34 @@ const	buttonsPanel = cre('div', container);
 	buttonsPanel.className = 'panel row text wrap';
 
 	if (project.options) {
-	const	fileSaveTitle = cre('header', container);
-		fileSaveTitle.className = 'panel row';
+		if (!FILE_NAMING_SUMMARY_HEADER) {
+		const	fileSaveTitle = cre('header', container);
+			fileSaveTitle.className = 'panel row';
 
-	const	fileSaveNamePretext = cre('div', fileSaveTitle);
-		fileSaveNamePretext.className = 'pretext';
-		fileSaveNamePretext.textContent = getLocalizedText('saved_file_naming_preview') + ':';
+		const	fileSaveNamePretext = cre('div', fileSaveTitle);
+			fileSaveNamePretext.className = 'pretext';
+			fileSaveNamePretext.textContent = getLocalizedText('saved_file_naming_preview') + ':';
 
-	const	fileSaveNamePreview = project.currentFileNamePreview = cre('div', fileSaveTitle);
-		fileSaveNamePreview.className = 'filename';
-		fileSaveNamePreview.textContent = project.baseName + '.png';
+		const	fileSaveNamePreview = project.currentFileNamePreview = cre('div', fileSaveTitle);
+			fileSaveNamePreview.className = 'filename';
+			fileSaveNamePreview.textContent = project.baseName + '.png';
+		}
 
-	const	fileNaming = cre('div', container);
-		fileNaming.className = 'panel row';
+	const	fileNamingPanel = cre('div', container);
+		fileNamingPanel.className = (FILE_NAMING_SUMMARY_HEADER ? 'panel mid row' : 'panel row');
 
-	const	fileNamingBox = cre('div', fileNaming);
+	const	fileNamingBox = cre((FILE_NAMING_SUMMARY_HEADER ? 'details' : 'div'), fileNamingPanel);
 		fileNamingBox.className = 'sub panel';
+
+		if (FILE_NAMING_SUMMARY_HEADER) {
+		const	fileSaveNamePretext = cre('summary', fileNamingBox);
+			fileSaveNamePretext.className = 'pretext';
+			fileSaveNamePretext.textContent = getLocalizedText('saved_file_naming_preview') + ': ';
+
+		const	fileSaveNamePreview = project.currentFileNamePreview = cre('span', fileSaveNamePretext);
+			fileSaveNamePreview.className = 'filename text';
+			fileSaveNamePreview.textContent = project.baseName + '.png';
+		}
 
 	const	fileNamingButtons = cre('div', fileNamingBox);
 		fileNamingButtons.className = 'panel row';
@@ -6948,6 +7057,20 @@ const	buttonsPanel = cre('div', container);
 		fileNamingOrderBox.className = 'panel draggable-order';
 
 		addEventListeners(fileNamingOrderBox, PROJECT_NAMING_EVENT_HANDLERS);
+
+	const	optionalButtonsPanel = cre('div', container);
+		optionalButtonsPanel.className = 'panel mid row';
+
+		for (const controlGroup of PROJECT_HIDDEN_CONTROLS) {
+		const	buttonsGroup = cre('details', optionalButtonsPanel);
+			buttonsGroup.className = 'sub panel';
+
+		const	buttonsHeader = cre('summary', buttonsGroup);
+			buttonsHeader.className = 'text';
+			buttonsHeader.textContent = getLocalizedText(controlGroup.header);
+
+			addButtonGroup(buttonsGroup, controlGroup.buttons);
+		}
 
 	const	sectionNames = (
 			project.namePartsOrder.sectionNames
@@ -7116,7 +7239,8 @@ const	summaryTextParts = [
 		if (button.name) {
 		const	actionWords = button.name.split(regNonAlphaNum);
 
-			if (SAVE_FILE_TYPES.some(
+			if (!actionWords.includes('save')); else
+			if (SAVE_PROJECT_FILE_TYPES.some(
 				(fileType) => actionWords.includes(fileType)
 			)) {
 			const	isNotForUsingAllLayers = (
@@ -7141,7 +7265,11 @@ const	summaryTextParts = [
 				if (button.hidden) {
 					del(button);
 				}
-
+			} else
+			if (!SAVE_IMAGE_FILE_TYPES.some(
+				(fileType) => actionWords.includes(fileType)
+			)) {
+				del(button);
 			}
 		} else {
 			button.disabled = true;
@@ -7181,7 +7309,7 @@ function setProjectThumbnail(project, img, onLoad, onError) {
 				: img
 			) || img;
 
-		let	canvas = getResizedCanvasFromImg(
+		let	canvas = getResizedCanvasFromImage(
 				(
 					TAB_THUMBNAIL_TRIMMED
 					? imgOrPart
@@ -7208,7 +7336,7 @@ function setProjectThumbnail(project, img, onLoad, onError) {
 					preview.className = 'thumbnail larger';
 				}
 
-				canvas = getResizedCanvasFromImg(
+				canvas = getResizedCanvasFromImage(
 					(
 						TAB_THUMBNAIL_ZOOM_TRIMMED
 						? imgOrPart
@@ -7250,7 +7378,7 @@ async function getProjectMergedImagePromise(project, flags) {
 	const	img = project.mergedImage || await getOrLoadImage(project);
 
 		return new Promise(
-			(resolve, reject) => resolvePromiseOnImgLoad(
+			(resolve, reject) => resolvePromiseOnImageLoad(
 				img
 			,	(img) => {
 					makeElementFitOnClick(img);
@@ -9155,7 +9283,7 @@ async function setAllValues(project, targetPosition) {
 	}
 
 	await updateBatchCount(project);
-	await updateMenuAndShowImg(project);
+	await updateMenuAndShowImage(project);
 
 	updateFileNaming(project);
 }
@@ -10192,7 +10320,7 @@ const	crop = getAutoCropArea(img);
 		||	crop.height < img.height
 		)
 	) {
-	const	canvas = getNewCanvasForImg(project, crop);
+	const	canvas = getNewCanvasForImage(project, crop);
 	const	ctx = canvas.getContext('2d');
 		ctx.drawImage(img, -crop.left, -crop.top);
 
@@ -10230,7 +10358,7 @@ const	canvas = cre('canvas');
 	return canvas;
 }
 
-function getNewCanvasForImg(project, img) {
+function getNewCanvasForImage(project, img) {
 	if (project.rendering) {
 		++project.rendering.layersBatchCount;
 	}
@@ -10251,7 +10379,7 @@ function getCanvasCopy(project, img) {
 		return null;
 	}
 
-const	canvas = getNewCanvasForImg(project, img);
+const	canvas = getNewCanvasForImage(project, img);
 const	ctx = canvas.getContext('2d');
 
 	if (isCanvasElement(img)) {
@@ -10276,7 +10404,7 @@ function getCanvasFlipped(project, img, flipSide, flags) {
 		);
 	}
 
-const	canvas = getNewCanvasForImg(project, img);
+const	canvas = getNewCanvasForImage(project, img);
 const	ctx = canvas.getContext('2d');
 
 	ctx.save();
@@ -11974,7 +12102,7 @@ const	refValues = render.refValues || (
 	);
 const	refName   = render.refName   || (render.refName   = getKeyForValueSet(project, refValues));
 const	fileName  = render.fileName  || (render.fileName  = getKeyForValueSet(project, values));
-const	img       = render.img       || (render.img       = await getOrCreateRenderedImg(project, render));
+const	img       = render.img       || (render.img       = await getOrCreateRenderedImage(project, render));
 
 	if (img) {
 		img.alt =
@@ -11990,7 +12118,7 @@ const	img       = render.img       || (render.img       = await getOrCreateRende
 	return render;
 }
 
-async function getOrCreateRenderedImg(project, render) {
+async function getOrCreateRenderedImage(project, render) {
 
 	function getAndCacheRenderedImageElementPromise(canvas, fileName) {
 		return getImagePromiseFromCanvasToBlob(canvas, project).then(
@@ -12060,6 +12188,7 @@ const	refName = render.refName;
 
 			if (canvas) {
 				img = await getAndCacheRenderedImageElementPromise(canvas, refName);
+				render.canvas = canvas;
 			} else
 			if (isStopRequestedAnywhere(project)) {
 				return;
@@ -12094,6 +12223,7 @@ let	zoomPercentage;
 		ctx.drawImage(img, 0,0, w,h);
 
 		img = await getAndCacheRenderedImageElementPromise(canvas, fileName);
+		render.canvas = canvas;
 	}
 
 let	autocrop, crop;
@@ -12137,6 +12267,7 @@ let	autocrop, crop;
 				ctx.drawImage(img, -crop.left, -crop.top);
 
 				img = prerenders[cropName] = await getAndCacheRenderedImageElementPromise(canvas, fileName);
+				render.canvas = canvas;
 			} else
 			if (cropRefName in prerenders) {
 				img = prerenders[fileName] = prerenders[cropName] = prerenders[cropRefName];
@@ -12256,6 +12387,7 @@ let	lastPauseTime = getTimeNow();
 
 const	{
 		asOneJoinedImage,
+		imageType,
 		saveToFile,
 		saveToZipFile,
 		showOnPage,
@@ -12313,7 +12445,7 @@ let	batchContainer, subContainer;
 		}
 
 		if (showOnPage) {
-			img = await showImg(
+			img = await showImage(
 				project
 			,	render
 			,	subContainer
@@ -12326,7 +12458,7 @@ let	batchContainer, subContainer;
 		||	saveToZipFile
 		) {
 			if (!img) {
-				img = await getRenderedImg(project, render);
+				img = await getRenderedImage(project, render);
 			}
 
 			if (img) {
@@ -12341,7 +12473,7 @@ let	batchContainer, subContainer;
 			}
 		} else
 		if (saveToFile) {
-			img = await saveImg(project, render);
+			img = await saveImage(project, imageType, render);
 		}
 
 	const	endTime = getTimeNow();
@@ -12413,7 +12545,7 @@ let	batchContainer, subContainer;
 		onImageAddedProgress(imagesDone, imagesTotal);
 
 		for (const img of renderedImages) {
-		let	content = img.src;
+		let	content = await getImageContentToSave(img, imageType);
 
 			if (
 				content
@@ -12426,14 +12558,15 @@ let	batchContainer, subContainer;
 			if (TESTING > 9) console.log(
 				'Add image to zip file: ' + imagesDone + ' / ' + imagesTotal,
 				[
+					'img:', img,
 					'URI:', img.src,
+					'content to save:', content,
 					'content type:', content.type || typeof content,
 					'content size:', content.size || content.length,
 				]
 			);
 
 			if (content) {
-			const	imgFileName = img.fileNameToSave || img.name;
 			const	methodName = (
 					isBlob(content)
 					? 'addBlob'
@@ -12443,6 +12576,7 @@ let	batchContainer, subContainer;
 					: 'addText'
 				);
 			const	errors = [];
+			let	imgFileName = getFileNameWithSupportedExt(img.fileNameToSave || img.name, imageType);
 			let	lastError, duplicateIndex;
 
 				for (
@@ -12453,7 +12587,7 @@ let	batchContainer, subContainer;
 					try {
 						zipFile.root[methodName](
 							duplicateIndex
-							? imgFileName.replace(regFileExt, '(' + duplicateIndex + ')$&')
+							? getFileNameWithSuffixBeforeExt(imgFileName, '(' + duplicateIndex + ')')
 							: imgFileName
 						,	content
 						);
@@ -12486,7 +12620,12 @@ let	batchContainer, subContainer;
 			(resolve, reject) => zipFile.exportBlob(
 				(blob) => {
 					try {
-						resolve(saveDL(blob, project.fileName + '_' + imagesDone, 'zip', 1));
+						resolve(saveDL(
+							blob
+						,	project.fileName + '_' + imagesDone + '_' + imageType
+						,	'zip'
+						,	1
+						));
 
 					} catch (error) {
 						reject(error);
@@ -12631,9 +12770,9 @@ let	batchContainer, subContainer;
 
 					if (saveToFile) {
 						await saveDL(
-							img.src
+							await getImageContentToSave(img, imageType, canvas)
 						,	project.fileName + '_' + renderedImages.length
-						,	img.type || 'png'
+						,	imageType || img.type || 'png'
 						,	1
 						);
 					}
@@ -12643,13 +12782,13 @@ let	batchContainer, subContainer;
 	}
 }
 
-function showAll(project) { renderAll(project); }
-function saveAll(project) { renderAll(project, FLAG_SAVE_ALL); }
-function saveZip(project) { renderAll(project, FLAG_SAVE_ZIP); }
-function saveJoin(project) { renderAll(project, FLAG_SAVE_JOIN); }
-function showJoin(project) { renderAll(project, FLAG_SHOW_JOIN); }
+function showAll (project) { renderAll(project); }
+function saveAll (project, flags) { renderAll(project, getCombinedDict(flags, FLAG_SAVE_ALL)); }
+function saveZip (project, flags) { renderAll(project, getCombinedDict(flags, FLAG_SAVE_ZIP)); }
+function saveJoin(project, flags) { renderAll(project, getCombinedDict(flags, FLAG_SAVE_JOIN)); }
+function showJoin(project, flags) { renderAll(project, getCombinedDict(flags, FLAG_SHOW_JOIN)); }
 
-async function showImg(project, render, container, batchContainer) {
+async function showImage(project, render, container, batchContainer) {
 const	isSingleWIP = (render ? false : setWIPstate(true, project));
 let	img;
 
@@ -12661,12 +12800,12 @@ let	img;
 
 		if (TESTING_RENDER) {
 			imgContainer = container || getEmptyRenderContainer(project);
-			img = await getOrCreateRenderedImg(project, render);
+			img = await getOrCreateRenderedImage(project, render);
 		} else {
 
 //* Prepare image before container cleanup to avoid flicker:
 
-			img = await getOrCreateRenderedImg(project, render);
+			img = await getOrCreateRenderedImage(project, render);
 			imgContainer = container || getEmptyRenderContainer(project);
 		}
 
@@ -12694,7 +12833,7 @@ let	img;
 	return img;
 }
 
-async function saveImg(project, render, fileName) {
+async function saveImage(project, fileType, render, fileName) {
 const	isSingleWIP = (render ? false : setWIPstate(true, project));
 let	img;
 
@@ -12704,9 +12843,9 @@ let	img;
 
 		if (img) {
 			await saveDL(
-				img.src
-			,	fileName || render.fileNameToSave || render.fileName
-			,	img.type || 'png'
+				await getImageContentToSave(img, fileType, render.canvas)
+			,	fileName || getFileNameWithSupportedExt(render.fileNameToSave || render.fileName, fileType)
+			,	fileType || img.type || 'png'
 			);
 		}
 	} catch (error) {
@@ -12720,12 +12859,26 @@ let	img;
 	return img;
 }
 
-async function getRenderedImg(project, render) {
+async function getImageContentToSave(img, fileType, canvas) {
+
+	if (fileType === 'qoi') {
+
+		return await getQOIBlobFromImageData(
+			canvas
+			? getImageDataFromCanvasOrImage(canvas)
+			: await getImageDataDecodedFromImage(img)
+		);
+	} else {
+		return img.src
+	}
+}
+
+async function getRenderedImage(project, render) {
 const	isSingleWIP = (render ? false : setWIPstate(true, project));
 let	img;
 
 	try {
-		img = await getOrCreateRenderedImg(project, render);
+		img = await getOrCreateRenderedImage(project, render);
 	} catch (error) {
 		logError(error, arguments);
 
@@ -13153,7 +13306,7 @@ const	actionLabel = 'exporting to ORA file';
 const	thisJob = { project, 'lastPauseTime' : getTimeNow() };
 	pendingJobs.add(thisJob);
 
-let	oraLayers, img, randomOtherImg, failed, timeNow;
+let	oraLayers, img, randomOtherImage, failed, timeNow;
 
 //* Use preexisting merged preview from the project file:
 
@@ -13192,8 +13345,8 @@ let	oraLayers, img, randomOtherImg, failed, timeNow;
 				const	renders = project.renders;
 
 					if (isNonNullObject(renders)) for (const key in renders)
-					if (isImageElement(randomOtherImg = renders[key])) {
-						img = randomOtherImg;
+					if (isImageElement(randomOtherImage = renders[key])) {
+						img = randomOtherImage;
 
 						break;
 					}
@@ -13245,7 +13398,7 @@ let	oraLayers, img, randomOtherImg, failed, timeNow;
 					project.width  > ORA_EXPORT_THUMBNAIL_SIZE
 				||	project.height > ORA_EXPORT_THUMBNAIL_SIZE
 				)
-				? await getImagePromiseFromCanvasToBlob(getResizedCanvasFromImg(img, ORA_EXPORT_THUMBNAIL_SIZE))
+				? await getImagePromiseFromCanvasToBlob(getResizedCanvasFromImage(img, ORA_EXPORT_THUMBNAIL_SIZE))
 				: img
 			);
 		}
@@ -13254,7 +13407,12 @@ let	oraLayers, img, randomOtherImg, failed, timeNow;
 			(resolve, reject) => oraFile.save(
 				(blob) => {
 					try {
-						resolve(saveDL(blob, project.baseName, fileType || 'ora', 1));
+						resolve(saveDL(
+							blob
+						,	project.baseName
+						,	fileType || 'ora'
+						,	1
+						));
 
 					} catch (error) {
 						reject(error);
@@ -13311,7 +13469,7 @@ const	getCountFormatted = (
 	};
 }
 
-async function updateMenuAndShowImg(project) {
+async function updateMenuAndShowImage(project) {
 	if (
 		!isNonNullObject(project)
 	||	project.loading
@@ -13329,7 +13487,7 @@ async function updateMenuAndShowImg(project) {
 
 	project.selectedMenuValues = null;
 
-	return await showImg(project);
+	return await showImage(project);
 }
 
 function updateFileNamingPanel(project, action) {
@@ -13549,7 +13707,12 @@ function updateMenuBatchCount(project, ...args) {
 			label = getAllByClass(labelClass, project.container)[0];
 
 			if (!label) {
-			let	container = getAllByName('show_all', project.container)[0] || project.container;
+			let	container = (
+					getAllByName('show_all',     project.container)[0]
+				||	getAllByName('show_all_png', project.container)[0]
+				||	project.container
+				);
+
 				container = getThisOrParentByClass(container, matchClassSub);
 
 				if (ADD_BATCH_COUNT_ON_NEW_LINE) {
@@ -13883,11 +14046,12 @@ const	actionWords = action.split(regNonAlphaNum);
 	} else
 	if (actionWords.includes('naming')) {
 		if (actionWords.includes('reset')) {
-			if (actionWords.includes('initial')) updateFileNamingPanel(project, 'initial');
-			else updateFileNamingPanel(project, 'default');
+			if (actionWords.includes('initial'))
+				updateFileNamingPanel(project, 'initial');
+			else	updateFileNamingPanel(project, 'default');
 		} else
-		if (actionWords.includes('sort')) updateFileNamingPanel(project, 'sort'); else
-		if (actionWords.includes('change')) updateFileNamingPanel(project, 'change');
+		if (actionWords.includes('change')) updateFileNamingPanel(project, 'change'); else
+		if (actionWords.includes('sort'  )) updateFileNamingPanel(project, 'sort');
 		else updateFileNamingPanel(project);
 	} else
 	if (actionWords.includes('show')) {
@@ -13901,15 +14065,15 @@ const	actionWords = action.split(regNonAlphaNum);
 				(img) => getEmptyRenderContainer(project).appendChild(img)
 			).catch(catchPromiseError);
 		} else
-		if (actionWords.includes('all')) showAll(project); else
+		if (actionWords.includes('all' )) showAll (project); else
 		if (actionWords.includes('join')) showJoin(project);
-		else showImg(project);
+		else showImage(project);
 	} else
 	if (actionWords.includes('save')) {
-		if (SAVE_FILE_TYPES.some(
+		if (SAVE_PROJECT_FILE_TYPES.some(
 			(fileType) => {
 				if (actionWords.includes(fileType)) {
-				const	saveAllData = actionWords.includes('all');
+				const	saveAllData  = actionWords.includes('all');
 				const	saveUsedData = actionWords.includes('used');
 				const	saveOriginal = actionWords.includes('original');
 				const	saveSelected = (
@@ -13940,11 +14104,16 @@ const	actionWords = action.split(regNonAlphaNum);
 				,	img.type || 'png'
 				)
 			).catch(catchPromiseError);
-		} else
-		if (actionWords.includes('zip')) saveZip(project); else
-		if (actionWords.includes('all')) saveAll(project); else
-		if (actionWords.includes('join')) saveJoin(project);
-		else saveImg(project);
+		} else {
+		const	imageType = SAVE_IMAGE_FILE_TYPES.find(
+				(fileType) => actionWords.includes(fileType)
+			) || 'png';
+
+			if (actionWords.includes('zip' )) saveZip (project, { imageType }); else
+			if (actionWords.includes('all' )) saveAll (project, { imageType }); else
+			if (actionWords.includes('join')) saveJoin(project, { imageType });
+			else saveImage(project, imageType);
+		}
 	} else
 	if (actionWords.includes('reset')) {
 	const	toIndex = actionWords.indexOf('to');
@@ -14074,7 +14243,7 @@ const	project = container.project;
 		}
 
 		await updateBatchCount(project);
-		await updateMenuAndShowImg(project);
+		await updateMenuAndShowImage(project);
 
 		updateFileNaming(project);
 	}

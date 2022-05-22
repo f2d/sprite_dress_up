@@ -141,24 +141,27 @@ Also, not included here to avoid unnecessary bloat, there is [another deliberate
 
 ## Included libraries
 
-ORA file parser:
+ORA file codec:
 * Heavily modified version of [ora.js](https://github.com/zsgalusz/ora.js).
 * Original version can work here, but with many limitations.
 
-PSD and PSB file parser:
+PSD and PSB file codec:
 * Unmodified [build](https://cdn.jsdelivr.net/npm/ag-psd@14.3.6/dist/bundle.js) of [ag-psd](https://github.com/Agamnentzar/ag-psd).
 
-Fallback PSD file parser:
+Fallback PSD file codec:
 * Lightly modified [build of psd.js](https://github.com/meltingice/psd.js/issues/154#issuecomment-446279652), should be backward compatible.
 * Lightly modified [fork](https://github.com/imcuttle/psd.js) of [psd.js](https://github.com/meltingice/psd.js), globally usable without `require()`.
 * Original version and many other forks of psd.js do not work here.
 
-PNG file parser:
+PNG file codec:
 * Lightly modified [UPNG.js](https://github.com/photopea/UPNG.js), should be backward compatible.
 * Unmodified [UZIP.js](https://github.com/photopea/UZIP.js).
 * Unmodified [pako](https://github.com/nodeca/pako).
 
-ZIP file parser:
+QOI file codec:
+* Lightly modified QOI.js from [qoi-ci](https://github.com/pfusik/qoi-ci). Encoding was patched here for JS RGB order. Decoding was not tested.
+
+ZIP file codec:
 * Lightly modified version of [zip.js](https://github.com/gildas-lormeau/zip.js) from [ora.js](https://github.com/zsgalusz/ora.js), 2013, should be backward compatible with that, but probably not with later original versions.
 * Unmodified [pako](https://github.com/nodeca/pako) works here too.
 * Unmodified [zlib-asm](https://github.com/ukyo/zlib-asm). Versions above 0.2.2 do not work here.
