@@ -3647,14 +3647,71 @@ async function getQOIByteArrayFromImageData(imageData) {
 		await loadLibOnDemandPromise('QOI.js')
 	&&	isNonNullImageData(imageData)
 	) {
-	const	qoiFile = new QOIEncoder();
+		if (TESTING && LOG_TIMERS) console.time('QOIEncoder');
 
-		if (qoiFile.encode(
-			imageData.width
-		,	imageData.height
-		,	new Int32Array(imageData.data.buffer)	//* <- https://stackoverflow.com/a/16679447
-		,	true
-		)) {
+	const	{ data, width, height } = imageData;
+	const	pixels = new Int32Array(data.buffer);	//* <- https://stackoverflow.com/a/16679447
+	const	qoiFile = new QOIEncoder();
+	const	isDone = qoiFile.encode(width, height, pixels, true);
+
+		if (TESTING && LOG_TIMERS) console.timeEnd('QOIEncoder');
+
+		if (isDone) {
+
+			if (TESTING > 99) {
+
+				function testQOIEncoding(methodName) {
+				const	times = new Array(count);
+				let	counter = count;
+				let	start = 0;
+
+					while (counter--) {
+						start = +new Date;
+
+						new QOIEncoder()[methodName](width, height, pixels, true);
+
+						times[counter] = +new Date - start;
+					}
+
+				const	min = Math.min(...times);
+				const	max = Math.max(...times);
+				const	sum = times.reduce((a, b) => a + b, 0);
+				const	avg = sum / count;
+
+					console.log([
+						count + ' runs from same ImageData(' + width + 'x' + height + ')'
+					,	'took total ' + sum	+ 'ms'
+					,	'min ' + min		+ 'ms'
+					,	'avg ' + avg.toFixed(2) + 'ms'
+					,	'max ' + max		+ 'ms'
+					,	'QOIEncoder.' + methodName
+					].join(', '));
+				}
+
+			const	count = (
+					width > 2000 || height > 2000
+					? 10 :
+					width > 200 || height > 200
+					? 100 :
+					1000
+				);
+
+				if (LOG_TIMERS) console.time('testQOIEncoding');
+
+				testQOIEncoding('encode');
+				testQOIEncoding('encodeFasterIndexButTwiceRGBA');
+				testQOIEncoding('encode');
+				testQOIEncoding('encodeFasterIndexButTwiceRGBA');
+
+				if (LOG_TIMERS) console.timeEnd('testQOIEncoding');
+			}
+
+// 10 runs from same ImageData(5614x2406), took total 1088ms, min 106ms, avg 108.8ms, max 116ms, QOIEncoder.encode
+// 10 runs from same ImageData(5614x2406), took total 1201ms, min 103ms, avg 120.1ms, max 178ms, QOIEncoder.encodeFasterIndexButTwiceRGBA
+// 10 runs from same ImageData(5614x2406), took total 1096ms, min 106ms, avg 109.6ms, max 114ms, QOIEncoder.encode
+// 10 runs from same ImageData(5614x2406), took total 1066ms, min 101ms, avg 106.6ms, max 118ms, QOIEncoder.encodeFasterIndexButTwiceRGBA
+// Conclusion: not decisive, use simpler method.
+
 			return qoiFile.getEncoded().subarray(0, qoiFile.getEncodedSize());
 		} else {
 			console.error('Error: failed to encode QOI file content.');
@@ -3668,12 +3725,15 @@ const	data = await getQOIByteArrayFromImageData(imageData);
 	if (data) {
 
 		if (TESTING > 9) {
-		const	qoiFile = new QOIDecoder();
 
-			if (qoiFile.decode(
-				data
-			,	data.length
-			)) {
+			if (LOG_TIMERS) console.time('QOIDecoder');
+
+		const	qoiFile = new QOIDecoder();
+		const	isDone = qoiFile.decode(data, data.length);
+
+			if (LOG_TIMERS) console.timeEnd('QOIDecoder');
+
+			if (isDone) {
 			const	qoiImageData = getImageDataFromData({
 					'data' : new Uint8Array(qoiFile.getPixels().buffer)
 				,	'width' : qoiFile.getWidth()
