@@ -143,6 +143,7 @@ var	exampleRootDir = ''
 ,	TAB_WIDTH_ONLY_GROW		= true	//* <- prevent tabs from shrinking and jumping between rows.
 ,	TESTING				= false	//* <- dump more info into the console; several levels are possible.
 ,	TESTING_PNG			= false	//* <- dump a PNG onto the page after converting from pixel data.
+,	TESTING_QOI			= false	//* <- compare encode to decode and average timings of repeated runs of various methods.
 ,	TESTING_RENDER			= false	//* <- dump a PNG onto the page after each rendering operation.
 ,	TESTING_RENDER_CACHE		= false	//* <- dump a PNG onto the page after each cached crop or merge.
 ,	USE_CRITERIA_ARRAY		= true
@@ -3647,18 +3648,18 @@ async function getQOIByteArrayFromImageData(imageData) {
 		await loadLibOnDemandPromise('QOI.js')
 	&&	isNonNullImageData(imageData)
 	) {
-		if (TESTING && LOG_TIMERS) console.time('QOIEncoder');
+		if (TESTING_QOI && LOG_TIMERS) console.time('QOIEncoder');
 
 	const	{ data, width, height } = imageData;
 	const	pixels = new Int32Array(data.buffer);	//* <- https://stackoverflow.com/a/16679447
 	const	qoiFile = new QOIEncoder();
 	const	isDone = qoiFile.encode(width, height, pixels, true);
 
-		if (TESTING && LOG_TIMERS) console.timeEnd('QOIEncoder');
+		if (TESTING_QOI && LOG_TIMERS) console.timeEnd('QOIEncoder');
 
 		if (isDone) {
 
-			if (TESTING > 99) {
+			if (TESTING_QOI) {
 
 				function testQOIEncoding(methodName) {
 				const	times = new Array(count);
@@ -3689,11 +3690,9 @@ async function getQOIByteArrayFromImageData(imageData) {
 				}
 
 			const	count = (
-					width > 2000 || height > 2000
-					? 10 :
-					width > 200 || height > 200
-					? 100 :
-					1000
+					width > 2000 || height > 2000 ? 10
+					: width > 200 || height > 200 ? 100
+					: 1000
 				);
 
 				if (LOG_TIMERS) console.time('testQOIEncoding');
@@ -3724,7 +3723,7 @@ const	data = await getQOIByteArrayFromImageData(imageData);
 
 	if (data) {
 
-		if (TESTING > 9) {
+		if (TESTING_QOI) {
 
 			if (LOG_TIMERS) console.time('QOIDecoder');
 
