@@ -23,7 +23,10 @@ try:
 except NameError:
 	FileNotFoundError = IOError
 
-BadZipFileError = zipfile.BadZipfile or zipfile.BadZipFile
+try:
+	BadZipFileError = zipfile.BadZipFile	# New in Python 3.2
+except:
+	BadZipFileError = zipfile.BadZipfile	# Deprecated since Python 3.2
 
 file_encoding = print_encoding = sys.getfilesystemencoding() or 'utf-8'
 
