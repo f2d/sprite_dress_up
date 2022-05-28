@@ -23,6 +23,8 @@ try:
 except NameError:
 	FileNotFoundError = IOError
 
+BadZipFileError = zipfile.BadZipfile or zipfile.BadZipFile
+
 file_encoding = print_encoding = sys.getfilesystemencoding() or 'utf-8'
 
 
@@ -340,6 +342,15 @@ def remove_comments(text):
 def normalize_slashes(path):
 	return path.replace('\\', '/')
 
+def fix_slashes(path):
+	if os.sep != '/':
+		path = path.replace('/', os.sep)
+
+	if os.sep != '\\':
+		path = path.replace('\\', os.sep)
+
+	return path
+
 def get_file_name(path):
 	return normalize_slashes(path).rsplit('/', 1)[-1:][0]
 
@@ -385,6 +396,8 @@ def rewrite_file(path, content, mode='w'):
 
 def remove_temp_file(path=None):
 	if path:
+		path = fix_slashes(path)
+
 		if os.path.isfile(path):
 			print_with_colored_title('Removing temporary file:', path)
 
@@ -441,11 +454,12 @@ def get_image_cmd_versions(cmd_args):
 def get_image_path_for_cmd(src_file_path, check_thumbnail=False):
 	print_with_colored_title('Parsing image file:', src_file_path)
 
+	src_file_path = normalize_slashes(src_file_path)
 	src_file_ext = get_file_ext(src_file_path)
 	print_with_colored_title('File type:', src_file_ext)
 
 	if merged_layer_suffix in src_file_ext:
-		return src_file_path
+		return fix_slashes(src_file_path)
 
 	unzipped_file_path = None
 
@@ -472,19 +486,19 @@ def get_image_path_for_cmd(src_file_path, check_thumbnail=False):
 
 					break
 
-	except zipfile.BadZipFile as exception:
+	except BadZipFileError as exception:
 
 		if src_file_ext in zip_file_types:
 			print_with_colored_title('Error reading file as ZIP:', exception)
 	else:
 		if unzipped_file_path:
-			src_file_path = unzipped_file_path
+			src_file_path = normalize_slashes(unzipped_file_path)
 			src_file_ext = get_file_ext(src_file_path)
 
 	if src_file_ext in layer_suffix_file_types:
 		src_file_path += merged_layer_suffix
 
-	return src_file_path
+	return fix_slashes(src_file_path)
 
 def get_cmd_result(cmd_args):
 	print_with_colored_title('Running command:', cmd_args_to_text(cmd_args))
