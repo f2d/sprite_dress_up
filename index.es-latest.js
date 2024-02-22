@@ -611,7 +611,8 @@ const	SPLIT_SEC = 60
 		'sort-options',
 		'sort-sections',
 		'sort-types',
-	].concat(NAME_PARTS_ORDER)
+		...NAME_PARTS_ORDER
+	]
 
 ,	PARAM_OPTIONS_ADD_BY_DEFAULT = {
 		'collage'  : ['no-batch', 'last', 'optional', 'collage']
@@ -841,7 +842,7 @@ const	SPLIT_SEC = 60
 		'toPng',
 	]
 
-,	CLEANUP_PROJECT_IF_NOT_TESTING_KEYS = CLEANUP_PROJECT_AFTER_LOAD_KEYS.concat([
+,	CLEANUP_PROJECT_IF_NOT_TESTING_KEYS = [
 		// 'blendModeOriginal',	//* <- keep for saving
 		'blendModeOriginalAlpha',
 		'blendModeOriginalColor',
@@ -852,7 +853,8 @@ const	SPLIT_SEC = 60
 		'pixelData',
 		'maskData',
 		// 'imgData',		//* <- keep for lazy-loading
-	])
+		...CLEANUP_PROJECT_AFTER_LOAD_KEYS
+	]
 
 ,	SAVE_PROJECT_FILE_TYPES = ['ora']
 ,	SAVE_IMAGE_FILE_TYPES = ['png', 'qoi']
@@ -1003,24 +1005,25 @@ const	zlibPakoFileName = (
 		,	'files' : [
 				'zip.js',
 				'zip-fs.js',
-			].concat(
-				USE_WORKERS_IF_CAN
-				? DUMMY_EMPTY_ARRAY
-				:
+				...(
+					USE_WORKERS_IF_CAN
+					? DUMMY_EMPTY_ARRAY
+					:
 
 //* CORS workaround: when not using Workers, include scripts here.
 //* Source: https://github.com/gildas-lormeau/zip.js/issues/169#issuecomment-312110395
 
-				ZIP_USE_ONE_FILE_WORKER
-				? [zipAllInOneFileName]
-				:
-				ZIP_USE_CODECS
-				? [zipZlibCodecWrapper]
-				: [
-					'deflate.js',
-					'inflate.js',
-				]
-			)
+					ZIP_USE_ONE_FILE_WORKER
+					? [zipAllInOneFileName]
+					:
+					ZIP_USE_CODECS
+					? [zipZlibCodecWrapper]
+					: [
+						'deflate.js',
+						'inflate.js',
+					]
+				)
+			]
 		,	'depends' : (
 				USE_WORKERS_IF_CAN
 			||	ZIP_USE_ONE_FILE_WORKER
@@ -1096,13 +1099,12 @@ const	zlibPakoFileName = (
 		? [
 			ZIP_FORMAT_DIR + 'z-worker.js',
 			ZIP_FORMAT_DIR + zipZlibCodecWrapper,
-		].concat(
-			zlibCodecZIP.map(
+			...zlibCodecZIP.map(
 				(libName) => FILE_TYPE_LIBS[libName].files.map(
 					(fileName) => FILE_TYPE_LIBS[libName].dir + fileName
 				)
 			)
-		)
+		]
 		: null
 	);
 
@@ -3275,17 +3277,15 @@ function logError(error, args, context) {
 	console.error(
 		'Error:'
 	,	[
-			error,
-		].concat(
-			typeof args === 'undefined' ? DUMMY_EMPTY_ARRAY : [
+			error
+		,	...(typeof args === 'undefined' ? DUMMY_EMPTY_ARRAY : [
 				// 'In function:', args.callee.name,	//* <- not available in strict mode
 				'With arguments:', args,
-			]
-		).concat(
-			typeof context === 'undefined' ? DUMMY_EMPTY_ARRAY : [
+			])
+		,	...(typeof context === 'undefined' ? DUMMY_EMPTY_ARRAY : [
 				'Context:', context
-			]
-		)
+			])
+		]
 	);
 }
 
