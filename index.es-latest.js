@@ -743,21 +743,27 @@ const	SPLIT_SEC = 60
 		{
 			'header' : 'reset_header',
 			'buttons' : {
-				'options' : {
+				'options_init' : {
 					'reset_options_to_init' : '',
+					'reset_options_to_empty' : '',
+				},
+				'options' : {
 					'reset_options_to_top' : '',
 					'reset_options_to_bottom' : '',
-					'reset_options_to_empty' : '',
 				},
 				'batching' : {
 					'reset_switch_batch_to_batched' : '',
 					'reset_switch_batch_to_single' : '',
+				},
+				'batching_layout' : {
 					'reset_switch_layout_to_inline' : '',
 					'reset_switch_layout_to_newline' : '',
 				},
-				'naming' : {
+				'naming_omit' : {
 					'reset_switch_option_to_unomitable' : '',
 					'reset_switch_option_to_omitable' : '',
+				},
+				'naming_prefix' : {
 					'reset_switch_prefix_to_prefixed' : '',
 					'reset_switch_prefix_to_unprefixed' : '',
 				},
@@ -6252,14 +6258,14 @@ async function getProjectViewMenu(project) {
 								).join('x') + 'px'
 							,	(
 									!threshold
-									? '' :
-									'a > ' + threshold
+									? 'a > ' + threshold
+									: ''
 								)
 							,	(
-									!method
-								||	PARAM_KEYWORDS_PADDING_METHODS.indexOf(method) <= 0
-									? '' :
 									method
+								&&	PARAM_KEYWORDS_PADDING_METHODS.includes(method)
+									? method
+									: ''
 								)
 							];
 
